@@ -73,9 +73,16 @@ h1 {
   text-align: center;
 }
 .status p { margin: 0; font-size: 0.9rem; line-height: 1.5; }
-.status-error, .status-unsupported { flex-direction: column; }
+.status-error,
+.status-empty,
+.status-reconnect,
+.status-unsupported { flex-direction: column; }
 .status-error { color: #9d2f24; }
 .status-title { color: #22201c; font-weight: 750; }
+.status-note {
+  color: #928b80;
+  font-size: 0.76rem !important;
+}
 .unsupported-url {
   max-width: 100%;
   color: #928b80;
@@ -107,12 +114,33 @@ h1 {
   outline-offset: 2px;
 }
 .button-primary { color: #fffdf8; background: #8f3f2e; }
-.button-primary:hover { background: #733124; }
+.button-primary:hover:not(:disabled) { background: #733124; }
+.button-primary:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
 .button-secondary {
   border-color: #d8d1c5;
   color: #938c82;
   background: transparent;
   cursor: not-allowed;
+}
+
+.refresh-status {
+  min-height: 42px;
+  margin-top: 10px;
+  color: #706a60;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: center;
+}
+.refresh-status p { margin: 0; }
+.refresh-status-connected { color: #396541; }
+.refresh-status-unexpected-error { color: #9d2f24; }
+.refresh-time {
+  margin-top: 3px !important;
+  color: #80786d;
+  font-size: 0.72rem;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
