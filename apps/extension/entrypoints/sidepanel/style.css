@@ -40,6 +40,77 @@ h1 {
   box-shadow: 0 10px 30px rgb(65 55 40 / 7%);
 }
 
+.capture-card {
+  padding: 18px;
+  border: 1px solid #d8d1c5;
+  border-radius: 12px;
+  background: #fffdf8;
+  box-shadow: 0 10px 30px rgb(65 55 40 / 7%);
+}
+.capture-card h2 {
+  margin: 0 0 14px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+.capture-card blockquote {
+  margin: 0;
+  padding: 14px 16px;
+  border-left: 3px solid #8f3f2e;
+  border-radius: 0 8px 8px 0;
+  background: #f8f3e9;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.character-count {
+  margin: 7px 0 0;
+  color: #80786d;
+  font-size: 0.72rem;
+  text-align: right;
+}
+.capture-metadata {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+}
+.capture-metadata div { min-width: 0; }
+.capture-metadata dt,
+.annotation-field label {
+  color: #80786d;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.capture-metadata dd {
+  margin: 3px 0 0;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.annotation-field { margin-top: 20px; }
+.annotation-field label { display: block; margin-bottom: 7px; }
+.annotation-field textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  padding: 10px 11px;
+  border: 1px solid #cfc6b8;
+  border-radius: 8px;
+  color: #22201c;
+  background: #fff;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.annotation-field textarea:focus-visible {
+  outline: 3px solid rgb(143 63 46 / 25%);
+  outline-offset: 1px;
+}
+
 .source-details { display: grid; gap: 18px; }
 .source-type {
   width: fit-content;
@@ -117,16 +188,18 @@ h1 {
 .button-primary:hover:not(:disabled) { background: #733124; }
 .button-primary:disabled {
   opacity: 0.72;
-  cursor: wait;
+  cursor: not-allowed;
 }
 .button-secondary {
   border-color: #d8d1c5;
-  color: #938c82;
+  color: #5f594f;
   background: transparent;
-  cursor: not-allowed;
 }
+.button-secondary:hover:not(:disabled) { background: #ebe5da; }
+.button-secondary:disabled { color: #938c82; cursor: not-allowed; }
+.capture-actions { margin-top: 18px; }
 
-.refresh-status {
+.panel-status {
   min-height: 42px;
   margin-top: 10px;
   color: #706a60;
@@ -134,9 +207,9 @@ h1 {
   line-height: 1.4;
   text-align: center;
 }
-.refresh-status p { margin: 0; }
-.refresh-status-connected { color: #396541; }
-.refresh-status-unexpected-error { color: #9d2f24; }
+.panel-status p { margin: 0; }
+.panel-status-connected { color: #396541; }
+.panel-status-unexpected-error { color: #9d2f24; }
 .refresh-time {
   margin-top: 3px !important;
   color: #80786d;
