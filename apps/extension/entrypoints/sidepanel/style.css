@@ -1,0 +1,119 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #22201c;
+  background: #f4f1ea;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 280px; min-height: 100vh; }
+button { font: inherit; }
+.panel { min-height: 100vh; padding: 28px 20px; }
+.brand { margin-bottom: 22px; }
+
+.eyebrow {
+  margin: 0 0 14px;
+  color: #8f3f2e;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.85rem, 8vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.05;
+}
+
+.intro { margin: 10px 0 0; color: #706a60; font-size: 0.9rem; }
+
+.source-card {
+  min-height: 220px;
+  padding: 18px;
+  border: 1px solid #d8d1c5;
+  border-radius: 12px;
+  background: #fffdf8;
+  box-shadow: 0 10px 30px rgb(65 55 40 / 7%);
+}
+
+.source-details { display: grid; gap: 18px; }
+.source-type {
+  width: fit-content;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #7d3122;
+  background: #f5ddd6;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.field { min-width: 0; }
+.field-label {
+  color: #80786d;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.field p { margin: 5px 0 0; font-size: 0.9rem; line-height: 1.45; }
+.page-title { font-size: 1rem !important; font-weight: 700; }
+.page-url, .unsupported-url { overflow-wrap: anywhere; }
+
+.status {
+  display: flex;
+  min-height: 182px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #706a60;
+  text-align: center;
+}
+.status p { margin: 0; font-size: 0.9rem; line-height: 1.5; }
+.status-error, .status-unsupported { flex-direction: column; }
+.status-error { color: #9d2f24; }
+.status-title { color: #22201c; font-weight: 750; }
+.unsupported-url {
+  max-width: 100%;
+  color: #928b80;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.72rem !important;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d8d1c5;
+  border-top-color: #8f3f2e;
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+
+.actions { display: grid; gap: 10px; margin-top: 16px; }
+.button {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.button:focus-visible {
+  outline: 3px solid rgb(143 63 46 / 30%);
+  outline-offset: 2px;
+}
+.button-primary { color: #fffdf8; background: #8f3f2e; }
+.button-primary:hover { background: #733124; }
+.button-secondary {
+  border-color: #d8d1c5;
+  color: #938c82;
+  background: transparent;
+  cursor: not-allowed;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
