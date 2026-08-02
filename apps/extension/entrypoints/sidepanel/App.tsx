@@ -10,6 +10,10 @@ import {
   type CaptureState,
   type SelectionExtractionResult,
 } from '../../utils/selection-capture';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
+import { ExtensionAuthError } from '../../utils/auth-callback';
+import { signInWithGoogle } from '../../utils/extension-auth';
+import { getSupabaseClient } from '../../utils/supabase';
 
 const YOUTUBE_HOSTS = new Set([
   'youtube.com',
@@ -42,6 +46,23 @@ type SourceState =
   | { status: 'unexpected-error'; message: string };
 
 type RefreshFeedback = 'idle' | 'success';
+
+type AccountDetails = {
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+};
+
+type AuthState =
+  | { status: 'loading' }
+  | { status: 'signed-out' }
+  | { status: 'signing-in' }
+  | {
+      status: 'signed-in';
+      account: AccountDetails;
+      profileError: string | null;
+    }
+  | { status: 'error'; message: string };
 
 const chrome = (globalThis as typeof globalThis & {
   chrome: typeof browser;
@@ -124,7 +145,68 @@ function getExtractionErrorMessage(
   }
 }
 
+function getMetadataText(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function getSafeAvatarUrl(value: unknown) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function getAccountInitial(account: AccountDetails) {
+  return (account.name.trim() || account.email.trim()).slice(0, 1).toUpperCase() || 'A';
+}
+
+async function verifyProfile(
+  supabase: SupabaseClient,
+  user: User,
+): Promise<AuthState> {
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('display_name, avatar_url')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const profileError = error
+    ? 'Your Annotated profile could not be verified. Try again.'
+    : !profile
+      ? import.meta.env.DEV
+        ? 'Development error: authentication succeeded, but the profiles trigger did not create a profile for this user.'
+        : 'Your Annotated profile is not available. Please contact support.'
+      : null;
+
+  const metadataName =
+    getMetadataText(user.user_metadata.full_name) ||
+    getMetadataText(user.user_metadata.name);
+  const profileName = getMetadataText(profile?.display_name);
+  const email = user.email ?? 'Email unavailable';
+
+  return {
+    status: 'signed-in',
+    account: {
+      name: profileName || metadataName || email,
+      email,
+      avatarUrl:
+        getSafeAvatarUrl(profile?.avatar_url) ??
+        getSafeAvatarUrl(user.user_metadata.avatar_url) ??
+        getSafeAvatarUrl(user.user_metadata.picture),
+    },
+    profileError,
+  };
+}
+
 function App() {
+  const [authState, setAuthState] = useState<AuthState>({ status: 'loading' });
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [sourceState, setSourceState] = useState<SourceState>({ status: 'loading' });
   const [captureState, setCaptureState] = useState<CaptureState>({ status: 'idle' });
   const [commentary, setCommentary] = useState('');
@@ -133,6 +215,99 @@ function App() {
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
   const connectedContextRef = useRef<ActiveTabContext | null>(null);
   const captureRevisionRef = useRef(0);
+  const authRevisionRef = useRef(0);
+  const authMountedRef = useRef(false);
+
+  const applyAuthenticatedUser = useCallback(async (user: User | null) => {
+    const revision = authRevisionRef.current + 1;
+    authRevisionRef.current = revision;
+
+    if (!user) {
+      if (authMountedRef.current) {
+        setAuthState({ status: 'signed-out' });
+      }
+      return;
+    }
+
+    const nextState = await verifyProfile(getSupabaseClient(), user);
+
+    if (authMountedRef.current && authRevisionRef.current === revision) {
+      setAuthState(nextState);
+    }
+  }, []);
+
+  const beginGoogleSignIn = useCallback(async () => {
+    setAuthState({ status: 'signing-in' });
+
+    try {
+      const user = await signInWithGoogle(getSupabaseClient());
+      await applyAuthenticatedUser(user);
+    } catch (error) {
+      const message =
+        error instanceof ExtensionAuthError
+          ? error.message
+          : import.meta.env.DEV
+            ? 'Authentication is not configured correctly. Check apps/extension/.env.local.'
+            : 'Google sign-in could not be completed. Please try again.';
+
+      if (authMountedRef.current) {
+        setAuthState({ status: 'error', message });
+      }
+    }
+  }, [applyAuthenticatedUser]);
+
+  const retryAuthentication = useCallback(async () => {
+    setAuthState({ status: 'loading' });
+
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.session?.user) {
+        await applyAuthenticatedUser(data.session.user);
+      } else {
+        await beginGoogleSignIn();
+      }
+    } catch {
+      if (authMountedRef.current) {
+        setAuthState({
+          status: 'error',
+          message: 'Authentication could not be restored. Please try again.',
+        });
+      }
+    }
+  }, [applyAuthenticatedUser, beginGoogleSignIn]);
+
+  const signOut = useCallback(async () => {
+    setIsSigningOut(true);
+
+    try {
+      const { error } = await getSupabaseClient().auth.signOut({ scope: 'local' });
+
+      if (error) {
+        throw error;
+      }
+
+      if (authMountedRef.current) {
+        setAuthState({ status: 'signed-out' });
+      }
+    } catch {
+      if (authMountedRef.current) {
+        setAuthState({
+          status: 'error',
+          message: 'Sign-out did not finish. Please try again.',
+        });
+      }
+    } finally {
+      if (authMountedRef.current) {
+        setIsSigningOut(false);
+      }
+    }
+  }, []);
 
   const clearCapture = useCallback(() => {
     captureRevisionRef.current += 1;
@@ -375,6 +550,51 @@ function App() {
   }, [enterReconnectRequired]);
 
   useEffect(() => {
+    authMountedRef.current = true;
+    let subscription: ReturnType<SupabaseClient['auth']['onAuthStateChange']>['data']['subscription'] | undefined;
+
+    try {
+      const supabase = getSupabaseClient();
+      subscription = supabase.auth.onAuthStateChange((_event, session) => {
+        window.setTimeout(() => {
+          void applyAuthenticatedUser(session?.user ?? null);
+        }, 0);
+      }).data.subscription;
+
+      void supabase.auth
+        .getSession()
+        .then(({ data, error }) => {
+          if (error) {
+            throw error;
+          }
+
+          return applyAuthenticatedUser(data.session?.user ?? null);
+        })
+        .catch(() => {
+          if (authMountedRef.current) {
+            setAuthState({
+              status: 'error',
+              message: 'Authentication could not be restored. Please try again.',
+            });
+          }
+        });
+    } catch {
+      setAuthState({
+        status: 'error',
+        message: import.meta.env.DEV
+          ? 'Supabase is not configured. Check apps/extension/.env.local.'
+          : 'Authentication is temporarily unavailable.',
+      });
+    }
+
+    return () => {
+      authMountedRef.current = false;
+      authRevisionRef.current += 1;
+      subscription?.unsubscribe();
+    };
+  }, [applyAuthenticatedUser]);
+
+  useEffect(() => {
     let isMounted = true;
 
     const applyContext = (value: unknown) => {
@@ -453,6 +673,84 @@ function App() {
         <h1>Current source</h1>
         <p className="intro">Review the page connected to this annotation.</p>
       </header>
+
+      <section className="account-card" aria-labelledby="account-title">
+        <h2 id="account-title">Account</h2>
+
+        {authState.status === 'loading' && (
+          <div className="account-loading" role="status">
+            <span className="spinner" aria-hidden="true" />
+            <span>Restoring session...</span>
+          </div>
+        )}
+
+        {authState.status === 'signed-out' && (
+          <button
+            className="button button-primary"
+            type="button"
+            onClick={beginGoogleSignIn}
+          >
+            Continue with Google
+          </button>
+        )}
+
+        {authState.status === 'signing-in' && (
+          <button className="button button-primary" type="button" disabled>
+            Signing in...
+          </button>
+        )}
+
+        {authState.status === 'signed-in' && (
+          <div className="account-signed-in">
+            <div className="account-identity">
+              {authState.account.avatarUrl ? (
+                <img
+                  className="account-avatar"
+                  src={authState.account.avatarUrl}
+                  alt=""
+                  width="40"
+                  height="40"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="account-avatar account-avatar-fallback" aria-hidden="true">
+                  {getAccountInitial(authState.account)}
+                </span>
+              )}
+              <div>
+                <p className="account-name">{authState.account.name}</p>
+                <p className="account-email">{authState.account.email}</p>
+              </div>
+            </div>
+            {authState.profileError && (
+              <p className="account-profile-error" role="alert">
+                {authState.profileError}
+              </p>
+            )}
+            <button
+              className="button button-secondary account-sign-out"
+              type="button"
+              onClick={signOut}
+              disabled={isSigningOut}
+            >
+              {isSigningOut ? 'Signing out...' : 'Sign out'}
+            </button>
+          </div>
+        )}
+
+        {authState.status === 'error' && (
+          <div className="account-error" role="alert">
+            <p>{authState.message}</p>
+            <button
+              className="button button-secondary"
+              type="button"
+              onClick={retryAuthentication}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+      </section>
 
       {capturedSelection ? (
         <section className="capture-card">
