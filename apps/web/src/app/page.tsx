@@ -81,8 +81,8 @@ export default async function Home() {
         <p className="eyebrow">ANNOTATED</p>
         <h1 id="auth-title">Keep your reading connected.</h1>
         <p className="lede">
-          Sign in with Google to restore your Annotated account. Publishing is
-          not enabled yet.
+          Sign in with Google to restore your Annotated account and publish from
+          the Chrome extension.
         </p>
         <AuthAccount user={user} serverError={serverError} profileError={profileError} />
       </section>
