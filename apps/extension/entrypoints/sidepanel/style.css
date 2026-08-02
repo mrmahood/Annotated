@@ -13,6 +13,50 @@ button { font: inherit; }
 .panel { min-height: 100vh; padding: 28px 20px; }
 .brand { margin-bottom: 22px; }
 
+.account-card {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid #d8d1c5;
+  border-radius: 12px;
+  background: #fffdf8;
+}
+.account-card h2 {
+  margin: 0;
+  color: #80786d;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.account-loading { display: flex; align-items: center; gap: 9px; color: #706a60; font-size: 0.82rem; }
+.account-signed-in { display: grid; gap: 12px; }
+.account-identity { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.account-identity > div { min-width: 0; }
+.account-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #ead8d0;
+}
+.account-avatar-fallback {
+  display: grid;
+  place-items: center;
+  color: #8f3f2e;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.account-name, .account-email, .account-error p { margin: 0; overflow-wrap: anywhere; }
+.account-name { font-size: 0.86rem; font-weight: 750; }
+.account-email { margin-top: 2px; color: #80786d; font-size: 0.72rem; }
+.account-profile-error { margin: 0; color: #9d2f24; font-size: 0.78rem; line-height: 1.4; }
+.account-sign-out { padding-block: 8px; }
+.account-error { display: grid; gap: 10px; color: #9d2f24; font-size: 0.78rem; line-height: 1.4; }
+
 .eyebrow {
   margin: 0 0 14px;
   color: #8f3f2e;
