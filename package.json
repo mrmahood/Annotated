@@ -17,5 +17,8 @@
     }
   },
   "type": "module",
-  "packageManager": "pnpm@11.18.0"
+  "packageManager": "pnpm@11.18.0",
+  "devDependencies": {
+    "supabase": "^2.111.0"
+  }
 }
