@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArticleUrlNormalizationError,
+  normalizeArticleUrl,
+} from '@annotated/shared/url-normalization';
+import {
   ACTIVE_TAB_CONTEXT_KEY,
   isActiveTabContext,
   isActiveTabContextMessage,
@@ -14,6 +18,10 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { ExtensionAuthError } from '../../utils/auth-callback';
 import { signInWithGoogle } from '../../utils/extension-auth';
 import { getSupabaseClient } from '../../utils/supabase';
+import {
+  getWebAppOrigin,
+  WebAppUrlConfigurationError,
+} from '../../utils/web-app-url';
 
 const YOUTUBE_HOSTS = new Set([
   'youtube.com',
@@ -63,6 +71,12 @@ type AuthState =
       profileError: string | null;
     }
   | { status: 'error'; message: string };
+
+type PublishState =
+  | { status: 'idle' }
+  | { status: 'publishing' }
+  | { status: 'error'; message: string }
+  | { status: 'success'; publicUrl: string; pageOpened: boolean };
 
 const chrome = (globalThis as typeof globalThis & {
   chrome: typeof browser;
@@ -166,6 +180,43 @@ function getAccountInitial(account: AccountDetails) {
   return (account.name.trim() || account.email.trim()).slice(0, 1).toUpperCase() || 'A';
 }
 
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
+function getPublishErrorMessage(error: unknown) {
+  if (error instanceof ArticleUrlNormalizationError) {
+    return 'The captured source URL is not a valid web address. Refresh the source and capture the passage again.';
+  }
+
+  if (error instanceof WebAppUrlConfigurationError) {
+    return import.meta.env.DEV
+      ? 'The public web app is not configured. Set WXT_WEB_APP_URL to an HTTP or HTTPS origin in apps/extension/.env.local.'
+      : 'The public annotation page is temporarily unavailable. Try again later.';
+  }
+
+  const message = error instanceof Error ? error.message : '';
+
+  if (/auth|jwt|session|signed in/i.test(message)) {
+    return 'Your session could not be verified. Sign in again, then retry publishing.';
+  }
+
+  if (/selected text/i.test(message)) {
+    return 'The captured passage is invalid. Capture a passage between 1 and 2,000 characters and try again.';
+  }
+
+  if (/commentary/i.test(message)) {
+    return 'Your commentary must contain between 1 and 2,000 characters.';
+  }
+
+  return 'The annotation could not be published. Your passage and commentary are still here—check your connection and try again.';
+}
+
 async function verifyProfile(
   supabase: SupabaseClient,
   user: User,
@@ -210,6 +261,9 @@ function App() {
   const [sourceState, setSourceState] = useState<SourceState>({ status: 'loading' });
   const [captureState, setCaptureState] = useState<CaptureState>({ status: 'idle' });
   const [commentary, setCommentary] = useState('');
+  const [publishState, setPublishState] = useState<PublishState>({
+    status: 'idle',
+  });
   const [refreshFeedback, setRefreshFeedback] =
     useState<RefreshFeedback>('idle');
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
@@ -217,6 +271,7 @@ function App() {
   const captureRevisionRef = useRef(0);
   const authRevisionRef = useRef(0);
   const authMountedRef = useRef(false);
+  const publishInFlightRef = useRef(false);
 
   const applyAuthenticatedUser = useCallback(async (user: User | null) => {
     const revision = authRevisionRef.current + 1;
@@ -313,6 +368,7 @@ function App() {
     captureRevisionRef.current += 1;
     setCaptureState({ status: 'idle' });
     setCommentary('');
+    setPublishState({ status: 'idle' });
   }, []);
 
   const enterReconnectRequired = useCallback(() => {
@@ -510,6 +566,7 @@ function App() {
       }
 
       setCaptureState({ status: 'captured', data: extractionResult.data });
+      setPublishState({ status: 'idle' });
     } catch (error) {
       if (captureRevisionRef.current !== captureRevision) {
         return;
@@ -548,6 +605,90 @@ function App() {
       });
     }
   }, [enterReconnectRequired]);
+
+  const publishAnnotation = useCallback(async () => {
+    if (
+      publishInFlightRef.current ||
+      authState.status !== 'signed-in' ||
+      captureState.status !== 'captured' ||
+      !commentary.trim() ||
+      commentary.length > 2_000
+    ) {
+      return;
+    }
+
+    publishInFlightRef.current = true;
+    setPublishState({ status: 'publishing' });
+
+    try {
+      const supabase = getSupabaseClient();
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (sessionError || !sessionData.session) {
+        throw new Error('The authenticated session is unavailable.');
+      }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+
+      if (
+        userError ||
+        !userData.user ||
+        userData.user.id !== sessionData.session.user.id
+      ) {
+        throw new Error('The authenticated user could not be verified.');
+      }
+
+      const captured = captureState.data;
+      const normalizedUrl = normalizeArticleUrl(
+        captured.canonicalUrl || captured.sourceUrl,
+      );
+      const webAppOrigin = getWebAppOrigin();
+      const { data: annotationId, error: publishError } = await supabase.rpc(
+        'publish_article_annotation',
+        {
+          p_normalized_url: normalizedUrl,
+          p_canonical_url: captured.canonicalUrl,
+          p_page_title: captured.pageTitle,
+          p_author: captured.author,
+          p_publisher: captured.publisher,
+          p_selected_text: captured.selectedText,
+          p_text_prefix: captured.textPrefix,
+          p_text_suffix: captured.textSuffix,
+          p_commentary_text: commentary,
+        },
+      );
+
+      if (publishError) {
+        throw new Error(publishError.message);
+      }
+
+      if (!isUuid(annotationId)) {
+        throw new Error('Publishing returned an invalid annotation identifier.');
+      }
+
+      const publicUrl = new URL(`/a/${annotationId}`, webAppOrigin).href;
+      let pageOpened = true;
+
+      try {
+        await chrome.tabs.create({ url: publicUrl });
+      } catch {
+        pageOpened = false;
+      }
+
+      captureRevisionRef.current += 1;
+      setCaptureState({ status: 'idle' });
+      setCommentary('');
+      setPublishState({ status: 'success', publicUrl, pageOpened });
+    } catch (error) {
+      setPublishState({
+        status: 'error',
+        message: getPublishErrorMessage(error),
+      });
+    } finally {
+      publishInFlightRef.current = false;
+    }
+  }, [authState.status, captureState, commentary]);
 
   useEffect(() => {
     authMountedRef.current = true;
@@ -665,6 +806,13 @@ function App() {
   const capturedSelection =
     captureState.status === 'captured' ? captureState.data : null;
   const canCapture = sourceState.status === 'connected' && !isCapturing;
+  const isPublishing = publishState.status === 'publishing';
+  const canPublish =
+    authState.status === 'signed-in' &&
+    capturedSelection !== null &&
+    commentary.trim().length > 0 &&
+    commentary.length <= 2_000 &&
+    !isPublishing;
 
   return (
     <main className="panel">
@@ -752,6 +900,19 @@ function App() {
         )}
       </section>
 
+      {publishState.status === 'success' && (
+        <div className="publish-feedback publish-feedback-success" role="status">
+          <p>
+            {publishState.pageOpened
+              ? 'Annotation published. Opening its public page…'
+              : 'Annotation published. Open its public page below.'}
+          </p>
+          <a href={publishState.publicUrl} target="_blank" rel="noopener noreferrer">
+            View published annotation
+          </a>
+        </div>
+      )}
+
       {capturedSelection ? (
         <section className="capture-card">
           <h2>Captured passage</h2>
@@ -803,13 +964,25 @@ function App() {
               className="button button-secondary"
               type="button"
               onClick={clearCapture}
+              disabled={isPublishing}
             >
               Clear capture
             </button>
-            <button className="button button-primary" type="button" disabled>
-              Publish — coming next
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={publishAnnotation}
+              disabled={!canPublish}
+            >
+              {isPublishing ? 'Publishing...' : 'Publish annotation'}
             </button>
           </div>
+
+          {publishState.status === 'error' && (
+            <p className="publish-feedback publish-feedback-error" role="alert">
+              {publishState.message}
+            </p>
+          )}
         </section>
       ) : (
         <>

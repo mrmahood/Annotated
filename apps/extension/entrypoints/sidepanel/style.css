@@ -243,6 +243,27 @@ h1 {
 .button-secondary:disabled { color: #938c82; cursor: not-allowed; }
 .capture-actions { margin-top: 18px; }
 
+.publish-feedback {
+  margin: 0 0 16px;
+  padding: 11px 13px;
+  border-radius: 9px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.publish-feedback p { margin: 0; }
+.publish-feedback a {
+  display: inline-block;
+  margin-top: 6px;
+  color: inherit;
+  font-weight: 750;
+}
+.publish-feedback a:focus-visible {
+  outline: 3px solid rgb(143 63 46 / 30%);
+  outline-offset: 2px;
+}
+.publish-feedback-success { color: #315d39; background: #e4f0e5; }
+.publish-feedback-error { margin: 12px 0 0; color: #8b2921; background: #fbe8e4; }
+
 .panel-status {
   min-height: 42px;
   margin-top: 10px;

@@ -213,6 +213,9 @@ importers:
 
   apps/extension:
     dependencies:
+      '@annotated/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@supabase/supabase-js':
         specifier: ^2.111.0
         version: 2.111.0
@@ -284,6 +287,8 @@ importers:
       typescript:
         specifier: ^5
         version: 5.9.3
+
+  packages/shared: {}
 
 packages:
 
