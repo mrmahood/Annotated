@@ -1,91 +1,72 @@
-import { AuthAccount } from "./auth-account";
-import { createClient } from "@/lib/supabase/server";
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { AnnotationCard } from "./annotation-card";
+import { PaginationNav } from "./pagination-nav";
+import { SiteHeader } from "./site-header";
+import { getPublicFeedPage } from "@/lib/data/public-discovery";
+import {
+  getPageHref,
+  isCanonicalPageQuery,
+  parsePageQuery,
+} from "@/lib/public-content";
 
 export const dynamic = "force-dynamic";
 
-function getMetadataText(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
-}
+export const metadata: Metadata = {
+  title: "Public annotation feed | Annotated",
+  description: "Discover source-linked annotations published by Annotated readers.",
+};
 
-function getSafeAvatarUrl(value: unknown) {
-  if (typeof value !== "string") {
-    return null;
+type HomePageProps = {
+  searchParams: Promise<{ page?: string | string[] }>;
+};
+
+export default async function Home({ searchParams }: HomePageProps) {
+  const { page: pageQuery } = await searchParams;
+  const page = parsePageQuery(pageQuery);
+
+  if (!isCanonicalPageQuery(pageQuery)) {
+    redirect(getPageHref("/", page));
   }
 
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-export default async function Home() {
-  let user: {
-    name: string;
-    email: string;
-    avatarUrl: string | null;
-  } | null = null;
-  let serverError: string | null = null;
-  let profileError: string | null = null;
-
-  try {
-    const supabase = await createClient();
-    const { data, error } = await supabase.auth.getUser();
-
-    if (error && error.code !== "session_not_found") {
-      serverError = "Your session could not be verified. Please try again.";
-    }
-
-    if (data.user) {
-      const { data: profile, error: profileQueryError } = await supabase
-        .from("profiles")
-        .select("display_name, avatar_url")
-        .eq("id", data.user.id)
-        .maybeSingle();
-
-      if (profileQueryError) {
-        profileError = "Your Annotated profile could not be verified.";
-      } else if (!profile) {
-        profileError =
-          process.env.NODE_ENV === "development"
-            ? "Development error: authentication succeeded, but the profiles trigger did not create a profile for this user."
-            : "Your Annotated profile is not available. Please contact support.";
-      }
-
-      const metadataName =
-        getMetadataText(data.user.user_metadata.full_name) ||
-        getMetadataText(data.user.user_metadata.name);
-      const profileName = getMetadataText(profile?.display_name);
-      const email = data.user.email ?? "Email unavailable";
-
-      user = {
-        name: profileName || metadataName || email,
-        email,
-        avatarUrl:
-          getSafeAvatarUrl(profile?.avatar_url) ??
-          getSafeAvatarUrl(data.user.user_metadata.avatar_url) ??
-          getSafeAvatarUrl(data.user.user_metadata.picture),
-      };
-    }
-  } catch {
-    serverError =
-      process.env.NODE_ENV === "development"
-        ? "Supabase is not configured. Check apps/web/.env.local."
-        : "Authentication is temporarily unavailable.";
-  }
+  const feed = await getPublicFeedPage(page);
+  const returnTo = getPageHref("/", page);
 
   return (
-    <main className="auth-shell">
-      <section className="auth-card" aria-labelledby="auth-title">
-        <p className="eyebrow">ANNOTATED</p>
-        <h1 id="auth-title">Keep your reading connected.</h1>
-        <p className="lede">
-          Sign in with Google to restore your Annotated account and publish from
-          the Chrome extension.
-        </p>
-        <AuthAccount user={user} serverError={serverError} profileError={profileError} />
-      </section>
-    </main>
+    <>
+      <SiteHeader active="feed" returnTo={returnTo} />
+      <main className="discovery-main">
+        <header className="discovery-intro">
+          <p className="eyebrow">PUBLIC ANNOTATIONS</p>
+          <h1>Reading, connected to its sources.</h1>
+          <p className="lede">
+            Explore passages readers found worth keeping, alongside their commentary
+            and the original work in context.
+          </p>
+        </header>
+
+        {feed.status === "unavailable" ? (
+          <section className="discovery-state discovery-error" role="alert">
+            <h2>The public feed is temporarily unavailable.</h2>
+            <p>Please try again in a little while.</p>
+          </section>
+        ) : feed.annotations.length === 0 ? (
+          <section className="discovery-state">
+            <h2>{page === 1 ? "No annotations have been published yet." : "There are no annotations on this page."}</h2>
+            <p>{page === 1 ? "Published annotations will appear here." : "Use Previous to return to an earlier page."}</p>
+          </section>
+        ) : (
+          <div className="annotation-list" aria-label="Published annotations">
+            {feed.annotations.map((annotation) => (
+              <AnnotationCard key={annotation.id} annotation={annotation} />
+            ))}
+          </div>
+        )}
+
+        {feed.status === "available" && (
+          <PaginationNav basePath="/" page={page} hasNext={feed.hasNext} />
+        )}
+      </main>
+    </>
   );
 }

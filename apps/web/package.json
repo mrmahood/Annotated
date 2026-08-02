@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:unit": "node --test src/lib/auth/next-path.test.mjs src/lib/public-content.test.mjs src/lib/data/public-discovery-query.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
