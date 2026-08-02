@@ -3,12 +3,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import {
+  formatHostname,
+  getHttpUrl,
+  getInitial,
+  getOptionalText,
+  isUuid,
+} from "@/lib/public-content";
+import { SiteHeader } from "../../site-header";
 import { ClaimForm } from "./claim-form";
 
 export const dynamic = "force-dynamic";
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type PublicAnnotation = {
   id: string;
@@ -23,31 +28,15 @@ type PublicAnnotation = {
     hostname: string;
   };
   annotator: {
+    id: string;
     name: string;
     avatarUrl: string | null;
   };
 };
 
-function getHttpUrl(value: unknown): URL | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
-  } catch {
-    return null;
-  }
-}
-
-function getOptionalText(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
 const loadPublicAnnotation = cache(
   async (annotationId: string): Promise<PublicAnnotation | null> => {
-    if (!UUID_PATTERN.test(annotationId)) {
+    if (!isUuid(annotationId)) {
       return null;
     }
 
@@ -84,7 +73,7 @@ const loadPublicAnnotation = cache(
           .maybeSingle(),
         supabase
           .from("profiles")
-          .select("display_name, username, avatar_url")
+          .select("id, display_name, avatar_url")
           .eq("id", annotation.user_id)
           .maybeSingle(),
       ]);
@@ -93,6 +82,7 @@ const loadPublicAnnotation = cache(
       const source = sourceResult.data;
       const profile = profileResult.data;
       const canonicalUrl = getHttpUrl(source?.canonical_url);
+      const hostname = formatHostname(source?.canonical_url);
       const selectedText = getOptionalText(target?.selected_text);
 
       if (
@@ -102,7 +92,9 @@ const loadPublicAnnotation = cache(
         !target ||
         !source ||
         !profile ||
+        !isUuid(profile.id) ||
         !canonicalUrl ||
+        !hostname ||
         !selectedText
       ) {
         return null;
@@ -124,13 +116,11 @@ const loadPublicAnnotation = cache(
           title: getOptionalText(source.title),
           author: getOptionalText(source.author),
           publisher: getOptionalText(source.publisher),
-          hostname: canonicalUrl.hostname,
+          hostname,
         },
         annotator: {
-          name:
-            getOptionalText(profile.display_name) ??
-            getOptionalText(profile.username) ??
-            "Annotated reader",
+          id: profile.id,
+          name: getOptionalText(profile.display_name) ?? "Annotated reader",
           avatarUrl: getHttpUrl(profile.avatar_url)?.href ?? null,
         },
       };
@@ -165,10 +155,6 @@ function getPublicPageUrl(annotationId: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function getInitial(name: string) {
-  return name.trim().slice(0, 1).toUpperCase() || "A";
 }
 
 type AnnotationPageProps = {
@@ -223,31 +209,27 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
   }).format(new Date(annotation.publishedAt));
 
   return (
-    <main className="annotation-shell">
+    <>
+      <SiteHeader returnTo={`/a/${annotation.id}`} />
+      <main className="annotation-shell">
       <article className="annotation-page">
         <header className="annotation-header">
-          <Link className="wordmark" href="/" aria-label="Annotated home">
-            ANNOTATED
-          </Link>
           <div className="annotator-line">
-            {annotation.annotator.avatarUrl ? (
-              // External avatars are rendered as plain images because their hosts vary.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                className="public-avatar"
-                src={annotation.annotator.avatarUrl}
-                alt=""
-                width="48"
-                height="48"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <span className="public-avatar public-avatar-fallback" aria-hidden="true">
-                {getInitial(annotation.annotator.name)}
-              </span>
-            )}
+            <Link className="annotator-avatar-link" href={`/p/${annotation.annotator.id}`} aria-label={`View ${annotation.annotator.name}’s profile`}>
+              {annotation.annotator.avatarUrl ? (
+                // External avatars are rendered as plain images because their hosts vary.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="public-avatar" src={annotation.annotator.avatarUrl} alt="" width="48" height="48" referrerPolicy="no-referrer" />
+              ) : (
+                <span className="public-avatar public-avatar-fallback" aria-hidden="true">
+                  {getInitial(annotation.annotator.name)}
+                </span>
+              )}
+            </Link>
             <div>
-              <p className="annotator-name">{annotation.annotator.name}</p>
+              <p className="annotator-name">
+                <Link href={`/p/${annotation.annotator.id}`}>{annotation.annotator.name}</Link>
+              </p>
               <p className="publication-date">
                 Published <time dateTime={annotation.publishedAt}>{publicationDate}</time>
               </p>
@@ -294,6 +276,7 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
 
         <ClaimForm annotationId={annotation.id} />
       </article>
-    </main>
+      </main>
+    </>
   );
 }

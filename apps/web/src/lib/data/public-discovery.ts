@@ -1,0 +1,189 @@
+import { createClient } from "@/lib/supabase/server";
+import {
+  formatHostname,
+  getHttpUrl,
+  getOptionalText,
+  getPageRange,
+  isUuid,
+  PUBLIC_PAGE_SIZE,
+} from "@/lib/public-content";
+import {
+  buildPublicFeedQueryPlan,
+  buildPublicProfileAnnotationsQueryPlan,
+  PUBLIC_ANNOTATION_STATUS,
+  type PublicAnnotationQueryPlan,
+} from "./public-discovery-query";
+
+export type PublicAnnotationCardData = {
+  id: string;
+  commentaryText: string;
+  publishedAt: string;
+  selectedText: string;
+  annotator: { id: string; displayName: string; avatarUrl: string | null };
+  source: {
+    canonicalUrl: string;
+    title: string | null;
+    hostname: string;
+    author: string | null;
+    publisher: string | null;
+  };
+};
+
+export type PublicProfile = {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  createdAt: string;
+};
+
+export type PublicAnnotationPage =
+  | { status: "available"; annotations: PublicAnnotationCardData[]; hasNext: boolean }
+  | { status: "unavailable" };
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function getSingleRelation(value: unknown): UnknownRecord | null {
+  if (Array.isArray(value)) {
+    return value.length === 1 && isRecord(value[0]) ? value[0] : null;
+  }
+
+  return isRecord(value) ? value : null;
+}
+
+function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
+  if (!isRecord(value)) return null;
+
+  const annotator = getSingleRelation(value.annotator);
+  const source = getSingleRelation(value.source);
+  const target = getSingleRelation(value.target);
+  const annotationId = getOptionalText(value.id);
+  const commentaryText = getOptionalText(value.commentary_text);
+  const selectedText = getOptionalText(target?.selected_text);
+  const profileId = getOptionalText(annotator?.id);
+  const canonicalUrl = getHttpUrl(source?.canonical_url);
+  const hostname = formatHostname(source?.canonical_url);
+  const publishedAt = getOptionalText(value.published_at);
+  const publishedDate = publishedAt ? new Date(publishedAt) : null;
+
+  if (
+    !annotator || !source || !target ||
+    !annotationId || !isUuid(annotationId) || !commentaryText || !selectedText ||
+    !profileId || !isUuid(profileId) || !canonicalUrl || !hostname ||
+    !publishedDate || Number.isNaN(publishedDate.getTime())
+  ) {
+    return null;
+  }
+
+  return {
+    id: annotationId,
+    commentaryText,
+    publishedAt: publishedDate.toISOString(),
+    selectedText,
+    annotator: {
+      id: profileId,
+      displayName: getOptionalText(annotator.display_name) ?? "Annotated reader",
+      avatarUrl: getHttpUrl(annotator.avatar_url)?.href ?? null,
+    },
+    source: {
+      canonicalUrl: canonicalUrl.href,
+      title: getOptionalText(source.title),
+      hostname,
+      author: getOptionalText(source.author),
+      publisher: getOptionalText(source.publisher),
+    },
+  };
+}
+
+async function getPublicAnnotationPage(
+  page: number,
+  queryPlan: PublicAnnotationQueryPlan,
+): Promise<PublicAnnotationPage> {
+  try {
+    const supabase = await createClient();
+    let query = supabase.from(queryPlan.table).select(queryPlan.select);
+
+    for (const filter of queryPlan.filters) query = query.eq(filter.column, filter.value);
+    for (const order of queryPlan.orders) {
+      query = query.order(order.column, { ascending: order.ascending });
+    }
+
+    const { from, to } = getPageRange(page);
+    const { data, error } = await query.range(from, to);
+
+    if (error || !data) return { status: "unavailable" };
+
+    const hasNext = data.length > PUBLIC_PAGE_SIZE;
+    const annotations = data
+      .slice(0, PUBLIC_PAGE_SIZE)
+      .map(mapPublicAnnotation)
+      .filter((item): item is PublicAnnotationCardData => Boolean(item));
+
+    return { status: "available", annotations, hasNext };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
+export async function getPublicFeedPage(page: number): Promise<PublicAnnotationPage> {
+  return getPublicAnnotationPage(page, buildPublicFeedQueryPlan());
+}
+
+export async function getPublicProfile(profileId: string): Promise<PublicProfile | null> {
+  if (!isUuid(profileId)) return null;
+
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url, created_at")
+      .eq("id", profileId)
+      .maybeSingle();
+    const createdAt = getOptionalText(data?.created_at);
+    const createdDate = createdAt ? new Date(createdAt) : null;
+
+    if (
+      error || !data || !isUuid(data.id) || !createdDate ||
+      Number.isNaN(createdDate.getTime())
+    ) {
+      return null;
+    }
+
+    return {
+      id: data.id,
+      displayName: getOptionalText(data.display_name) ?? "Annotated reader",
+      avatarUrl: getHttpUrl(data.avatar_url)?.href ?? null,
+      createdAt: createdDate.toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getPublicProfileAnnotations(
+  profileId: string,
+  page: number,
+): Promise<PublicAnnotationPage> {
+  if (!isUuid(profileId)) return { status: "unavailable" };
+  return getPublicAnnotationPage(page, buildPublicProfileAnnotationsQueryPlan(profileId));
+}
+
+export async function getPublicAnnotationCount(profileId: string): Promise<number | null> {
+  if (!isUuid(profileId)) return null;
+
+  try {
+    const supabase = await createClient();
+    const { count, error } = await supabase
+      .from("annotations")
+      .select("id", { count: "exact", head: true })
+      .eq("status", PUBLIC_ANNOTATION_STATUS)
+      .eq("user_id", profileId);
+
+    return error || count === null ? null : count;
+  } catch {
+    return null;
+  }
+}
