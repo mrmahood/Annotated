@@ -20,3 +20,19 @@ longer opens that page automatically.
 Authentication continues to use Google OAuth through `chrome.identity`, with the
 Supabase session persisted in `chrome.storage.local`. The extension permissions
 remain `sidePanel`, `activeTab`, `storage`, `scripting`, and `identity`.
+
+## YouTube time-coded annotations
+
+Supported YouTube watch and `youtu.be` URLs normalize to one canonical watch URL
+per video. Clip drafts store only that video identity, millisecond start/end
+values, and required text commentary in `chrome.storage.session`. Metadata and
+player position are read from the explicitly connected tab with narrowly scoped
+`chrome.scripting.executeScript` calls; there is no persistent content script or
+media download.
+
+Recorded audio is intentionally article-only for this milestone. A future
+milestone can attach optional audio to a YouTube annotation through the existing
+`annotation_audio` one-to-one metadata table and owned Storage-object validation,
+but it should add a dedicated YouTube-with-audio RPC so the upload verification
+and time-range publication remain one database transaction. The current YouTube
+publisher must not be expanded by accepting unverified storage metadata.

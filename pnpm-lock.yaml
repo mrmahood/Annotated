@@ -247,6 +247,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@annotated/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@supabase/ssr':
         specifier: ^0.12.4
         version: 0.12.4(@supabase/supabase-js@2.111.0)

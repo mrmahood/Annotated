@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import { formatMediaTime, getClipRangeError } from "@annotated/shared/media-time";
+import { getYouTubeTimestampUrl, getYouTubeVideoIdentity } from "@annotated/shared/youtube";
 import { createClient } from "@/lib/supabase/server";
 import {
   ANNOTATION_AUDIO_BUCKET,
@@ -28,11 +30,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type PublicAnnotation = {
+type PublicAnnotationBase = {
   id: string;
   commentaryText: string;
   publishedAt: string;
-  selectedText: string;
   source: {
     canonicalUrl: string;
     title: string | null;
@@ -51,6 +52,11 @@ type PublicAnnotation = {
   } | null;
 };
 
+type PublicAnnotation = PublicAnnotationBase & (
+  | { kind: "article"; selectedText: string; startMs: null; endMs: null; source: PublicAnnotationBase["source"] & { type: "article"; videoId: null } }
+  | { kind: "youtube"; selectedText: null; startMs: number; endMs: number; source: PublicAnnotationBase["source"] & { type: "youtube"; videoId: string } }
+);
+
 const loadPublicAnnotation = cache(
   async (annotationId: string): Promise<PublicAnnotation | null> => {
     if (!isUuid(annotationId)) {
@@ -61,7 +67,7 @@ const loadPublicAnnotation = cache(
       const supabase = await createClient();
       const { data: annotation, error: annotationError } = await supabase
         .from("annotations")
-        .select("id, source_id, user_id, commentary_text, published_at, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)")
+        .select("id, source_id, user_id, annotation_type, commentary_text, published_at, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)")
         .eq("id", annotationId)
         .eq("status", "published")
         .maybeSingle();
@@ -78,15 +84,13 @@ const loadPublicAnnotation = cache(
       const [targetResult, sourceResult, profileResult] = await Promise.all([
         supabase
           .from("annotation_targets")
-          .select("selected_text")
+          .select("target_type, selected_text, start_ms, end_ms")
           .eq("annotation_id", annotation.id)
-          .eq("target_type", "text")
           .maybeSingle(),
         supabase
           .from("sources")
-          .select("canonical_url, title, author, publisher")
+          .select("canonical_url, normalized_url, source_type, title, author, publisher")
           .eq("id", annotation.source_id)
-          .eq("source_type", "article")
           .maybeSingle(),
         supabase
           .from("profiles")
@@ -111,8 +115,7 @@ const loadPublicAnnotation = cache(
         !profile ||
         !isUuid(profile.id) ||
         !canonicalUrl ||
-        !hostname ||
-        !selectedText
+        !hostname
       ) {
         return null;
       }
@@ -142,11 +145,10 @@ const loadPublicAnnotation = cache(
         }
       }
 
-      return {
+      const common = {
         id: annotation.id,
         commentaryText: annotation.commentary_text.trim(),
         publishedAt: publishedDate.toISOString(),
-        selectedText,
         source: {
           canonicalUrl: canonicalUrl.href,
           title: getOptionalText(source.title),
@@ -161,6 +163,44 @@ const loadPublicAnnotation = cache(
         },
         audio,
       };
+
+      if (
+        annotation.annotation_type === "article_text" && source.source_type === "article" &&
+        target.target_type === "text" && selectedText
+      ) {
+        return {
+          ...common,
+          kind: "article",
+          selectedText,
+          startMs: null,
+          endMs: null,
+          source: { ...common.source, type: "article", videoId: null },
+        };
+      }
+
+      if (
+        annotation.annotation_type === "video_clip" && source.source_type === "youtube" &&
+        target.target_type === "time_range" && Number.isSafeInteger(target.start_ms) &&
+        Number.isSafeInteger(target.end_ms) &&
+        getClipRangeError(target.start_ms, target.end_ms) === null
+      ) {
+        try {
+          const identity = getYouTubeVideoIdentity(canonicalUrl.href);
+          if (identity.normalizedUrl !== source.normalized_url) return null;
+          return {
+            ...common,
+            kind: "youtube",
+            selectedText: null,
+            startMs: target.start_ms,
+            endMs: target.end_ms,
+            source: { ...common.source, type: "youtube", videoId: identity.videoId },
+          };
+        } catch {
+          return null;
+        }
+      }
+
+      return null;
     } catch {
       return null;
     }
@@ -213,7 +253,9 @@ export async function generateMetadata({
 
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const title = `Annotation on ${sourceTitle}`;
-  const description = `${annotation.annotator.name} annotated an article from ${annotation.source.hostname}.`;
+  const description = annotation.kind === "youtube"
+    ? `${annotation.annotator.name} annotated a YouTube clip from ${formatMediaTime(annotation.startMs)} to ${formatMediaTime(annotation.endMs)}.`
+    : `${annotation.annotator.name} annotated an article from ${annotation.source.hostname}.`;
   const publicPageUrl = getPublicPageUrl(annotation.id);
 
   return {
@@ -246,6 +288,9 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
   ]);
 
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
+  const sourceUrl = annotation.kind === "youtube"
+    ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
+    : annotation.source.canonicalUrl;
   const publicationDate = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "long",
@@ -291,11 +336,11 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
 
         <section className="source-attribution" aria-labelledby="source-heading">
           <div className="source-copy">
-            <p className="section-label">Original article</p>
+            <p className="section-label">{annotation.kind === "youtube" ? "YouTube source" : "Original article"}</p>
             <h1 id="source-heading">{sourceTitle}</h1>
             {(annotation.source.author || annotation.source.publisher) && (
               <p className="source-byline">
-                {annotation.source.author && `By ${annotation.source.author}`}
+                {annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`}
                 {annotation.source.author && annotation.source.publisher && " · "}
                 {annotation.source.publisher}
               </p>
@@ -304,21 +349,27 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
           </div>
           <a
             className="public-button public-button-primary source-link"
-            href={annotation.source.canonicalUrl}
+            href={sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
           >
-            View original source
+            {annotation.kind === "youtube" ? "Open clip on YouTube" : "View original source"}
             <span aria-hidden="true">↗</span>
           </a>
         </section>
 
-        <section className="passage-section" aria-labelledby="passage-heading">
-          <p className="section-label" id="passage-heading">
-            Captured passage
-          </p>
-          <blockquote>{annotation.selectedText}</blockquote>
-        </section>
+        {annotation.kind === "article" ? (
+          <section className="passage-section" aria-labelledby="passage-heading">
+            <p className="section-label" id="passage-heading">Captured passage</p>
+            <blockquote>{annotation.selectedText}</blockquote>
+          </section>
+        ) : (
+          <section className="clip-range-section" aria-labelledby="clip-range-heading">
+            <p className="section-label" id="clip-range-heading">Saved clip</p>
+            <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
+            <span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span>
+          </section>
+        )}
 
         <section className="commentary-section" aria-labelledby="commentary-heading">
           <p className="section-label">Commentary</p>

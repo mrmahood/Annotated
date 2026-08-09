@@ -12,6 +12,10 @@ function assertPublishedOnly(plan) {
     { column: "status", value: PUBLIC_ANNOTATION_STATUS },
   );
   assert.equal(plan.select.includes("claims"), false);
+  assert.equal(plan.select.includes("annotation_type"), true);
+  assert.equal(plan.select.includes("source_type"), true);
+  assert.equal(plan.select.includes("start_ms"), true);
+  assert.equal(plan.select.includes("end_ms"), true);
 }
 
 test("public feed query plan explicitly requires published status", () => {

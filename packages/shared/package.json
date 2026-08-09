@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./url-normalization": "./src/url-normalization.ts"
+    "./url-normalization": "./src/url-normalization.ts",
+    "./youtube": "./src/youtube.ts",
+    "./media-time": "./src/media-time.ts"
   },
   "scripts": {
-    "test": "node --test src/url-normalization.test.mjs"
+    "test": "node --test src/*.test.mjs"
   }
 }

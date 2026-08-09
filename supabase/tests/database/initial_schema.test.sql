@@ -117,12 +117,12 @@ select throws_ok(
       '30000000-0000-0000-0000-000000000001',
       'time_range',
       0,
-      90001
+      300001
     )
   $sql$,
   '23514',
   null,
-  'time ranges over 90 seconds are rejected'
+  'time ranges over 5 minutes are rejected'
 );
 
 set local role anon;

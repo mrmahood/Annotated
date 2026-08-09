@@ -1,4 +1,5 @@
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
+import { isYouTubeVideoUrl, normalizeYouTubeUrl } from '@annotated/shared/youtube';
 
 export const PUBLIC_ANNOTATION_STATUS = 'published' as const;
 export const PUBLIC_COMMENT_STATUS = 'public' as const;
@@ -35,7 +36,7 @@ export function buildAnnotationQueryPlan(options: {
 
   return {
     ...(options.sourceUrl
-      ? { normalizedUrl: normalizeArticleUrl(options.sourceUrl) }
+      ? { normalizedUrl: normalizeSourceUrl(options.sourceUrl) }
       : {}),
     ...(options.profileId ? { profileId: options.profileId } : {}),
     status: PUBLIC_ANNOTATION_STATUS,
@@ -44,6 +45,16 @@ export function buildAnnotationQueryPlan(options: {
       { column: 'id', ascending: false },
     ],
   };
+}
+
+export function classifySourceUrl(value: string): 'youtube' | 'article' {
+  return isYouTubeVideoUrl(value) ? 'youtube' : 'article';
+}
+
+export function normalizeSourceUrl(value: string): string {
+  return classifySourceUrl(value) === 'youtube'
+    ? normalizeYouTubeUrl(value)
+    : normalizeArticleUrl(value);
 }
 
 export function getHttpUrl(value: unknown): string | null {

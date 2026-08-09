@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getClipRangeError } from '@annotated/shared/media-time';
+import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import {
   parseAnnotationAudio,
   type AnnotationAudio,
@@ -16,11 +18,10 @@ import {
   sortComments,
 } from './social-helpers';
 
-export type PublicAnnotation = {
+type PublicAnnotationBase = {
   id: string;
   commentaryText: string;
   publishedAt: string;
-  selectedText: string;
   creator: { id: string; displayName: string; avatarUrl: string | null };
   source: {
     canonicalUrl: string;
@@ -33,6 +34,23 @@ export type PublicAnnotation = {
   commentCount: number;
   audio: AnnotationAudio | null;
 };
+
+export type PublicAnnotation = PublicAnnotationBase & (
+  | {
+      kind: 'article';
+      selectedText: string;
+      startMs: null;
+      endMs: null;
+      source: PublicAnnotationBase['source'] & { type: 'article'; videoId: null };
+    }
+  | {
+      kind: 'youtube';
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationBase['source'] & { type: 'youtube'; videoId: string };
+    }
+);
 
 export type AnnotationPage = {
   annotations: PublicAnnotation[];
@@ -67,11 +85,12 @@ type UnknownRecord = Record<string, unknown>;
 
 const ANNOTATION_SELECT = `
   id,
+  annotation_type,
   commentary_text,
   published_at,
   creator:profiles!annotations_user_id_fkey(id, display_name, avatar_url),
-  source:sources!inner(canonical_url, normalized_url, title, author, publisher),
-  target:annotation_targets!annotation_targets_annotation_id_fkey(selected_text),
+  source:sources!inner(canonical_url, normalized_url, source_type, title, author, publisher),
+  target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms),
   audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)
 `;
 
@@ -95,6 +114,9 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
   const creatorId = getOptionalText(creator?.id);
   const commentaryText = getOptionalText(value.commentary_text);
   const selectedText = getOptionalText(target?.selected_text);
+  const annotationType = getOptionalText(value.annotation_type);
+  const sourceType = getOptionalText(source?.source_type);
+  const targetType = getOptionalText(target?.target_type);
   const canonicalUrl = getHttpUrl(source?.canonical_url);
   const normalizedUrl = getHttpUrl(source?.normalized_url);
   const publishedAt = getOptionalText(value.published_at);
@@ -102,16 +124,15 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
 
   if (
     !id || !isUuid(id) || !creatorId || !isUuid(creatorId) ||
-    !commentaryText || !selectedText || !canonicalUrl || !normalizedUrl ||
+    !commentaryText || !canonicalUrl || !normalizedUrl ||
     !date || Number.isNaN(date.getTime())
   ) {
     return null;
   }
 
-  return {
+  const common = {
     id,
     commentaryText,
-    selectedText,
     publishedAt: date.toISOString(),
     commentCount: 0,
     audio: parseAnnotationAudio(value.audio),
@@ -129,6 +150,46 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
       publisher: getOptionalText(source?.publisher),
     },
   };
+
+  if (
+    annotationType === 'article_text' && sourceType === 'article' &&
+    targetType === 'text' && selectedText
+  ) {
+    return {
+      ...common,
+      kind: 'article',
+      selectedText,
+      startMs: null,
+      endMs: null,
+      source: { ...common.source, type: 'article', videoId: null },
+    };
+  }
+
+  const startMs = target?.start_ms;
+  const endMs = target?.end_ms;
+  if (
+    annotationType === 'video_clip' && sourceType === 'youtube' &&
+    targetType === 'time_range' && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getClipRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getYouTubeVideoIdentity(canonicalUrl);
+      if (identity.normalizedUrl !== normalizedUrl) return null;
+      return {
+        ...common,
+        kind: 'youtube',
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: 'youtube', videoId: identity.videoId },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 function getCount(value: unknown): number | null {
