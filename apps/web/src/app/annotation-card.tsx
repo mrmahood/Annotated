@@ -75,9 +75,14 @@ export function AnnotationCard({
       </section>
 
       <footer className="card-actions">
-        <Link className="card-detail-link" href={`/a/${annotation.id}`}>
-          View annotation
-        </Link>
+        <div className="card-internal-actions">
+          <Link className="card-detail-link" href={`/a/${annotation.id}`}>
+            View annotation
+          </Link>
+          <Link href={`/a/${annotation.id}#comments`}>
+            {annotation.commentCount.toLocaleString()} {annotation.commentCount === 1 ? "comment" : "comments"}
+          </Link>
+        </div>
         <a href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">
           View original source <span aria-hidden="true">↗</span>
         </a>
