@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { formatMediaTime } from '@annotated/shared/media-time';
+import { getYouTubeTimestampUrl } from '@annotated/shared/youtube';
 import {
   ANNOTATION_AUDIO_BUCKET,
   formatAudioDuration,
@@ -78,6 +80,9 @@ function AnnotationCard({ annotation, navigation }: {
   annotation: PublicAnnotation;
   navigation: NavigationCallbacks;
 }) {
+  const sourceUrl = annotation.kind === 'youtube'
+    ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
+    : annotation.source.canonicalUrl;
   return (
     <article className="social-card">
       <header className="social-card-header">
@@ -88,9 +93,9 @@ function AnnotationCard({ annotation, navigation }: {
         <time dateTime={annotation.publishedAt}>{formatTimestamp(annotation.publishedAt)}</time>
       </header>
       <button className="annotation-card-main" type="button" onClick={() => navigation.openAnnotation(annotation.id)}>
-        <span className="source-kicker">{annotation.source.hostname}</span>
+        <span className="source-kicker">{annotation.kind === 'youtube' ? 'YouTube video' : annotation.source.hostname}</span>
         <strong>{annotation.source.title ?? annotation.source.hostname}</strong>
-        <span className="passage-excerpt">“{annotation.selectedText}”</span>
+        {annotation.kind === 'article' ? <span className="passage-excerpt">“{annotation.selectedText}”</span> : <span className="clip-range">CLIP&nbsp; {formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</span>}
         <span className="commentary-excerpt">{annotation.commentaryText}</span>
         {annotation.audio && <span className="audio-indicator">Audio · {formatAudioDuration(annotation.audio.durationMs)}</span>}
       </button>
@@ -98,7 +103,7 @@ function AnnotationCard({ annotation, navigation }: {
         <button className="text-button" type="button" onClick={() => navigation.openComments(annotation.id)}>
           {annotation.commentCount.toLocaleString()} {annotation.commentCount === 1 ? 'comment' : 'comments'}
         </button>
-        <a href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">Original source ↗</a>
+        <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{annotation.kind === 'youtube' ? 'Open clip on YouTube' : 'Original source'} ↗</a>
       </footer>
     </article>
   );
@@ -422,6 +427,8 @@ export function AnnotationDetailView({
   getPublicUrl,
   focusComments = false,
   onSocialMutation,
+  connectedVideoId = null,
+  onPlayConnectedClip,
 }: {
   supabase: SupabaseClient;
   annotationId: string;
@@ -429,11 +436,14 @@ export function AnnotationDetailView({
   getPublicUrl: (path: string) => string | null;
   focusComments?: boolean;
   onSocialMutation?: () => void;
+  connectedVideoId?: string | null;
+  onPlayConnectedClip?: (annotation: Extract<PublicAnnotation, { kind: 'youtube' }>) => Promise<void>;
 } & AuthProps) {
   const [annotation, setAnnotation] = useState<PublicAnnotation | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
 
   useEffect(() => {
     let current = true;
@@ -460,6 +470,20 @@ export function AnnotationDetailView({
   const audioUrl = annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;
+  const youtubeUrl = annotation.kind === 'youtube'
+    ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
+    : null;
+  const canPlayConnectedClip = annotation.kind === 'youtube' && connectedVideoId === annotation.source.videoId;
+  const playConnected = async () => {
+    if (annotation.kind !== 'youtube' || !onPlayConnectedClip) return;
+    setPlayState('playing');
+    try {
+      await onPlayConnectedClip(annotation);
+      setPlayState('idle');
+    } catch {
+      setPlayState('error');
+    }
+  };
 
   return (
     <article className="detail-view">
@@ -467,8 +491,13 @@ export function AnnotationDetailView({
         <button className="text-button creator-button" type="button" onClick={() => navigation.openProfile(annotation.creator.id)}><Avatar name={annotation.creator.displayName} url={annotation.creator.avatarUrl} size={34} /><span><strong>{annotation.creator.displayName}</strong><time dateTime={annotation.publishedAt}>Published {formatTimestamp(annotation.publishedAt)}</time></span></button>
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
-      <section className="detail-source"><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">View original source ↗</a></section>
-      <section className="detail-passage"><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
+      {annotation.kind === 'article' ? <>
+        <section className="detail-source"><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">View original source ↗</a></section>
+        <section className="detail-passage"><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
+      </> : <>
+        <section className="detail-source"><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip ? 'button button-secondary' : 'button button-primary'} href={youtubeUrl!} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
+        <section className="detail-clip-range"><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
+      </>}
       <section className="detail-commentary"><span className="section-label">Commentary</span><p>{annotation.commentaryText}</p></section>
       {annotation.audio && audioUrl && <section className="detail-audio" aria-labelledby="detail-audio-heading"><span className="section-label" id="detail-audio-heading">Audio commentary</span><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</section>}
       <div className="detail-secondary-actions"><span>{annotation.commentCount.toLocaleString()} comments</span>{publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Share / public page ↗</a>}</div>

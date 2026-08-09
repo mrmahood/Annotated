@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { formatMediaTime } from "@annotated/shared/media-time";
+import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
 import type { PublicAnnotationCardData } from "@/lib/data/public-discovery";
 import { getInitial, truncateExcerpt } from "@/lib/public-content";
 
@@ -13,6 +15,9 @@ export function AnnotationCard({
   showCreator?: boolean;
 }) {
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
+  const sourceUrl = annotation.kind === "youtube"
+    ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
+    : annotation.source.canonicalUrl;
   const headingId = `annotation-${annotation.id}`;
   const publicationDate = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -51,13 +56,13 @@ export function AnnotationCard({
       </header>
 
       <div className="card-source">
-        <p className="section-label">Source</p>
+        <p className="section-label">{annotation.kind === "youtube" ? "YouTube video" : "Source"}</p>
         <h2 id={headingId}>
           <Link href={`/a/${annotation.id}`}>{sourceTitle}</Link>
         </h2>
         {(annotation.source.author || annotation.source.publisher) && (
           <p className="card-byline">
-            {annotation.source.author && `By ${annotation.source.author}`}
+            {annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`}
             {annotation.source.author && annotation.source.publisher && " · "}
             {annotation.source.publisher}
           </p>
@@ -65,9 +70,16 @@ export function AnnotationCard({
         <p className="card-hostname">{annotation.source.hostname}</p>
       </div>
 
-      <section className="card-passage" aria-label="Captured passage excerpt">
-        <blockquote>{truncateExcerpt(annotation.selectedText, PASSAGE_EXCERPT_LENGTH)}</blockquote>
-      </section>
+      {annotation.kind === "article" ? (
+        <section className="card-passage" aria-label="Captured passage excerpt">
+          <blockquote>{truncateExcerpt(annotation.selectedText, PASSAGE_EXCERPT_LENGTH)}</blockquote>
+        </section>
+      ) : (
+        <section className="card-clip-range" aria-label="YouTube clip time range">
+          <p className="section-label">Clip</p>
+          <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
+        </section>
+      )}
 
       <section className="card-commentary" aria-label="Commentary excerpt">
         <p className="section-label">Commentary</p>
@@ -83,8 +95,8 @@ export function AnnotationCard({
             {annotation.commentCount.toLocaleString()} {annotation.commentCount === 1 ? "comment" : "comments"}
           </Link>
         </div>
-        <a href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">
-          View original source <span aria-hidden="true">↗</span>
+        <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
+          {annotation.kind === "youtube" ? "Open clip on YouTube" : "View original source"} <span aria-hidden="true">↗</span>
         </a>
       </footer>
     </article>

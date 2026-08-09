@@ -1,0 +1,37 @@
+export const MINIMUM_CLIP_DURATION_MS = 1_000;
+export const MAXIMUM_CLIP_DURATION_MS = 300_000;
+
+export function formatMediaTime(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return '00:00';
+  const totalSeconds = Math.floor(milliseconds / 1_000);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+  const pair = (value: number) => String(value).padStart(2, '0');
+  return hours > 0
+    ? `${hours}:${pair(minutes)}:${pair(seconds)}`
+    : `${pair(minutes)}:${pair(seconds)}`;
+}
+
+export function getClipRangeError(
+  startMs: number | null,
+  endMs: number | null,
+  durationMs?: number | null,
+): string | null {
+  if (startMs === null || endMs === null) return 'Set both a clip start and end.';
+  if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || startMs < 0) {
+    return 'The clip times are invalid.';
+  }
+  if (endMs <= startMs) return 'Clip end must be after clip start.';
+  const clipDuration = endMs - startMs;
+  if (clipDuration < MINIMUM_CLIP_DURATION_MS) return 'A clip must be at least 1 second long.';
+  if (clipDuration > MAXIMUM_CLIP_DURATION_MS) return 'A clip cannot be longer than 5 minutes.';
+  if (
+    durationMs !== undefined && durationMs !== null &&
+    (!Number.isSafeInteger(durationMs) || durationMs < 0 || endMs > durationMs)
+  ) {
+    return 'Clip end cannot exceed the video duration.';
+  }
+  return null;
+}

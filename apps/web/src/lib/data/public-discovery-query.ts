@@ -2,11 +2,12 @@ export const PUBLIC_ANNOTATION_STATUS = "published" as const;
 
 export const PUBLIC_ANNOTATION_CARD_SELECT = `
   id,
+  annotation_type,
   commentary_text,
   published_at,
   annotator:profiles!annotations_user_id_fkey(id, display_name, avatar_url),
-  source:sources!annotations_source_id_fkey(canonical_url, title, author, publisher),
-  target:annotation_targets!annotation_targets_annotation_id_fkey(selected_text)
+  source:sources!annotations_source_id_fkey(canonical_url, normalized_url, source_type, title, author, publisher),
+  target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms)
 `;
 
 type PublicAnnotationFilter = {

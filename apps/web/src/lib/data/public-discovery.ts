@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { getClipRangeError } from "@annotated/shared/media-time";
+import { getYouTubeVideoIdentity } from "@annotated/shared/youtube";
 import {
   formatHostname,
   getHttpUrl,
@@ -15,12 +17,11 @@ import {
 } from "./public-discovery-query";
 import { queryPublicCommentCounts } from "./social-query";
 
-export type PublicAnnotationCardData = {
+type PublicAnnotationCardBase = {
   id: string;
   commentCount: number;
   commentaryText: string;
   publishedAt: string;
-  selectedText: string;
   annotator: { id: string; displayName: string; avatarUrl: string | null };
   source: {
     canonicalUrl: string;
@@ -30,6 +31,23 @@ export type PublicAnnotationCardData = {
     publisher: string | null;
   };
 };
+
+export type PublicAnnotationCardData = PublicAnnotationCardBase & (
+  | {
+      kind: "article";
+      selectedText: string;
+      startMs: null;
+      endMs: null;
+      source: PublicAnnotationCardBase["source"] & { type: "article"; videoId: null };
+    }
+  | {
+      kind: "youtube";
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationCardBase["source"] & { type: "youtube"; videoId: string };
+    }
+);
 
 export type PublicProfile = {
   id: string;
@@ -65,6 +83,9 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
   const annotationId = getOptionalText(value.id);
   const commentaryText = getOptionalText(value.commentary_text);
   const selectedText = getOptionalText(target?.selected_text);
+  const annotationType = getOptionalText(value.annotation_type);
+  const sourceType = getOptionalText(source?.source_type);
+  const targetType = getOptionalText(target?.target_type);
   const profileId = getOptionalText(annotator?.id);
   const canonicalUrl = getHttpUrl(source?.canonical_url);
   const hostname = formatHostname(source?.canonical_url);
@@ -73,19 +94,18 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
 
   if (
     !annotator || !source || !target ||
-    !annotationId || !isUuid(annotationId) || !commentaryText || !selectedText ||
+    !annotationId || !isUuid(annotationId) || !commentaryText ||
     !profileId || !isUuid(profileId) || !canonicalUrl || !hostname ||
     !publishedDate || Number.isNaN(publishedDate.getTime())
   ) {
     return null;
   }
 
-  return {
+  const common = {
     id: annotationId,
     commentCount: 0,
     commentaryText,
     publishedAt: publishedDate.toISOString(),
-    selectedText,
     annotator: {
       id: profileId,
       displayName: getOptionalText(annotator.display_name) ?? "Annotated reader",
@@ -99,6 +119,45 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
       publisher: getOptionalText(source.publisher),
     },
   };
+
+  if (
+    annotationType === "article_text" && sourceType === "article" &&
+    targetType === "text" && selectedText
+  ) {
+    return {
+      ...common,
+      kind: "article",
+      selectedText,
+      startMs: null,
+      endMs: null,
+      source: { ...common.source, type: "article", videoId: null },
+    };
+  }
+
+  const startMs = target.start_ms;
+  const endMs = target.end_ms;
+  if (
+    annotationType === "video_clip" && sourceType === "youtube" &&
+    targetType === "time_range" && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) && getClipRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getYouTubeVideoIdentity(canonicalUrl.href);
+      if (identity.normalizedUrl !== getOptionalText(source.normalized_url)) return null;
+      return {
+        ...common,
+        kind: "youtube",
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: "youtube", videoId: identity.videoId },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 async function getPublicAnnotationPage(

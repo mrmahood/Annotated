@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildAnnotationQueryPlan,
+  classifySourceUrl,
   getCommentPageRange,
   mergeCommentPages,
   PUBLIC_ANNOTATION_STATUS,
@@ -26,6 +27,16 @@ test('global feed plan explicitly remains published-only', () => {
   assert.equal(plan.status, PUBLIC_ANNOTATION_STATUS);
   assert.equal(plan.normalizedUrl, undefined);
   assert.equal(plan.profileId, undefined);
+});
+
+test('context source discrimination normalizes supported YouTube videos by video identity', () => {
+  const plan = buildAnnotationQueryPlan({
+    sourceUrl: 'https://youtu.be/dQw4w9WgXcQ?t=90&si=tracking',
+  });
+  assert.equal(plan.normalizedUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(plan.status, PUBLIC_ANNOTATION_STATUS);
+  assert.equal(classifySourceUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), 'youtube');
+  assert.equal(classifySourceUrl('https://example.com/watch?v=dQw4w9WgXcQ'), 'article');
 });
 
 test('profile plans validate UUIDs', () => {

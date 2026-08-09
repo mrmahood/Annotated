@@ -94,6 +94,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px sol
 .passage-excerpt { -webkit-line-clamp: 3; padding: 8px 9px; border-left: 2px solid var(--border-strong); color: var(--text-evidence); background: var(--background-elevated); font-size: 12px; line-height: 1.55; }
 .commentary-excerpt { -webkit-line-clamp: 2; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
 .audio-indicator { width: max-content; padding: 3px 5px; border: 1px solid var(--border-strong); text-transform: uppercase; }
+.clip-range { width: max-content; padding: 5px 7px; border: 1px solid var(--border-strong); color: var(--text-evidence); background: var(--background-elevated); font-family: var(--font-mono); font-size: 11px; letter-spacing: .04em; }
 .social-card-actions { min-height: 35px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px; border-top: 1px solid var(--border); }
 .social-card-actions a, .social-card-actions button { color: var(--text-muted); font-size: 10px; text-decoration: none; }
 .social-card-actions a:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
@@ -116,6 +117,15 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px sol
 .annotation-field { display: grid; gap: 6px; }
 .annotation-field textarea, .comment-composer textarea { width: 100%; resize: vertical; padding: 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-small); color: var(--text-primary); background: var(--control-background); font-size: 12px; line-height: 1.5; }
 .annotation-field > span { text-align: right; }
+.clip-time-grid { display: grid; grid-template-columns: repeat(3, 1fr); margin: 12px 0; border: 1px solid var(--border-strong); background: var(--background-elevated); }
+.clip-time-grid div { min-width: 0; padding: 9px; }
+.clip-time-grid div + div { border-left: 1px solid var(--border); }
+.clip-time-grid dt { color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; }
+.clip-time-grid dd { margin: 5px 0 0; color: var(--text-evidence); font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.player-readout { margin: -4px 0 10px; color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
+.clip-control-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.clip-control-row .text-button { grid-column: 1 / -1; justify-self: start; }
+.preview-clip { width: 100%; margin: 8px 0 12px; }
 .audio-recorder { display: grid; gap: 9px; margin-top: 13px; padding: 11px; border: 1px solid var(--border); background: var(--background-elevated); }
 .audio-recorder-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .audio-recorder-heading > div { display: flex; align-items: center; gap: 7px; }
@@ -142,11 +152,15 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px sol
 .follow-control { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
 .follow-control .inline-error { flex-basis: 100%; text-align: right; }
 .inline-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-muted); font-size: 10px; }
-.detail-source, .detail-passage, .detail-commentary, .detail-audio { padding: 15px 0; }
+.detail-source, .detail-passage, .detail-clip-range, .detail-commentary, .detail-audio { padding: 15px 0; }
 .detail-source h1 { font-size: 18px; overflow-wrap: anywhere; }
 .detail-source p { margin: 7px 0 0; color: var(--text-secondary); font-size: 11px; line-height: 1.45; }
 .detail-source .source-kicker { display: block; margin-top: 5px; overflow-wrap: anywhere; }
 .detail-source .button { width: 100%; margin-top: 12px; }
+.clip-action-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.detail-clip-range { display: grid; gap: 5px; border-block: 1px solid var(--border); }
+.detail-clip-range strong { color: var(--text-evidence); font-family: var(--font-mono); font-size: 18px; font-variant-numeric: tabular-nums; }
+.detail-clip-range > span:last-child { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
 .detail-passage { border-block: 1px solid var(--border); }
 .detail-passage blockquote { margin: 8px 0 0; padding-left: 11px; border-left: 2px solid var(--border-strong); color: var(--text-evidence); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-commentary p { margin: 8px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }

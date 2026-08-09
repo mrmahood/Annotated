@@ -260,6 +260,8 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.card-clip-range { display: grid; gap: 8px; padding: 18px; border-block: 1px solid var(--border); background: var(--background-elevated); }
+.card-clip-range strong { color: var(--text-evidence); font-family: var(--font-mono); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 .card-commentary { padding: 17px 18px; }
 .card-commentary p:last-child { color: var(--text-secondary); font-size: 0.86rem; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
 .card-actions { justify-content: space-between; gap: 16px; padding: 10px 18px; border-top: 1px solid var(--border); background: var(--background-elevated); }
@@ -292,6 +294,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .annotation-header,
 .source-attribution,
 .passage-section,
+.clip-range-section,
 .commentary-section,
 .audio-commentary-section,
 .comments-section,
@@ -320,6 +323,9 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .inline-auth-action { display: grid; gap: 7px; }
 .inline-auth-action .form-error { max-width: 320px; }
 .passage-section { border-block: 1px solid var(--border); background: var(--background-elevated); }
+.clip-range-section { display: grid; gap: 8px; border-block: 1px solid var(--border); background: var(--background-elevated); }
+.clip-range-section strong { color: var(--text-evidence); font-family: var(--font-mono); font-size: clamp(1.35rem, 4vw, 2rem); font-variant-numeric: tabular-nums; }
+.clip-range-section > span { color: var(--text-muted); font-family: var(--font-mono); font-size: .72rem; }
 .passage-section blockquote {
   margin: 0;
   padding-left: 18px;
@@ -446,7 +452,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .card-header { align-items: center; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .annotation-shell { padding: 14px 10px 36px; }
-  .annotation-header, .source-attribution, .passage-section, .commentary-section, .audio-commentary-section, .comments-section, .claim-section { padding: 18px; }
+  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .audio-commentary-section, .comments-section, .claim-section { padding: 18px; }
   .source-attribution { grid-template-columns: 1fr; align-items: stretch; gap: 18px; }
   .source-link, .public-button-claim { width: 100%; }
   .annotator-line { align-items: flex-start; flex-wrap: wrap; }
