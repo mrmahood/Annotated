@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { AnnotationCard } from "../../annotation-card";
+import { FollowButton } from "../../follow-button";
 import { PaginationNav } from "../../pagination-nav";
 import { SiteHeader } from "../../site-header";
 import {
@@ -10,6 +11,11 @@ import {
   getPublicProfile,
   getPublicProfileAnnotations,
 } from "@/lib/data/public-discovery";
+import {
+  getCurrentUserFollowState,
+  getCurrentUserId,
+  getProfileSocialCounts,
+} from "@/lib/data/social";
 import {
   getInitial,
   getPageHref,
@@ -54,9 +60,12 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
   const profile = await loadPublicProfile(profileId);
   if (!profile) notFound();
 
-  const [annotations, annotationCount] = await Promise.all([
+  const currentUserId = await getCurrentUserId();
+  const [annotations, annotationCount, socialCounts, isFollowing] = await Promise.all([
     getPublicProfileAnnotations(profileId, page),
     getPublicAnnotationCount(profileId),
+    getProfileSocialCounts(profileId),
+    getCurrentUserFollowState(profileId, currentUserId),
   ]);
   const joinedDate = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -90,7 +99,20 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
                   ? "Published annotation count unavailable"
                   : `${annotationCount.toLocaleString()} published ${annotationCount === 1 ? "annotation" : "annotations"}`}
               </p>
+              <p>
+                {socialCounts === null
+                  ? "Following count unavailable"
+                  : `${socialCounts.followingCount.toLocaleString()} following`}
+              </p>
             </div>
+            <FollowButton
+              key={`${currentUserId ?? "signed-out"}:${String(isFollowing)}:${socialCounts?.followerCount ?? "unavailable"}`}
+              profileId={profile.id}
+              currentUserId={currentUserId}
+              initialFollowing={isFollowing}
+              initialFollowerCount={socialCounts?.followerCount ?? null}
+              returnTo={getPageHref(basePath, page)}
+            />
           </div>
         </header>
 

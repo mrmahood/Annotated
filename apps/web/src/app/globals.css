@@ -153,6 +153,7 @@ h1 {
 .source-attribution,
 .passage-section,
 .commentary-section,
+.comments-section,
 .claim-section {
   padding: clamp(24px, 5vw, 52px);
 }
@@ -178,6 +179,7 @@ h1 {
   min-width: 0;
   align-items: center;
   gap: 12px;
+  width: 100%;
 }
 
 .public-avatar {
@@ -275,7 +277,24 @@ h1 {
 .public-button-primary:hover:not(:disabled) { background: var(--accent-dark); }
 .public-button-secondary { border-color: var(--rule); color: #5f594f; background: transparent; }
 .public-button-secondary:hover:not(:disabled) { background: #ebe5da; }
+.public-button-danger { border-color: #b33a2f; color: #8b2921; background: #fff8f5; }
+.public-button-danger:hover:not(:disabled) { color: #fff; background: #8b2921; }
 .source-link { min-width: 190px; white-space: nowrap; }
+
+.follow-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 16px;
+}
+.annotator-line .follow-control { margin: 0 0 0 auto; justify-content: flex-end; }
+.follower-count { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+.follow-control .public-button { min-height: 38px; padding: 8px 12px; }
+.follow-confirmation { display: flex; flex-wrap: wrap; gap: 8px; }
+.follow-control .form-error { flex-basis: 100%; }
+.inline-auth-action { display: grid; gap: 8px; }
+.inline-auth-action .form-error { max-width: 320px; }
 
 .passage-section {
   border-block: 1px solid var(--rule);
@@ -321,6 +340,92 @@ h1 {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+.comments-section { border-top: 1px solid var(--rule); scroll-margin-top: 24px; }
+.comments-heading-row {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.comments-heading-row h2,
+.comment-composer h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 550;
+}
+.comments-heading-row h2 { font-size: clamp(1.65rem, 4vw, 2.45rem); }
+.comment-total { color: var(--muted); font-size: 0.84rem; }
+.comments-state,
+.comments-empty {
+  margin: 26px 0 0;
+  padding: 18px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  color: var(--muted);
+  background: #faf7f0;
+  line-height: 1.55;
+}
+.comment-list { display: grid; gap: 0; margin: 28px 0 0; padding: 0; list-style: none; }
+.comment-item {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 13px;
+  padding: 20px 0;
+  border-top: 1px solid var(--rule);
+}
+.comment-item:last-child { border-bottom: 1px solid var(--rule); }
+.comment-avatar-link { display: inline-flex; width: 38px; height: 38px; border-radius: 50%; }
+.comment-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: #ead8d0; font-size: 1rem; }
+.comment-content { min-width: 0; }
+.comment-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.comment-meta a { color: var(--ink); font-size: 0.86rem; font-weight: 780; text-decoration: none; }
+.comment-meta a:hover { color: var(--accent); }
+.comment-meta time { color: var(--muted); font-size: 0.74rem; }
+.comment-body { margin: 9px 0 0; line-height: 1.65; overflow-wrap: anywhere; white-space: pre-wrap; }
+.comment-delete { margin-top: 10px; }
+.comment-delete button {
+  padding: 3px 0;
+  border: 0;
+  color: var(--accent-dark);
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.comment-delete button:disabled { opacity: 0.6; cursor: not-allowed; }
+.comment-delete-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; color: var(--muted); font-size: 0.78rem; }
+.comments-more { margin-top: 20px; }
+.comments-message { margin-top: 18px; }
+.form-success-message { margin-bottom: 0; padding: 11px 13px; border-radius: 9px; color: #315d39; background: #e4f0e5; font-size: 0.86rem; }
+.comment-composer {
+  margin-top: 30px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rule);
+}
+.comment-composer h3 { font-size: 1.4rem; }
+.comment-composer form { display: grid; gap: 8px; margin-top: 16px; }
+.comment-composer label { color: #514b43; font-size: 0.82rem; font-weight: 750; }
+.comment-composer textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #c9c0b3;
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.comment-composer textarea:focus-visible {
+  outline: 3px solid rgb(143 63 46 / 28%);
+  outline-offset: 2px;
+}
+.comment-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.comment-sign-in { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; }
+.comment-sign-in p { margin: 0; color: var(--muted); line-height: 1.5; }
 
 .claim-section {
   border-top: 1px solid var(--rule);
@@ -572,6 +677,7 @@ h1 {
   border-top: 1px solid var(--rule);
   background: #faf7f0;
 }
+.card-internal-actions { display: flex; flex-wrap: wrap; gap: 10px 18px; }
 .card-actions a { color: var(--accent-dark); font-size: 0.82rem; font-weight: 780; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .card-detail-link { text-decoration: none; }
 
@@ -636,9 +742,14 @@ h1 {
   .card-header { align-items: flex-start; flex-direction: column; gap: 9px; }
   .card-date { padding-left: 50px; }
   .card-actions { align-items: flex-start; flex-direction: column; }
+  .card-internal-actions { flex-direction: column; }
   .pagination { gap: 8px; }
   .pagination a, .pagination > span:not(.pagination-current) { min-width: 78px; padding-inline: 9px; }
   .pagination-current { text-align: center; }
   .profile-header { grid-template-columns: 1fr; }
   .profile-avatar { width: 84px; height: 84px; }
+  .annotator-line { align-items: flex-start; flex-wrap: wrap; }
+  .annotator-line .follow-control { width: 100%; margin-left: 0; justify-content: flex-start; }
+  .comment-form-footer, .comment-sign-in { align-items: stretch; flex-direction: column; }
+  .comment-form-footer .public-button, .comment-sign-in .public-button { width: 100%; }
 }

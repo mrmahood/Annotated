@@ -11,7 +11,15 @@ import {
   isUuid,
 } from "@/lib/public-content";
 import { SiteHeader } from "../../site-header";
+import { FollowButton } from "../../follow-button";
 import { ClaimForm } from "./claim-form";
+import { CommentsSection } from "./comments-section";
+import {
+  getCurrentUserFollowState,
+  getCurrentUserId,
+  getProfileSocialCounts,
+  getPublicAnnotationComments,
+} from "@/lib/data/social";
 
 export const dynamic = "force-dynamic";
 
@@ -201,6 +209,13 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
     notFound();
   }
 
+  const currentUserId = await getCurrentUserId();
+  const [socialCounts, isFollowing, comments] = await Promise.all([
+    getProfileSocialCounts(annotation.annotator.id),
+    getCurrentUserFollowState(annotation.annotator.id, currentUserId),
+    getPublicAnnotationComments(annotation.id),
+  ]);
+
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const publicationDate = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -234,6 +249,14 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
                 Published <time dateTime={annotation.publishedAt}>{publicationDate}</time>
               </p>
             </div>
+            <FollowButton
+              key={`${currentUserId ?? "signed-out"}:${String(isFollowing)}:${socialCounts?.followerCount ?? "unavailable"}`}
+              profileId={annotation.annotator.id}
+              currentUserId={currentUserId}
+              initialFollowing={isFollowing}
+              initialFollowerCount={socialCounts?.followerCount ?? null}
+              returnTo={`/a/${annotation.id}`}
+            />
           </div>
         </header>
 
@@ -274,6 +297,16 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
           <p className="commentary-text">{annotation.commentaryText}</p>
         </section>
 
+        <CommentsSection
+          key={
+            comments.status === "available"
+              ? `${comments.page.total}:${comments.page.comments.map((comment) => comment.id).join(",")}`
+              : "unavailable"
+          }
+          annotationId={annotation.id}
+          currentUserId={currentUserId}
+          initialPage={comments.status === "available" ? comments.page : null}
+        />
         <ClaimForm annotationId={annotation.id} />
       </article>
       </main>

@@ -13,9 +13,11 @@ import {
   PUBLIC_ANNOTATION_STATUS,
   type PublicAnnotationQueryPlan,
 } from "./public-discovery-query";
+import { queryPublicCommentCounts } from "./social-query";
 
 export type PublicAnnotationCardData = {
   id: string;
+  commentCount: number;
   commentaryText: string;
   publishedAt: string;
   selectedText: string;
@@ -80,6 +82,7 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
 
   return {
     id: annotationId,
+    commentCount: 0,
     commentaryText,
     publishedAt: publishedDate.toISOString(),
     selectedText,
@@ -121,6 +124,14 @@ async function getPublicAnnotationPage(
       .slice(0, PUBLIC_PAGE_SIZE)
       .map(mapPublicAnnotation)
       .filter((item): item is PublicAnnotationCardData => Boolean(item));
+
+    const commentCounts = await queryPublicCommentCounts(
+      supabase,
+      annotations.map((annotation) => annotation.id),
+    );
+    for (const annotation of annotations) {
+      annotation.commentCount = commentCounts.get(annotation.id) ?? 0;
+    }
 
     return { status: "available", annotations, hasNext };
   } catch {
