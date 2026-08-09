@@ -4,6 +4,10 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import {
+  ANNOTATION_AUDIO_BUCKET,
+  parsePublicAnnotationAudio,
+} from "@/lib/audio-commentary";
+import {
   formatHostname,
   getHttpUrl,
   getInitial,
@@ -14,6 +18,7 @@ import { SiteHeader } from "../../site-header";
 import { FollowButton } from "../../follow-button";
 import { ClaimForm } from "./claim-form";
 import { CommentsSection } from "./comments-section";
+import { PublishedAudioPlayer } from "./published-audio-player";
 import {
   getCurrentUserFollowState,
   getCurrentUserId,
@@ -40,6 +45,10 @@ type PublicAnnotation = {
     name: string;
     avatarUrl: string | null;
   };
+  audio: {
+    publicUrl: string;
+    durationMs: number;
+  } | null;
 };
 
 const loadPublicAnnotation = cache(
@@ -52,7 +61,7 @@ const loadPublicAnnotation = cache(
       const supabase = await createClient();
       const { data: annotation, error: annotationError } = await supabase
         .from("annotations")
-        .select("id, source_id, user_id, commentary_text, published_at")
+        .select("id, source_id, user_id, commentary_text, published_at, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)")
         .eq("id", annotationId)
         .eq("status", "published")
         .maybeSingle();
@@ -114,6 +123,25 @@ const loadPublicAnnotation = cache(
         return null;
       }
 
+      const audioMetadata = parsePublicAnnotationAudio(annotation.audio);
+      let audio: PublicAnnotation["audio"] = null;
+      if (audioMetadata) {
+        const candidate = supabase.storage
+          .from(ANNOTATION_AUDIO_BUCKET)
+          .getPublicUrl(audioMetadata.storagePath).data.publicUrl;
+        try {
+          const publicUrl = new URL(candidate);
+          if (
+            publicUrl.protocol === "https:" ||
+            (publicUrl.protocol === "http:" && publicUrl.hostname === "localhost")
+          ) {
+            audio = { publicUrl: publicUrl.href, durationMs: audioMetadata.durationMs };
+          }
+        } catch {
+          // Malformed configured project URLs leave the text annotation readable.
+        }
+      }
+
       return {
         id: annotation.id,
         commentaryText: annotation.commentary_text.trim(),
@@ -131,6 +159,7 @@ const loadPublicAnnotation = cache(
           name: getOptionalText(profile.display_name) ?? "Annotated reader",
           avatarUrl: getHttpUrl(profile.avatar_url)?.href ?? null,
         },
+        audio,
       };
     } catch {
       return null;
@@ -296,6 +325,13 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
           <h2 id="commentary-heading">The annotation</h2>
           <p className="commentary-text">{annotation.commentaryText}</p>
         </section>
+
+        {annotation.audio && (
+          <PublishedAudioPlayer
+            publicUrl={annotation.audio.publicUrl}
+            durationMs={annotation.audio.durationMs}
+          />
+        )}
 
         <CommentsSection
           key={

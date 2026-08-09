@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  parseAnnotationAudio,
+  type AnnotationAudio,
+} from './audio-commentary';
+import {
   ANNOTATION_PAGE_SIZE,
   buildAnnotationQueryPlan,
   COMMENT_BODY_LIMIT,
@@ -27,6 +31,7 @@ export type PublicAnnotation = {
     publisher: string | null;
   };
   commentCount: number;
+  audio: AnnotationAudio | null;
 };
 
 export type AnnotationPage = {
@@ -66,7 +71,8 @@ const ANNOTATION_SELECT = `
   published_at,
   creator:profiles!annotations_user_id_fkey(id, display_name, avatar_url),
   source:sources!inner(canonical_url, normalized_url, title, author, publisher),
-  target:annotation_targets!annotation_targets_annotation_id_fkey(selected_text)
+  target:annotation_targets!annotation_targets_annotation_id_fkey(selected_text),
+  audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)
 `;
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -108,6 +114,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
     selectedText,
     publishedAt: date.toISOString(),
     commentCount: 0,
+    audio: parseAnnotationAudio(value.audio),
     creator: {
       id: creatorId,
       displayName: getOptionalText(creator?.display_name) ?? 'Annotated reader',

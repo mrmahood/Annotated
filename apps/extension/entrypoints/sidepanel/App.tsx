@@ -8,6 +8,17 @@ import {
   type ActiveTabContext,
 } from '../../utils/active-tab-context';
 import { ExtensionAuthError } from '../../utils/auth-callback';
+import {
+  ANNOTATION_DRAFT_STORAGE_KEY,
+  annotationDraftBelongsToContext,
+  deserializeAnnotationDraft,
+  serializeAnnotationDraft,
+  shouldApplyDraftRestoration,
+  shouldClearAnnotationDraft,
+  updateAnnotationDraftCommentary,
+  type AnnotationDraft,
+  type AnnotationDraftLifecycleEvent,
+} from '../../utils/annotation-draft';
 import { signInWithGoogle } from '../../utils/extension-auth';
 import {
   getCurrentScreen,
@@ -24,12 +35,14 @@ import {
 import { getInitial, isUuid } from '../../utils/social-helpers';
 import { getSupabaseClient } from '../../utils/supabase';
 import { getWebAppOrigin } from '../../utils/web-app-url';
+import { publishArticleAnnotation } from '../../utils/annotation-publishing';
 import {
   AnnotationCollection,
   AnnotationDetailView,
   ProfileView,
   type SessionSocialCache,
 } from './social-components';
+import { AudioRecorder, useAudioRecorder } from './audio-recorder';
 
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be']);
 const RECONNECT_MESSAGE = 'Click the Annotated toolbar icon on this page to reconnect, then try again.';
@@ -185,15 +198,20 @@ function App() {
   const [sourceState, setSourceState] = useState<SourceState>({ status: 'loading' });
   const [captureState, setCaptureState] = useState<CaptureState>({ status: 'idle' });
   const [commentary, setCommentary] = useState('');
+  const [draftRestorationStatus, setDraftRestorationStatus] = useState<'loading' | 'ready'>('loading');
   const [publishState, setPublishState] = useState<PublishState>({ status: 'idle' });
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [navigation, dispatchNavigation] = useReducer(reduceNavigation, INITIAL_NAVIGATION);
   const connectedContextRef = useRef<ActiveTabContext | null>(null);
+  const contextObservedRef = useRef(false);
   const captureRevisionRef = useRef(0);
+  const draftRevisionRef = useRef(0);
+  const draftRef = useRef<AnnotationDraft | null>(null);
   const authRevisionRef = useRef(0);
   const authMountedRef = useRef(false);
   const publishInFlightRef = useRef(false);
   const socialCacheRef = useRef<SessionSocialCache>(new Map());
+  const audioRecorder = useAudioRecorder();
 
   const currentScreen = getCurrentScreen(navigation);
   const currentUserId = authState.status === 'signed-in' ? authState.account.id : null;
@@ -254,28 +272,54 @@ function App() {
     }
   }, [supabase]);
 
-  const clearCapture = useCallback(() => {
+  const persistDraft = useCallback((draft: AnnotationDraft) => {
+    draftRef.current = draft;
+    void chrome.storage.session
+      .set({ [ANNOTATION_DRAFT_STORAGE_KEY]: draft })
+      .catch(() => console.warn('Unable to save the annotation draft.'));
+  }, []);
+
+  const removePersistedDraft = useCallback(async () => {
+    try {
+      await chrome.storage.session.remove(ANNOTATION_DRAFT_STORAGE_KEY);
+    } catch {
+      console.warn('Unable to clear the annotation draft.');
+    }
+  }, []);
+
+  const clearDraft = useCallback(async (event: AnnotationDraftLifecycleEvent) => {
+    if (!shouldClearAnnotationDraft(event)) return;
+    draftRevisionRef.current += 1;
+    draftRef.current = null;
     captureRevisionRef.current += 1;
+    audioRecorder.discard();
     setCaptureState({ status: 'idle' });
     setCommentary('');
     setPublishState({ status: 'idle' });
-  }, []);
+    await removePersistedDraft();
+  }, [audioRecorder.discard, removePersistedDraft]);
+
+  const clearCapture = useCallback(() => {
+    void clearDraft('explicit-clear');
+  }, [clearDraft]);
 
   const enterReconnectRequired = useCallback(() => {
-    captureRevisionRef.current += 1;
-    setCaptureState((current) => current.status === 'captured' ? current : { status: 'reconnect-required', message: RECONNECT_MESSAGE });
+    void clearDraft('source-invalidated');
+    setCaptureState({ status: 'reconnect-required', message: RECONNECT_MESSAGE });
     setSourceState({ status: 'reconnect-required' });
     setRefreshSuccess(false);
-  }, []);
+  }, [clearDraft]);
 
   const showStoredContext = useCallback((context: ActiveTabContext | null) => {
-    const previous = connectedContextRef.current;
-    const sourceChanged = previous !== null && (context === null || previous.tabId !== context.tabId || previous.url !== context.url);
-    if (sourceChanged && captureState.status !== 'captured') clearCapture();
+    contextObservedRef.current = true;
+    const draft = draftRef.current;
+    if (draft && (!context || !annotationDraftBelongsToContext(draft, context))) {
+      void clearDraft('source-invalidated');
+    }
     connectedContextRef.current = context;
     setSourceState(context ? getSourceState(context.title, context.url) : { status: 'not-connected' });
     setRefreshSuccess(false);
-  }, [captureState.status, clearCapture]);
+  }, [clearDraft]);
 
   const loadSource = useCallback(async () => {
     setRefreshSuccess(false);
@@ -284,7 +328,7 @@ function App() {
       const stored = await chrome.storage.session.get(ACTIVE_TAB_CONTEXT_KEY);
       const context = stored[ACTIVE_TAB_CONTEXT_KEY];
       if (!isActiveTabContext(context)) {
-        if (captureState.status !== 'captured') clearCapture();
+        await clearDraft('source-invalidated');
         connectedContextRef.current = null;
         setSourceState({ status: 'not-connected' });
         return;
@@ -298,6 +342,7 @@ function App() {
         if (!isClosedTabError(error)) throw error;
         connectedContextRef.current = null;
         await chrome.storage.session.remove(ACTIVE_TAB_CONTEXT_KEY);
+        await clearDraft('source-invalidated');
         setSourceState({ status: 'not-connected' });
         return;
       }
@@ -305,6 +350,9 @@ function App() {
       if (freshTab.url !== context.url && !isSameOrigin(context.url, freshTab.url)) { enterReconnectRequired(); return; }
       if (freshTab.url !== context.url) {
         const refreshedContext = { ...context, title: freshTab.title, url: freshTab.url };
+        if (draftRef.current && !annotationDraftBelongsToContext(draftRef.current, refreshedContext)) {
+          await clearDraft('source-invalidated');
+        }
         connectedContextRef.current = refreshedContext;
         await chrome.storage.session.set({ [ACTIVE_TAB_CONTEXT_KEY]: refreshedContext });
         socialCacheRef.current.clear();
@@ -315,16 +363,21 @@ function App() {
     } catch {
       setSourceState({ status: 'unexpected-error', message: 'Unable to refresh the connected source. Try again.' });
     }
-  }, [captureState.status, clearCapture, enterReconnectRequired]);
+  }, [clearDraft, enterReconnectRequired]);
 
   const captureSelection = useCallback(async () => {
     const revision = ++captureRevisionRef.current;
+    draftRevisionRef.current += 1;
     setCaptureState({ status: 'capturing' });
     try {
       const stored = await chrome.storage.session.get(ACTIVE_TAB_CONTEXT_KEY);
       const context = stored[ACTIVE_TAB_CONTEXT_KEY];
       if (!isActiveTabContext(context)) {
-        if (captureRevisionRef.current === revision) { connectedContextRef.current = null; setCaptureState({ status: 'idle' }); setSourceState({ status: 'not-connected' }); }
+        if (captureRevisionRef.current === revision) {
+          await clearDraft('source-invalidated');
+          connectedContextRef.current = null;
+          setSourceState({ status: 'not-connected' });
+        }
         return;
       }
       const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -335,14 +388,25 @@ function App() {
       const result = executionResults[0]?.result as SelectionExtractionResult | undefined;
       if (!result) throw new Error('The selection extractor returned no result.');
       if (!result.ok) { setCaptureState({ status: 'recoverable-error', message: getExtractionErrorMessage(result.reason) }); return; }
+      let draft: AnnotationDraft;
+      try {
+        draft = serializeAnnotationDraft(context, result.data, '');
+      } catch {
+        enterReconnectRequired();
+        return;
+      }
+      audioRecorder.discard();
       setCaptureState({ status: 'captured', data: result.data });
+      setCommentary('');
       setPublishState({ status: 'idle' });
+      persistDraft(draft);
     } catch (error) {
       if (captureRevisionRef.current !== revision) return;
       if (isClosedTabError(error)) {
         connectedContextRef.current = null;
         setCaptureState({ status: 'idle' });
         setSourceState({ status: 'not-connected' });
+        await clearDraft('source-invalidated');
         try { await chrome.storage.session.remove(ACTIVE_TAB_CONTEXT_KEY); } catch { setCaptureState({ status: 'unexpected-error', message: UNEXPECTED_CAPTURE_MESSAGE }); }
       } else if (isRestrictedPageError(error)) {
         setCaptureState({ status: 'recoverable-error', message: RESTRICTED_PAGE_MESSAGE });
@@ -350,34 +414,43 @@ function App() {
         setCaptureState({ status: 'unexpected-error', message: UNEXPECTED_CAPTURE_MESSAGE });
       }
     }
-  }, [enterReconnectRequired]);
+  }, [audioRecorder.discard, clearDraft, enterReconnectRequired, persistDraft]);
 
   const publishAnnotation = useCallback(async () => {
     if (!supabase || publishInFlightRef.current || authState.status !== 'signed-in' || captureState.status !== 'captured' || !commentary.trim() || commentary.length > 2_000) return;
     publishInFlightRef.current = true;
     setPublishState({ status: 'publishing' });
     try {
-      const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] = await Promise.all([supabase.auth.getSession(), supabase.auth.getUser()]);
-      if (sessionError || !sessionData.session || userError || !userData.user || userData.user.id !== sessionData.session.user.id) throw new Error('The authenticated session is unavailable.');
       const captured = captureState.data;
       const normalizedUrl = normalizeArticleUrl(captured.canonicalUrl || captured.sourceUrl);
-      const { data: annotationId, error } = await supabase.rpc('publish_article_annotation', {
-        p_normalized_url: normalizedUrl,
-        p_canonical_url: captured.canonicalUrl,
-        p_page_title: captured.pageTitle,
-        p_author: captured.author,
-        p_publisher: captured.publisher,
-        p_selected_text: captured.selectedText,
-        p_text_prefix: captured.textPrefix,
-        p_text_suffix: captured.textSuffix,
-        p_commentary_text: commentary,
-      });
-      if (error) throw new Error(error.message);
+      const recordedAudio = audioRecorder.state.status === 'recorded'
+        ? {
+            blob: audioRecorder.state.blob,
+            durationMs: audioRecorder.state.durationMs,
+          }
+        : undefined;
+      const annotationId = await publishArticleAnnotation(
+        supabase,
+        {
+          normalizedUrl,
+          canonicalUrl: captured.canonicalUrl,
+          pageTitle: captured.pageTitle,
+          author: captured.author,
+          publisher: captured.publisher,
+          selectedText: captured.selectedText,
+          textPrefix: captured.textPrefix,
+          textSuffix: captured.textSuffix,
+          commentaryText: commentary,
+        },
+        recordedAudio,
+        (diagnostic) => {
+          if (import.meta.env.DEV) {
+            console.warn('Audio upload cleanup failed after publication error.', diagnostic);
+          }
+        },
+      );
       if (!isUuid(annotationId)) throw new Error('Publishing returned an invalid annotation identifier.');
-      captureRevisionRef.current += 1;
-      setCaptureState({ status: 'idle' });
-      setCommentary('');
-      setPublishState({ status: 'idle' });
+      await clearDraft('publish-succeeded');
       socialCacheRef.current.clear();
       dispatchNavigation({ type: 'select-root', view: 'context' });
       const nextNavigation = getPostPublishNavigation(annotationId);
@@ -387,7 +460,7 @@ function App() {
     } finally {
       publishInFlightRef.current = false;
     }
-  }, [authState.status, captureState, commentary, supabase]);
+  }, [audioRecorder, authState.status, captureState, clearDraft, commentary, supabase]);
 
   useEffect(() => {
     authMountedRef.current = true;
@@ -409,15 +482,56 @@ function App() {
     const runtimeMessage = (message: unknown) => { if (isActiveTabContextMessage(message)) applyContext(message.context); };
     chrome.storage.onChanged.addListener(storageChange);
     chrome.runtime.onMessage.addListener(runtimeMessage);
-    void chrome.storage.session.get(ACTIVE_TAB_CONTEXT_KEY).then((stored) => applyContext(stored[ACTIVE_TAB_CONTEXT_KEY])).catch(() => { if (mounted) setSourceState({ status: 'unexpected-error', message: 'Unable to load the connected source. Try again.' }); });
+    const restorationRevision = draftRevisionRef.current;
+    void chrome.storage.session
+      .get([ACTIVE_TAB_CONTEXT_KEY, ANNOTATION_DRAFT_STORAGE_KEY])
+      .then((stored) => {
+        if (!mounted) return;
+        const storedContext = isActiveTabContext(stored[ACTIVE_TAB_CONTEXT_KEY])
+          ? stored[ACTIVE_TAB_CONTEXT_KEY]
+          : null;
+        const context = contextObservedRef.current ? connectedContextRef.current : storedContext;
+        if (!contextObservedRef.current) {
+          connectedContextRef.current = context;
+          setSourceState(context ? getSourceState(context.title, context.url) : { status: 'not-connected' });
+        }
+
+        const storedDraftValue = stored[ANNOTATION_DRAFT_STORAGE_KEY];
+        const draft = deserializeAnnotationDraft(storedDraftValue);
+        if (shouldApplyDraftRestoration(restorationRevision, draftRevisionRef.current, draft, context)) {
+          draftRef.current = draft;
+          setCaptureState({ status: 'captured', data: draft.capture });
+          setCommentary(draft.commentary);
+        } else if (restorationRevision === draftRevisionRef.current && storedDraftValue !== undefined) {
+          draftRef.current = null;
+          void removePersistedDraft();
+        }
+        setDraftRestorationStatus('ready');
+      })
+      .catch(() => {
+        if (!mounted) return;
+        if (!contextObservedRef.current) {
+          setSourceState({ status: 'unexpected-error', message: 'Unable to load the connected source. Try again.' });
+        }
+        setDraftRestorationStatus('ready');
+      });
     return () => { mounted = false; chrome.storage.onChanged.removeListener(storageChange); chrome.runtime.onMessage.removeListener(runtimeMessage); };
-  }, [showStoredContext]);
+  }, [removePersistedDraft, showStoredContext]);
 
   useEffect(() => {
     if (!refreshSuccess) return;
     const timer = window.setTimeout(() => setRefreshSuccess(false), 3_000);
     return () => window.clearTimeout(timer);
   }, [refreshSuccess]);
+
+  const changeCommentary = (value: string) => {
+    draftRevisionRef.current += 1;
+    setCommentary(value);
+    const draft = draftRef.current;
+    if (!draft) return;
+    const updatedDraft = updateAnnotationDraftCommentary(draft, value);
+    if (updatedDraft) persistDraft(updatedDraft);
+  };
 
   const selectRoot = (view: TopLevelView) => dispatchNavigation({ type: 'select-root', view });
   const navigationCallbacks = {
@@ -431,7 +545,8 @@ function App() {
   const isRefreshing = sourceState.status === 'refreshing';
   const isCapturing = captureState.status === 'capturing';
   const captured = captureState.status === 'captured' ? captureState.data : null;
-  const canPublish = authState.status === 'signed-in' && captured && commentary.trim() && commentary.length <= 2_000 && publishState.status !== 'publishing';
+  const audioBusy = audioRecorder.state.status === 'requesting_permission' || audioRecorder.state.status === 'recording';
+  const canPublish = authState.status === 'signed-in' && captured && commentary.trim() && commentary.length <= 2_000 && publishState.status !== 'publishing' && !audioBusy;
   const contextUrl = sourceState.status === 'connected' ? sourceState.source.url : null;
   let contextCacheKey: string | null = null;
   if (contextUrl) {
@@ -475,7 +590,7 @@ function App() {
           <section className="context-source"><SourceSummary state={sourceState} /><div className="source-actions"><button className="button button-secondary button-small" type="button" onClick={() => void loadSource()} disabled={isRefreshing || isCapturing}>{isRefreshing ? 'Refreshing…' : 'Refresh source'}</button>{refreshSuccess && <span role="status">Source updated</span>}</div></section>
           {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={contextUrl} navigation={navigationCallbacks} emptyTitle="Be the first to annotate this source" emptyMessage="Capture a passage below to add the first public annotation." compactHeading="On this source" />}
           <section className="create-panel" aria-labelledby="create-heading"><div className="section-heading"><h2 id="create-heading">Create annotation</h2><span>Article text</span></div>
-            {captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><div className="annotation-field"><label htmlFor="annotation-commentary">Your commentary</label><textarea id="annotation-commentary" value={commentary} maxLength={2_000} rows={6} onChange={(event) => setCommentary(event.target.value)} /><span aria-live="polite">{commentary.length.toLocaleString()} / 2,000</span></div><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginGoogleSignIn()}>Continue with Google</button> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here. Selections and commentary may contain up to 2,000 characters each.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
+            {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><div className="annotation-field"><label htmlFor="annotation-commentary">Your commentary</label><textarea id="annotation-commentary" value={commentary} maxLength={2_000} rows={6} onChange={(event) => changeCommentary(event.target.value)} /><span aria-live="polite">{commentary.length.toLocaleString()} / 2,000</span></div><AudioRecorder controller={audioRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginGoogleSignIn()}>Continue with Google</button> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here. Selections and commentary may contain up to 2,000 characters each.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
           </section>
         </div>
       )}

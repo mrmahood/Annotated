@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  ANNOTATION_AUDIO_BUCKET,
+  formatAudioDuration,
+} from '../../utils/audio-commentary';
+import {
   createComment,
   deleteComment,
   followProfile,
@@ -39,6 +43,20 @@ type AuthProps = {
   onSignIn: () => void;
 };
 
+function getAudioPublicUrl(supabase: SupabaseClient, storagePath: string) {
+  const publicUrl = supabase.storage
+    .from(ANNOTATION_AUDIO_BUCKET)
+    .getPublicUrl(storagePath).data.publicUrl;
+  try {
+    const url = new URL(publicUrl);
+    return url.protocol === 'https:' || (url.protocol === 'http:' && url.hostname === 'localhost')
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function Avatar({ name, url, size = 30 }: { name: string; url: string | null; size?: number }) {
   return url ? (
     <img
@@ -74,6 +92,7 @@ function AnnotationCard({ annotation, navigation }: {
         <strong>{annotation.source.title ?? annotation.source.hostname}</strong>
         <span className="passage-excerpt">“{annotation.selectedText}”</span>
         <span className="commentary-excerpt">{annotation.commentaryText}</span>
+        {annotation.audio && <span className="audio-indicator">Audio · {formatAudioDuration(annotation.audio.durationMs)}</span>}
       </button>
       <footer className="social-card-actions">
         <button className="text-button" type="button" onClick={() => navigation.openComments(annotation.id)}>
@@ -414,6 +433,7 @@ export function AnnotationDetailView({
   const [annotation, setAnnotation] = useState<PublicAnnotation | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -437,6 +457,9 @@ export function AnnotationDetailView({
   if (status === 'missing') return <div className="compact-state view-state"><strong>Annotation unavailable</strong><span>It may have been removed or is not public.</span></div>;
   if (status === 'error' || !annotation) return <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotation unavailable</strong><span>Check your connection and go back to try again.</span></div>;
   const publicUrl = getPublicUrl(`/a/${annotation.id}`);
+  const audioUrl = annotation.audio
+    ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
+    : null;
 
   return (
     <article className="detail-view">
@@ -447,6 +470,7 @@ export function AnnotationDetailView({
       <section className="detail-source"><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">View original source ↗</a></section>
       <section className="detail-passage"><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
       <section className="detail-commentary"><span className="section-label">Commentary</span><p>{annotation.commentaryText}</p></section>
+      {annotation.audio && audioUrl && <section className="detail-audio" aria-labelledby="detail-audio-heading"><span className="section-label" id="detail-audio-heading">Audio commentary</span><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</section>}
       <div className="detail-secondary-actions"><span>{annotation.commentCount.toLocaleString()} comments</span>{publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Share / public page ↗</a>}</div>
       <Comments supabase={supabase} annotationId={annotation.id} currentUserId={currentUserId} onSignIn={onSignIn} onProfile={navigation.openProfile} autoFocus={focusComments} onCountChange={(commentCount) => setAnnotation((current) => current ? { ...current, commentCount } : current)} onMutation={onSocialMutation} />
     </article>

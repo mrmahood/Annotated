@@ -293,6 +293,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .source-attribution,
 .passage-section,
 .commentary-section,
+.audio-commentary-section,
 .comments-section,
 .claim-section { padding: clamp(20px, 4vw, 34px); }
 .annotation-header { display: flex; align-items: center; min-height: 68px; border-bottom: 1px solid var(--border); }
@@ -332,6 +333,12 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .commentary-section h2, .claim-intro h2, .form-success h3, .comments-heading-row h2, .comment-composer h3 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
 .commentary-section h2, .comments-heading-row h2 { font-size: 1.28rem; }
 .commentary-text { max-width: 720px; margin-top: 12px; color: var(--text-secondary); font-size: 0.94rem; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+.audio-commentary-section { border-top: 1px solid var(--border); }
+.audio-commentary-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+.audio-commentary-heading-row h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
+.audio-commentary-heading-row span { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem; }
+.audio-commentary-section audio { width: min(100%, 720px); height: 38px; margin-top: 14px; color-scheme: dark; }
+.audio-commentary-section .form-error { max-width: 720px; margin: 10px 0 0; }
 
 /* Comments */
 .comments-section { border-top: 1px solid var(--border); scroll-margin-top: 20px; }
@@ -439,7 +446,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .card-header { align-items: center; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .annotation-shell { padding: 14px 10px 36px; }
-  .annotation-header, .source-attribution, .passage-section, .commentary-section, .comments-section, .claim-section { padding: 18px; }
+  .annotation-header, .source-attribution, .passage-section, .commentary-section, .audio-commentary-section, .comments-section, .claim-section { padding: 18px; }
   .source-attribution { grid-template-columns: 1fr; align-items: stretch; gap: 18px; }
   .source-link, .public-button-claim { width: 100%; }
   .annotator-line { align-items: flex-start; flex-wrap: wrap; }
