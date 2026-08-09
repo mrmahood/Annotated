@@ -1066,7 +1066,7 @@ function App() {
 
           <div className="actions">
             <button
-              className="button button-primary"
+              className="button button-secondary"
               type="button"
               onClick={loadSource}
               disabled={isRefreshing || isCapturing}
@@ -1074,7 +1074,7 @@ function App() {
               {isRefreshing ? 'Refreshing...' : 'Refresh source'}
             </button>
             <button
-              className="button button-secondary"
+              className="button button-primary"
               type="button"
               onClick={captureSelection}
               disabled={!canCapture}
