@@ -18,6 +18,17 @@ export function AnnotationCard({
   const sourceUrl = annotation.kind === "youtube"
     ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
     : annotation.source.canonicalUrl;
+  const sourceLabel = annotation.kind === "youtube"
+    ? "YouTube video"
+    : annotation.kind === "audio"
+      ? "Podcast / web audio"
+      : "Source";
+  const sourceAttribution = annotation.kind === "audio"
+    ? [annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(" · ")
+    : [
+        annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`,
+        annotation.source.publisher,
+      ].filter(Boolean).join(" · ");
   const headingId = `annotation-${annotation.id}`;
   const publicationDate = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -56,17 +67,11 @@ export function AnnotationCard({
       </header>
 
       <div className="card-source">
-        <p className="section-label">{annotation.kind === "youtube" ? "YouTube video" : "Source"}</p>
+        <p className="section-label">{sourceLabel}</p>
         <h2 id={headingId}>
           <Link href={`/a/${annotation.id}`}>{sourceTitle}</Link>
         </h2>
-        {(annotation.source.author || annotation.source.publisher) && (
-          <p className="card-byline">
-            {annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`}
-            {annotation.source.author && annotation.source.publisher && " · "}
-            {annotation.source.publisher}
-          </p>
-        )}
+        {sourceAttribution && <p className="card-byline">{sourceAttribution}</p>}
         <p className="card-hostname">{annotation.source.hostname}</p>
       </div>
 
@@ -75,7 +80,7 @@ export function AnnotationCard({
           <blockquote>{truncateExcerpt(annotation.selectedText, PASSAGE_EXCERPT_LENGTH)}</blockquote>
         </section>
       ) : (
-        <section className="card-clip-range" aria-label="YouTube clip time range">
+        <section className="card-clip-range" aria-label={`${sourceLabel} clip time range`}>
           <p className="section-label">Clip</p>
           <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
         </section>
@@ -96,7 +101,7 @@ export function AnnotationCard({
           </Link>
         </div>
         <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
-          {annotation.kind === "youtube" ? "Open clip on YouTube" : "View original source"} <span aria-hidden="true">↗</span>
+          {annotation.kind === "youtube" ? "Open clip on YouTube" : annotation.kind === "audio" ? "Open episode" : "View original source"} <span aria-hidden="true">↗</span>
         </a>
       </footer>
     </article>

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./audio-source": "./src/audio-source.ts",
     "./url-normalization": "./src/url-normalization.ts",
     "./youtube": "./src/youtube.ts",
     "./media-time": "./src/media-time.ts"

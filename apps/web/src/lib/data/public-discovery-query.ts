@@ -6,7 +6,7 @@ export const PUBLIC_ANNOTATION_CARD_SELECT = `
   commentary_text,
   published_at,
   annotator:profiles!annotations_user_id_fkey(id, display_name, avatar_url),
-  source:sources!annotations_source_id_fkey(canonical_url, normalized_url, source_type, title, author, publisher),
+  source:sources!annotations_source_id_fkey(canonical_url, normalized_url, source_type, title, author, publisher, metadata),
   target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms)
 `;
 

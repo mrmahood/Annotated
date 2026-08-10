@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getClipRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
+import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
   parseAnnotationAudio,
   type AnnotationAudio,
@@ -30,6 +31,7 @@ type PublicAnnotationBase = {
     hostname: string;
     author: string | null;
     publisher: string | null;
+    showName: string | null;
   };
   commentCount: number;
   audio: AnnotationAudio | null;
@@ -49,6 +51,13 @@ export type PublicAnnotation = PublicAnnotationBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationBase['source'] & { type: 'youtube'; videoId: string };
+    }
+  | {
+      kind: 'audio';
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationBase['source'] & { type: 'podcast'; videoId: null };
     }
 );
 
@@ -89,7 +98,7 @@ const ANNOTATION_SELECT = `
   commentary_text,
   published_at,
   creator:profiles!annotations_user_id_fkey(id, display_name, avatar_url),
-  source:sources!inner(canonical_url, normalized_url, source_type, title, author, publisher),
+  source:sources!inner(canonical_url, normalized_url, source_type, title, author, publisher, metadata),
   target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms),
   audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)
 `;
@@ -120,6 +129,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
   const canonicalUrl = getHttpUrl(source?.canonical_url);
   const normalizedUrl = getHttpUrl(source?.normalized_url);
   const publishedAt = getOptionalText(value.published_at);
+  const sourceMetadata = isRecord(source?.metadata) ? source.metadata : {};
   const date = publishedAt ? new Date(publishedAt) : null;
 
   if (
@@ -148,6 +158,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
       hostname: new URL(canonicalUrl).hostname,
       author: getOptionalText(source?.author),
       publisher: getOptionalText(source?.publisher),
+      showName: getOptionalText(sourceMetadata.show_name),
     },
   };
 
@@ -187,6 +198,26 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
     } catch {
       return null;
     }
+  }
+
+  if (
+    annotationType === 'audio_clip' && sourceType === 'podcast' &&
+    targetType === 'time_range' && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getClipRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getAudioSourceIdentity(canonicalUrl);
+      if (identity.normalizedUrl !== normalizedUrl) return null;
+      return {
+        ...common,
+        kind: 'audio',
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: 'podcast', videoId: null },
+      };
+    } catch { return null; }
   }
 
   return null;

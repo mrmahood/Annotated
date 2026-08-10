@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import { formatMediaTime, getClipRangeError } from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl, getYouTubeVideoIdentity } from "@annotated/shared/youtube";
+import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { createClient } from "@/lib/supabase/server";
 import {
   ANNOTATION_AUDIO_BUCKET,
@@ -39,6 +40,7 @@ type PublicAnnotationBase = {
     title: string | null;
     author: string | null;
     publisher: string | null;
+    showName: string | null;
     hostname: string;
   };
   annotator: {
@@ -55,6 +57,7 @@ type PublicAnnotationBase = {
 type PublicAnnotation = PublicAnnotationBase & (
   | { kind: "article"; selectedText: string; startMs: null; endMs: null; source: PublicAnnotationBase["source"] & { type: "article"; videoId: null } }
   | { kind: "youtube"; selectedText: null; startMs: number; endMs: number; source: PublicAnnotationBase["source"] & { type: "youtube"; videoId: string } }
+  | { kind: "audio"; selectedText: null; startMs: number; endMs: number; source: PublicAnnotationBase["source"] & { type: "podcast"; videoId: null } }
 );
 
 const loadPublicAnnotation = cache(
@@ -89,7 +92,7 @@ const loadPublicAnnotation = cache(
           .maybeSingle(),
         supabase
           .from("sources")
-          .select("canonical_url, normalized_url, source_type, title, author, publisher")
+          .select("canonical_url, normalized_url, source_type, title, author, publisher, metadata")
           .eq("id", annotation.source_id)
           .maybeSingle(),
         supabase
@@ -105,6 +108,9 @@ const loadPublicAnnotation = cache(
       const canonicalUrl = getHttpUrl(source?.canonical_url);
       const hostname = formatHostname(source?.canonical_url);
       const selectedText = getOptionalText(target?.selected_text);
+      const sourceMetadata = source?.metadata && typeof source.metadata === "object" && !Array.isArray(source.metadata)
+        ? source.metadata as Record<string, unknown>
+        : {};
 
       if (
         targetResult.error ||
@@ -154,6 +160,7 @@ const loadPublicAnnotation = cache(
           title: getOptionalText(source.title),
           author: getOptionalText(source.author),
           publisher: getOptionalText(source.publisher),
+          showName: getOptionalText(sourceMetadata.show_name),
           hostname,
         },
         annotator: {
@@ -198,6 +205,26 @@ const loadPublicAnnotation = cache(
         } catch {
           return null;
         }
+      }
+
+      if (
+        annotation.annotation_type === "audio_clip" && source.source_type === "podcast" &&
+        target.target_type === "time_range" && Number.isSafeInteger(target.start_ms) &&
+        Number.isSafeInteger(target.end_ms) &&
+        getClipRangeError(target.start_ms, target.end_ms) === null
+      ) {
+        try {
+          const identity = getAudioSourceIdentity(canonicalUrl.href);
+          if (identity.normalizedUrl !== source.normalized_url) return null;
+          return {
+            ...common,
+            kind: "audio",
+            selectedText: null,
+            startMs: target.start_ms,
+            endMs: target.end_ms,
+            source: { ...common.source, type: "podcast", videoId: null },
+          };
+        } catch { return null; }
       }
 
       return null;
@@ -255,7 +282,9 @@ export async function generateMetadata({
   const title = `Annotation on ${sourceTitle}`;
   const description = annotation.kind === "youtube"
     ? `${annotation.annotator.name} annotated a YouTube clip from ${formatMediaTime(annotation.startMs)} to ${formatMediaTime(annotation.endMs)}.`
-    : `${annotation.annotator.name} annotated an article from ${annotation.source.hostname}.`;
+    : annotation.kind === "audio"
+      ? `${annotation.annotator.name} annotated an audio clip from ${formatMediaTime(annotation.startMs)} to ${formatMediaTime(annotation.endMs)}.`
+      : `${annotation.annotator.name} annotated an article from ${annotation.source.hostname}.`;
   const publicPageUrl = getPublicPageUrl(annotation.id);
 
   return {
@@ -336,10 +365,11 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
 
         <section className="source-attribution" aria-labelledby="source-heading">
           <div className="source-copy">
-            <p className="section-label">{annotation.kind === "youtube" ? "YouTube source" : "Original article"}</p>
+            <p className="section-label">{annotation.kind === "youtube" ? "YouTube source" : annotation.kind === "audio" ? "Podcast / web audio" : "Original article"}</p>
             <h1 id="source-heading">{sourceTitle}</h1>
-            {(annotation.source.author || annotation.source.publisher) && (
+            {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
               <p className="source-byline">
+                {annotation.source.showName && annotation.kind === "audio" && `${annotation.source.showName} · `}
                 {annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`}
                 {annotation.source.author && annotation.source.publisher && " · "}
                 {annotation.source.publisher}
@@ -353,7 +383,7 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
             target="_blank"
             rel="noopener noreferrer"
           >
-            {annotation.kind === "youtube" ? "Open clip on YouTube" : "View original source"}
+            {annotation.kind === "youtube" ? "Open clip on YouTube" : annotation.kind === "audio" ? "Open original source" : "View original source"}
             <span aria-hidden="true">↗</span>
           </a>
         </section>
@@ -377,7 +407,7 @@ export default async function AnnotationPage({ params }: AnnotationPageProps) {
           <p className="commentary-text">{annotation.commentaryText}</p>
         </section>
 
-        {annotation.audio && (
+        {annotation.kind === "article" && annotation.audio && (
           <PublishedAudioPlayer
             publicUrl={annotation.audio.publicUrl}
             durationMs={annotation.audio.durationMs}
