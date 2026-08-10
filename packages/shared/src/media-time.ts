@@ -31,7 +31,7 @@ export function getClipRangeError(
     durationMs !== undefined && durationMs !== null &&
     (!Number.isSafeInteger(durationMs) || durationMs < 0 || endMs > durationMs)
   ) {
-    return 'Clip end cannot exceed the video duration.';
+    return 'Clip end cannot exceed the media duration.';
   }
   return null;
 }

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getClipRangeError } from "@annotated/shared/media-time";
 import { getYouTubeVideoIdentity } from "@annotated/shared/youtube";
+import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import {
   formatHostname,
   getHttpUrl,
@@ -29,6 +30,7 @@ type PublicAnnotationCardBase = {
     hostname: string;
     author: string | null;
     publisher: string | null;
+    showName: string | null;
   };
 };
 
@@ -46,6 +48,13 @@ export type PublicAnnotationCardData = PublicAnnotationCardBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationCardBase["source"] & { type: "youtube"; videoId: string };
+    }
+  | {
+      kind: "audio";
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationCardBase["source"] & { type: "podcast"; videoId: null };
     }
 );
 
@@ -91,6 +100,7 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
   const hostname = formatHostname(source?.canonical_url);
   const publishedAt = getOptionalText(value.published_at);
   const publishedDate = publishedAt ? new Date(publishedAt) : null;
+  const sourceMetadata = isRecord(source?.metadata) ? source.metadata : {};
 
   if (
     !annotator || !source || !target ||
@@ -117,6 +127,7 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
       hostname,
       author: getOptionalText(source.author),
       publisher: getOptionalText(source.publisher),
+      showName: getOptionalText(sourceMetadata.show_name),
     },
   };
 
@@ -155,6 +166,25 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
     } catch {
       return null;
     }
+  }
+
+  if (
+    annotationType === "audio_clip" && sourceType === "podcast" &&
+    targetType === "time_range" && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) && getClipRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getAudioSourceIdentity(canonicalUrl.href);
+      if (identity.normalizedUrl !== getOptionalText(source.normalized_url)) return null;
+      return {
+        ...common,
+        kind: "audio",
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: "podcast", videoId: null },
+      };
+    } catch { return null; }
   }
 
   return null;

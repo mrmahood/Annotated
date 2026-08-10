@@ -16,7 +16,7 @@ test('validates clip ordering and duration bounds', () => {
   assert.match(getClipRangeError(2_000, 302_001), /5 minutes/);
 });
 
-test('rejects a range beyond a known video duration', () => {
+test('rejects a range beyond a known media duration', () => {
   assert.equal(getClipRangeError(0, 10_000, 10_000), null);
-  assert.match(getClipRangeError(0, 10_001, 10_000), /video duration/);
+  assert.match(getClipRangeError(0, 10_001, 10_000), /media duration/);
 });

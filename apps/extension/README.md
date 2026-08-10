@@ -36,3 +36,35 @@ milestone can attach optional audio to a YouTube annotation through the existing
 but it should add a dedicated YouTube-with-audio RPC so the upload verification
 and time-range publication remain one database transaction. The current YouTube
 publisher must not be expanded by accepting unverified storage metadata.
+
+## Podcast and web-audio time ranges
+
+Annotated supports a connected HTTP(S) page when its top-level document exposes
+one safely selectable `HTMLAudioElement`, or an `HTMLVideoElement` that has loaded
+metadata and explicitly reports zero video dimensions. Selection prefers the
+currently playing usable element, then a unique usable element, and prefers a
+real audio element over an audio-only video element. Equally eligible players
+produce an ambiguous state instead of being controlled.
+
+The extension reads metadata/player state only through one-shot
+`chrome.scripting.executeScript` calls against frame 0 of the explicitly
+connected tab. It adds no content script, host permission, monitoring loop, or
+media download. Audio clip drafts use `annotated.audioClipDraft.v1` in
+`chrome.storage.session` and restore only for the same normalized episode/page.
+
+Useful public manual-test targets (verified to serve a top-level `<audio>`
+element as of August 9, 2026) are:
+
+- [Buzzsprout: Podcast hosting—setting up your show](https://podcast.buzzsprout.com/1/episodes/10137707-podcast-hosting-setting-up-your-show-on-buzzsprout)
+- [Podnews: How people find new podcasts](https://podnews.net/update/discoverability-shownotestest)
+- [Transistor: How Ben and David bootstrapped the Acquired podcast](https://saas.transistor.fm/episodes/acquired)
+
+These pages are test fixtures, not service-specific integrations. Their player
+markup can change independently, so manual testing should confirm the element is
+still top-level and has a finite duration before treating a failure as an
+Annotated regression.
+
+Recorded Annotated audio commentary remains article-only. Future composition
+could reuse the existing one-to-one `annotation_audio` metadata model, but it
+would require a dedicated atomic audio-clip-with-commentary publishing path;
+source audio must still remain on the original site.
