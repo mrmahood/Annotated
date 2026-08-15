@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { formatMediaTime, getClipRangeError } from "@annotated/shared/media-time";
+import {
+  formatMediaTime,
+  getHistoricalStoredTargetRangeError,
+} from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl, getYouTubeVideoIdentity } from "@annotated/shared/youtube";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { createClient } from "@/lib/supabase/server";
@@ -189,7 +192,7 @@ const loadPublicAnnotation = cache(
         annotation.annotation_type === "video_clip" && source.source_type === "youtube" &&
         target.target_type === "time_range" && Number.isSafeInteger(target.start_ms) &&
         Number.isSafeInteger(target.end_ms) &&
-        getClipRangeError(target.start_ms, target.end_ms) === null
+        getHistoricalStoredTargetRangeError(target.start_ms, target.end_ms) === null
       ) {
         try {
           const identity = getYouTubeVideoIdentity(canonicalUrl.href);
@@ -211,7 +214,7 @@ const loadPublicAnnotation = cache(
         annotation.annotation_type === "audio_clip" && source.source_type === "podcast" &&
         target.target_type === "time_range" && Number.isSafeInteger(target.start_ms) &&
         Number.isSafeInteger(target.end_ms) &&
-        getClipRangeError(target.start_ms, target.end_ms) === null
+        getHistoricalStoredTargetRangeError(target.start_ms, target.end_ms) === null
       ) {
         try {
           const identity = getAudioSourceIdentity(canonicalUrl.href);

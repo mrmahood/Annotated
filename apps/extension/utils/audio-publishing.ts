@@ -1,5 +1,5 @@
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
-import { getClipRangeError } from '@annotated/shared/media-time';
+import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUuid } from './social-helpers.ts';
 
@@ -29,7 +29,11 @@ export async function publishAudioClipAnnotation(
   ) throw new Error('The authenticated session is unavailable.');
 
   const identity = getAudioSourceIdentity(input.sourceUrl, input.canonicalUrl);
-  const rangeError = getClipRangeError(input.startMs, input.endMs, input.mediaDurationMs);
+  const rangeError = getNewMediaPublicationRangeError(
+    input.startMs,
+    input.endMs,
+    input.mediaDurationMs,
+  );
   if (rangeError) throw new Error(rangeError);
   if (!input.commentaryText.trim() || input.commentaryText.length > 2_000) {
     throw new Error('Commentary must contain between 1 and 2,000 characters.');

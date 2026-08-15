@@ -1,5 +1,6 @@
-export const MINIMUM_CLIP_DURATION_MS = 1_000;
-export const MAXIMUM_CLIP_DURATION_MS = 300_000;
+export const MINIMUM_MEDIA_DURATION_MS = 1_000;
+export const MAXIMUM_NEW_MEDIA_PUBLICATION_DURATION_MS = 90_000;
+export const MAXIMUM_HISTORICAL_STORED_TARGET_DURATION_MS = 300_000;
 
 export function formatMediaTime(milliseconds: number): string {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) return '00:00';
@@ -14,9 +15,11 @@ export function formatMediaTime(milliseconds: number): string {
     : `${pair(minutes)}:${pair(seconds)}`;
 }
 
-export function getClipRangeError(
+function getMediaRangeError(
   startMs: number | null,
   endMs: number | null,
+  maximumDurationMs: number,
+  maximumDurationMessage: string,
   durationMs?: number | null,
 ): string | null {
   if (startMs === null || endMs === null) return 'Set both a clip start and end.';
@@ -25,8 +28,8 @@ export function getClipRangeError(
   }
   if (endMs <= startMs) return 'Clip end must be after clip start.';
   const clipDuration = endMs - startMs;
-  if (clipDuration < MINIMUM_CLIP_DURATION_MS) return 'A clip must be at least 1 second long.';
-  if (clipDuration > MAXIMUM_CLIP_DURATION_MS) return 'A clip cannot be longer than 5 minutes.';
+  if (clipDuration < MINIMUM_MEDIA_DURATION_MS) return 'A clip must be at least 1 second long.';
+  if (clipDuration > maximumDurationMs) return maximumDurationMessage;
   if (
     durationMs !== undefined && durationMs !== null &&
     (!Number.isSafeInteger(durationMs) || durationMs < 0 || endMs > durationMs)
@@ -34,4 +37,30 @@ export function getClipRangeError(
     return 'Clip end cannot exceed the media duration.';
   }
   return null;
+}
+
+export function getNewMediaPublicationRangeError(
+  startMs: number | null,
+  endMs: number | null,
+  durationMs?: number | null,
+): string | null {
+  return getMediaRangeError(
+    startMs,
+    endMs,
+    MAXIMUM_NEW_MEDIA_PUBLICATION_DURATION_MS,
+    'A hosted clip cannot be longer than 90 seconds.',
+    durationMs,
+  );
+}
+
+export function getHistoricalStoredTargetRangeError(
+  startMs: number | null,
+  endMs: number | null,
+): string | null {
+  return getMediaRangeError(
+    startMs,
+    endMs,
+    MAXIMUM_HISTORICAL_STORED_TARGET_DURATION_MS,
+    'A stored clip cannot be longer than the historical 5-minute limit.',
+  );
 }

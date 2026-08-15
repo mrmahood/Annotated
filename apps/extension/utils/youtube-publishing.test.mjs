@@ -33,8 +33,8 @@ test('rejects invalid or oversized ranges before calling the RPC', async () => {
   const client = fakeClient();
   await assert.rejects(publishYouTubeAnnotation(client, {
     sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    title: 'Video', channelName: null, startMs: 0, endMs: 300_001,
+    title: 'Video', channelName: null, startMs: 0, endMs: 90_001,
     commentaryText: 'Commentary',
-  }), /5 minutes/);
+  }), /90 seconds/);
   assert.equal(client.calls.length, 0);
 });
