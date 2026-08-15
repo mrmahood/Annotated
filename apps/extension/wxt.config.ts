@@ -6,8 +6,8 @@ export default defineConfig({
   manifest: {
     name: 'Annotated',
     description: 'Annotate and organize sources from the web.',
-    minimum_chrome_version: '114',
-    permissions: ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity'],
+    minimum_chrome_version: '116',
+    permissions: ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'],
     action: {
       default_title: 'Open Annotated',
     },

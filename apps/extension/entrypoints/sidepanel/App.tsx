@@ -76,6 +76,11 @@ import {
   type SessionSocialCache,
 } from './social-components';
 import { AudioRecorder, useAudioRecorder } from './audio-recorder';
+import {
+  MediaCaptureSpike,
+  type MediaCaptureSpikeSource,
+  type MediaCaptureSpikeStatus,
+} from './media-capture-spike';
 
 const RECONNECT_MESSAGE = 'Click the Annotated toolbar icon on this page to reconnect, then try again.';
 const RESTRICTED_PAGE_MESSAGE = 'Annotated cannot capture text from this page.';
@@ -1138,6 +1143,78 @@ function App() {
   const audioUnavailableSource = sourceState.status === 'connected' && sourceState.source.classification === 'Audio unavailable'
     ? sourceState.source
     : null;
+  const spikeContext = connectedContextRef.current;
+  let mediaCaptureSpikeSource: MediaCaptureSpikeSource | null = null;
+  if (spikeContext && sourceState.status === 'connected') {
+    mediaCaptureSpikeSource = sourceState.source.classification === 'YouTube'
+      ? {
+          kind: 'youtube',
+          tabId: spikeContext.tabId,
+          pageUrl: spikeContext.url,
+          sourceKey: sourceState.source.videoId,
+        }
+      : sourceState.source.classification === 'Podcast / web audio'
+        ? {
+            kind: 'audio',
+            tabId: spikeContext.tabId,
+            pageUrl: spikeContext.url,
+            sourceKey: sourceState.source.normalizedUrl,
+          }
+        : sourceState.source.classification === 'Web page'
+          ? {
+              kind: 'generic',
+              tabId: spikeContext.tabId,
+              pageUrl: spikeContext.url,
+              sourceKey: spikeContext.url,
+            }
+          : null;
+  }
+  const mediaCaptureSpikeStatus: MediaCaptureSpikeStatus = (() => {
+    if (!spikeContext || sourceState.status !== 'connected') {
+      return {
+        source: 'not-connected',
+        connectedTab: spikeContext ? 'connected' : 'missing',
+        sourceIdentity: 'unknown',
+        player: 'not-found',
+      };
+    }
+    const sourceIdentity = spikeContext.url === sourceState.source.url ? 'match' : 'mismatch';
+    if (sourceState.source.classification === 'YouTube') {
+      return {
+        source: 'youtube',
+        connectedTab: 'connected',
+        sourceIdentity,
+        player: playerReadState === 'error' ? 'not-found' : playerTimeMs === null ? 'checking' : 'ready',
+      };
+    }
+    if (sourceState.source.classification === 'Podcast / web audio') {
+      return {
+        source: 'podcast',
+        connectedTab: 'connected',
+        sourceIdentity,
+        player: sourceState.source.playerStatus === 'ready'
+          ? 'ready'
+          : sourceState.source.playerStatus === 'duration-unavailable' ||
+              sourceState.source.playerStatus === 'current-time-unavailable'
+            ? 'not-ready'
+            : 'not-found',
+      };
+    }
+    if (sourceState.source.classification === 'Web page') {
+      return {
+        source: 'video',
+        connectedTab: 'connected',
+        sourceIdentity,
+        player: 'checking',
+      };
+    }
+    return {
+      source: 'unsupported',
+      connectedTab: 'connected',
+      sourceIdentity,
+      player: 'not-found',
+    };
+  })();
   const clipRangeError = getClipRangeError(clipStartMs, clipEndMs, videoDurationMs);
   const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
     clipRangeError === null && youtubeCommentary.trim().length > 0 &&
@@ -1186,6 +1263,12 @@ function App() {
 
       {currentScreen.kind === 'root' && currentScreen.view === 'context' && (
         <div className="root-view context-view">
+          <MediaCaptureSpike
+            source={mediaCaptureSpikeSource}
+            status={mediaCaptureSpikeStatus}
+            selectedStartMs={youtubeSource || audioSource ? clipStartMs : null}
+            selectedEndMs={youtubeSource || audioSource ? clipEndMs : null}
+          />
           <section className="context-source"><SourceSummary state={sourceState} /><div className="source-actions"><button className="button button-secondary button-small" type="button" onClick={() => void loadSource()} disabled={isRefreshing || isCapturing}>{isRefreshing ? 'Refreshing…' : 'Refresh source'}</button>{refreshSuccess && <span role="status">Source updated</span>}</div></section>
           {supabase && contextUrl && contextCacheKey && !audioUnavailableSource && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={audioSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} emptyTitle={youtubeSource ? 'No clips on this video yet' : audioSource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : audioSource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : audioSource ? 'Clips on this episode' : 'On this source'} />}
           {youtubeSource ? (
