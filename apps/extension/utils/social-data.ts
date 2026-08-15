@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getClipRangeError } from '@annotated/shared/media-time';
+import { getHistoricalStoredTargetRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
@@ -182,7 +182,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
     annotationType === 'video_clip' && sourceType === 'youtube' &&
     targetType === 'time_range' && Number.isSafeInteger(startMs) &&
     Number.isSafeInteger(endMs) &&
-    getClipRangeError(startMs as number, endMs as number) === null
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
     try {
       const identity = getYouTubeVideoIdentity(canonicalUrl);
@@ -204,7 +204,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
     annotationType === 'audio_clip' && sourceType === 'podcast' &&
     targetType === 'time_range' && Number.isSafeInteger(startMs) &&
     Number.isSafeInteger(endMs) &&
-    getClipRangeError(startMs as number, endMs as number) === null
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
     try {
       const identity = getAudioSourceIdentity(canonicalUrl);

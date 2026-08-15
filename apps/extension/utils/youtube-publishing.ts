@@ -1,4 +1,4 @@
-import { getClipRangeError } from '@annotated/shared/media-time';
+import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUuid } from './social-helpers.ts';
@@ -26,7 +26,11 @@ export async function publishYouTubeAnnotation(
   ) throw new Error('The authenticated session is unavailable.');
 
   const identity = getYouTubeVideoIdentity(input.sourceUrl);
-  const rangeError = getClipRangeError(input.startMs, input.endMs, input.videoDurationMs);
+  const rangeError = getNewMediaPublicationRangeError(
+    input.startMs,
+    input.endMs,
+    input.videoDurationMs,
+  );
   if (rangeError) throw new Error(rangeError);
   if (!input.commentaryText.trim() || input.commentaryText.length > 2_000) {
     throw new Error('Commentary must contain between 1 and 2,000 characters.');

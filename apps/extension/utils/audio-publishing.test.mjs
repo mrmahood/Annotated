@@ -39,7 +39,7 @@ test('publishes normalized episode identity with no ownership argument', async (
 test('rejects ranges outside the known player duration before RPC', async () => {
   const fake = fakeClient();
   await assert.rejects(
-    publishAudioClipAnnotation(fake.client, { ...input, endMs: 121_000 }),
+    publishAudioClipAnnotation(fake.client, { ...input, mediaDurationMs: 49_000 }),
     /media duration/,
   );
   assert.equal(fake.calls.length, 0);

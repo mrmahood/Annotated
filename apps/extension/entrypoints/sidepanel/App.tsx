@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { normalizeArticleUrl, ArticleUrlNormalizationError } from '@annotated/shared/url-normalization';
-import { formatMediaTime, getClipRangeError } from '@annotated/shared/media-time';
+import {
+  formatMediaTime,
+  getNewMediaPublicationRangeError,
+} from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import {
   AUDIO_CLIP_DRAFT_STORAGE_KEY,
@@ -745,7 +748,11 @@ function App() {
       sourceState.status !== 'connected' || sourceState.source.classification !== 'YouTube' ||
       clipStartMs === null || clipEndMs === null || !youtubeCommentary.trim()
     ) return;
-    const rangeError = getClipRangeError(clipStartMs, clipEndMs, videoDurationMs);
+    const rangeError = getNewMediaPublicationRangeError(
+      clipStartMs,
+      clipEndMs,
+      videoDurationMs,
+    );
     if (rangeError || youtubeCommentary.length > 2_000) {
       setYoutubePublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
       return;
@@ -784,7 +791,11 @@ function App() {
       clipStartMs === null || clipEndMs === null || !audioCommentary.trim() ||
       videoDurationMs === null
     ) return;
-    const rangeError = getClipRangeError(clipStartMs, clipEndMs, videoDurationMs);
+    const rangeError = getNewMediaPublicationRangeError(
+      clipStartMs,
+      clipEndMs,
+      videoDurationMs,
+    );
     if (rangeError || audioCommentary.length > 2_000) {
       setAudioPublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
       return;
@@ -1138,7 +1149,11 @@ function App() {
   const audioUnavailableSource = sourceState.status === 'connected' && sourceState.source.classification === 'Audio unavailable'
     ? sourceState.source
     : null;
-  const clipRangeError = getClipRangeError(clipStartMs, clipEndMs, videoDurationMs);
+  const clipRangeError = getNewMediaPublicationRangeError(
+    clipStartMs,
+    clipEndMs,
+    videoDurationMs,
+  );
   const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
     clipRangeError === null && youtubeCommentary.trim().length > 0 &&
     youtubeCommentary.length <= 2_000 && youtubePublishState.status !== 'publishing';
