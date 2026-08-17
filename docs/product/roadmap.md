@@ -1,6 +1,6 @@
 # Product roadmap
 
-Status: Phase B implementation and browser acceptance, 2026-08-16.
+Status: Phase C planning, 2026-08-16.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -20,7 +20,7 @@ Hosted-media persistence and security foundation:
 
 Phase A was squash-merged in PR #15.
 
-## Phase B — current
+## Phase B — complete
 
 Production capture and private raw upload:
 
@@ -35,11 +35,17 @@ Production capture and private raw upload:
 - exact production permissions with no host permissions or persistent content
   scripts.
 
-Phase B stops with a private draft and media in `processing/queued`. It requires
-automated validation plus owner-performed Chrome acceptance before completion.
-No worker, crop, transcode, transcription, or final publication belongs here.
+Phase B stops with a private draft and media in `processing/queued`. It was
+squash-merged in PR #16 after automated validation and owner-performed Chrome
+acceptance. The recorded automated results were pgTAP 204/204, shared 18/18,
+extension 92/92, and web 28/28, with extension compile/build, web lint/build,
+diff checks, and the generated production manifest also passing. Owner Chrome
+acceptance covered video and audio-only capture/upload, authoritative queued
+state, same-session retry, cancellation and raw cleanup, restart recovery,
+source navigation and tab closure, audible source-audio loopback, and the
+article-publication regression gate.
 
-## Phase C — future
+## Phase C — current (planning only)
 
 Bounded media worker, likely a Cloud Run Job or equivalent:
 
@@ -48,7 +54,13 @@ Bounded media worker, likely a Cloud Run Job or equivalent:
 - approximately 240p video or bounded audio derivative;
 - checksums, size, stream, codec, and duration enforcement;
 - transcription of only the captured excerpt and validated segments;
-- raw deletion, retry/failure lifecycle, and final ready state.
+- raw deletion, retry/failure lifecycle, and final ready state;
+- release-blocking audio-quality and crackle investigation for the worker output.
+
+The detailed execution plan is
+`docs/architecture/phase-c-media-worker-plan.md`. Planning is active; worker
+implementation, vendor selection or setup, infrastructure creation, database
+changes, and deployment each remain subject to explicit owner authorization.
 
 ## Phase D — future
 
@@ -64,10 +76,12 @@ Publication and product experience:
 Hardening and bounty submission:
 
 - browser, zoom/DPR/fullscreen/resize, and geometry test matrix;
-- audio-crackle investigation and acceptance matrix;
+- expanded browser/device audio compatibility regression matrix;
 - auth/session, retry, privacy, security, and end-to-end regression;
 - Chrome Web Store packaging, onboarding, demo fixture, monitoring/runbooks, and
   polished bounty submission material.
 
-Do not start Phase C until Phase B automated validation and owner-performed
-browser acceptance both pass.
+Phase B's automated and owner-performed browser acceptance gates have passed.
+Do not begin Phase C implementation until the detailed plan and its unresolved
+host, transcription, cost, privacy, and rollout decisions are explicitly
+approved.

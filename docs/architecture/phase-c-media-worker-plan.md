@@ -1,0 +1,450 @@
+# Phase C media worker plan
+
+Status: planning only, 2026-08-16. Phase B is complete. This plan does not
+authorize worker implementation, package installation, vendor setup,
+infrastructure creation, database changes, remote access, deployment, commit,
+push, or pull-request creation.
+
+This plan narrows Phase C of `docs/architecture/media-archive-pipeline.md` into
+reviewable engineering and acceptance gates. The accepted architecture remains
+authoritative if this plan is ambiguous.
+
+## 1. Outcome and phase boundary
+
+Phase C will turn one authoritative private `processing/queued` media row into
+one bounded processed derivative and one excerpt-only transcript. It will then
+delete and confirm deletion of the raw object before atomically marking the
+media `ready` and the annotation `published`.
+
+Phase C includes:
+
+- a bounded TypeScript media-worker workspace with pinned FFmpeg/ffprobe;
+- atomic lease acquisition and attempt limits;
+- raw-object download, hashing, probing, and validation;
+- video geometry validation, crop, trim, and low-resolution encoding;
+- bounded audio trim and encoding;
+- transcription of audio derived from the exact processed excerpt;
+- transcript and segment validation;
+- deterministic processed-object upload and metadata staging;
+- raw-object deletion confirmation before publication;
+- retry, terminal failure, expired-lease, and abandoned-object reconciliation;
+- container packaging, dispatch/reconciliation design, automated tests, and
+  sequential owner acceptance;
+- the release-blocking audio-quality investigation defined by the accepted
+  architecture.
+
+Phase C does not include:
+
+- canonical creator/slug routes, public player pages, or feed/profile changes;
+- signed public playback delivery or transcript presentation;
+- claim moderation UI or the complete removal lifecycle;
+- changes to the extension capture architecture or Blob ownership;
+- full-source download or transcription;
+- DRM, paywall, authentication, or source-media URL bypass;
+- a general-purpose job platform or multiple derivative formats;
+- production rollout, unless separately authorized after staging acceptance.
+
+Article annotations must continue to publish immediately through their existing
+validated RPC throughout Phase C.
+
+## 2. Delivered prerequisites
+
+Phases A and B already provide:
+
+- private `annotation-media-raw` and `annotation-media` buckets;
+- draft-first `annotation_media` and `annotation_transcripts` records;
+- the 1,000-90,000 ms hosted-range boundary and historical read compatibility;
+- server-derived raw paths and short-lived, no-upsert direct upload;
+- verified transition to authoritative `processing/queued`;
+- client denial for direct worker/media/transcript mutations;
+- service-only worker RPCs and publication guards;
+- offscreen-owned video/audio capture and direct upload;
+- safe capture metadata, cancellation, retry, and restart reconciliation.
+
+The current service-only worker database contract is:
+
+| Operation | Existing function | Required use |
+| --- | --- | --- |
+| Claim | `private.claim_annotation_media_processing` | Acquire a random lease, increment the bounded attempt count, and return only the allocated job data. |
+| Stage derivative | `private.stage_annotation_media_derivative` | Validate the lease, deterministic final path, checksums, MIME, dimensions, duration, and size. |
+| Stage transcript | `private.stage_annotation_media_transcript` | Store excerpt-only text and bounded relative segments under the same lease. |
+| Mark failure | `private.mark_annotation_media_processing_failed` | Persist only sanitized stage and error identifiers. |
+| Retry | `private.retry_annotation_media_processing` | Return an eligible failed row to `processing/queued`. |
+| Confirm raw deletion | `private.confirm_annotation_media_raw_deleted` | Clear the raw path only after the derivative and transcript exist. |
+| Finalize | `private.finalize_annotation_media_ready` | Atomically set media ready and publish the still-draft annotation. |
+
+The worker must not write domain tables directly when an existing RPC owns the
+transition. It may use trusted Storage operations and the narrowly scoped
+service-only contract. No worker credential, secret key, signed URL,
+transcription secret, or provider response may enter extension code or public
+output.
+
+## 3. Decisions required before implementation
+
+Each decision is an explicit gate. Planning can compare options, but setup or
+spend requires separate owner approval.
+
+### 3.1 Worker host
+
+Recommendation: one Cloud Run Job execution per media UUID, with one item per
+task, a 10-minute task timeout, two platform retries, bounded CPU/memory/disk,
+and a dedicated runtime identity. An equivalent bounded container host is
+acceptable if it supplies the same timeout, identity, secret, retry, and log
+controls.
+
+Approval must identify the cloud account/project, region, billing owner,
+container registry, runtime identity, secret manager, estimated cost ceiling,
+and who can deploy or invoke the job. No account or infrastructure should be
+created merely to complete planning.
+
+### 3.2 Dispatcher and reconciler
+
+The dispatcher must accept only a media UUID and start one bounded worker task.
+The reconciler must periodically find queued rows, eligible retry rows, expired
+leases, and retention cleanup work so a lost notification cannot strand media.
+
+The implementation decision must select the trusted scheduler/invocation
+surface and document authentication, duplicate dispatch behavior, maximum
+concurrency, rate limits, and failure alerts. FFmpeg must never run in a Next.js
+request or Supabase Edge Function.
+
+### 3.3 Transcription provider
+
+Select a provider only after a recorded comparison of:
+
+- 90-second latency and cost for expected video/audio volume;
+- segment timestamp quality and supported languages;
+- retention, training, deletion, data residency, and subprocessors;
+- timeout, retry, rate-limit, and idempotency behavior;
+- contractual handling of excerpt audio and transcript data.
+
+The code boundary will be a small `Transcriber` interface. Tests and the first
+local vertical slice use a deterministic fake adapter. A real provider adapter,
+credentials, network calls, and spend are separately authorized.
+
+### 3.4 FFmpeg build and output profile
+
+The selected container must pin supported Node.js and FFmpeg/ffprobe versions,
+package versions and lockfile, and the final image digest. Record the media
+build's source, license review, and supported codecs. Representative tests must
+approve H.264/AAC MP4 for video and AAC-LC M4A for audio before these profiles
+are frozen. WebM remains a considered fallback, not an automatic change to the
+accepted output contract.
+
+### 3.5 Supabase and secret boundary
+
+Before implementation, re-check the current Supabase changelog and official
+Storage/database client documentation for relevant breaking changes. Confirm
+the exact staging project ref `nkkunkwirvfwhmpwonqz` before any remote action.
+
+The worker runtime receives only server-side configuration through the selected
+secret manager. Logs must use annotation/media IDs, stages, timings, byte sizes,
+exit codes, and stable failure codes; they must omit credentials, signed URLs,
+source URLs when unnecessary, transcript text, and provider payloads.
+
+## 4. Contract audit before worker code
+
+The first implementation task, once authorized, is a local read-only audit of
+the delivered migration and Phase B upload contract. It must resolve these
+questions before changing schema or creating the worker:
+
+1. Lease duration: use a task timeout of 600 seconds and a longer database lease
+   (initial recommendation: 900 seconds) so platform shutdown precedes lease
+   expiry. Confirm whether lease renewal is unnecessary under that bound.
+2. Automatic retry: verify how retryable attempt failures receive bounded
+   backoff without immediately becoming terminal `failed`. The current
+   service-only functions may need a narrow additive refinement; do not assume a
+   migration is required until the gap is reproduced in tests.
+3. Duplicate dispatch: prove that two executions for the same media UUID cannot
+   both hold a valid lease or publish competing results.
+4. Staged retry: prove a row with a valid deterministic derivative can resume at
+   transcription without downloading or transcoding raw input again.
+5. Crash boundaries: define recovery after processed upload, derivative staging,
+   transcript staging, raw deletion, raw-deletion confirmation, and finalization.
+6. Object reconciliation: define handling for missing raw objects, orphaned raw
+   objects, orphaned processed objects, checksum mismatches, and expired rows.
+7. Retention: assign responsibility for 24-hour abandoned/terminal cleanup and
+   the 72-hour processing ceiling without weakening the publication guard.
+8. Failure privacy: ensure owner status receives only bounded codes and never a
+   Storage path, lease token, provider response, or operational secret.
+
+If the audit identifies a database gap, the change must use a new additive
+migration and new pgTAP coverage. Applied migration history remains immutable.
+No remote database operation belongs to the audit.
+
+## 5. Proposed worker structure
+
+The planned workspace is `apps/media-worker/` with responsibilities separated
+so media logic can be tested without cloud services:
+
+- `src/config`: bounded environment parsing with no secret logging;
+- `src/domain`: job inputs, probe facts, crop result, derivative metadata,
+  transcript result, and stable failure types;
+- `src/db`: service-only RPC adapter and lease-aware transition calls;
+- `src/storage`: exact-path download/upload/delete operations;
+- `src/media/probe`: structured ffprobe execution and allow-list validation;
+- `src/media/geometry`: pure crop calculation and unsafe-geometry rejection;
+- `src/media/transcode`: fixed argument construction without shell-concatenated
+  client strings;
+- `src/transcription`: provider-neutral interface, deterministic fake, and
+  separately authorized provider adapter;
+- `src/pipeline`: idempotent orchestration and crash-boundary handling;
+- `src/entrypoint`: one media UUID per process and bounded exit behavior;
+- synthetic/licensed fixtures and unit/integration tests;
+- a pinned container definition and local invocation instructions.
+
+Temporary raw, derivative, and transcription-audio files live only inside the
+bounded job filesystem and are removed on success or failure. The worker never
+accepts a caller-supplied Storage path or arbitrary FFmpeg option.
+
+## 6. Processing algorithm
+
+For each media UUID:
+
+1. Validate the UUID input and claim the row with a fresh lease.
+2. If no row is claimable, exit successfully as duplicate, premature, terminal,
+   or already-owned work without revealing row details.
+3. When no staged derivative exists, download exactly the authoritative raw
+   path, enforce a local byte cap, stream-hash it, and run ffprobe.
+4. Validate container, required streams, codecs, dimensions, duration, and the
+   recorder lead-in/overshoot bounds. The probe is authoritative over filename
+   and client MIME.
+5. For video, validate start/end geometry and calculate the crop from encoded
+   frame size divided by CSS viewport size. Reject partial visibility, material
+   start/end movement, nonfinite values, or an aspect mismatch beyond the
+   accepted tolerance. Never guess offsets or fall back to a full-page encode.
+6. Trim the measured lead-in, emit no more than the requested range, crop video
+   first, and scale without upscaling to approximately 426x240 with even output
+   dimensions. Produce the approved bounded video or audio profile.
+7. Probe and hash the derivative. Enforce its streams, MIME, duration,
+   dimensions, codec, and byte limit before deterministic private upload.
+8. Reconfirm lease ownership and stage derivative metadata through the worker
+   RPC. A lost lease prevents all later domain transitions.
+9. Extract ephemeral transcription audio from the exact trimmed derivative,
+   transcribe only that audio, normalize text, and validate ordered relative
+   segments against final duration.
+10. Stage the transcript under the same lease. Provider metadata is bounded and
+    private; transcript text is never logged.
+11. Delete the exact raw object and verify absence. Treat an already-absent raw
+    object as recoverable only when authoritative staged derivative/transcript
+    state proves a prior attempt crossed the safe persistence boundary.
+12. Confirm raw deletion, then finalize ready/publication atomically through the
+    existing database functions.
+13. Delete local temporary files and emit a sanitized completion record.
+
+The pipeline must be idempotent. A retry reuses valid staged work and never
+publishes before derivative, transcript, and confirmed raw deletion all exist.
+
+## 7. Media validation rules
+
+### Video
+
+- Input must probe as supported, unencrypted WebM with audio and video streams.
+- Raw duration may exceed the requested range only by the bounded recorder
+  lead-in and proposed maximum two-second overshoot.
+- The selected video element must be fully visible within the accepted 1-CSS-
+  pixel tolerance at both samples.
+- Viewport/frame aspect mismatch beyond the proposed 1% tolerance is
+  `unsafe_geometry`.
+- Start/end viewport and rectangle movement beyond rounding tolerance is
+  `unsafe_geometry`.
+- Crop coordinates are clamped and converted to codec-compatible even values.
+- Final output is no more than 90,000 ms, no larger than the selected range, no
+  more than 16 MiB, and approximately 240p without upscaling.
+
+### Audio
+
+- Input must probe as supported WebM/Opus with an audio stream and no required
+  video stream.
+- Final output is the exact bounded excerpt where source duration permits, no
+  more than 90,000 ms, and no more than 8 MiB.
+- Initial encoding candidate is AAC-LC, 96 kbps, 48 kHz, at most stereo; it is
+  not frozen until quality acceptance passes.
+- No denoising, interpolation, loudness normalization, or other DSP may hide an
+  unexplained capture defect.
+
+### Transcript
+
+- Input comes from the final excerpt, never the original source or a full-source
+  transcript.
+- Text is nonblank and within the existing database bound.
+- Segments are optional, nonempty when present, ordered, nonoverlapping within a
+  documented rounding tolerance, relative to excerpt zero, and bounded by the
+  final media duration.
+- A missing or invalid transcript is a processing failure; it cannot produce an
+  initially published annotation.
+
+## 8. Stable failure model
+
+Persist only lowercase sanitized identifiers. Exact codes may be refined by
+tests, but the initial taxonomy is:
+
+| Stage | Representative codes | Default disposition |
+| --- | --- | --- |
+| `probing` | `raw_missing`, `raw_too_large`, `invalid_container`, `unsupported_codec`, `missing_audio`, `missing_video`, `duration_out_of_bounds` | Terminal unless absence is a proven crash-recovery case. |
+| `transcoding` | `unsafe_geometry`, `transcode_timeout`, `transcode_failed`, `output_invalid`, `output_too_large` | Geometry/output validation terminal; transient execution failures retryable. |
+| `transcribing` | `provider_timeout`, `provider_rate_limited`, `transcription_failed`, `transcript_invalid` | Provider/transient failures retryable; invalid deterministic output terminal after bounded attempts. |
+| `raw_cleanup` | `raw_delete_failed`, `raw_delete_unconfirmed` | Retryable; never publish. |
+| `finalizing` | `lease_lost`, `state_conflict`, `publication_failed` | Reconcile authoritative state before retry. |
+
+Retryability belongs to trusted worker/reconciler logic, not client input. Use
+bounded exponential backoff with jitter, no more than three claimed attempts
+over the 72-hour processing ceiling, followed by terminal failure and the
+documented cleanup window. Raw provider/FFmpeg errors stay in restricted logs.
+
+## 9. Delivery increments
+
+Implementation should proceed one important behavior at a time after explicit
+authorization:
+
+### C1. Contract and fixture gate
+
+- Complete the contract audit in section 4.
+- Create small synthetic or explicitly licensed fixtures: landscape video,
+  portrait video, letterboxed video, audio-only, malformed input, missing
+  stream, unsafe geometry, and duration boundaries.
+- Record approved decisions or open blockers. No cloud dependency is needed.
+
+Exit: fixture provenance is documented and the existing database contract is
+either accepted or an additive correction is specified with tests.
+
+### C2. Local media core
+
+- Implement pure probe, geometry, trim/crop/scale, output-probe, checksum, and
+  size-validation modules.
+- Run them locally against fixtures with deterministic commands and outputs.
+
+Exit: one video and one audio fixture produce bounded derivatives; unsafe input
+fails closed; no network, database, or vendor is involved.
+
+### C3. Transcription boundary
+
+- Implement transcript normalization and segment validation with the fake
+  adapter.
+- After provider approval, add one real adapter and contract tests with network
+  calls disabled by default.
+
+Exit: only the exact derivative audio can enter the adapter, and invalid
+transcripts cannot advance state.
+
+### C4. Local Supabase and Storage orchestration
+
+- Exercise claim, staged derivative, staged transcript, raw deletion,
+  finalization, retry, duplicate dispatch, and every crash boundary against a
+  local database and local Storage.
+- Add pgTAP only if an additive database refinement is required.
+
+Exit: the article regression remains green and a hosted row cannot become
+public early under any tested path.
+
+### C5. Container, dispatcher, and reconciler
+
+- Package the already-tested pipeline in the pinned container.
+- Implement authenticated one-ID dispatch, bounded concurrency, expired-lease
+  reconciliation, retry scheduling, retention cleanup, and sanitized logs.
+- Validate locally with fake external services before any provisioning.
+
+Exit: container execution is deterministic and local crash/retry tests pass.
+
+### C6. Staging and owner acceptance
+
+This increment requires separate approval for selected services, costs,
+credentials, staging database access, and deployment. Verify the staging ref
+before every remote database action.
+
+Run owner acceptance sequentially, stopping on the first unexpected result:
+
+1. A short known video excerpt: verify crop, requested content, duration, A/V
+   sync, transcript scope, raw deletion, and ready/publication transition.
+2. A short audio-only excerpt: verify duration, transcript scope, audible
+   quality, raw deletion, and publication transition.
+3. One forced transient failure: verify bounded retry without duplicate output
+   or premature publication.
+4. One crash at each persistence boundary, performed as separate tests: verify
+   deterministic recovery and no stranded public/raw state.
+5. The accepted 90-second, codec, geometry, and audio-crackle matrices, one
+   behavior at a time.
+
+Each manual instruction must name what to open, what to click or run, the
+expected result, evidence to record, and when to stop. Only the owner can report
+browser acceptance as passed.
+
+## 10. Automated validation
+
+Phase C adds focused worker checks to the repository validation in `AGENTS.md`:
+
+- unit tests for bounded config, stable errors, hashing, probe parsing, crop
+  math, fixed FFmpeg arguments, transcript normalization, and segment bounds;
+- fixture integration tests for landscape, portrait, letterbox, audio-only,
+  missing streams, malformed media, overshoot, 89,999/90,000/90,001 ms, and
+  unsafe geometry;
+- orchestration tests for duplicate claims, expired leases, retry limits,
+  deterministic paths, staged reuse, and every crash boundary;
+- Storage tests for exact paths, no-upsert behavior where applicable, byte caps,
+  checksums, raw deletion confirmation, and orphan reconciliation;
+- database tests for grants, direct-mutation denial, publication guards,
+  transcript bounds, and any additive RPC change;
+- security checks proving no secret or signed URL enters the extension bundle,
+  public responses, fixtures, snapshots, or logs;
+- container tests that verify the pinned FFmpeg/ffprobe versions and run as a
+  non-root bounded process when supported by the selected host;
+- the complete existing shared, extension, web, database, manifest, and article
+  regression suite.
+
+Unexpected validation failures stop the phase. Every reproduced defect receives
+a regression test before its fix is considered complete.
+
+## 11. Phase C exit criteria
+
+Phase C is complete only when all of the following are true:
+
+- the approved host, provider, codec profile, privacy terms, cost ceiling, and
+  operational ownership are recorded;
+- one media UUID is processed per bounded, idempotent worker execution;
+- video and audio derivatives satisfy probe, duration, stream, codec, checksum,
+  path, and byte constraints;
+- unsafe geometry fails closed without producing a public annotation;
+- transcription covers only the exact processed excerpt and passes segment
+  validation;
+- raw deletion is confirmed before media ready and annotation publication;
+- duplicate, retry, lease-expiry, crash, and cleanup behavior pass automated and
+  staging tests;
+- article publication remains immediate and passes its regression suite;
+- private paths, leases, secrets, provider payloads, and transcript text are not
+  exposed through logs or public/client APIs;
+- the audio-crackle acceptance gate passes without unexplained degradation;
+- all repository validation passes;
+- owner-performed staging acceptance passes and is recorded;
+- commit, push, Draft PR, CI/review, and merge occur only after their separate
+  authorizations.
+
+Public playback and canonical route work remain Phase D even after the worker
+can atomically publish ready records.
+
+## 12. Rollback and operational stop
+
+The first response to a Phase C incident is to stop new dispatch and disable new
+hosted-media intake through the approved feature control. Do not loosen
+publication guards or expose queued drafts.
+
+Queued rows remain private and retryable. Active jobs may finish only when their
+lease and outputs remain authoritative; otherwise they exit and reconciliation
+handles them. Retention cleanup removes abandoned raw objects according to the
+accepted windows. Rollback uses forward fixes and service disablement, never an
+edit to applied migrations, `supabase db reset --linked`, or restoration of
+partially processed public state.
+
+## 13. Authorization checkpoints
+
+The owner must separately authorize:
+
+1. Phase C implementation and creation of a feature branch;
+2. any package installation or lockfile change;
+3. any additive database migration;
+4. the worker host, cloud account, region, budget, and infrastructure creation;
+5. the transcription provider, terms, credentials, and paid usage;
+6. access to Local versus Staging and every remote database operation;
+7. deployment and staging invocation;
+8. commit, push, Draft PR, and merge.
+
+Authorization for one checkpoint does not imply authorization for another.
