@@ -18,17 +18,21 @@ are cleared and the new annotation opens inside the side panel. The public
 longer opens that page automatically.
 
 Authentication continues to use Google OAuth through `chrome.identity`, with the
-Supabase session persisted in `chrome.storage.local`. The extension permissions
-remain `sidePanel`, `activeTab`, `storage`, `scripting`, and `identity`.
+Supabase session persisted in `chrome.storage.local`. The production extension
+permissions are `sidePanel`, `activeTab`, `storage`, `scripting`, `identity`,
+`tabCapture`, and `offscreen`. It has no `host_permissions` or persistent
+content scripts.
 
 ## YouTube time-coded annotations
 
 Supported YouTube watch and `youtu.be` URLs normalize to one canonical watch URL
-per video. Clip drafts store only that video identity, millisecond start/end
-values, and required text commentary in `chrome.storage.session`. Metadata and
-player position are read from the explicitly connected tab with narrowly scoped
-`chrome.scripting.executeScript` calls; there is no persistent content script or
-media download.
+per video. Clip drafts store that video identity, millisecond start/end values,
+and required text commentary. Metadata and player position are read from the
+explicitly connected tab with narrowly scoped `chrome.scripting.executeScript`
+calls. Publishing creates a private hosted-media draft, records the selected
+range in an offscreen document through `tabCapture`, and uploads the in-memory
+Blob to an exact server-authorized private Storage path. The panel shows
+Processing only after the owner status boundary confirms `processing/queued`.
 
 Recorded audio is intentionally article-only for this milestone. A future
 milestone can attach optional audio to a YouTube annotation through the existing
@@ -49,8 +53,10 @@ produce an ambiguous state instead of being controlled.
 The extension reads metadata/player state only through one-shot
 `chrome.scripting.executeScript` calls against frame 0 of the explicitly
 connected tab. It adds no content script, host permission, monitoring loop, or
-media download. Audio clip drafts use `annotated.audioClipDraft.v1` in
-`chrome.storage.session` and restore only for the same normalized episode/page.
+source download. Hosted audio capture uses the same offscreen tab-capture and
+private direct-upload boundary as hosted YouTube capture. Audio clip drafts use
+`annotated.audioClipDraft.v1` in `chrome.storage.session` and restore only for
+the same normalized episode/page.
 
 Useful public manual-test targets (verified to serve a top-level `<audio>`
 element as of August 9, 2026) are:

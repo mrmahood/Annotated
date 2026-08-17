@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { publishAudioClipAnnotation } from './audio-publishing.ts';
+import { beginHostedAudioClipAnnotation, parseHostedAudioBeginResponse } from './audio-publishing.ts';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const ANNOTATION_ID = '33333333-3333-4333-8333-333333333333';
+const MEDIA_ID = '44444444-4444-4444-8444-444444444444';
+const beginRow = {
+  annotation_id: ANNOTATION_ID, media_id: MEDIA_ID, creator_handle: 'creator',
+  annotation_slug: 'audio-33333333', processing_status: 'capture_pending',
+};
 const input = {
   sourceUrl: 'https://example.test/episode/42?t=20&utm_source=x',
   canonicalUrl: 'https://example.test/episode/42',
@@ -22,16 +27,19 @@ function fakeClient() {
       },
       async rpc(name, args) {
         calls.push([name, args]);
-        return { data: ANNOTATION_ID, error: null };
+        return { data: [beginRow], error: null };
       },
     },
   };
 }
 
-test('publishes normalized episode identity with no ownership argument', async () => {
+test('begins hosted normalized episode identity with no ownership argument', async () => {
   const fake = fakeClient();
-  assert.equal(await publishAudioClipAnnotation(fake.client, input), ANNOTATION_ID);
-  assert.equal(fake.calls[0][0], 'publish_audio_clip_annotation');
+  assert.deepEqual(await beginHostedAudioClipAnnotation(fake.client, input), {
+    annotationId: ANNOTATION_ID, mediaId: MEDIA_ID, creatorHandle: 'creator',
+    annotationSlug: 'audio-33333333', processingStatus: 'capture_pending',
+  });
+  assert.equal(fake.calls[0][0], 'begin_hosted_audio_annotation');
   assert.equal(fake.calls[0][1].p_normalized_url, 'https://example.test/episode/42');
   assert.equal('p_user_id' in fake.calls[0][1], false);
 });
@@ -39,8 +47,12 @@ test('publishes normalized episode identity with no ownership argument', async (
 test('rejects ranges outside the known player duration before RPC', async () => {
   const fake = fakeClient();
   await assert.rejects(
-    publishAudioClipAnnotation(fake.client, { ...input, mediaDurationMs: 49_000 }),
+    beginHostedAudioClipAnnotation(fake.client, { ...input, mediaDurationMs: 49_000 }),
     /media duration/,
   );
   assert.equal(fake.calls.length, 0);
+});
+
+test('rejects malformed hosted audio begin responses', () => {
+  assert.throws(() => parseHostedAudioBeginResponse([]), /invalid draft/);
 });

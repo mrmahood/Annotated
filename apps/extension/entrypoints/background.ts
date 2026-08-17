@@ -4,6 +4,7 @@ import {
   isActiveTabContext,
   type ActiveTabContext,
 } from '../utils/active-tab-context';
+import { installMediaCapture } from '../utils/media-capture-background';
 
 export default defineBackground(() => {
   const chrome = (globalThis as typeof globalThis & {
@@ -11,6 +12,8 @@ export default defineBackground(() => {
   }).chrome;
 
   let actionContextRevision = 0;
+
+  installMediaCapture(chrome);
 
   void chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: false })
