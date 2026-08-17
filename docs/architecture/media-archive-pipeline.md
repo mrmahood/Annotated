@@ -1,7 +1,11 @@
 # Hosted media archive pipeline
 
-Status: proposed architecture, 2026-08-15. This document is design only. It does
-not authorize implementation or deployment.
+Status: accepted architecture, 2026-08-16. Phases A and B are implemented;
+Phase C planning is active. This document and its linked plans do not authorize
+implementation, vendor setup, infrastructure, database changes, or deployment.
+
+The bounded Phase C execution plan is
+`docs/architecture/phase-c-media-worker-plan.md`.
 
 ## Decision summary
 
@@ -708,6 +712,11 @@ names below are scopes, not files created by this design.
   objects remain private for scheduled cleanup; article publishing is unaffected.
 
 ### C. Worker, transcode, transcription, and audio acceptance
+
+Status: planning only. The detailed work breakdown, contract audit, decision
+gates, validation sequence, and exit criteria are defined in
+`docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution of
+this accepted architecture; it does not expand the phase or authorize work.
 
 - Likely files: new `apps/media-worker/` workspace, Dockerfile/FFmpeg pin,
   transcriber adapter, processing fixtures/tests, root workspace/package lock,
