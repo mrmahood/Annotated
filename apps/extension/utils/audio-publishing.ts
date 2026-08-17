@@ -2,6 +2,7 @@ import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUuid } from './social-helpers.ts';
+import type { HostedMediaOperation } from './media-capture.ts';
 
 export type AudioClipAnnotationInput = {
   sourceUrl: string;
@@ -16,10 +17,29 @@ export type AudioClipAnnotationInput = {
   mediaDurationMs: number;
 };
 
-export async function publishAudioClipAnnotation(
+export function parseHostedAudioBeginResponse(data: unknown): HostedMediaOperation {
+  const row = Array.isArray(data) && data.length === 1 ? data[0] : data;
+  if (
+    typeof row !== 'object' || row === null ||
+    !isUuid((row as { annotation_id?: unknown }).annotation_id) ||
+    !isUuid((row as { media_id?: unknown }).media_id) ||
+    typeof (row as { creator_handle?: unknown }).creator_handle !== 'string' ||
+    typeof (row as { annotation_slug?: unknown }).annotation_slug !== 'string' ||
+    (row as { processing_status?: unknown }).processing_status !== 'capture_pending'
+  ) throw new Error('Beginning hosted media returned an invalid draft.');
+  return {
+    annotationId: (row as { annotation_id: string }).annotation_id,
+    mediaId: (row as { media_id: string }).media_id,
+    creatorHandle: (row as { creator_handle: string }).creator_handle,
+    annotationSlug: (row as { annotation_slug: string }).annotation_slug,
+    processingStatus: 'capture_pending',
+  };
+}
+
+export async function beginHostedAudioClipAnnotation(
   supabase: SupabaseClient,
   input: AudioClipAnnotationInput,
-): Promise<string> {
+): Promise<HostedMediaOperation> {
   const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] =
     await Promise.all([supabase.auth.getSession(), supabase.auth.getUser()]);
   const sessionUser = sessionData.session?.user;
@@ -39,7 +59,7 @@ export async function publishAudioClipAnnotation(
     throw new Error('Commentary must contain between 1 and 2,000 characters.');
   }
 
-  const { data, error } = await supabase.rpc('publish_audio_clip_annotation', {
+  const { data, error } = await supabase.rpc('begin_hosted_audio_annotation', {
     p_normalized_url: identity.normalizedUrl,
     p_canonical_url: identity.canonicalUrl,
     p_episode_title: input.title,
@@ -51,6 +71,5 @@ export async function publishAudioClipAnnotation(
     p_commentary_text: input.commentaryText,
   });
   if (error) throw new Error(error.message);
-  if (!isUuid(data)) throw new Error('Publishing returned an invalid annotation identifier.');
-  return data;
+  return parseHostedAudioBeginResponse(data);
 }
