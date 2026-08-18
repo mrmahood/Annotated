@@ -1,6 +1,8 @@
 # Product roadmap
 
-Status: Phase C planning, 2026-08-16.
+Status: Phase C execution, 2026-08-18. Increments C1-C5 are complete locally.
+The C5 pinned image build, inspection, probes, and hardened one-media Local
+container acceptance pass. C6 is the next separately authorized increment.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -45,7 +47,7 @@ state, same-session retry, cancellation and raw cleanup, restart recovery,
 source navigation and tab closure, audible source-audio loopback, and the
 article-publication regression gate.
 
-## Phase C — current (planning only)
+## Phase C — current
 
 Bounded media worker, likely a Cloud Run Job or equivalent:
 
@@ -58,9 +60,40 @@ Bounded media worker, likely a Cloud Run Job or equivalent:
 - release-blocking audio-quality and crackle investigation for the worker output.
 
 The detailed execution plan is
-`docs/architecture/phase-c-media-worker-plan.md`. Planning is active; worker
-implementation, vendor selection or setup, infrastructure creation, database
-changes, and deployment each remain subject to explicit owner authorization.
+`docs/architecture/phase-c-media-worker-plan.md`. C1 closed the worker-contract
+and fixture audit; C2 delivered the deterministic local probe, geometry,
+trim/crop/scale, output-validation, size, and checksum core. The focused C2
+gate passes 22/22 tests and records bounded H.264/AAC video and AAC-LC audio
+derivatives, including an exact 90,000 ms audio boundary.
+
+C3 provides the exact-derivative audio capability, normalized transcript and
+segment validation, and a deterministic fake with network denied. The first C4
+slice now provides production capture-metadata v2 and the additive local worker
+claim/retry/reconciliation contract. Capture-metadata v1 is readable but always
+requires recapture before worker processing. The migration is applied to Local
+only; schema lint and all 229 Local pgTAP tests pass. The actual private Local
+Storage lifecycle and six-boundary crash matrix also pass all 10 tests without
+early publication or leftover fixture objects. C4 owner Chrome acceptance also
+passed for one YouTube video and one synthetic audio range: source audio
+remained audible, both captures reached authoritative `processing/queued`, and
+sanitized Local inspection accepted both v2 payloads. Disposable rows, objects,
+user, processes, and temporary state were then removed, and the original
+environment files were restored. C4 is closed and C5 is active. A
+real transcription provider, package installation, infrastructure, remote
+access, deployment, and Git delivery remain separately authorized.
+
+C5 provides the dependency-free one-ID worker entrypoint, authenticated
+bounded dispatcher, database-owned retry scheduling, expired-lease reconciler,
+retention cleanup, allow-listed logs, and a pinned non-root container definition.
+The focused C5 source gate passes 11/11 and its actual loopback-only Local
+Supabase lifecycle passes 5/5. The owner-approved local image digest is
+`sha256:b1fab7ac1ac48dc1609ad22915740a509806f6b7bed26f300b5df314ba7ea977`.
+Its non-root tool probes and one authenticated worker run passed with a
+read-only root, bounded `/tmp`, CPU, memory, and PIDs, no capabilities, and
+no-new-privileges. The job reached `ready/published`; raw deletion, private
+derivative access, transcript presence, sanitized logs, and exact cleanup all
+passed. The image remains local and was neither pushed nor deployed. C5 is
+closed.
 
 ## Phase D — future
 
@@ -82,6 +115,5 @@ Hardening and bounty submission:
   polished bounty submission material.
 
 Phase B's automated and owner-performed browser acceptance gates have passed.
-Do not begin Phase C implementation until the detailed plan and its unresolved
-host, transcription, cost, privacy, and rollout decisions are explicitly
-approved.
+C1-C4 are local-only and do not resolve the host, transcription-provider, cost,
+remote privacy terms, or rollout gates.

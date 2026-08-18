@@ -56,6 +56,9 @@ export async function POST(request: Request) {
 
     let path = media.raw_storage_path;
     if (media.processing_status === 'uploading') {
+      if (media.capture_metadata?.version === 1) {
+        throw new HostedMediaApiError('RECAPTURE_REQUIRED', 409);
+      }
       if (!path || !exactPathMatches(path, user.id, input.annotationId, input.mediaId) ||
           media.raw_mime_type !== input.mimeType || Number(media.raw_byte_size) !== input.byteSize ||
           stableJson(media.capture_metadata) !== stableJson(input.captureMetadata)) {
@@ -84,6 +87,7 @@ export async function POST(request: Request) {
           raw_deleted_at: null,
           failure_stage: null,
           failure_code: null,
+          attempt_count: 0,
           next_attempt_at: null,
           lease_token: null,
           lease_expires_at: null,

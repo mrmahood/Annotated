@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "platform": "linux/amd64",
+  "node": {
+    "version": "24.14.1",
+    "image": "docker.io/library/node@sha256:e484ae3f1e3c378021c967fd42254f343c302a9263e412280eac32bf5bca7008",
+    "tag_metadata": "24.14.1-bookworm-slim",
+    "manifest_list_digest": "sha256:b506e7321f176aae77317f99d67a24b272c1f09f1d10f1761f2773447d8da26c"
+  },
+  "postgres_client": {
+    "version": "17.6",
+    "image": "docker.io/library/postgres@sha256:45cd22f8d32e189d245403954882f88e7a8714301fda80dab6da90f1265b25a3",
+    "tag_metadata": "17.6-bookworm",
+    "manifest_list_digest": "sha256:f3bd19c606e442c3d7bdfa8002e03fe260a1023351e0ea4598032022b68dd6e3"
+  },
+  "ffmpeg": {
+    "version": "n8.1.2-44-g7c533d0f86-20260816",
+    "distribution": "linux64 LGPL 8.1",
+    "release": "autobuild-2026-08-16-13-00",
+    "asset": "ffmpeg-n8.1.2-44-g7c533d0f86-linux64-lgpl-8.1.tar.xz",
+    "asset_sha256": "3a379bb6ce47ca7c175999ed44a8f386cc89a9b9e450774b69d98a2c45c5189b",
+    "checksums_asset_sha256": "95fe376838bf67e4c47827f044215798f3f26eb1abae5085ba0778391687a489"
+  },
+  "runtime": {
+    "uid": 10001,
+    "gid": 10001,
+    "one_media_per_worker_process": true,
+    "worker_timeout_seconds": 600,
+    "lease_seconds": 900,
+    "transcriber": "deterministic-fake"
+  }
+}

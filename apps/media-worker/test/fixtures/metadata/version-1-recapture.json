@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "viewport": {
+    "width": 1280,
+    "height": 720,
+    "device_pixel_ratio": 1
+  },
+  "capture_track": {
+    "mime_type": "video/webm;codecs=vp9,opus",
+    "audio_track_count": 1,
+    "video_track_count": 1,
+    "tracks": [],
+    "loopback_enabled": true
+  },
+  "timing": {
+    "requested_start_ms": 5000,
+    "requested_end_ms": 20000,
+    "requested_duration_ms": 15000,
+    "recorder_started_at_ms": 1,
+    "playback_acknowledged_at_ms": 2,
+    "lead_in_ms": 1,
+    "recorder_elapsed_ms": 15010,
+    "player_start_ms": 5000,
+    "player_end_ms": 20000
+  }
+}

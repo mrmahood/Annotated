@@ -1,0 +1,10 @@
+{
+  "base": "safe-landscape.json",
+  "override": {
+    "viewport": {
+      "start": { "width": 1280, "height": 800, "device_pixel_ratio": 1, "scroll_x": 0, "scroll_y": 0 },
+      "end": { "width": 1280, "height": 800, "device_pixel_ratio": 1, "scroll_x": 0, "scroll_y": 0 }
+    }
+  },
+  "expected_failure": "unsafe_geometry"
+}

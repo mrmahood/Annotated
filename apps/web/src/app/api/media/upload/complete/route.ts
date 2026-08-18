@@ -27,12 +27,18 @@ export async function POST(request: Request) {
     const service = createServiceClient();
     const { data: mediaData, error: mediaError } = await service
       .from('annotation_media')
-      .select('id, annotation_id, media_type, processing_status, processing_stage, raw_storage_path, raw_mime_type, raw_byte_size')
+      .select('id, annotation_id, media_type, processing_status, processing_stage, raw_storage_path, raw_mime_type, raw_byte_size, capture_metadata')
       .eq('id', input.mediaId)
       .maybeSingle();
     assertServiceOperation(mediaError, 'The hosted media draft could not be loaded.');
     if (!mediaData) throw new Error('The hosted media draft was not found.');
-    const media = mediaData as MediaRow & { processing_stage: string | null };
+    const media = mediaData as MediaRow & {
+      processing_stage: string | null;
+      capture_metadata: Record<string, unknown>;
+    };
+    if (media.capture_metadata?.version === 1) {
+      throw new HostedMediaApiError('RECAPTURE_REQUIRED', 409);
+    }
     const { data: annotationData, error: annotationError } = await service
       .from('annotations')
       .select('id, user_id, status')

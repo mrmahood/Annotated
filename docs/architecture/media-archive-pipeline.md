@@ -1,8 +1,13 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, 2026-08-16. Phases A and B are implemented;
-Phase C planning is active. This document and its linked plans do not authorize
-implementation, vendor setup, infrastructure, database changes, or deployment.
+Status: accepted architecture, updated 2026-08-18. Phases A-B and local Phase C
+increments C1-C5 are implemented. The C5 pinned image build, inspection,
+non-root probes, and hardened one-media Local container acceptance pass. C4
+capture-metadata v2 and the additive
+worker contract are applied to Local only; Local database, private Storage,
+lifecycle, retry, cleanup, crash-boundary, and empirical owner Chrome gates
+pass. Vendor setup, infrastructure, remote database work, and deployment remain
+separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -713,10 +718,14 @@ names below are scopes, not files created by this design.
 
 ### C. Worker, transcode, transcription, and audio acceptance
 
-Status: planning only. The detailed work breakdown, contract audit, decision
-gates, validation sequence, and exit criteria are defined in
-`docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution of
-this accepted architecture; it does not expand the phase or authorize work.
+Status: in progress. C1 contract/fixture work, the C2 local media core, the C3
+provider-neutral transcription boundary, C4 Local orchestration plus owner
+Chrome v2 acceptance, and C5 container/dispatcher/reconciler Local acceptance
+are complete. The
+remaining work breakdown, decision gates, validation sequence, and
+exit criteria are defined in `docs/architecture/phase-c-media-worker-plan.md`.
+That plan narrows execution of this accepted architecture; it does not expand
+the phase or authorize later checkpoints.
 
 - Likely files: new `apps/media-worker/` workspace, Dockerfile/FFmpeg pin,
   transcriber adapter, processing fixtures/tests, root workspace/package lock,

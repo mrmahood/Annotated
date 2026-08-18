@@ -1,9 +1,11 @@
 # Phase C media worker plan
 
-Status: planning only, 2026-08-16. Phase B is complete. This plan does not
-authorize worker implementation, package installation, vendor setup,
-infrastructure creation, database changes, remote access, deployment, commit,
-push, or pull-request creation.
+Status: execution active, 2026-08-18. Phase B and Phase C increments C1-C5 are
+complete locally. The pinned C5 image build, inspection, executable probes, and
+hardened one-media Local container acceptance pass. Completed work was
+separately authorized; this plan does not by itself authorize later
+package installation, vendor setup, infrastructure, database changes, remote
+access, deployment, commit, push, or pull-request creation.
 
 This plan narrows Phase C of `docs/architecture/media-archive-pipeline.md` into
 reviewable engineering and acceptance gates. The accepted architecture remains
@@ -308,6 +310,13 @@ authorization:
 Exit: fixture provenance is documented and the existing database contract is
 either accepted or an additive correction is specified with tests.
 
+C1 findings and fixture evidence are recorded in
+`docs/architecture/phase-c-c1-contract-audit.md`. The audit specifies an
+additive contract correction; no migration or worker implementation is
+authorized by that finding. C1 closed on 2026-08-16 with a checksum-verified
+synthetic corpus and the owner decision that every capture-metadata version 1
+row requires recapture.
+
 ### C2. Local media core
 
 - Implement pure probe, geometry, trim/crop/scale, output-probe, checksum, and
@@ -316,6 +325,13 @@ either accepted or an additive correction is specified with tests.
 
 Exit: one video and one audio fixture produce bounded derivatives; unsafe input
 fails closed; no network, database, or vendor is involved.
+
+C2 closed on 2026-08-16. The dependency-free local core, focused tests, five
+recorded derivatives, probe facts, and deterministic SHA-256 evidence are
+documented in `docs/architecture/phase-c-c2-local-media-core.md`. The 22-test
+C2 gate passes, including the 89,999/90,000/90,001 ms boundary and mandatory
+version 1 recapture behavior. No package, database, vendor, network, or cloud
+dependency was added.
 
 ### C3. Transcription boundary
 
@@ -327,6 +343,13 @@ fails closed; no network, database, or vendor is involved.
 Exit: only the exact derivative audio can enter the adapter, and invalid
 transcripts cannot advance state.
 
+C3 closed on 2026-08-16. The exact-derivative audio capability, normalization
+and segment contract, deterministic fake, network-denied tests, and text-free
+evidence are documented in
+`docs/architecture/phase-c-c3-transcription-boundary.md`. The focused C3 gate
+passes 20/20 tests. No provider, credential, network request, package, database,
+production capture, or cloud dependency was added.
+
 ### C4. Local Supabase and Storage orchestration
 
 - Exercise claim, staged derivative, staged transcript, raw deletion,
@@ -337,6 +360,33 @@ transcripts cannot advance state.
 Exit: the article regression remains green and a hosted row cannot become
 public early under any tested path.
 
+C4 closed on 2026-08-18. The production extension and web upload
+boundary now emit and strictly validate capture-metadata v2, measure lead-in on
+the offscreen monotonic clock, require complete video end geometry, reset the
+attempt counter on recapture, and return bounded `RECAPTURE_REQUIRED` for v1.
+The additive migration and pgTAP contract cover the authoritative claim
+envelope, fact-derived resume stage, lease-fenced server backoff, terminal
+attempts, narrow dispatch/reconciliation candidates, and mandatory v1
+recapture. The SQL definitions and representative transitions compile and pass
+against an isolated temporary PostgreSQL 18 cluster. The migration is also
+applied to Local Supabase, Local schema lint reports no errors, and the full
+Local pgTAP gate passes all 229 tests across eight files.
+
+The actual private Local Storage lifecycle and crash-boundary matrix now pass
+10/10 tests. They cover private access denial, exact checksums and paths,
+no-upsert preservation, duplicate claim denial, deterministic staged reuse,
+all six crash boundaries and their authoritative resume stages, bounded
+backoff, the three-attempt ceiling,
+terminal cleanup, atomic publication, and cleanup of every Local fixture. The
+article regression remains green and no tested crash publishes early or
+strands raw data. Owner Chrome acceptance also passed for one YouTube video and
+one synthetic audio range, with audible source audio, authoritative queued
+terminal state, and accepted sanitized v2 metadata for both media types. The
+disposable Local user, rows, private objects, processes, temporary state, and
+environment overrides were removed after evidence capture. C4's automated and
+owner exit gates are closed. No migration was applied remotely. See
+`docs/architecture/phase-c-c4-local-orchestration.md`.
+
 ### C5. Container, dispatcher, and reconciler
 
 - Package the already-tested pipeline in the pinned container.
@@ -345,6 +395,24 @@ public early under any tested path.
 - Validate locally with fake external services before any provisioning.
 
 Exit: container execution is deterministic and local crash/retry tests pass.
+
+C5 completed locally on 2026-08-18. The
+dependency-free runtime uses the existing C4 functions with no migration,
+authenticates and starts one worker process per media UUID, keeps retry timing in
+PostgreSQL, reconciles expired leases, performs claim-fenced retention cleanup,
+and emits exact allow-listed logs. The focused source/static gate passes 11/11;
+the actual loopback-only Local Supabase lifecycle passes 5/5 with non-loopback
+network denied. The non-root Linux/amd64 container definition pins Node 24.14.1,
+PostgreSQL client 17.6, and the checksum-verified LGPL FFmpeg 8.1 build. The
+owner-approved build produced local digest
+`sha256:b1fab7ac1ac48dc1609ad22915740a509806f6b7bed26f300b5df314ba7ea977`.
+Inspection and non-root executable probes pass. One authenticated container job
+then reached `ready/published` under a read-only root and bounded `/tmp`, CPU,
+memory, PID, capability, and privilege constraints; raw deletion, private
+derivative access, transcript presence, log redaction, and exact cleanup all
+passed. Evidence is recorded in
+`docs/architecture/phase-c-c5-local-runtime.md`. The image was not pushed or
+deployed.
 
 ### C6. Staging and owner acceptance
 

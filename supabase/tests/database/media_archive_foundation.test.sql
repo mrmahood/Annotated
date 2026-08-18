@@ -563,7 +563,7 @@ select private.mark_annotation_media_uploading(
   'a1000000-0000-4000-8000-000000000001/' || media.annotation_id::text || '/' || media.id::text || '/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webm',
   'video/webm',
   4000000,
-  '{"version":1,"viewport":{"width":1280,"height":720}}'::jsonb
+  '{"version":2,"viewport":{"start":{"width":1280,"height":720,"device_pixel_ratio":1,"scroll_x":0,"scroll_y":0},"end":{"width":1280,"height":720,"device_pixel_ratio":1,"scroll_x":0,"scroll_y":0}},"video_element":{"start":{"x":0,"y":0,"width":1280,"height":720,"top":0,"right":1280,"bottom":720,"left":0},"end":{"x":0,"y":0,"width":1280,"height":720,"top":0,"right":1280,"bottom":720,"left":0}},"intrinsic_video":{"width":1920,"height":1080},"computed_style":{"object_fit":"contain","object_position":"50% 50%"},"fullscreen":{"start":false,"end":false},"capture_track":{"mime_type":"video/webm;codecs=vp9,opus","audio_track_count":1,"video_track_count":1,"tracks":[{"kind":"audio","label":"","enabled":true,"muted":false,"readyState":"live","settings":{}},{"kind":"video","label":"","enabled":true,"muted":false,"readyState":"live","settings":{"width":1280,"height":720}}],"loopback_enabled":true},"timing":{"requested_start_ms":120000,"requested_end_ms":150000,"requested_duration_ms":30000,"lead_in_ms":40,"recorder_elapsed_ms":30040,"player_start_ms":120000,"player_end_ms":150000,"lead_in_clock":"offscreen_monotonic"}}'::jsonb
 )
 from public.annotation_media as media
 join public.annotations on annotations.id = media.annotation_id
@@ -654,7 +654,7 @@ select lives_ok(
 );
 select is(
   (
-    select claimed.processing_stage
+    select claimed.resume_stage
     from private.claim_annotation_media_processing(
       (select media.id from public.annotation_media as media join public.annotations on annotations.id = media.annotation_id where annotations.commentary_text = 'Hosted video for retry'),
       600
@@ -671,7 +671,7 @@ select private.mark_annotation_media_uploading(
   'a1000000-0000-4000-8000-000000000001/' || media.annotation_id::text || '/' || media.id::text || '/cccccccc-cccc-4ccc-8ccc-cccccccccccc.webm',
   'audio/webm',
   1000000,
-  '{"version":1,"timing":{"requested_duration_ms":30000}}'::jsonb
+  '{"version":2,"capture_track":{"mime_type":"audio/webm;codecs=opus","audio_track_count":1,"video_track_count":0,"tracks":[{"kind":"audio","label":"","enabled":true,"muted":false,"readyState":"live","settings":{"sampleRate":48000}}],"loopback_enabled":true},"timing":{"requested_start_ms":20000,"requested_end_ms":50000,"requested_duration_ms":30000,"lead_in_ms":35,"recorder_elapsed_ms":30035,"player_start_ms":20000,"player_end_ms":50000,"lead_in_clock":"offscreen_monotonic"}}'::jsonb
 )
 from public.annotation_media as media
 join public.annotations on annotations.id = media.annotation_id

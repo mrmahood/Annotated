@@ -44,8 +44,11 @@ export type CaptureTrack = {
   settings: Record<string, string | number | boolean>;
 };
 export type CaptureMetadata = {
-  version: 1;
-  viewport?: Record<string, number>;
+  version: 2;
+  viewport?: {
+    start: CaptureViewport;
+    end: CaptureViewport;
+  };
   video_element?: { start: CaptureRect | null; end: CaptureRect | null };
   intrinsic_video?: { width: number | null; height: number | null };
   computed_style?: { object_fit: string | null; object_position: string | null };
@@ -56,10 +59,77 @@ export type CaptureMetadata = {
   };
   timing: {
     requested_start_ms: number; requested_end_ms: number; requested_duration_ms: number;
-    recorder_started_at_ms: number; playback_acknowledged_at_ms: number; lead_in_ms: number;
+    lead_in_ms: number;
     recorder_elapsed_ms: number; player_start_ms: number | null; player_end_ms: number | null;
+    lead_in_clock: 'offscreen_monotonic';
   };
 };
+export type CaptureViewport = {
+  width: number; height: number; device_pixel_ratio: number; scroll_x: number; scroll_y: number;
+};
+export type CaptureMetadataV2Input = {
+  prepared: CapturePreparedPage;
+  endGeometry: CaptureGeometry | null;
+  selectedMimeType: string;
+  tracks: CaptureTrack[];
+  audioTrackCount: number;
+  videoTrackCount: number;
+  loopbackEnabled: boolean;
+  leadInMs: number;
+  recorderElapsedMs: number;
+  playerStartMs: number | null;
+  playerEndMs: number | null;
+};
+
+function viewportSample(geometry: CaptureGeometry): CaptureViewport {
+  return {
+    width: geometry.viewportWidth,
+    height: geometry.viewportHeight,
+    device_pixel_ratio: geometry.devicePixelRatio,
+    scroll_x: geometry.scrollX,
+    scroll_y: geometry.scrollY,
+  };
+}
+
+export function buildCaptureMetadataV2(input: CaptureMetadataV2Input): CaptureMetadata {
+  const start = input.prepared.geometry;
+  const video = input.prepared.sourceKind === 'youtube';
+  if (video && (
+    !input.endGeometry || !start.boundingClientRect || !input.endGeometry.boundingClientRect ||
+    start.videoWidth === null || start.videoHeight === null ||
+    start.objectFit === null || start.objectPosition === null
+  )) {
+    throw new Error('recapture-required');
+  }
+  const end = input.endGeometry;
+  return {
+    version: 2,
+    ...(video ? {
+      viewport: { start: viewportSample(start), end: viewportSample(end!) },
+      video_element: { start: start.boundingClientRect, end: end!.boundingClientRect },
+      intrinsic_video: { width: start.videoWidth, height: start.videoHeight },
+      computed_style: { object_fit: start.objectFit, object_position: start.objectPosition },
+      fullscreen: { start: start.fullscreen, end: end!.fullscreen },
+    } : {}),
+    capture_track: {
+      mime_type: input.selectedMimeType,
+      audio_track_count: input.audioTrackCount,
+      video_track_count: input.videoTrackCount,
+      tracks: input.tracks,
+      loopback_enabled: input.loopbackEnabled,
+    },
+    timing: {
+      requested_start_ms: input.prepared.requestedStartMs,
+      requested_end_ms: input.prepared.requestedEndMs,
+      requested_duration_ms: input.prepared.requestedDurationMs,
+      lead_in_ms: input.leadInMs,
+      recorder_elapsed_ms: input.recorderElapsedMs,
+      player_start_ms: input.playerStartMs,
+      player_end_ms: input.playerEndMs,
+      lead_in_clock: 'offscreen_monotonic',
+    },
+  };
+}
 export type CaptureFailureCode =
   | 'busy' | 'connected-source-changed' | 'connected-tab-closed' | 'invalid-request'
   | 'media-recorder-unsupported' | 'no-audio-track' | 'no-video-track'

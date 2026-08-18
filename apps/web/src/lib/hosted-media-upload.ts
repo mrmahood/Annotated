@@ -53,6 +53,7 @@ export type HostedMediaErrorCode =
   | 'MEDIA_NOT_FOUND' | 'MEDIA_NOT_OWNED' | 'MEDIA_RELATION_INVALID'
   | 'MEDIA_NOT_CANCELLABLE' | 'MEDIA_ALREADY_CANCELLED'
   | 'RAW_PATH_INVALID' | 'RAW_DELETE_FAILED' | 'CANCEL_CONFLICT'
+  | 'RECAPTURE_REQUIRED'
   | 'UPLOAD_AUTHORIZATION_FAILED' | 'UPLOAD_COMPLETION_FAILED';
 
 export class HostedMediaApiError extends Error {
@@ -99,37 +100,73 @@ export function stableJson(value: unknown): string {
   }
   return JSON.stringify(value);
 }
+function hasExactKeys(value: JsonRecord, keys: readonly string[]) {
+  const expected = new Set(keys);
+  return Object.keys(value).length === expected.size && Object.keys(value).every((key) => expected.has(key));
+}
+function finiteIn(value: unknown, minimum: number, maximum: number) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= minimum && value <= maximum;
+}
+function nullableFiniteIn(value: unknown, minimum: number, maximum: number) {
+  return value === null || finiteIn(value, minimum, maximum);
+}
+function validViewportSample(value: unknown) {
+  if (!isRecord(value) || !hasExactKeys(value, ['width', 'height', 'device_pixel_ratio', 'scroll_x', 'scroll_y'])) return false;
+  return finiteIn(value.width, 1, 32_768) && finiteIn(value.height, 1, 32_768) &&
+    finiteIn(value.device_pixel_ratio, 0.1, 16) && finiteIn(value.scroll_x, -1_000_000, 1_000_000) &&
+    finiteIn(value.scroll_y, -1_000_000, 1_000_000);
+}
+function validCaptureRect(value: unknown) {
+  if (!isRecord(value) || !hasExactKeys(value, ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left'])) return false;
+  return ['x', 'y', 'top', 'right', 'bottom', 'left'].every((key) => finiteIn(value[key], -100_000, 100_000)) &&
+    finiteIn(value.width, 1, 32_768) && finiteIn(value.height, 1, 32_768);
+}
+function validTrack(value: unknown) {
+  if (!isRecord(value) || !hasExactKeys(value, ['kind', 'label', 'enabled', 'muted', 'readyState', 'settings']) ||
+      (value.kind !== 'audio' && value.kind !== 'video') || typeof value.label !== 'string' || value.label.length > 256 ||
+      typeof value.enabled !== 'boolean' || typeof value.muted !== 'boolean' || typeof value.readyState !== 'string' ||
+      value.readyState.length > 32 || !isRecord(value.settings) || Object.keys(value.settings).length > 32) return false;
+  return Object.entries(value.settings).every(([key, setting]) => key.length <= 64 &&
+    (typeof setting === 'string' && setting.length <= 256 || typeof setting === 'boolean' || finiteIn(setting, -1e9, 1e9)));
+}
 export function validateCaptureMetadata(
   metadata: unknown,
   mediaType: 'video' | 'audio',
   startMs: number,
   endMs: number,
 ): asserts metadata is JsonRecord {
-  if (!isRecord(metadata) || metadata.version !== 1 ||
-      new TextEncoder().encode(JSON.stringify(metadata)).byteLength > 16_384 ||
-      !boundedJson(metadata)) throw new Error('Capture metadata is invalid or too large.');
-  const allowed = new Set([
-    'version', 'viewport', 'video_element', 'intrinsic_video',
-    'computed_style', 'fullscreen', 'capture_track', 'timing',
-  ]);
-  if (Object.keys(metadata).some((key) => !allowed.has(key))) {
-    throw new Error('Capture metadata contains an unsupported top-level field.');
+  if (!isRecord(metadata) || new TextEncoder().encode(JSON.stringify(metadata)).byteLength > 16_384 ||
+      !boundedJson(metadata)) {
+    throw new Error('Capture metadata is invalid or too large.');
   }
+  if (metadata.version === 1) throw new HostedMediaApiError('RECAPTURE_REQUIRED', 409);
+  if (metadata.version !== 2) throw new Error('Capture metadata is invalid or too large.');
+  const topLevelKeys = mediaType === 'video'
+    ? ['version', 'viewport', 'video_element', 'intrinsic_video', 'computed_style', 'fullscreen', 'capture_track', 'timing']
+    : ['version', 'capture_track', 'timing'];
+  if (!hasExactKeys(metadata, topLevelKeys)) throw new Error('Capture metadata contains unsupported or missing fields.');
   if (!isRecord(metadata.capture_track) || !isRecord(metadata.timing)) {
     throw new Error('Capture track and timing metadata are required.');
   }
   const track = metadata.capture_track;
-  if (!Number.isSafeInteger(track.audio_track_count) || (track.audio_track_count as number) < 1 ||
-      !Number.isSafeInteger(track.video_track_count) ||
+  if (!hasExactKeys(track, ['mime_type', 'audio_track_count', 'video_track_count', 'tracks', 'loopback_enabled']) ||
+      !Number.isSafeInteger(track.audio_track_count) || !finiteIn(track.audio_track_count, 1, 8) ||
+      !Number.isSafeInteger(track.video_track_count) || !finiteIn(track.video_track_count, 0, 8) ||
       (mediaType === 'video' ? (track.video_track_count as number) < 1 : track.video_track_count !== 0) ||
-      typeof track.loopback_enabled !== 'boolean' || typeof track.mime_type !== 'string') {
+      track.loopback_enabled !== true || typeof track.mime_type !== 'string' || track.mime_type.length > 200 ||
+      !track.mime_type.toLowerCase().startsWith(mediaType === 'video' ? 'video/webm' : 'audio/webm') ||
+      !Array.isArray(track.tracks) || track.tracks.length !== (track.audio_track_count as number) + (track.video_track_count as number) ||
+      !track.tracks.every(validTrack)) {
     throw new Error('Capture track metadata does not match the hosted media type.');
   }
   const timing = metadata.timing;
-  if (timing.requested_start_ms !== startMs || timing.requested_end_ms !== endMs ||
+  if (!hasExactKeys(timing, ['requested_start_ms', 'requested_end_ms', 'requested_duration_ms', 'lead_in_ms',
+      'recorder_elapsed_ms', 'player_start_ms', 'player_end_ms', 'lead_in_clock']) ||
+      timing.requested_start_ms !== startMs || timing.requested_end_ms !== endMs ||
       timing.requested_duration_ms !== endMs - startMs ||
-      !Number.isFinite(timing.recorder_elapsed_ms) || (timing.recorder_elapsed_ms as number) <= 0 ||
-      (timing.recorder_elapsed_ms as number) > 92_000) {
+      !finiteIn(timing.lead_in_ms, 0, 91_000) || !finiteIn(timing.recorder_elapsed_ms, 1_000, 92_000) ||
+      !nullableFiniteIn(timing.player_start_ms, 0, 1e12) || !nullableFiniteIn(timing.player_end_ms, 0, 1e12) ||
+      timing.lead_in_clock !== 'offscreen_monotonic') {
     throw new Error('Capture timing metadata does not match the selected range.');
   }
   if (mediaType === 'video') {
@@ -139,9 +176,18 @@ export function validateCaptureMetadata(
       throw new Error('Video capture geometry is incomplete.');
     }
     const viewport = metadata.viewport;
-    if (typeof viewport.width !== 'number' || typeof viewport.height !== 'number' ||
-        viewport.width <= 0 || viewport.height <= 0 || viewport.width > 32_768 ||
-        viewport.height > 32_768) throw new Error('Video viewport metadata is out of bounds.');
+    const element = metadata.video_element;
+    const intrinsic = metadata.intrinsic_video;
+    const style = metadata.computed_style;
+    const fullscreen = metadata.fullscreen;
+    if (!hasExactKeys(viewport, ['start', 'end']) || !validViewportSample(viewport.start) || !validViewportSample(viewport.end) ||
+        !hasExactKeys(element, ['start', 'end']) || !validCaptureRect(element.start) || !validCaptureRect(element.end) ||
+        !hasExactKeys(intrinsic, ['width', 'height']) || !finiteIn(intrinsic.width, 1, 32_768) || !finiteIn(intrinsic.height, 1, 32_768) ||
+        !hasExactKeys(style, ['object_fit', 'object_position']) || typeof style.object_fit !== 'string' || style.object_fit.length > 32 ||
+        typeof style.object_position !== 'string' || style.object_position.length > 100 ||
+        !hasExactKeys(fullscreen, ['start', 'end']) || typeof fullscreen.start !== 'boolean' || typeof fullscreen.end !== 'boolean') {
+      throw new Error('Video capture geometry is incomplete or out of bounds.');
+    }
   }
 }
 export function parseAuthorizeInput(value: unknown): AuthorizeInput {

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "kind": "synthetic",
+    "network_required": false,
+    "contains_speech": false,
+    "contains_personal_data": false,
+    "generator": "generate.ps1"
+  },
+  "media": [
+    {
+      "file": "landscape-video.webm",
+      "purpose": "valid landscape video with required audio",
+      "expected": { "container": "webm", "video": true, "audio": true, "video_codec": "vp9", "audio_codec": "opus", "width": 640, "height": 360, "duration_ms": 4040, "probe_tolerance_ms": 20, "requested_duration_ms": 4000, "lead_in_ms": 40 }
+    },
+    {
+      "file": "portrait-video.webm",
+      "purpose": "valid portrait video with required audio",
+      "expected": { "container": "webm", "video": true, "audio": true, "video_codec": "vp9", "audio_codec": "opus", "width": 360, "height": 640, "duration_ms": 4040, "probe_tolerance_ms": 20, "requested_duration_ms": 4000, "lead_in_ms": 40 }
+    },
+    {
+      "file": "letterboxed-video.webm",
+      "purpose": "valid video whose visible player pixels include letterboxing",
+      "expected": { "container": "webm", "video": true, "audio": true, "video_codec": "vp9", "audio_codec": "opus", "width": 640, "height": 360, "duration_ms": 4040, "probe_tolerance_ms": 20, "requested_duration_ms": 4000, "lead_in_ms": 40 }
+    },
+    {
+      "file": "audio-only.webm",
+      "purpose": "valid audio input and missing-video negative case",
+      "expected": { "container": "webm", "video": false, "audio": true, "audio_codec": "opus", "duration_ms": 4035, "probe_tolerance_ms": 20, "requested_duration_ms": 4000, "lead_in_ms": 35 }
+    },
+    {
+      "file": "missing-audio.webm",
+      "purpose": "video input rejected for missing required audio",
+      "expected": { "container": "webm", "video": true, "audio": false, "video_codec": "vp9", "width": 640, "height": 360, "duration_ms": 4000 }
+    },
+    {
+      "file": "malformed.webm",
+      "purpose": "malformed input rejected before transcode",
+      "expected": { "probe_failure": true }
+    },
+    {
+      "file": "wrong-container.webm",
+      "purpose": "MP4 bytes under a WebM path rejected by probe",
+      "expected": { "container": "mov,mp4,m4a,3gp,3g2,mj2", "video_codec": "mpeg4", "reject_as_raw": true }
+    },
+    {
+      "file": "duration-89999.webm",
+      "purpose": "accepted lower side of the 90-second boundary",
+      "expected": { "container": "webm", "video": false, "audio": true, "audio_codec": "opus", "requested_duration_ms": 89999, "probe_tolerance_ms": 20 }
+    },
+    {
+      "file": "duration-90000.webm",
+      "purpose": "accepted exact 90-second boundary",
+      "expected": { "container": "webm", "video": false, "audio": true, "audio_codec": "opus", "requested_duration_ms": 90000, "probe_tolerance_ms": 20 }
+    },
+    {
+      "file": "duration-90001.webm",
+      "purpose": "final output rejected one millisecond above the boundary",
+      "expected": { "container": "webm", "video": false, "audio": true, "audio_codec": "opus", "requested_duration_ms": 90001, "probe_tolerance_ms": 20, "boundary_case": "above_final_limit" }
+    },
+    {
+      "file": "duration-92001.webm",
+      "purpose": "raw recorder overshoot rejected above the proposed allowance",
+      "expected": { "container": "webm", "video": false, "audio": true, "audio_codec": "opus", "requested_duration_ms": 92001, "probe_tolerance_ms": 20, "boundary_case": "above_raw_overshoot_allowance" }
+    }
+  ],
+  "metadata": [
+    { "file": "metadata/safe-landscape.json", "expected": "accept" },
+    { "file": "metadata/safe-portrait.json", "expected": "accept" },
+    { "file": "metadata/safe-letterboxed.json", "expected": "accept" },
+    { "file": "metadata/safe-audio.json", "expected": "accept" },
+    { "file": "metadata/unsafe-partial-visibility.json", "expected": "unsafe_geometry" },
+    { "file": "metadata/unsafe-aspect-mismatch.json", "expected": "unsafe_geometry" },
+    { "file": "metadata/unsafe-moved-end.json", "expected": "unsafe_geometry" },
+    { "file": "metadata/unsafe-resized-viewport.json", "expected": "unsafe_geometry" },
+    { "file": "metadata/unsafe-changed-dpr.json", "expected": "unsafe_geometry" },
+    { "file": "metadata/unsafe-missing-end.json", "expected": "unsafe_geometry" },
+    { "file": "metadata/version-1-recapture.json", "expected": "recapture_required" }
+  ]
+}

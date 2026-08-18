@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   MEDIA_CAPTURE_FAILSAFE_MS,
   MEDIA_CAPTURE_START,
+  buildCaptureMetadataV2,
   captureRequestMatchesConnectedTab,
   executeHostedMediaUpload,
   getCaptureRangeError,
@@ -140,6 +141,31 @@ test('offscreen messages reject stale or malformed ranges and carry no inferred 
   assert.equal(isOffscreenStartMessage(message), true);
   assert.equal(isOffscreenStartMessage({ ...message, prepared: { ...prepared, requestedEndMs: 20_001 } }), false);
   assert.equal(isOffscreenStartMessage({ ...message, captureId: 'stale' }), false);
+});
+
+test('capture metadata v2 requires video end geometry and uses monotonic lead-in', () => {
+  const geometry = {
+    viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+    boundingClientRect: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+    videoWidth: 1920, videoHeight: 1080, objectFit: 'contain', objectPosition: '50% 50%',
+    fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+  };
+  const prepared = {
+    sourceKind: 'youtube', requestedStartMs: 5_000, requestedEndMs: 20_000,
+    requestedDurationMs: 15_000, playerCurrentTimeBeforeRecordingMs: 5_000,
+    mediaDurationMs: 120_000, pageUrl: source.pageUrl, geometry,
+  };
+  const input = {
+    prepared, endGeometry: geometry, selectedMimeType: 'video/webm;codecs=vp9,opus',
+    tracks: [], audioTrackCount: 1, videoTrackCount: 1, loopbackEnabled: true,
+    leadInMs: 37, recorderElapsedMs: 15_037, playerStartMs: 5_000, playerEndMs: 20_000,
+  };
+  const result = buildCaptureMetadataV2(input);
+  assert.equal(result.version, 2);
+  assert.equal(result.timing.lead_in_clock, 'offscreen_monotonic');
+  assert.equal(result.timing.lead_in_ms, 37);
+  assert.deepEqual(result.viewport.start, result.viewport.end);
+  assert.throws(() => buildCaptureMetadataV2({ ...input, endGeometry: null }), /recapture-required/);
 });
 
 test('uses WebM MIME fallback and a hard 92-second failsafe', () => {

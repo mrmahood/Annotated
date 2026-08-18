@@ -1,0 +1,6 @@
+**/.DS_Store
+**/*.log
+test
+README.md
+Dockerfile
+.dockerignore

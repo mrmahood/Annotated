@@ -7,6 +7,7 @@ import {
   MEDIA_CAPTURE_OFFSCREEN_RETRY,
   MEDIA_CAPTURE_OFFSCREEN_START,
   MEDIA_CAPTURE_OFFSCREEN_STATUS,
+  buildCaptureMetadataV2,
   isOffscreenStartMessage,
   executeHostedMediaUpload,
   selectCaptureMimeType,
@@ -23,7 +24,6 @@ type ActiveRecording = {
   stream: MediaStream;
   chunks: Blob[];
   selectedMimeType: string;
-  startedAtEpochMs: number;
   startedAtPerformanceMs: number;
   playbackAcknowledgedAtMs: number | null;
   playerStartMs: number | null;
@@ -43,8 +43,7 @@ type RetainedUpload = {
   tracks: CaptureTrack[];
   audioTrackCount: number;
   videoTrackCount: number;
-  recorderStartedAtMs: number;
-  playbackAcknowledgedAtMs: number;
+  leadInMs: number;
   playerStartMs: number | null;
   recorderElapsedMs: number;
   playerEndMs: number | null;
@@ -138,6 +137,15 @@ async function finalize(active: ActiveRecording) {
     });
     return;
   }
+  if (active.playbackAcknowledgedAtMs === null) {
+    sendSnapshot({
+      status: 'error',
+      captureId: active.message.captureId,
+      code: 'recapture-required',
+      message: 'Capture timing could not be verified. Recapture this range.',
+    });
+    return;
+  }
   retained = {
     captureId: active.message.captureId,
     request: active.message.request,
@@ -147,8 +155,7 @@ async function finalize(active: ActiveRecording) {
     tracks,
     audioTrackCount,
     videoTrackCount,
-    recorderStartedAtMs: active.startedAtEpochMs,
-    playbackAcknowledgedAtMs: active.playbackAcknowledgedAtMs ?? Date.now(),
+    leadInMs: Math.max(0, active.playbackAcknowledgedAtMs - active.startedAtPerformanceMs),
     playerStartMs: active.playerStartMs,
     recorderElapsedMs: elapsedMs,
     playerEndMs: null,
@@ -161,51 +168,40 @@ async function finalize(active: ActiveRecording) {
     target: 'background',
     type: MEDIA_CAPTURE_OFFSCREEN_NEEDS_END,
     captureId: active.message.captureId,
+  }).then((response) => {
+    if (response?.ok !== false || retained?.captureId !== active.message.captureId) return;
+    retained = null;
+    sendSnapshot({
+      status: 'error',
+      captureId: active.message.captureId,
+      code: 'recapture-required',
+      message: 'End-of-capture geometry could not be verified. Recapture this range.',
+    });
   }).catch(() => {
-    if (retained?.captureId === active.message.captureId) void uploadRetained(retained);
+    if (retained?.captureId !== active.message.captureId) return;
+    retained = null;
+    sendSnapshot({
+      status: 'error',
+      captureId: active.message.captureId,
+      code: 'recapture-required',
+      message: 'End-of-capture geometry could not be verified. Recapture this range.',
+    });
   });
 }
 function captureMetadata(upload: RetainedUpload): CaptureMetadata {
-  const start = upload.prepared.geometry;
-  const end = upload.endGeometry;
-  const video = upload.prepared.sourceKind === 'youtube';
-  return {
-    version: 1,
-    ...(video ? {
-      viewport: {
-        width: start.viewportWidth,
-        height: start.viewportHeight,
-        device_pixel_ratio: start.devicePixelRatio,
-        scroll_x: start.scrollX,
-        scroll_y: start.scrollY,
-      },
-      video_element: {
-        start: start.boundingClientRect,
-        end: end?.boundingClientRect ?? null,
-      },
-      intrinsic_video: { width: start.videoWidth, height: start.videoHeight },
-      computed_style: { object_fit: start.objectFit, object_position: start.objectPosition },
-      fullscreen: { start: start.fullscreen, end: end?.fullscreen ?? start.fullscreen },
-    } : {}),
-    capture_track: {
-      mime_type: upload.selectedMimeType,
-      audio_track_count: upload.audioTrackCount,
-      video_track_count: upload.videoTrackCount,
-      tracks: upload.tracks,
-      loopback_enabled: upload.loopbackEnabled,
-    },
-    timing: {
-      requested_start_ms: upload.prepared.requestedStartMs,
-      requested_end_ms: upload.prepared.requestedEndMs,
-      requested_duration_ms: upload.prepared.requestedDurationMs,
-      recorder_started_at_ms: upload.recorderStartedAtMs,
-      playback_acknowledged_at_ms: upload.playbackAcknowledgedAtMs,
-      lead_in_ms: Math.max(0, upload.playbackAcknowledgedAtMs - upload.recorderStartedAtMs),
-      recorder_elapsed_ms: upload.recorderElapsedMs,
-      player_start_ms: upload.playerStartMs,
-      player_end_ms: upload.playerEndMs,
-    },
-  };
+  return buildCaptureMetadataV2({
+    prepared: upload.prepared,
+    endGeometry: upload.endGeometry,
+    selectedMimeType: upload.selectedMimeType,
+    tracks: upload.tracks,
+    audioTrackCount: upload.audioTrackCount,
+    videoTrackCount: upload.videoTrackCount,
+    loopbackEnabled: upload.loopbackEnabled,
+    leadInMs: upload.leadInMs,
+    recorderElapsedMs: upload.recorderElapsedMs,
+    playerStartMs: upload.playerStartMs,
+    playerEndMs: upload.playerEndMs,
+  });
 }
 async function authorize(upload: RetainedUpload): Promise<string> {
   const response = await fetch(`${upload.request.apiOrigin}/api/media/upload/authorize`, {
@@ -360,7 +356,7 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
     const recorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
     const active: ActiveRecording = {
       message, recorder, stream, chunks: [], selectedMimeType,
-      startedAtEpochMs: Date.now(), startedAtPerformanceMs: performance.now(),
+      startedAtPerformanceMs: performance.now(),
       playbackAcknowledgedAtMs: null, playerStartMs: null,
       durationTimer: 0, failsafeTimer: 0, audioContext, audioSource, loopbackEnabled,
       cancelled: null,
@@ -400,7 +396,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   const active = recording;
   if (row.type === MEDIA_CAPTURE_OFFSCREEN_PLAYBACK && active &&
       active.message.captureId === row.captureId && typeof row.acknowledgedAtMs === 'number') {
-    active.playbackAcknowledgedAtMs = row.acknowledgedAtMs;
+    active.playbackAcknowledgedAtMs = performance.now();
     active.playerStartMs = typeof row.playerStartMs === 'number' ? row.playerStartMs : null;
     active.durationTimer = window.setTimeout(
       () => stopRecording('duration'),
@@ -414,6 +410,18 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       upload.captureId === row.captureId) {
     upload.playerEndMs = typeof row.playerEndMs === 'number' ? row.playerEndMs : null;
     upload.endGeometry = typeof row.geometry === 'object' ? row.geometry as CaptureGeometry : null;
+    if (upload.prepared.sourceKind === 'youtube' &&
+        (!upload.endGeometry || !upload.endGeometry.boundingClientRect)) {
+      retained = null;
+      sendSnapshot({
+        status: 'error',
+        captureId: upload.captureId,
+        code: 'recapture-required',
+        message: 'End-of-capture geometry could not be verified. Recapture this range.',
+      });
+      sendResponse({ ok: false, error: 'recapture-required' });
+      return undefined;
+    }
     void uploadRetained(upload).then(() => sendResponse({ ok: true }));
     return true;
   }

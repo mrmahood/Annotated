@@ -1,0 +1,248 @@
+[
+  {
+    "file": "landscape-video.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "vp9",
+          "codec_type": "video",
+          "width": 640,
+          "height": 360
+        },
+        {
+          "index": 1,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "4.033000",
+        "size": "151052"
+      }
+    }
+  },
+  {
+    "file": "portrait-video.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "vp9",
+          "codec_type": "video",
+          "width": 360,
+          "height": 640
+        },
+        {
+          "index": 1,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "4.033000",
+        "size": "149936"
+      }
+    }
+  },
+  {
+    "file": "letterboxed-video.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "vp9",
+          "codec_type": "video",
+          "width": 640,
+          "height": 360
+        },
+        {
+          "index": 1,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "4.033000",
+        "size": "146724"
+      }
+    }
+  },
+  {
+    "file": "audio-only.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "4.043000",
+        "size": "42001"
+      }
+    }
+  },
+  {
+    "file": "missing-audio.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "vp9",
+          "codec_type": "video",
+          "width": 640,
+          "height": 360
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "4.000000",
+        "size": "109220"
+      }
+    }
+  },
+  {
+    "file": "malformed.webm",
+    "probe_exit_code": 1,
+    "probe": null
+  },
+  {
+    "file": "wrong-container.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "mpeg4",
+          "codec_type": "video",
+          "width": 320,
+          "height": 180
+        }
+      ],
+      "format": {
+        "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "duration": "1.000000",
+        "size": "80169"
+      }
+    }
+  },
+  {
+    "file": "duration-89999.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "90.007000",
+        "size": "41566"
+      }
+    }
+  },
+  {
+    "file": "duration-90000.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "90.008000",
+        "size": "41566"
+      }
+    }
+  },
+  {
+    "file": "duration-90001.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "90.009000",
+        "size": "41566"
+      }
+    }
+  },
+  {
+    "file": "duration-92001.webm",
+    "probe_exit_code": 0,
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "sample_rate": "48000",
+          "channels": 1
+        }
+      ],
+      "format": {
+        "format_name": "matroska,webm",
+        "duration": "92.009000",
+        "size": "42467"
+      }
+    }
+  }
+]

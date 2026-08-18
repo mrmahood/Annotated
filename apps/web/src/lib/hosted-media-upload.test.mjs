@@ -28,9 +28,15 @@ const ANNOTATION = '22222222-2222-4222-8222-222222222222';
 const MEDIA = '33333333-3333-4333-8333-333333333333';
 const UPLOAD = '44444444-4444-4444-8444-444444444444';
 const metadata = {
-  version: 1,
-  viewport: { width: 1280, height: 720, device_pixel_ratio: 1 },
-  video_element: { start: null, end: null },
+  version: 2,
+  viewport: {
+    start: { width: 1280, height: 720, device_pixel_ratio: 1, scroll_x: 0, scroll_y: 0 },
+    end: { width: 1280, height: 720, device_pixel_ratio: 1, scroll_x: 0, scroll_y: 0 },
+  },
+  video_element: {
+    start: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+    end: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+  },
   intrinsic_video: { width: 1920, height: 1080 },
   computed_style: { object_fit: 'contain', object_position: '50% 50%' },
   fullscreen: { start: false, end: false },
@@ -38,19 +44,21 @@ const metadata = {
     mime_type: 'video/webm;codecs=vp9,opus',
     audio_track_count: 1,
     video_track_count: 1,
-    tracks: [],
+    tracks: [
+      { kind: 'audio', label: '', enabled: true, muted: false, readyState: 'live', settings: { sampleRate: 48000 } },
+      { kind: 'video', label: '', enabled: true, muted: false, readyState: 'live', settings: { width: 1280, height: 720 } },
+    ],
     loopback_enabled: true,
   },
   timing: {
     requested_start_ms: 5_000,
     requested_end_ms: 20_000,
     requested_duration_ms: 15_000,
-    recorder_started_at_ms: 1,
-    playback_acknowledged_at_ms: 2,
     lead_in_ms: 1,
     recorder_elapsed_ms: 15_010,
     player_start_ms: 5_000,
     player_end_ms: 20_000,
+    lead_in_clock: 'offscreen_monotonic',
   },
 };
 const input = {
@@ -190,7 +198,7 @@ test('authorization enforces zero, video, and audio size limits', () => {
   assert.throws(() => parseAuthorizeInput({ ...input, byteSize: 0 }), /Invalid/);
   assert.throws(() => parseAuthorizeInput({ ...input, byteSize: VIDEO_LIMIT + 1 }), /allowed size/);
   const audioMetadata = {
-    version: 1,
+    version: 2,
     capture_track: { ...metadata.capture_track, mime_type: 'audio/webm;codecs=opus', video_track_count: 0 },
     timing: metadata.timing,
   };
@@ -207,6 +215,16 @@ test('capture metadata validates the allow-list, type, range, and 92-second boun
   }, 'video', 5_000, 20_000), /does not match/);
   assert.throws(() => validateCaptureMetadata({
     ...metadata, timing: { ...metadata.timing, recorder_elapsed_ms: 92_001 },
+  }, 'video', 5_000, 20_000), /does not match/);
+  assert.throws(
+    () => validateCaptureMetadata({ ...metadata, version: 1 }, 'video', 5_000, 20_000),
+    (error) => error.code === 'RECAPTURE_REQUIRED' && error.status === 409,
+  );
+  assert.throws(() => validateCaptureMetadata({
+    ...metadata, viewport: { ...metadata.viewport, end: null },
+  }, 'video', 5_000, 20_000), /incomplete/);
+  assert.throws(() => validateCaptureMetadata({
+    ...metadata, timing: { ...metadata.timing, lead_in_clock: 'page_epoch' },
   }, 'video', 5_000, 20_000), /does not match/);
 });
 
@@ -232,6 +250,8 @@ test('routes use short-lived no-upsert authorization and transition only to proc
   assert.match(authorize, /expiresInSeconds: 7_200, upsert: false/);
   assert.match(complete, /processing_status: 'processing'/);
   assert.match(complete, /processing_stage: 'queued'/);
+  assert.match(authorize, /attempt_count: 0/);
+  assert.match(authorize + complete, /RECAPTURE_REQUIRED/);
   assert.doesNotMatch(authorize + complete, /serviceRoleKey.*jsonResponse|SUPABASE_SERVICE_ROLE_KEY.*jsonResponse/);
   assert.doesNotMatch(authorize + complete + cancel, /console\.(?:log|warn|error)\([^\n]*(?:secretKey|serviceRoleKey|SUPABASE_SERVICE_ROLE_KEY)/);
   assert.doesNotMatch(authorize + complete, /claim_annotation_media_processing|finalize_annotation_media_ready/);
