@@ -1,7 +1,8 @@
 # Phase C synthetic media fixtures
 
-These fixtures support the Phase C C1 contract gate and future local media-core
-tests. They are generated entirely from FFmpeg `lavfi` sources and contain no
+These fixtures support the Phase C C1 contract gate and the C6 codec matrix.
+They cover supported VP9/Opus, VP8/Opus, and audio-only Opus inputs plus real
+fail-closed container, stream, and codec cases. They are generated entirely from FFmpeg `lavfi` sources and contain no
 downloaded media, personal data, speech, or third-party creative content.
 
 `manifest.json` is the inventory and expected-probe contract.
@@ -31,7 +32,7 @@ checked without FFmpeg:
 node .\apps\media-worker\test\fixtures\validate-fixture-contract.mjs
 ```
 
-Phase C increment C2 also records five bounded local derivatives, their complete
+Phase C increment C2 and the C6 codec extension record six bounded local derivatives, their complete
 probe facts, and recomputable hashes under `generated/c2/`. Reproduce them with
 `test/run-c2-fixtures.mjs` as described in `apps/media-worker/README.md`.
 

@@ -18,17 +18,68 @@ export function ffprobeArguments(inputPath) {
   ];
 }
 
+export function ffprobePacketDurationArguments(inputPath) {
+  return [
+    '-v', 'error',
+    '-show_entries', 'packet=pts_time,duration_time',
+    '-of', 'csv=p=0',
+    inputPath,
+  ];
+}
+
+export function packetDurationMs(output) {
+  if (typeof output !== 'string' || !output.endsWith('\n')) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet timing output is incomplete.');
+  }
+  const lines = output.trim().split(/\r?\n/u);
+  if (lines.length < 1 || lines.length > 25_000) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet timing count is invalid.');
+  }
+  let maximumSeconds = 0;
+  for (const line of lines) {
+    const [ptsText, durationText, ...extra] = line.split(',');
+    const pts = Number(ptsText);
+    const duration = durationText === 'N/A' ? 0 : Number(durationText);
+    if (extra.some((value) => value !== '') || !Number.isFinite(pts) || pts < -2 ||
+        !Number.isFinite(duration) || duration < 0 || duration > 2) {
+      mediaCoreFailure('probing', 'probe_failed', 'Packet timing value is invalid.');
+    }
+    maximumSeconds = Math.max(maximumSeconds, pts + duration);
+  }
+  const value = maximumSeconds * 1_000;
+  if (!Number.isFinite(value) || value <= 0) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
+  }
+  return value;
+}
+
 export async function probeFile(ffprobePath, inputPath, timeoutMs = 30_000) {
   const result = await runExecutable(ffprobePath, ffprobeArguments(inputPath), {
     timeoutMs,
     stage: 'probing',
     failureCode: 'probe_failed',
   });
-  try {
-    return JSON.parse(result.stdout);
-  } catch {
+  let probe;
+  try { probe = JSON.parse(result.stdout); }
+  catch {
     mediaCoreFailure('probing', 'probe_failed', 'ffprobe returned invalid JSON.');
   }
+  const formatDuration = Number(probe?.format?.duration) * 1_000;
+  const webm = typeof probe?.format?.format_name === 'string' &&
+    probe.format.format_name.split(',').includes('webm');
+  if ((!Number.isFinite(formatDuration) || formatDuration <= 0) && webm) {
+    const packets = await runExecutable(ffprobePath, ffprobePacketDurationArguments(inputPath), {
+      timeoutMs,
+      stage: 'probing',
+      failureCode: 'probe_failed',
+    });
+    if (packets.stdoutTruncated) {
+      mediaCoreFailure('probing', 'probe_failed', 'Packet timing output exceeded its bound.');
+    }
+    probe.format.duration = (packetDurationMs(packets.stdout) / 1_000).toFixed(6);
+    probe.format.duration_source = 'packet_timestamps';
+  }
+  return probe;
 }
 
 function durationMs(probe) {

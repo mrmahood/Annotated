@@ -12,7 +12,7 @@ assert.equal(manifest.provenance?.kind, 'synthetic');
 assert.equal(manifest.provenance?.network_required, false);
 assert.equal(manifest.provenance?.contains_personal_data, false);
 assert.equal(manifest.provenance?.generator, 'generate.ps1');
-assert.ok(Array.isArray(manifest.media) && manifest.media.length >= 11);
+assert.ok(Array.isArray(manifest.media) && manifest.media.length >= 13);
 assert.ok(Array.isArray(manifest.metadata) && manifest.metadata.length >= 10);
 
 function assertSafeRelativePath(value) {
@@ -33,9 +33,11 @@ for (const fixture of manifest.media) {
 
 const requiredMedia = [
   'landscape-video.webm',
+  'vp8-landscape-video.webm',
   'portrait-video.webm',
   'letterboxed-video.webm',
   'audio-only.webm',
+  'unsupported-vorbis-audio.webm',
   'missing-audio.webm',
   'malformed.webm',
   'wrong-container.webm',
@@ -166,6 +168,7 @@ if (generated) {
     const c2Results = JSON.parse(await readFile(resultsPath, 'utf8'));
     const expectedOutputs = new Set([
       'landscape-video.mp4',
+      'vp8-landscape-video.mp4',
       'portrait-video.mp4',
       'letterboxed-video.mp4',
       'audio-only.m4a',

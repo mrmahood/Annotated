@@ -14,13 +14,14 @@ function close(left, right, tolerance = CSS_TOLERANCE) {
   return Math.abs(left - right) <= tolerance;
 }
 
-function assertStableObject(start, end, keys, label, tolerance = CSS_TOLERANCE) {
+function assertStableObject(start, end, keys, label, tolerance = CSS_TOLERANCE, minimumByKey = {}) {
   if (!start || !end || typeof start !== 'object' || typeof end !== 'object') {
     mediaCoreFailure('transcoding', 'unsafe_geometry', `${label} end sampling is missing.`);
   }
   for (const key of keys) {
-    const startValue = finite(start[key], `${label}.start.${key}`);
-    const endValue = finite(end[key], `${label}.end.${key}`);
+    const minimum = minimumByKey[key] ?? 0;
+    const startValue = finite(start[key], `${label}.start.${key}`, minimum);
+    const endValue = finite(end[key], `${label}.end.${key}`, minimum);
     if (!close(startValue, endValue, tolerance)) {
       mediaCoreFailure('transcoding', 'unsafe_geometry', `${label}.${key} changed during capture.`);
     }
@@ -28,12 +29,12 @@ function assertStableObject(start, end, keys, label, tolerance = CSS_TOLERANCE) 
 }
 
 function assertRectConsistent(rect, label) {
-  const x = finite(rect.x, `${label}.x`);
-  const y = finite(rect.y, `${label}.y`);
+  const x = finite(rect.x, `${label}.x`, -CSS_TOLERANCE);
+  const y = finite(rect.y, `${label}.y`, -CSS_TOLERANCE);
   const width = finite(rect.width, `${label}.width`, 1);
   const height = finite(rect.height, `${label}.height`, 1);
-  const left = finite(rect.left, `${label}.left`);
-  const top = finite(rect.top, `${label}.top`);
+  const left = finite(rect.left, `${label}.left`, -CSS_TOLERANCE);
+  const top = finite(rect.top, `${label}.top`, -CSS_TOLERANCE);
   const right = finite(rect.right, `${label}.right`);
   const bottom = finite(rect.bottom, `${label}.bottom`);
   if (!close(x, left) || !close(y, top) || !close(right, left + width) || !close(bottom, top + height)) {
@@ -70,7 +71,14 @@ export function calculateVideoCrop(metadata, encodedWidth, encodedHeight) {
   if (!close(startDpr, endDpr, 0.001)) {
     mediaCoreFailure('transcoding', 'unsafe_geometry', 'Viewport device pixel ratio changed during capture.');
   }
-  assertStableObject(videoElement.start, videoElement.end, ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left'], 'video_element');
+  assertStableObject(
+    videoElement.start,
+    videoElement.end,
+    ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left'],
+    'video_element',
+    CSS_TOLERANCE,
+    { x: -CSS_TOLERANCE, y: -CSS_TOLERANCE, top: -CSS_TOLERANCE, left: -CSS_TOLERANCE },
+  );
   if (typeof fullscreen.start !== 'boolean' || typeof fullscreen.end !== 'boolean' || fullscreen.start !== fullscreen.end) {
     mediaCoreFailure('transcoding', 'unsafe_geometry', 'Fullscreen state changed or is missing.');
   }
@@ -94,10 +102,6 @@ export function calculateVideoCrop(metadata, encodedWidth, encodedHeight) {
 
   const encodedAspect = encodedWidth / encodedHeight;
   const viewportAspect = viewportWidth / viewportHeight;
-  if (Math.abs(encodedAspect - viewportAspect) / viewportAspect > ASPECT_TOLERANCE) {
-    mediaCoreFailure('transcoding', 'unsafe_geometry', 'Encoded frame and viewport aspect ratios do not match.');
-  }
-
   const track = metadata.capture_track?.tracks?.find((item) => item?.kind === 'video');
   const trackWidth = track?.settings?.width;
   const trackHeight = track?.settings?.height;
@@ -110,17 +114,27 @@ export function calculateVideoCrop(metadata, encodedWidth, encodedHeight) {
     }
   }
 
-  const scaleX = encodedWidth / viewportWidth;
-  const scaleY = encodedHeight / viewportHeight;
-  const x = Math.max(0, evenFloor(startRect.left * scaleX));
-  const y = Math.max(0, evenFloor(startRect.top * scaleY));
-  const right = Math.min(encodedWidth, evenCeil(startRect.right * scaleX));
-  const bottom = Math.min(encodedHeight, evenCeil(startRect.bottom * scaleY));
+  const aspectMismatch = Math.abs(encodedAspect - viewportAspect) / viewportAspect > ASPECT_TOLERANCE;
+  if (aspectMismatch && (
+    trackWidth === undefined || trackHeight === undefined ||
+    track.settings?.resizeMode !== 'crop-and-scale'
+  )) {
+    mediaCoreFailure('transcoding', 'unsafe_geometry', 'Encoded frame and viewport aspect ratios do not match safely.');
+  }
+  const uniformScale = Math.min(encodedWidth / viewportWidth, encodedHeight / viewportHeight);
+  const scaleX = aspectMismatch ? uniformScale : encodedWidth / viewportWidth;
+  const scaleY = aspectMismatch ? uniformScale : encodedHeight / viewportHeight;
+  const offsetX = aspectMismatch ? (encodedWidth - viewportWidth * uniformScale) / 2 : 0;
+  const offsetY = aspectMismatch ? (encodedHeight - viewportHeight * uniformScale) / 2 : 0;
+  const x = Math.max(0, evenFloor(offsetX + startRect.left * scaleX));
+  const y = Math.max(0, evenFloor(offsetY + startRect.top * scaleY));
+  const right = Math.min(encodedWidth, evenCeil(offsetX + startRect.right * scaleX));
+  const bottom = Math.min(encodedHeight, evenCeil(offsetY + startRect.bottom * scaleY));
   const width = evenFloor(right - x);
   const height = evenFloor(bottom - y);
   if (width < 2 || height < 2 || x + width > encodedWidth || y + height > encodedHeight) {
     mediaCoreFailure('transcoding', 'unsafe_geometry', 'Calculated crop is outside the encoded frame.');
   }
 
-  return { x, y, width, height, scaleX, scaleY };
+  return { x, y, width, height, scaleX, scaleY, offsetX, offsetY };
 }

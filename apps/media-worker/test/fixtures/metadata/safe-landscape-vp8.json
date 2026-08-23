@@ -1,0 +1,8 @@
+{
+  "base": "safe-landscape.json",
+  "override": {
+    "capture_track": {
+      "mime_type": "video/webm;codecs=vp8,opus"
+    }
+  }
+}

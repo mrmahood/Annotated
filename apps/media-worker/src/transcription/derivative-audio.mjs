@@ -1,4 +1,5 @@
 import { createReadStream } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { mediaCoreFailure } from '../domain/media-core-error.mjs';
 import { fileByteSize, hashFileSha256 } from '../media/checksum.mjs';
@@ -133,4 +134,13 @@ export async function verifyDerivativeAudioInput(value) {
 export function openDerivativeAudioStream(value) {
   assertDerivativeAudioInput(value);
   return createReadStream(privateFacts.get(value).filePath);
+}
+
+export async function readDerivativeAudioBytes(value) {
+  await verifyDerivativeAudioInput(value);
+  const bytes = await readFile(privateFacts.get(value).filePath);
+  if (bytes.length !== value.byteSize) {
+    mediaCoreFailure('transcribing', 'transcript_input_invalid', 'Derivative transcription audio integrity changed.');
+  }
+  return bytes;
 }

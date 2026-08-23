@@ -8,6 +8,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createDerivativeAudioInput, openDerivativeAudioStream } from '../src/transcription/derivative-audio.mjs';
 import { DeterministicFakeTranscriber } from '../src/transcription/fake-transcriber.mjs';
+import { OpenAIWhisperTranscriber, OPENAI_TRANSCRIPTIONS_URL } from '../src/transcription/openai-whisper-transcriber.mjs';
 import { transcribeAndValidate } from '../src/transcription/transcript.mjs';
 import { ffmpegExecutables, generatedFixtureRoot } from './helpers/fixtures.mjs';
 
@@ -104,6 +105,57 @@ integration('a raw WebM cannot mint a derivative-audio capability', async () => 
       derivativeDurationMs: 4_000,
       transcriptionAudioPath: path.join(directory, 'forbidden.flac'),
     }), (error) => error.code === 'transcript_input_invalid');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+integration('the real Whisper adapter sends only exact derivative audio through an injected network boundary', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'annotated-c6-whisper-test-'));
+  try {
+    const derivativeAudio = await createDerivativeAudioInput({
+      ...tools,
+      mediaType: 'video',
+      derivativePath: path.join(generatedFixtureRoot, 'c2', landscape.output_file),
+      derivativeChecksumSha256: landscape.output.checksumSha256,
+      derivativeDurationMs: landscape.output.durationMs,
+      transcriptionAudioPath: path.join(directory, 'transcription.flac'),
+    });
+    let requestCount = 0;
+    const fetchImpl = async (url, options) => {
+      requestCount += 1;
+      assert.equal(url, OPENAI_TRANSCRIPTIONS_URL);
+      assert.equal(options.method, 'POST');
+      assert.match(options.headers.authorization, /^Bearer sk-test-/u);
+      assert.equal(options.body.get('model'), 'whisper-1');
+      assert.equal(options.body.get('response_format'), 'verbose_json');
+      assert.equal(options.body.get('timestamp_granularities[]'), 'segment');
+      const file = options.body.get('file');
+      assert.equal(file.name, 'excerpt.flac');
+      assert.equal(file.type, 'audio/flac');
+      assert.equal(file.size, derivativeAudio.byteSize);
+      return new Response(JSON.stringify({
+        task: 'transcribe', language: 'english', duration: derivativeAudio.durationMs / 1000,
+        text: 'Synthetic exact excerpt.',
+        segments: [{ start: 0, end: derivativeAudio.durationMs / 1000, text: 'Synthetic exact excerpt.' }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const result = await transcribeAndValidate(new OpenAIWhisperTranscriber({
+      apiKey: `sk-test-${'a'.repeat(40)}`,
+      fetchImpl,
+    }), derivativeAudio);
+    assert.equal(requestCount, 1);
+    assert.equal(result.provider, 'openai');
+    assert.equal(result.model, 'whisper-1');
+    assert.equal(result.transcriptText, 'Synthetic exact excerpt.');
+    assert.equal(result.segments.at(-1).end_ms, Math.floor(derivativeAudio.durationMs));
+    assert.deepEqual(result.providerMetadata, { response_format: 'verbose_json', timestamp_granularity: 'segment' });
+
+    const rateLimited = new OpenAIWhisperTranscriber({
+      apiKey: `sk-test-${'b'.repeat(40)}`,
+      fetchImpl: async () => new Response('{}', { status: 429 }),
+    });
+    await assert.rejects(() => transcribeAndValidate(rateLimited, derivativeAudio), (error) => error.code === 'provider_rate_limited');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

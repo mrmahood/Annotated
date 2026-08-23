@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { countDisposableSessions, deleteDisposableRows, validateEvidence } from './acceptance.mjs';
+import {
+  countDisposableSessions,
+  deleteDisposableRows,
+  isRecoverableDisposableLogoutStatus,
+  validateEvidence,
+} from './acceptance.mjs';
 
 function videoRow(leadInMs) {
   return {
@@ -60,4 +65,13 @@ test('checks the exact disposable owner before accepting an already-revoked sess
   assert.equal(count, 0);
   assert.match(statement, /from auth\.sessions/u);
   assert.match(statement, /where user_id = '11111111-1111-4111-8111-111111111111'::uuid/u);
+});
+
+test('allows expired Local logout responses only before verified user deletion', () => {
+  for (const status of [200, 204, 401, 403, 404]) {
+    assert.equal(isRecoverableDisposableLogoutStatus(status), true);
+  }
+  for (const status of [0, 400, 500]) {
+    assert.equal(isRecoverableDisposableLogoutStatus(status), false);
+  }
 });

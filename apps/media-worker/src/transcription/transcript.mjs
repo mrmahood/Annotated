@@ -7,6 +7,8 @@ export const MAX_SEGMENT_CHARACTERS = 2_000;
 export const MAX_SEGMENTS_JSON_BYTES = 65_536;
 export const MAX_PROVIDER_METADATA_JSON_BYTES = 16_384;
 export const SEGMENT_ROUNDING_TOLERANCE_MS = 20;
+export const SEGMENT_END_TOLERANCE_MS = 2_000;
+const MAX_PROVIDER_SEGMENT_TIMESTAMP_MS = 90_000 + SEGMENT_END_TOLERANCE_MS;
 
 function characterLength(value) {
   return [...value].length;
@@ -71,7 +73,7 @@ function normalizeProviderMetadata(value) {
 }
 
 function finiteTimestamp(value, label) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 90_020) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > MAX_PROVIDER_SEGMENT_TIMESTAMP_MS) {
     mediaCoreFailure('transcribing', 'transcript_invalid', `${label} is invalid.`);
   }
   return Math.round(value);
@@ -104,8 +106,11 @@ export function normalizeTranscriptSegments(value, durationMs) {
       }
       startMs = previousEnd;
     }
+    if (startMs >= durationMs) {
+      mediaCoreFailure('transcribing', 'transcript_invalid', `Segment ${index} starts outside derivative duration.`);
+    }
     if (endMs > durationMs) {
-      if (endMs - durationMs > SEGMENT_ROUNDING_TOLERANCE_MS) {
+      if (endMs - durationMs > SEGMENT_END_TOLERANCE_MS) {
         mediaCoreFailure('transcribing', 'transcript_invalid', `Segment ${index} exceeds derivative duration.`);
       }
       endMs = Math.floor(durationMs);

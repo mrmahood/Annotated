@@ -17,6 +17,7 @@ import {
   type CaptureTrack,
   type OffscreenStartMessage,
 } from '../../utils/media-capture';
+import { diagnosticMimeType, resolveC6CaptureDiagnostic } from '../../utils/c6-capture-diagnostic';
 
 type ActiveRecording = {
   message: OffscreenStartMessage;
@@ -32,7 +33,16 @@ type ActiveRecording = {
   audioContext: AudioContext | null;
   audioSource: MediaStreamAudioSourceNode | null;
   loopbackEnabled: boolean;
+  recorderFacts: RecorderFacts;
   cancelled: { code: string; message: string } | null;
+};
+type RecorderFacts = {
+  variant: string | null;
+  configured_timeslice_ms: number | null;
+  configured_audio_bits_per_second: number | null;
+  configured_video_bits_per_second: number | null;
+  observed_audio_bits_per_second: number;
+  observed_video_bits_per_second: number;
 };
 type RetainedUpload = {
   captureId: string;
@@ -49,13 +59,22 @@ type RetainedUpload = {
   playerEndMs: number | null;
   endGeometry: CaptureGeometry | null;
   loopbackEnabled: boolean;
+  recorderFacts: RecorderFacts;
   attempts: number;
   xhr: XMLHttpRequest | null;
 };
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
-// Change only this development constant for a loopback-disabled crackle comparison build.
-const ENABLE_AUDIO_LOOPBACK = true;
+const C6_DIAGNOSTIC = resolveC6CaptureDiagnostic({
+  webAppUrl: import.meta.env.WXT_WEB_APP_URL,
+  collectorUrl: import.meta.env.WXT_C6_CAPTURE_COLLECTOR_URL,
+  variant: import.meta.env.WXT_C6_CAPTURE_VARIANT,
+  loopback: import.meta.env.WXT_C6_CAPTURE_LOOPBACK,
+  timeslice: import.meta.env.WXT_C6_CAPTURE_TIMESLICE,
+  videoCodec: import.meta.env.WXT_C6_CAPTURE_VIDEO_CODEC,
+  audioBitsPerSecond: import.meta.env.WXT_C6_CAPTURE_AUDIO_BPS,
+  videoBitsPerSecond: import.meta.env.WXT_C6_CAPTURE_VIDEO_BPS,
+});
 let recording: ActiveRecording | null = null;
 let retained: RetainedUpload | null = null;
 let snapshot: CaptureSnapshot = { status: 'idle' };
@@ -161,6 +180,7 @@ async function finalize(active: ActiveRecording) {
     playerEndMs: null,
     endGeometry: null,
     loopbackEnabled: active.loopbackEnabled,
+    recorderFacts: active.recorderFacts,
     attempts: 0,
     xhr: null,
   };
@@ -287,6 +307,32 @@ async function uploadRetained(upload: RetainedUpload) {
   upload.attempts += 1;
   sendSnapshot({ status: 'uploading', captureId: upload.captureId, progress: 0 });
   try {
+    if (C6_DIAGNOSTIC.enabled && C6_DIAGNOSTIC.collectorUrl) {
+      const evidence = {
+        source: upload.request.source,
+        capture_metadata: captureMetadata(upload),
+        recorder: upload.recorderFacts,
+        byte_size: upload.blob.size,
+        mime_type: upload.selectedMimeType,
+      };
+      const encoded = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(evidence))))
+        .replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
+      const response = await fetch(C6_DIAGNOSTIC.collectorUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': upload.blob.type || upload.selectedMimeType,
+          'x-annotated-c6-evidence': encoded,
+        },
+        body: upload.blob,
+      });
+      if (!response.ok) throw new Error(`Local diagnostic collector failed with status ${response.status}.`);
+      retained = null;
+      sendSnapshot({
+        status: 'cancelled', captureId: upload.captureId, code: 'unexpected',
+        message: 'The Local diagnostic capture ended without a hosted-media upload.',
+      });
+      return;
+    }
     if (upload.attempts > 1) {
       try {
         await complete(upload);
@@ -333,14 +379,20 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
     });
     if (stream.getAudioTracks().length === 0) throw new Error('no-audio-track');
     if (expectVideo && stream.getVideoTracks().length === 0) throw new Error('no-video-track');
-    const selectedMimeType = selectCaptureMimeType(expectVideo, MediaRecorder.isTypeSupported.bind(MediaRecorder));
+    const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
+    const selectedMimeType = diagnosticMimeType(
+      expectVideo,
+      C6_DIAGNOSTIC.preferredVideoCodec,
+      selectCaptureMimeType(expectVideo, supported),
+      supported,
+    );
     if (!selectedMimeType) throw new Error('media-recorder-unsupported');
 
     let audioContext: AudioContext | null = null;
     let audioSource: MediaStreamAudioSourceNode | null = null;
     let loopbackEnabled = false;
     try {
-      if (!ENABLE_AUDIO_LOOPBACK) throw new Error('Loopback disabled for diagnostic build.');
+      if (!C6_DIAGNOSTIC.loopbackEnabled) throw new Error('Loopback disabled for diagnostic build.');
       audioContext = new AudioContext();
       audioSource = audioContext.createMediaStreamSource(stream);
       audioSource.connect(audioContext.destination);
@@ -353,12 +405,26 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
       audioSource = null;
     }
 
-    const recorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
+    const recorder = new MediaRecorder(stream, {
+      mimeType: selectedMimeType,
+      ...(C6_DIAGNOSTIC.audioBitsPerSecond === null ? {} : { audioBitsPerSecond: C6_DIAGNOSTIC.audioBitsPerSecond }),
+      ...(expectVideo && C6_DIAGNOSTIC.videoBitsPerSecond !== null
+        ? { videoBitsPerSecond: C6_DIAGNOSTIC.videoBitsPerSecond } : {}),
+    });
+    const recorderFacts: RecorderFacts = {
+      variant: C6_DIAGNOSTIC.variant,
+      configured_timeslice_ms: C6_DIAGNOSTIC.timesliceMs,
+      configured_audio_bits_per_second: C6_DIAGNOSTIC.audioBitsPerSecond,
+      configured_video_bits_per_second: expectVideo ? C6_DIAGNOSTIC.videoBitsPerSecond : null,
+      observed_audio_bits_per_second: recorder.audioBitsPerSecond,
+      observed_video_bits_per_second: recorder.videoBitsPerSecond,
+    };
     const active: ActiveRecording = {
       message, recorder, stream, chunks: [], selectedMimeType,
       startedAtPerformanceMs: performance.now(),
       playbackAcknowledgedAtMs: null, playerStartMs: null,
       durationTimer: 0, failsafeTimer: 0, audioContext, audioSource, loopbackEnabled,
+      recorderFacts,
       cancelled: null,
     };
     recorder.addEventListener('dataavailable', (event) => { if (event.data.size > 0) active.chunks.push(event.data); });
@@ -367,7 +433,8 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
       active.cancelled = { code: 'unexpected', message: 'MediaRecorder failed during capture.' };
       stopRecording('cancel');
     }, { once: true });
-    recorder.start(1_000);
+    if (C6_DIAGNOSTIC.timesliceMs === null) recorder.start();
+    else recorder.start(C6_DIAGNOSTIC.timesliceMs);
     recording = active;
     active.failsafeTimer = window.setTimeout(() => stopRecording('failsafe'), MEDIA_CAPTURE_FAILSAFE_MS);
     snapshot = { status: 'capturing', captureId: message.captureId, requestedDurationMs: message.prepared.requestedDurationMs };

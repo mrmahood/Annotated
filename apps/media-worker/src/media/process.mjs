@@ -20,11 +20,17 @@ export function runExecutable(executable, args, options = {}) {
     const stderr = [];
     let stdoutBytes = 0;
     let stderrBytes = 0;
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
     let timedOut = false;
 
     const collect = (chunks, kind) => (chunk) => {
       const current = kind === 'stdout' ? stdoutBytes : stderrBytes;
-      if (current >= MAX_CAPTURED_OUTPUT_BYTES) return;
+      if (current >= MAX_CAPTURED_OUTPUT_BYTES) {
+        if (kind === 'stdout') stdoutTruncated = true;
+        else stderrTruncated = true;
+        return;
+      }
       const remaining = MAX_CAPTURED_OUTPUT_BYTES - current;
       const bounded = chunk.subarray(0, remaining);
       chunks.push(bounded);
@@ -50,6 +56,8 @@ export function runExecutable(executable, args, options = {}) {
         signal,
         stdout: Buffer.concat(stdout).toString('utf8'),
         stderr: Buffer.concat(stderr).toString('utf8'),
+        stdoutTruncated,
+        stderrTruncated,
       };
       if (timedOut) {
         reject(new MediaCoreError(stage, `${failureCode.replace(/_failed$/, '')}_timeout`, 'Media executable timed out.'));

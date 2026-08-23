@@ -415,6 +415,10 @@ function countDisposableSessions(database, userId) {
   `));
 }
 
+function isRecoverableDisposableLogoutStatus(status) {
+  return (status >= 200 && status < 300) || [401, 403, 404].includes(status);
+}
+
 function validateEvidence(rows) {
   const checks = rows.map((row) => {
     const metadata = row.capture_metadata;
@@ -555,8 +559,7 @@ async function cleanup(options = {}) {
         method: 'POST',
         headers: { apikey: status.publishableKey, authorization: `Bearer ${accessToken}` },
       });
-      const alreadyRevoked = logout.status === 403 && countDisposableSessions(database, state.userId) === 0;
-      if (!logout.ok && ![401, 404].includes(logout.status) && !alreadyRevoked) {
+      if (!isRecoverableDisposableLogoutStatus(logout.status)) {
         throw new Error(`Disposable Local session revocation failed with HTTP ${logout.status}.`);
       }
     }
@@ -565,6 +568,9 @@ async function cleanup(options = {}) {
       headers: { apikey: status.secretKey, authorization: `Bearer ${status.secretKey}` },
     });
     if (!response.ok && response.status !== 404) throw new Error(`Disposable Local user deletion failed with HTTP ${response.status}.`);
+    if (countDisposableSessions(database, state.userId) !== 0) {
+      throw new Error('Disposable Local sessions remain after user deletion.');
+    }
   }
 
   await closeChrome(state.debugPort);
@@ -591,7 +597,7 @@ async function cleanup(options = {}) {
   console.log(JSON.stringify({ cleaned: true, environments_restored: true, local_user_deleted: true, objects_deleted: true }));
 }
 
-export { countDisposableSessions, deleteDisposableRows, validateEvidence };
+export { countDisposableSessions, deleteDisposableRows, isRecoverableDisposableLogoutStatus, validateEvidence };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const command = process.argv[2];

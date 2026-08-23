@@ -5,6 +5,8 @@ import { PsqlDatabase } from '../infrastructure/psql-database.mjs';
 import { PostgresWorkerStore } from '../infrastructure/postgres-worker-store.mjs';
 import { SupabaseStorage } from '../infrastructure/supabase-storage.mjs';
 import { DeterministicFakeTranscriber } from '../transcription/fake-transcriber.mjs';
+import { OpenAIWhisperTranscriber } from '../transcription/openai-whisper-transcriber.mjs';
+import { createCloudRunDispatch } from '../runtime/cloud-run-dispatch.mjs';
 import { loadRuntimeConfig } from '../runtime/config.mjs';
 import { createDispatchToken, verifyDispatchToken } from '../runtime/dispatch-auth.mjs';
 import { runDispatchCycle } from '../runtime/dispatcher.mjs';
@@ -18,16 +20,22 @@ function runtime(config) {
   const database = new PsqlDatabase({
     databaseUrl: config.databaseUrl,
     psqlPath: config.psqlPath,
-    localOnly: true,
+    localOnly: config.environment === 'local',
   });
   return {
     store: new PostgresWorkerStore(database),
-    storage: new SupabaseStorage({
+    storage: config.serviceRoleKey ? new SupabaseStorage({
       apiUrl: config.apiUrl,
       serviceRoleKey: config.serviceRoleKey,
-      localOnly: true,
-    }),
+      localOnly: config.environment === 'local',
+    }) : null,
   };
+}
+
+function createTranscriber(config) {
+  if (config.transcriber === 'deterministic-fake') return new DeterministicFakeTranscriber();
+  if (config.transcriber === 'openai-whisper') return new OpenAIWhisperTranscriber({ apiKey: config.openAiApiKey });
+  throw new TypeError('Transcriber is unavailable.');
 }
 
 async function spawnAuthenticatedWorker(config, mediaId) {
@@ -54,7 +62,7 @@ async function spawnAuthenticatedWorker(config, mediaId) {
 async function main() {
   const mode = process.argv[2];
   if (!['worker', 'dispatch', 'reconcile'].includes(mode)) throw new TypeError('Use worker, dispatch, or reconcile mode.');
-  const config = loadRuntimeConfig();
+  const config = loadRuntimeConfig(process.env, mode);
   const logger = createSanitizedLogger();
   const { store, storage } = runtime(config);
 
@@ -72,7 +80,7 @@ async function main() {
         storage,
         ffmpegPath: config.ffmpegPath,
         ffprobePath: config.ffprobePath,
-        transcriber: new DeterministicFakeTranscriber(),
+        transcriber: createTranscriber(config),
         logger,
         leaseSeconds: config.leaseSeconds,
       });
@@ -83,9 +91,17 @@ async function main() {
   }
 
   if (mode === 'dispatch') {
+    const dispatchOne = config.dispatchMode === 'cloud-run'
+      ? createCloudRunDispatch({
+          projectId: config.googleProjectId,
+          region: config.googleRegion,
+          workerJob: config.workerJob,
+          dispatchSecret: config.dispatchSecret,
+        })
+      : (mediaId) => spawnAuthenticatedWorker(config, mediaId);
     const summary = await runDispatchCycle({
       store,
-      dispatchOne: (mediaId) => spawnAuthenticatedWorker(config, mediaId),
+      dispatchOne,
       logger,
       limit: config.dispatchLimit,
       concurrency: config.dispatchConcurrency,

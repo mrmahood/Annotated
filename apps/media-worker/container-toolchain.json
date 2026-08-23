@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "platform": "linux/amd64",
   "node": {
     "version": "24.14.1",
@@ -27,6 +27,11 @@
     "one_media_per_worker_process": true,
     "worker_timeout_seconds": 600,
     "lease_seconds": 900,
-    "transcriber": "deterministic-fake"
+    "local_transcriber": "deterministic-fake",
+    "staging_transcriber": "openai-whisper",
+    "staging_dispatch": "cloud-run-v2-one-media-override",
+    "staging_project": "annotated-504301",
+    "staging_region": "us-east4",
+    "staging_supabase_ref": "nkkunkwirvfwhmpwonqz"
   }
 }

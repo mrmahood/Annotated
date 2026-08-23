@@ -3,7 +3,9 @@ import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import test from 'node:test';
 import { MediaCoreError } from '../src/domain/media-core-error.mjs';
-import { loadRuntimeConfig } from '../src/runtime/config.mjs';
+import { preparePsqlConnection } from '../src/infrastructure/psql-database.mjs';
+import { createCloudRunDispatch, cloudRunDispatchContract } from '../src/runtime/cloud-run-dispatch.mjs';
+import { loadRuntimeConfig, stagingRuntimeContract } from '../src/runtime/config.mjs';
 import { createAuthenticatedLocalDispatch, createDispatchToken, verifyDispatchToken } from '../src/runtime/dispatch-auth.mjs';
 import { runDispatchCycle } from '../src/runtime/dispatcher.mjs';
 import { runReconciliationCycle } from '../src/runtime/reconciler.mjs';
@@ -44,6 +46,13 @@ function claim(resumeStage) {
     attempt_count: 1,
   };
 }
+
+test('PostgreSQL subprocess arguments redact the database password', () => {
+  const connection = preparePsqlConnection('postgresql://worker:p%40ssword@db.example:6543/postgres?sslmode=require');
+  assert.equal(connection.password, 'p@ssword');
+  assert.equal(connection.redactedUrl, 'postgresql://worker@db.example:6543/postgres?sslmode=require');
+  assert.doesNotMatch(connection.redactedUrl, /p%40ssword|p@ssword/u);
+});
 
 test('dispatch tokens bind one media ID, expire, and reject tampering', () => {
   const now = Date.parse('2026-08-18T12:00:00Z');
@@ -107,6 +116,65 @@ test('runtime configuration is Local-only and bounded without exposing secrets',
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_SUPABASE_URL: 'https://remote.supabase.co' }), /loopback/u);
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_DISPATCH_CONCURRENCY: '9' }), /between 1 and 8/u);
   assert.doesNotMatch(JSON.stringify({ ...config, serviceRoleKey: '[redacted]', dispatchSecret: '[redacted]' }), new RegExp(secret, 'u'));
+});
+
+test('runtime configuration accepts only the exact approved Staging boundary', () => {
+  const environment = {
+    ANNOTATED_ENVIRONMENT: 'staging',
+    ANNOTATED_SUPABASE_URL: `https://${stagingRuntimeContract.apiHost}`,
+    ANNOTATED_DATABASE_URL: `postgresql://${stagingRuntimeContract.databaseUser}:encoded-password@${stagingRuntimeContract.databaseHost}:6543/postgres`,
+    ANNOTATED_SERVICE_ROLE_KEY: secret,
+    ANNOTATED_DISPATCH_SECRET: randomBytes(32).toString('base64url'),
+    ANNOTATED_OPENAI_API_KEY: `sk-proj-${randomBytes(32).toString('base64url')}`,
+    ANNOTATED_FFMPEG_PATH: '/usr/local/bin/ffmpeg',
+    ANNOTATED_FFPROBE_PATH: '/usr/local/bin/ffprobe',
+    ANNOTATED_PSQL_PATH: '/usr/lib/postgresql/17/bin/psql',
+    ANNOTATED_TRANSCRIBER: 'openai-whisper',
+    ANNOTATED_DISPATCH_MODE: 'cloud-run',
+    ANNOTATED_GOOGLE_PROJECT_ID: stagingRuntimeContract.googleProjectId,
+    ANNOTATED_GOOGLE_REGION: stagingRuntimeContract.googleRegion,
+    ANNOTATED_WORKER_JOB: stagingRuntimeContract.workerJob,
+  };
+  const config = loadRuntimeConfig(environment, 'worker');
+  assert.equal(config.environment, 'staging');
+  assert.equal(config.transcriber, 'openai-whisper');
+  assert.equal(config.dispatchMode, 'cloud-run');
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_SUPABASE_URL: 'https://other.supabase.co' }), /approved Staging project/u);
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_DATABASE_URL: environment.ANNOTATED_DATABASE_URL.replace(':6543', ':5432') }), /least-privilege/u);
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_TRANSCRIBER: 'deterministic-fake' }), /requires the approved/u);
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_GOOGLE_REGION: 'us-central1' }), /approved Staging value/u);
+});
+
+test('Cloud Run dispatch uses metadata identity and overrides exactly one media ID', async () => {
+  const requests = [];
+  const dispatchSecret = randomBytes(32).toString('base64url');
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, options });
+    if (url === cloudRunDispatchContract.metadataTokenUrl) {
+      return { ok: true, async json() { return { access_token: 'metadata-access-token-value', expires_in: 3600, token_type: 'Bearer' }; } };
+    }
+    return { ok: true, status: 200 };
+  };
+  const dispatch = createCloudRunDispatch({
+    projectId: stagingRuntimeContract.googleProjectId,
+    region: stagingRuntimeContract.googleRegion,
+    workerJob: stagingRuntimeContract.workerJob,
+    dispatchSecret,
+    fetchImpl,
+    clock: () => Date.parse('2026-08-18T12:00:00Z'),
+  });
+  assert.deepEqual(await dispatch(mediaId), { outcome: 'accepted' });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].options.headers['metadata-flavor'], 'Google');
+  assert.equal(requests[1].url, 'https://run.googleapis.com/v2/projects/annotated-504301/locations/us-east4/jobs/annotated-media-worker-staging:run');
+  assert.equal(requests[1].options.headers.authorization, 'Bearer metadata-access-token-value');
+  const body = JSON.parse(requests[1].options.body);
+  assert.equal(body.overrides.taskCount, 1);
+  assert.equal(body.overrides.timeout, '600s');
+  assert.equal(body.overrides.containerOverrides[0].env[0].value, mediaId);
+  const dispatchToken = body.overrides.containerOverrides[0].env[1].value;
+  assert.equal(verifyDispatchToken({ token: dispatchToken, mediaId, secret: dispatchSecret, now: Date.parse('2026-08-18T12:00:01Z') }).media_id, mediaId);
+  assert.doesNotMatch(JSON.stringify(requests[1]), /raw_storage_path|transcript_text/u);
 });
 
 test('dispatcher deduplicates IDs, bounds concurrency, and never forwards candidate details', async () => {

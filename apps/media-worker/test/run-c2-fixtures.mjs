@@ -11,6 +11,7 @@ const outputRoot = path.join(generatedFixtureRoot, 'c2');
 await mkdir(outputRoot, { recursive: true });
 const scenarios = [
   { name: 'landscape-video', media: 'landscape-video.webm', metadata: 'safe-landscape.json', type: 'video', extension: 'mp4' },
+  { name: 'vp8-landscape-video', media: 'vp8-landscape-video.webm', metadata: 'safe-landscape-vp8.json', type: 'video', extension: 'mp4' },
   { name: 'portrait-video', media: 'portrait-video.webm', metadata: 'safe-portrait.json', type: 'video', extension: 'mp4' },
   { name: 'letterboxed-video', media: 'letterboxed-video.webm', metadata: 'safe-letterboxed.json', type: 'video', extension: 'mp4' },
   { name: 'audio-only', media: 'audio-only.webm', metadata: 'safe-audio.json', type: 'audio', extension: 'm4a' },

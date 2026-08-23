@@ -26,6 +26,7 @@ function Invoke-FfmpegFixture {
 }
 
 $videoCodec = @('-c:v', 'libvpx-vp9', '-deadline', 'good', '-cpu-used', '4', '-b:v', '240k')
+$vp8VideoCodec = @('-c:v', 'libvpx', '-deadline', 'good', '-cpu-used', '4', '-b:v', '240k')
 $audioCodec = @('-c:a', 'libopus', '-b:a', '64k')
 
 Invoke-FfmpegFixture 'landscape-video.webm' (@(
@@ -33,6 +34,11 @@ Invoke-FfmpegFixture 'landscape-video.webm' (@(
   '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
   '-t', '4.040'
 ) + $videoCodec + $audioCodec + @('-shortest'))
+Invoke-FfmpegFixture 'vp8-landscape-video.webm' (@(
+  '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30',
+  '-f', 'lavfi', '-i', 'sine=frequency=494:sample_rate=48000',
+  '-t', '4.040'
+) + $vp8VideoCodec + $audioCodec + @('-shortest'))
 Invoke-FfmpegFixture 'portrait-video.webm' (@(
   '-f', 'lavfi', '-i', 'testsrc2=size=360x640:rate=30',
   '-f', 'lavfi', '-i', 'sine=frequency=554:sample_rate=48000',
@@ -47,6 +53,10 @@ Invoke-FfmpegFixture 'audio-only.webm' (@(
   '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000',
   '-t', '4.035'
 ) + $audioCodec)
+Invoke-FfmpegFixture 'unsupported-vorbis-audio.webm' @(
+  '-f', 'lavfi', '-i', 'sine=frequency=784:sample_rate=48000',
+  '-t', '4.035', '-c:a', 'libvorbis', '-b:a', '64k'
+)
 Invoke-FfmpegFixture 'missing-audio.webm' (@(
   '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30',
   '-t', '4'
@@ -70,8 +80,8 @@ foreach ($duration in @('89.999', '90.000', '90.001', '92.001')) {
 )
 
 $mediaNames = @(
-  'landscape-video.webm', 'portrait-video.webm', 'letterboxed-video.webm',
-  'audio-only.webm', 'missing-audio.webm', 'malformed.webm',
+  'landscape-video.webm', 'vp8-landscape-video.webm', 'portrait-video.webm', 'letterboxed-video.webm',
+  'audio-only.webm', 'unsupported-vorbis-audio.webm', 'missing-audio.webm', 'malformed.webm',
   'wrong-container.webm', 'duration-89999.webm', 'duration-90000.webm',
   'duration-90001.webm', 'duration-92001.webm'
 )

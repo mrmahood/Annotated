@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DeterministicFakeTranscriber } from '../src/transcription/fake-transcriber.mjs';
+import { mapWhisperVerboseResponse, OPENAI_WHISPER_MODEL } from '../src/transcription/openai-whisper-transcriber.mjs';
 import { buildTranscriptionAudioArguments } from '../src/transcription/derivative-audio.mjs';
 import {
   MAX_SEGMENTS,
@@ -51,7 +52,7 @@ test('segments may be omitted but cannot be an empty present list', () => {
   assert.throws(() => normalizeTranscriptSegments([], 2_000), errorCode('transcript_invalid'));
 });
 
-test('segment rounding clamps only overlap and duration drift within 20ms', () => {
+test('segment rounding keeps 20ms overlap tolerance and clamps bounded provider tail drift', () => {
   assert.deepEqual(normalizeTranscriptSegments([
     { start_ms: 0, end_ms: 1_010, text: 'first' },
     { start_ms: 1_000, end_ms: 2_015, text: 'second' },
@@ -63,9 +64,32 @@ test('segment rounding clamps only overlap and duration drift within 20ms', () =
     { start_ms: 0, end_ms: 1_050, text: 'first' },
     { start_ms: 1_000, end_ms: 1_500, text: 'second' },
   ], 2_000), errorCode('transcript_invalid'));
+  assert.deepEqual(normalizeTranscriptSegments([
+    { start_ms: 0, end_ms: 2_280, text: 'provider tail drift' },
+  ], 2_000), [
+    { start_ms: 0, end_ms: 2_000, text: 'provider tail drift' },
+  ]);
   assert.throws(() => normalizeTranscriptSegments([
-    { start_ms: 0, end_ms: 2_021, text: 'too late' },
+    { start_ms: 0, end_ms: 4_001, text: 'too late' },
   ], 2_000), errorCode('transcript_invalid'));
+  assert.deepEqual(normalizeTranscriptSegments([
+    { start_ms: 0, end_ms: 90_400, text: 'exact observed ninety-second tail drift' },
+  ], 90_000), [
+    { start_ms: 0, end_ms: 90_000, text: 'exact observed ninety-second tail drift' },
+  ]);
+  assert.throws(() => normalizeTranscriptSegments([
+    { start_ms: 0, end_ms: 92_001, text: 'beyond the maximum tail tolerance' },
+  ], 90_000), errorCode('transcript_invalid'));
+  assert.deepEqual(normalizeTranscriptSegments([
+    { start_ms: 0, end_ms: 8_000, text: 'portrait opening' },
+    { start_ms: 8_000, end_ms: 10_160, text: 'exact observed portrait tail drift' },
+  ], 9_000), [
+    { start_ms: 0, end_ms: 8_000, text: 'portrait opening' },
+    { start_ms: 8_000, end_ms: 9_000, text: 'exact observed portrait tail drift' },
+  ]);
+  assert.throws(() => normalizeTranscriptSegments([
+    { start_ms: 9_000, end_ms: 9_500, text: 'starts outside the excerpt' },
+  ], 9_000), errorCode('transcript_invalid'));
 });
 
 for (const [name, overrides] of [
@@ -124,4 +148,37 @@ test('transcription audio extraction uses one fixed derivative-audio map', () =>
   assert.equal(args[args.indexOf('-ar') + 1], '16000');
   assert.equal(args[args.indexOf('-ac') + 1], '1');
   assert.deepEqual(args.slice(-2), ['flac', 'transcription.flac']);
+});
+
+test('Whisper verbose JSON maps only text, relative segment timestamps, and bounded audit facts', () => {
+  const result = mapWhisperVerboseResponse({
+    task: 'transcribe',
+    language: 'english',
+    duration: 2.0,
+    text: ' Exact excerpt. ',
+    segments: [{
+      id: 0,
+      seek: 0,
+      start: 0,
+      end: 2,
+      text: ' Exact excerpt. ',
+      tokens: [1, 2, 3],
+      avg_logprob: -0.1,
+    }],
+  });
+  assert.deepEqual(result, {
+    text: ' Exact excerpt. ',
+    language: 'en',
+    segments: [{ start_ms: 0, end_ms: 2_000, text: ' Exact excerpt. ' }],
+    provider: 'openai',
+    model: OPENAI_WHISPER_MODEL,
+    providerMetadata: { response_format: 'verbose_json', timestamp_granularity: 'segment' },
+  });
+  assert.equal('tokens' in result.segments[0], false);
+  assert.equal('duration' in result.providerMetadata, false);
+});
+
+test('invalid Whisper response shapes fail with a stable sanitized provider code', () => {
+  assert.throws(() => mapWhisperVerboseResponse({ text: 'missing segments' }), errorCode('transcription_failed'));
+  assert.throws(() => mapWhisperVerboseResponse({ text: 'bad time', segments: [{ start: '0', end: 1, text: 'bad' }] }), errorCode('transcription_failed'));
 });
