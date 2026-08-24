@@ -61,7 +61,12 @@ async function api(pathname, { method = 'GET', body, prefer = 'return=minimal' }
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`Staging API request failed with HTTP ${response.status}.`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => null);
+    const failureCode = typeof failure?.code === 'string' && /^[A-Z0-9]{3,10}$/u.test(failure.code)
+      ? failure.code : 'UNKNOWN';
+    throw new Error(`Staging API request failed with HTTP ${response.status} code ${failureCode}.`);
+  }
   if (response.status === 204) return null;
   const text = await response.text();
   return text ? JSON.parse(text) : null;
@@ -154,7 +159,7 @@ async function prepare() {
       annotation_id: fixture.annotationId, target_type: 'time_range', start_ms: 0, end_ms: 4_000,
     })),
   });
-  diagnosticPhase = 'insert_media';
+  diagnosticPhase = 'insert_removed_media';
   await api('/rest/v1/annotation_media', {
     method: 'POST',
     body: [{
@@ -165,7 +170,12 @@ async function prepare() {
       duration_ms: 4_000, byte_size: ARTIFACT_BYTES.length, checksum_sha256: ARTIFACT_CHECKSUM,
       processed_at: new Date(now).toISOString(), removed_at: new Date(now).toISOString(),
       created_at: removedCreatedAt, updated_at: new Date(now).toISOString(),
-    }, {
+    }],
+  });
+  diagnosticPhase = 'insert_processed_only_media';
+  await api('/rest/v1/annotation_media', {
+    method: 'POST',
+    body: [{
       id: failed.mediaId, annotation_id: failed.annotationId, media_type: 'audio',
       processing_status: 'failed', processing_stage: null, capture_metadata: CAPTURE_METADATA,
       raw_storage_path: null, raw_deleted_at: failedProcessedAt,
@@ -255,7 +265,8 @@ async function main() {
 }
 
 await main().catch((error) => {
-  const boundedMessage = error instanceof Error && /^Staging API request failed with HTTP [0-9]{3}[.]$/u.test(error.message)
+  const boundedMessage = error instanceof Error &&
+    /^Staging API request failed with HTTP [0-9]{3} code (?:[A-Z0-9]{3,10}|UNKNOWN)[.]$/u.test(error.message)
     ? error.message : 'Bounded lifecycle assertion failed.';
   process.stderr.write(`${JSON.stringify({
     gate: 'c6_retention_diagnostic', phase: diagnosticPhase, message: boundedMessage,
