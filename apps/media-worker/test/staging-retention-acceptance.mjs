@@ -20,6 +20,7 @@ const FIXTURES = Object.freeze([
 ]);
 const ARTIFACT_BYTES = Buffer.from('Annotated C6 disposable lifecycle fixture.\n', 'utf8');
 const ARTIFACT_CHECKSUM = createHash('sha256').update(ARTIFACT_BYTES).digest('hex');
+let diagnosticPhase = 'startup';
 
 function required(value, label) {
   if (typeof value !== 'string' || !value.trim()) throw new TypeError(`${label} is required.`);
@@ -96,6 +97,7 @@ async function preflight() {
 }
 
 async function prepare() {
+  diagnosticPhase = 'prepare_preflight';
   await preflight();
   const owner = await ownerId();
   const privateStorage = storage();
@@ -109,9 +111,11 @@ async function prepare() {
   const failedProcessedAt = new Date(now - (73.5 * 60 * 60 * 1000)).toISOString();
   const failedUpdatedAt = new Date(now - (73 * 60 * 60 * 1000)).toISOString();
 
+  diagnosticPhase = 'upload_private_objects';
   await privateStorage.uploadNoUpsert('annotation-media-raw', removedPaths.raw, ARTIFACT_BYTES, 'audio/webm');
   await privateStorage.uploadNoUpsert('annotation-media', removedPaths.processed, ARTIFACT_BYTES, 'audio/mp4');
   await privateStorage.uploadNoUpsert('annotation-media', failedPaths.processed, ARTIFACT_BYTES, 'audio/mp4');
+  diagnosticPhase = 'insert_sources';
   await api('/rest/v1/sources', {
     method: 'POST',
     body: FIXTURES.map((fixture) => ({
@@ -121,6 +125,7 @@ async function prepare() {
       source_type: 'podcast', title: 'C6 Retention Fixture', metadata: { fixture: 'synthetic' },
     })),
   });
+  diagnosticPhase = 'insert_annotations';
   await api('/rest/v1/annotations', {
     method: 'POST',
     body: FIXTURES.map((fixture, index) => ({
@@ -129,12 +134,14 @@ async function prepare() {
       status: 'draft', slug: `c6-retention-${index + 1}`,
     })),
   });
+  diagnosticPhase = 'insert_targets';
   await api('/rest/v1/annotation_targets', {
     method: 'POST',
     body: FIXTURES.map((fixture) => ({
       annotation_id: fixture.annotationId, target_type: 'time_range', start_ms: 0, end_ms: 4_000,
     })),
   });
+  diagnosticPhase = 'insert_media';
   await api('/rest/v1/annotation_media', {
     method: 'POST',
     body: [{
@@ -156,6 +163,7 @@ async function prepare() {
       created_at: failedCreatedAt, updated_at: failedUpdatedAt,
     }],
   });
+  diagnosticPhase = 'insert_transcripts';
   await api('/rest/v1/annotation_transcripts', {
     method: 'POST',
     body: FIXTURES.map((fixture) => ({
@@ -233,7 +241,11 @@ async function main() {
   else throw new TypeError('Use preflight, prepare, status, or cleanup.');
 }
 
-await main().catch(() => {
-  process.stderr.write('C6 Staging retention acceptance failed.\n');
+await main().catch((error) => {
+  const boundedMessage = error instanceof Error && /^Staging API request failed with HTTP [0-9]{3}[.]$/u.test(error.message)
+    ? error.message : 'Bounded lifecycle assertion failed.';
+  process.stderr.write(`${JSON.stringify({
+    gate: 'c6_retention_diagnostic', phase: diagnosticPhase, message: boundedMessage,
+  })}\n`);
   process.exitCode = 1;
 });
