@@ -14,6 +14,7 @@ import { runOneMediaJob } from '../src/runtime/worker-job.mjs';
 
 const mediaId = '11111111-1111-4111-8111-111111111111';
 const secondMediaId = '22222222-2222-4222-8222-222222222222';
+const thirdMediaId = '77777777-7777-4777-8777-777777777777';
 const annotationId = '33333333-3333-4333-8333-333333333333';
 const leaseToken = '44444444-4444-4444-8444-444444444444';
 const secret = randomBytes(32).toString('base64url');
@@ -251,6 +252,42 @@ test('reconciler releases expired leases and removes an unstaged deterministic d
   assert.deepEqual(removed, [rawPath, processedPath]);
   assert.deepEqual(summary, { candidateCount: 2, reconciledCount: 1, cleanedCount: 1, skippedCount: 0, failedCount: 0 });
   assert.doesNotMatch(lines.join('\n'), /owner\/annotation/u);
+});
+
+test('reconciler completes durable cleanup for an already-removed row', async () => {
+  const { logger } = captureLogger();
+  const ownerId = '55555555-5555-4555-8555-555555555555';
+  const rawPath = `${ownerId}/${annotationId}/${thirdMediaId}/66666666-6666-4666-8666-666666666666.webm`;
+  const processedPath = `${ownerId}/${annotationId}/${thirdMediaId}/excerpt.m4a`;
+  const existing = new Set([rawPath, processedPath]);
+  let confirmed = false;
+  const store = {
+    listReconciliationCandidates: async () => [
+      { media_id: thirdMediaId, reconciliation_action: 'removed_cleanup' },
+    ],
+    claimCleanup: async () => ({
+      media_id: thirdMediaId,
+      cleanup_reason: 'removed_cleanup',
+      raw_storage_path: rawPath,
+      processed_storage_path: processedPath,
+      expected_processed_storage_path: processedPath,
+      observed_updated_at: '2026-08-24T02:00:00Z',
+    }),
+    confirmCleanup: async () => {
+      assert.equal(existing.size, 0);
+      confirmed = true;
+      return 'removed';
+    },
+  };
+  const storage = {
+    exists: async (_bucket, objectPath) => existing.has(objectPath),
+    remove: async (_bucket, objectPaths) => objectPaths.forEach((objectPath) => existing.delete(objectPath)),
+  };
+  const summary = await runReconciliationCycle({ store, storage, logger, concurrency: 1 });
+  assert.equal(confirmed, true);
+  assert.deepEqual(summary, {
+    candidateCount: 1, reconciledCount: 0, cleanedCount: 1, skippedCount: 0, failedCount: 0,
+  });
 });
 
 test('one-ID worker persists a retry schedule through the lease-fenced store', async () => {

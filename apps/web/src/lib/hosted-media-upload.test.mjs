@@ -139,10 +139,12 @@ test('failed recapture derives exact raw-only and processed artifact cleanup pat
   }), (error) => error.code === 'PROCESSED_PATH_INVALID');
 });
 
-test('processed Storage and resumable recapture markers match the durable contracts', async () => {
-  const [foundation, workerStorage] = await Promise.all([
+test('processed Storage, recapture, and cancellation cleanup markers match the durable contracts', async () => {
+  const [foundation, workerStorage, durableCleanup, reconciler] = await Promise.all([
     readFile(new URL('../../../../supabase/migrations/20260815120000_media_archive_foundation.sql', import.meta.url), 'utf8'),
     readFile(new URL('../../../media-worker/src/infrastructure/supabase-storage.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../../../supabase/migrations/20260824020000_phase_c_durable_terminal_cleanup.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../../../media-worker/src/runtime/reconciler.mjs', import.meta.url), 'utf8'),
   ]);
   assert.equal(PROCESSED_BUCKET, 'annotation-media');
   assert.match(foundation, /\(\s*'annotation-media',\s*'annotation-media'/);
@@ -157,6 +159,10 @@ test('processed Storage and resumable recapture markers match the durable contra
     failure_stage: null,
     failure_code: null,
   }), false);
+  assert.match(durableCleanup, /media\.processing_status = 'removed'[\s\S]*'removed_cleanup'/);
+  assert.match(durableCleanup, /media\.processed_storage_path is not null/);
+  assert.match(durableCleanup, /delete from public\.annotation_transcripts/);
+  assert.match(reconciler, /'removed_cleanup'/);
 });
 
 test('failed raw-only recapture deletes the deterministic derivative before raw bytes and surfaces bounded failures', async () => {

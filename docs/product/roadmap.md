@@ -3,10 +3,14 @@
 Status: Phase C corrective review, 2026-08-23. Increments C1-C6 and their bounded
 Staging and owner acceptance gates are complete with immutable jobs and paused
 schedules. Draft PR #18's lower-duration migration and immutable corrective
-worker passed exact Staging validation. Final review then found three cleanup
-defects plus stale status text. Their regression-covered implementation remains
-Local-only, and the additive cleanup-v2 migration has not been applied to
-Staging. Production deployment, schedule enablement, and merge remain blocked.
+worker passed exact Staging validation. The first three cleanup corrections and
+status repair passed Local review and were pushed. A subsequent final read-only
+review found two remaining retention crash boundaries: cancellation after the
+`removed` transition and terminal finalization after confirmed raw deletion.
+Their forward-only migration and actual private Local Storage regressions now
+pass; the cleanup-v2 and durable-terminal-cleanup migrations have not been
+applied to Staging. Production deployment, schedule enablement, and merge remain
+blocked.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -260,6 +264,7 @@ Phase B's automated and owner-performed browser acceptance gates have passed.
 C1-C6 implementation and owner acceptance are complete. The exact-duration
 lower-bound correction found during Draft PR review passed its separately
 authorized Staging regression. The later processed-bucket,
-resumable-recapture, and orphan-derivative cleanup corrections must pass final
-review and separately authorized Staging application before Phase C can merge.
+resumable-recapture, orphan-derivative, removed-state, and processed-only
+terminal cleanup corrections must pass separately authorized Staging
+application and final review before Phase C can merge.
 Production rollout and Phase D remain separately blocked.

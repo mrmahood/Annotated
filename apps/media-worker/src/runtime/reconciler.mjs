@@ -7,7 +7,7 @@ const PROCESSING_ACTIONS = new Set([
   'attempts_exhausted',
   'lease_expired',
 ]);
-const CLEANUP_ACTIONS = new Set(['abandoned_cleanup', 'terminal_raw_cleanup']);
+const CLEANUP_ACTIONS = new Set(['abandoned_cleanup', 'terminal_raw_cleanup', 'removed_cleanup']);
 
 async function removeIfPresent(storage, bucket, objectPath) {
   if (!objectPath) return;

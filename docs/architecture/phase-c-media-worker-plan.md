@@ -2,11 +2,13 @@
 
 Status: corrective review active, 2026-08-23. Phase B and Phase C increments
 C1-C6 are implemented, and the bounded C6 Staging and owner acceptance gates
-passed with immutable non-root jobs and paused schedules. Draft PR #18 review
-found a missing lower-duration invariant; its worker regression and forward-only
-database correction pass Local validation and remain pending review and separate
-Staging authorization. Production deployment, schedule enablement, commit, push,
-merge, and Phase D remain separately authorized.
+passed with immutable non-root jobs and paused schedules. Draft PR #18's
+lower-duration correction passed exact Staging. Later review corrections for
+processed Storage, recapture, and deterministic orphan cleanup were pushed; a
+final read-only review then found removed-state and processed-only terminal
+retention gaps. Their forward-only migration and Local regressions now pass and
+await the separately authorized paused-schedule Staging gate. Production
+deployment, schedule enablement, merge, and Phase D remain separately authorized.
 
 This plan narrows Phase C of `docs/architecture/media-archive-pipeline.md` into
 reviewable engineering and acceptance gates. The accepted architecture remains

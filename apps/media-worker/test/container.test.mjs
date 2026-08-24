@@ -347,6 +347,29 @@ test('C6 Local audio-quality gate is 90-second, three-by-three, signal-bounded, 
   assert.doesNotMatch(quality, /fetch\(|https?:\/\//u);
 });
 
+test('C6 retention gate is exact-Staging, paused-schedule, fixture-bounded, and cleanup-complete', async () => {
+  const [acceptance, runner] = await Promise.all([
+    readFile(new URL('./staging-retention-acceptance.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('./run-c6-retention-gate.ps1', import.meta.url), 'utf8'),
+  ]);
+  assert.match(acceptance, /https:\/\/nkkunkwirvfwhmpwonqz[.]supabase[.]co/u);
+  assert.match(acceptance, /processing_status: 'removed'/u);
+  assert.match(acceptance, /processing_status: 'failed'/u);
+  assert.match(acceptance, /raw_storage_path: null, raw_deleted_at:/u);
+  assert.match(acceptance, /updated_at: failedUpdatedAt/u);
+  assert.match(acceptance, /annotationStatus \}\) => annotationStatus === 'draft'/u);
+  assert.match(acceptance, /transcripts\.length === 0/u);
+  assert.match(acceptance, /objects\.every\(\(present\) => !present\)/u);
+  assert.match(runner, /nkkunkwirvfwhmpwonqz/u);
+  assert.match(runner, /vnxjktpdzmykmqrqwvks/u);
+  assert.match(runner, /annotated-media-reconciler-staging/u);
+  assert.match(runner, /git status --porcelain/u);
+  assert.match(runner, /origin\/codex\/phase-c-worker/u);
+  assert.match(runner, /PAUSED/u);
+  assert.match(runner, /node \$harness cleanup/u);
+  assert.doesNotMatch(runner, /scheduler jobs resume|annotated-media-dispatcher-staging.*execute/u);
+});
+
 test('C6 browser audio matrix is localhost-only, six-variant, three-sample, and bypasses hosted upload truthfully', async () => {
   const runner = await readFile(new URL('./run-c6-browser-audio-matrix.mjs', import.meta.url), 'utf8');
   const collector = await readFile(new URL('./local-acceptance/c6-browser-capture-collector.mjs', import.meta.url), 'utf8');

@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(37);
 
 select has_function(
   'private', 'release_annotation_media_processing_attempt',
@@ -280,6 +280,142 @@ select ok(
     join public.annotations on annotations.id = media.annotation_id
     where media.id = (select media_id from c4_cleanup)),
   'cleanup removes private object references without publishing the annotation'
+);
+
+-- A finalization-boundary crash can exhaust the last attempt after raw deletion
+-- was already confirmed. The retained derivative and transcript must still be
+-- eligible for bounded terminal cleanup even though no raw path remains.
+update public.annotation_media as media
+set processing_status = 'failed', processing_stage = null,
+  raw_storage_path = null, raw_deleted_at = pg_catalog.now(),
+  processed_storage_path = annotations.user_id::text || '/' || media.annotation_id::text || '/' || media.id::text || '/excerpt.m4a',
+  processed_mime_type = 'audio/mp4', duration_ms = 4000, byte_size = 1000,
+  checksum_sha256 = pg_catalog.repeat('c', 64), processed_at = pg_catalog.now(),
+  attempt_count = 3, next_attempt_at = null, lease_token = null, lease_expires_at = null,
+  failure_stage = 'finalizing', failure_code = 'publication_failed'
+from public.annotations
+where annotations.id = media.annotation_id and annotations.commentary_text = 'C4 worker envelope';
+
+insert into public.annotation_transcripts (
+  annotation_id, transcript_text, language, segments, provider, model, provider_metadata
+)
+select annotations.id, 'Processed-only terminal fixture.', 'en',
+  '[{"start_ms":0,"end_ms":4000,"text":"Processed-only terminal fixture."}]'::jsonb,
+  'deterministic-fake', 'fixture-v1', '{"local_fixture":true}'::jsonb
+from public.annotations where commentary_text = 'C4 worker envelope';
+
+alter table public.annotation_media disable trigger annotation_media_set_updated_at;
+update public.annotation_media as media
+set updated_at = pg_catalog.now() - interval '73 hours'
+from public.annotations
+where annotations.id = media.annotation_id and annotations.commentary_text = 'C4 worker envelope';
+alter table public.annotation_media enable trigger annotation_media_set_updated_at;
+
+select is(
+  (select reconciliation_action from private.list_annotation_media_reconciliation_candidates(100)
+    where media_id = (select media.id from public.annotation_media as media
+      join public.annotations on annotations.id = media.annotation_id
+      where annotations.commentary_text = 'C4 worker envelope')),
+  'terminal_raw_cleanup',
+  'processed-only terminal failure remains eligible for retention cleanup'
+);
+
+create temporary table c4_processed_only_cleanup as
+select claimed.* from private.claim_annotation_media_cleanup_v2(
+  (select media.id from public.annotation_media as media
+    join public.annotations on annotations.id = media.annotation_id
+    where annotations.commentary_text = 'C4 worker envelope')
+) as claimed;
+
+select ok(
+  (select cleanup_reason = 'terminal_raw_cleanup'
+      and raw_storage_path is null
+      and processed_storage_path is not null
+      and expected_processed_storage_path = processed_storage_path
+    from c4_processed_only_cleanup),
+  'processed-only cleanup claim preserves exact staged and deterministic paths'
+);
+select lives_ok(
+  $$
+    select private.confirm_annotation_media_cleanup(
+      media_id, raw_storage_path, processed_storage_path, observed_updated_at
+    ) from c4_processed_only_cleanup
+  $$,
+  'processed-only terminal Storage absence can be confirmed'
+);
+select ok(
+  (select media.processing_status = 'removed'
+      and media.processed_storage_path is null
+      and not exists (
+        select 1 from public.annotation_transcripts as transcript
+        where transcript.annotation_id = media.annotation_id
+      )
+    from public.annotation_media as media
+    where media.id = (select media_id from c4_processed_only_cleanup)),
+  'processed-only terminal confirmation clears derivative facts and transcript'
+);
+
+-- Cancellation suppresses access before Storage work. If the request crashes at
+-- that boundary, the removed row must be an immediate durable cleanup candidate.
+update public.annotation_media as media
+set raw_storage_path = annotations.user_id::text || '/' || media.annotation_id::text || '/' || media.id::text ||
+    '/66666666-6666-4666-8666-666666666666.webm',
+  raw_mime_type = 'audio/webm', raw_byte_size = 1000, raw_deleted_at = null,
+  processed_storage_path = annotations.user_id::text || '/' || media.annotation_id::text || '/' || media.id::text || '/excerpt.m4a',
+  processed_mime_type = 'audio/mp4', duration_ms = 4000, byte_size = 1000,
+  checksum_sha256 = pg_catalog.repeat('d', 64), processed_at = pg_catalog.now()
+from public.annotations
+where annotations.id = media.annotation_id and annotations.commentary_text = 'C4 legacy recapture';
+
+insert into public.annotation_transcripts (
+  annotation_id, transcript_text, language, segments, provider, model, provider_metadata
+)
+select annotations.id, 'Removed cleanup boundary fixture.', 'en',
+  '[{"start_ms":0,"end_ms":4000,"text":"Removed cleanup boundary fixture."}]'::jsonb,
+  'deterministic-fake', 'fixture-v1', '{"local_fixture":true}'::jsonb
+from public.annotations where commentary_text = 'C4 legacy recapture';
+
+select is(
+  (select reconciliation_action from private.list_annotation_media_reconciliation_candidates(100)
+    where media_id = (select media.id from public.annotation_media as media
+      join public.annotations on annotations.id = media.annotation_id
+      where annotations.commentary_text = 'C4 legacy recapture')),
+  'removed_cleanup',
+  'removed row with retained private artifacts is immediately reconcilable'
+);
+
+create temporary table c4_removed_cleanup as
+select claimed.* from private.claim_annotation_media_cleanup_v2(
+  (select media.id from public.annotation_media as media
+    join public.annotations on annotations.id = media.annotation_id
+    where annotations.commentary_text = 'C4 legacy recapture')
+) as claimed;
+
+select is(
+  (select cleanup_reason from c4_removed_cleanup),
+  'removed_cleanup',
+  'removed cleanup claim is explicit and bounded'
+);
+select lives_ok(
+  $$
+    select private.confirm_annotation_media_cleanup(
+      media_id, raw_storage_path, processed_storage_path, observed_updated_at
+    ) from c4_removed_cleanup
+  $$,
+  'removed-state Storage absence can be confirmed idempotently'
+);
+select ok(
+  (select media.processing_status = 'removed'
+      and media.raw_storage_path is null
+      and media.processed_storage_path is null
+      and media.removed_at is not null
+      and not exists (
+        select 1 from public.annotation_transcripts as transcript
+        where transcript.annotation_id = media.annotation_id
+      )
+    from public.annotation_media as media
+    where media.id = (select media_id from c4_removed_cleanup)),
+  'removed-state confirmation clears every private reference and transcript'
 );
 
 select ok(

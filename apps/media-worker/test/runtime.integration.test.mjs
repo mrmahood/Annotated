@@ -259,6 +259,85 @@ test('C5 Local authenticated dispatch, retry, reconciliation, and retention life
       }
     });
 
+    await t.test('attempt-three failure after raw confirmation cleans processed-only terminal state', async () => {
+      const scenario = await seed('processed-only terminal retention');
+      await storage.uploadNoUpsert('annotation-media', scenario.processedPath, rawBytes, 'audio/mp4');
+      await storage.remove('annotation-media-raw', [scenario.rawPath]);
+      database.execute(`
+        update public.annotation_media
+        set processing_status = 'processing', processing_stage = 'finalizing',
+          raw_storage_path = null, raw_deleted_at = pg_catalog.now(),
+          processed_storage_path = ${sqlText(scenario.processedPath)},
+          processed_mime_type = 'audio/mp4', duration_ms = 4000,
+          byte_size = ${rawBytes.length}, checksum_sha256 = pg_catalog.repeat('a', 64),
+          processed_at = pg_catalog.now(), attempt_count = 3,
+          next_attempt_at = null, lease_token = null, lease_expires_at = null
+        where id = ${sqlText(scenario.mediaId)}::uuid;
+        insert into public.annotation_transcripts (
+          annotation_id, transcript_text, language, segments, provider, model, provider_metadata
+        ) values (
+          ${sqlText(scenario.annotationId)}::uuid, 'Processed-only terminal fixture.', 'en',
+          '[{"start_ms":0,"end_ms":4000,"text":"Processed-only terminal fixture."}]'::jsonb,
+          'deterministic-fake', 'fixture-v1', '{"local_fixture":true}'::jsonb
+        );
+      `);
+      const terminalized = await reconcileOnly([scenario]);
+      assert.equal(terminalized.reconciledCount, 1);
+      assert.deepEqual(state(scenario.mediaId), {
+        annotation_status: 'draft', processing_status: 'failed', processing_stage: null,
+        attempt_count: 3, next_attempt_present: false, lease_present: false,
+        raw_present: false, processed_present: true, transcript_present: true,
+      });
+
+      database.execute(`
+        begin;
+        alter table public.annotation_media disable trigger annotation_media_set_updated_at;
+        update public.annotation_media set updated_at = pg_catalog.now() - interval '73 hours'
+        where id = ${sqlText(scenario.mediaId)}::uuid;
+        alter table public.annotation_media enable trigger annotation_media_set_updated_at;
+        commit;
+      `);
+      const cleaned = await reconcileOnly([scenario]);
+      assert.equal(cleaned.cleanedCount, 1);
+      assert.deepEqual(state(scenario.mediaId), {
+        annotation_status: 'draft', processing_status: 'removed', processing_stage: null,
+        attempt_count: 3, next_attempt_present: false, lease_present: false,
+        raw_present: false, processed_present: false, transcript_present: false,
+      });
+      assert.equal(await storage.exists('annotation-media', scenario.processedPath), false);
+    });
+
+    await t.test('cancellation crash after removed transition is immediately janitor-recoverable', async () => {
+      const scenario = await seed('removed cleanup boundary', { status: 'uploading' });
+      await storage.uploadNoUpsert('annotation-media', scenario.processedPath, rawBytes, 'audio/mp4');
+      database.execute(`
+        update public.annotation_media
+        set processing_status = 'removed', processing_stage = null,
+          processed_storage_path = ${sqlText(scenario.processedPath)},
+          processed_mime_type = 'audio/mp4', duration_ms = 4000,
+          byte_size = ${rawBytes.length}, checksum_sha256 = pg_catalog.repeat('b', 64),
+          processed_at = pg_catalog.now(), removed_at = pg_catalog.now(),
+          next_attempt_at = null, lease_token = null, lease_expires_at = null
+        where id = ${sqlText(scenario.mediaId)}::uuid;
+        insert into public.annotation_transcripts (
+          annotation_id, transcript_text, language, segments, provider, model, provider_metadata
+        ) values (
+          ${sqlText(scenario.annotationId)}::uuid, 'Removed cleanup boundary fixture.', 'en',
+          '[{"start_ms":0,"end_ms":4000,"text":"Removed cleanup boundary fixture."}]'::jsonb,
+          'deterministic-fake', 'fixture-v1', '{"local_fixture":true}'::jsonb
+        );
+      `);
+      const cleaned = await reconcileOnly([scenario]);
+      assert.equal(cleaned.cleanedCount, 1);
+      assert.deepEqual(state(scenario.mediaId), {
+        annotation_status: 'draft', processing_status: 'removed', processing_stage: null,
+        attempt_count: 0, next_attempt_present: false, lease_present: false,
+        raw_present: false, processed_present: false, transcript_present: false,
+      });
+      assert.equal(await storage.exists('annotation-media-raw', scenario.rawPath), false);
+      assert.equal(await storage.exists('annotation-media', scenario.processedPath), false);
+    });
+
     const output = logs.join('\n');
     for (const objectPath of [...trackedRaw, ...trackedProcessed]) assert.doesNotMatch(output, new RegExp(objectPath.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'));
     assert.doesNotMatch(output, /Synthetic excerpt|local\.invalid|Bearer|service_role|raw\.webm|excerpt\.m4a/u);

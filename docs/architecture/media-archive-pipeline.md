@@ -9,10 +9,15 @@ was applied to exact Staging, and immutable worker digest
 `sha256:cc920050b6699e3c4ff543f5910ea901a352dd2919c6061f4aa0f4dfdd40449f`
 then passed a bounded first-attempt VP8/Opus lifecycle and exact cleanup. Final
 PR review found processed-bucket, resumable-recapture, orphan-derivative
-cleanup, and stale-status blockers. Their corrective implementation and
-regressions are Local-only; the new cleanup migration has not been applied to
-Staging. Production deployment, schedule enablement, and merge remain
-separately authorized.
+cleanup, and stale-status blockers. Those corrections passed Local validation
+and were pushed. A subsequent final read-only review found two remaining
+retention crash boundaries: cancellation could enter `removed` before Storage
+cleanup without becoming janitor-eligible, and a terminal finalization failure
+after raw confirmation could retain a processed derivative and transcript with
+no raw path. The forward-only durable-terminal-cleanup migration and Local
+regressions now close both gaps. The two latest cleanup migrations have not
+been applied to Staging. Production deployment, schedule enablement, and merge
+remain separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -725,10 +730,12 @@ names below are scopes, not files created by this design.
 
 Status: corrective review. C1-C6 implementation, bounded Staging validation,
 and owner acceptance are complete. The lower-duration invariant and its
-corrective worker passed exact Staging validation. Final PR review then found
-three cleanup defects plus stale status text; those corrections and their
-regressions remain Local-only, and the additive cleanup-v2 migration has not
-been applied to Staging. The work breakdown, decision gates, validation
+corrective worker passed exact Staging validation. The first cleanup/status
+review corrections were pushed; the subsequent final read-only review found
+removed-state and processed-only terminal retention gaps. A forward-only
+migration, reconciler action, pgTAP coverage, and actual Local private Storage
+regressions close both. The cleanup-v2 and durable-terminal-cleanup migrations
+remain unapplied to Staging. The work breakdown, decision gates, validation
 sequence, and exit criteria are recorded in
 `docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution
 of this accepted architecture; it does not expand the phase or authorize later

@@ -7,8 +7,9 @@ pending review. Draft PR #18's lower-duration migration is present on exact
 Staging through `20260823235900`; immutable worker digest
 `sha256:cc920050b6699e3c4ff543f5910ea901a352dd2919c6061f4aa0f4dfdd40449f`
 passed the bounded corrective VP8/Opus lifecycle and cleanup. Later cleanup-v2,
-processed-bucket, and resumable-recapture corrections are Local-only and have
-not been applied to Staging. This record covers only the Staging boundary.
+processed-bucket, resumable-recapture, removed-state, and processed-only
+terminal-retention corrections pass Local validation but have not been applied
+to Staging. This record covers only the Staging boundary.
 Production deployment and merge remain prohibited.
 
 Gate 5a, the exact 90,000 ms audio boundary, is accepted. A

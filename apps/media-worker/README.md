@@ -405,6 +405,9 @@ the remote half of this gate: it reached ready/published in one attempt, cleaned
 raw storage, and passed owner playback with all four markers, steady tone,
 balanced channels, a clean ending, and no crackle, clicks, warble, or dropouts.
 Gate 5d and the complete C6 owner acceptance are accepted. The full repository
-regression and final Local corrective review also passed. PR #18 remains a
-Draft pending owner-authorized commit and push; Staging schedules remain paused,
-and no Production deploy or merge is authorized.
+regression and the first Local corrective review also passed and were pushed to
+Draft PR #18. A later final read-only review found removed-state and
+processed-only terminal retention gaps; their forward-only migration and actual
+Local private Storage regressions now pass. Both Staging schedules remain paused,
+the latest cleanup corrections remain undeployed, and no Production deploy or
+merge is authorized.
