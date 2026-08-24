@@ -1,17 +1,15 @@
 # Phase C media worker plan
 
-Status: final review active, 2026-08-23. Phase B and Phase C increments
-C1-C6 are implemented, and the bounded C6 Staging and owner acceptance gates
-passed with immutable non-root jobs and paused schedules. Draft PR #18's
-lower-duration correction passed exact Staging. Later review corrections for
-processed Storage, recapture, and deterministic orphan cleanup were pushed; a
-final read-only review then found removed-state and processed-only terminal
-retention gaps. Their forward-only migration, Local regressions, and exact
-paused-schedule Staging reconciliation gate now pass. Staging history is aligned
-through `20260824020000`, all jobs use immutable digest
+Status: complete and merged, 2026-08-24. Phase C increments C1-C6, the bounded
+C6 Staging gates, and owner acceptance are complete. The exact-duration and
+retention corrections passed their Local and exact paused-schedule Staging
+regressions. Staging history is aligned through `20260824020000`, all jobs use
+immutable digest
 `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
-and every disposable fixture was removed. Production deployment, schedule
-enablement, merge, and Phase D remain separately authorized.
+and every disposable fixture was removed. PR #18 was squash-merged into
+protected `main` as `7a6bb9042cb8295575f0c8b89b9128d499c20652`; its required validation and
+the post-merge `main` CI run passed. Production was not accessed or deployed,
+both schedules remain paused, and Phase D is the next active phase.
 
 This plan narrows Phase C of `docs/architecture/media-archive-pipeline.md` into
 reviewable engineering and acceptance gates. The accepted architecture remains
@@ -19,10 +17,11 @@ authoritative if this plan is ambiguous.
 
 ## 1. Outcome and phase boundary
 
-Phase C will turn one authoritative private `processing/queued` media row into
-one bounded processed derivative and one excerpt-only transcript. It will then
-delete and confirm deletion of the raw object before atomically marking the
-media `ready` and the annotation `published`.
+Phase C delivers the path that turns one authoritative private
+`processing/queued` media row into one bounded processed derivative and one
+excerpt-only transcript. It then deletes and confirms deletion of the raw
+object before atomically marking the media `ready` and the annotation
+`published`.
 
 Phase C includes:
 

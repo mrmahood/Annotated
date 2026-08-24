@@ -1,23 +1,17 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, updated 2026-08-23. Phases A-B and Phase C
-increments C1-C6 are implemented. C6's least-privilege worker migration,
-immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded lifecycle,
-crash, codec, geometry, duration, transcript, and audio-quality gates passed in
-Staging with both schedules paused. The forward-only 20 ms duration correction
-was applied to exact Staging, and immutable worker digest
-`sha256:cc920050b6699e3c4ff543f5910ea901a352dd2919c6061f4aa0f4dfdd40449f`
-then passed a bounded first-attempt VP8/Opus lifecycle and exact cleanup. Final
-PR review found processed-bucket, resumable-recapture, orphan-derivative
-cleanup, and stale-status blockers. Those corrections passed Local validation
-and were pushed. A subsequent final read-only review found two remaining
-retention crash boundaries: cancellation could enter `removed` before Storage
-cleanup without becoming janitor-eligible, and a terminal finalization failure
-after raw confirmation could retain a processed derivative and transcript with
-no raw path. The forward-only durable-terminal-cleanup migration and Local
-regressions now close both gaps. The two latest cleanup migrations have not
-been applied to Staging. Production deployment, schedule enablement, and merge
-remain separately authorized.
+Status: accepted architecture, updated 2026-08-24. Phases A-B and Phase C
+increments C1-C6 are implemented and accepted. C6's least-privilege worker
+migrations, immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded
+lifecycle, crash, codec, geometry, exact-duration, transcript, retention, and
+audio-quality gates passed in Staging with both schedules paused. Staging
+migration history is aligned through `20260824020000`, all three jobs use
+accepted immutable digest
+`sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
+and the disposable fixtures were removed. PR #18 was squash-merged into
+protected `main` as `7a6bb9042cb8295575f0c8b89b9128d499c20652` after required validation;
+post-merge `main` CI also passed. Production was not accessed or deployed,
+schedules remain paused, and Phase D is the next active phase.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -728,18 +722,18 @@ names below are scopes, not files created by this design.
 
 ### C. Worker, transcode, transcription, and audio acceptance
 
-Status: final review. C1-C6 implementation, bounded Staging validation, and
-owner acceptance are complete. The lower-duration invariant and its corrective
-worker passed exact Staging validation. The first cleanup/status review
-corrections were pushed; the subsequent final read-only review found
-removed-state and processed-only terminal retention gaps. Forward-only
-migrations, a reconciler action, pgTAP coverage, actual Local private Storage
-regressions, and an exact two-case Staging reconciliation gate close both.
-Staging migration history is aligned through `20260824020000`; all three jobs
-use immutable digest
-`sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
-both schedules remain paused, and the disposable fixtures were removed. The
-work breakdown, decision gates, validation sequence, and exit criteria are recorded in
+Status: complete and merged. C1-C6 implementation, bounded Staging validation,
+and owner acceptance are complete. The lower-duration invariant and its
+corrective worker passed exact Staging validation. Forward-only cleanup
+migrations, the reconciler actions, pgTAP coverage, actual Local private
+Storage regressions, and the exact paused-schedule Staging reconciliation gates
+closed the processed-bucket, resumable-recapture, orphan-derivative,
+removed-state, and processed-only terminal retention gaps. Staging migration
+history is aligned through `20260824020000`; all three jobs use immutable
+digest `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
+both schedules remain paused, and the disposable fixtures were removed. PR #18
+and post-merge `main` CI passed. The work breakdown, decision gates, validation
+sequence, and exit criteria are recorded in
 `docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution
 of this accepted architecture; it does not expand the phase or authorize later
 checkpoints.

@@ -1,16 +1,14 @@
 # Product roadmap
 
-Status: Phase C corrective review, 2026-08-23. Increments C1-C6 and their bounded
-Staging and owner acceptance gates are complete with immutable jobs and paused
-schedules. Draft PR #18's lower-duration migration and immutable corrective
-worker passed exact Staging validation. The first three cleanup corrections and
-status repair passed Local review and were pushed. A subsequent final read-only
-review found two remaining retention crash boundaries: cancellation after the
-`removed` transition and terminal finalization after confirmed raw deletion.
-Their forward-only migration and actual private Local Storage regressions now
-pass; the cleanup-v2 and durable-terminal-cleanup migrations have not been
-applied to Staging. Production deployment, schedule enablement, and merge remain
-blocked.
+Status: Phase C complete and merged, 2026-08-24. Increments C1-C6, their Local
+and bounded Staging validation, and their owner acceptance gates are complete.
+PR #18 was squash-merged into protected `main` as
+`7a6bb9042cb8295575f0c8b89b9128d499c20652` after its required validation
+passed; the post-merge `main` CI run also passed. Staging migration history is
+aligned through `20260824020000`, all three worker jobs use accepted immutable
+digest `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
+and both schedules remain paused. Production was not accessed or deployed.
+Phase D is the next active project phase.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -55,9 +53,10 @@ state, same-session retry, cancellation and raw cleanup, restart recovery,
 source navigation and tab closure, audible source-audio loopback, and the
 article-publication regression gate.
 
-## Phase C — corrective review
+## Phase C — complete
 
-Bounded media worker, likely a Cloud Run Job or equivalent:
+Bounded media worker, implemented as immutable non-root Cloud Run Jobs in
+Staging:
 
 - atomic lease/attempt handling and `ffprobe` validation;
 - video geometry and crop validation;
@@ -237,11 +236,12 @@ listening on two devices, this accepts the Local causal gate. The remaining
 browser repetitions are skipped unless a later defect requires them. The
 existing exact 90-second Staging lifecycle already passed owner playback without
 crackle, clicks, warble, or dropouts, so Gate 5d is accepted without another
-provider invocation. Full regression then passed, and Draft PR #18 entered the
-corrective review described at the top of this roadmap. Production and merge
-remain blocked.
+provider invocation. Full regression then passed, followed by the corrective
+review, protected validation, and squash merge recorded at the top of this
+roadmap. Production rollout and schedule enablement remain separately
+authorized.
 
-## Phase D — future
+## Phase D — next
 
 Publication and product experience:
 
@@ -260,12 +260,13 @@ Hardening and bounty submission:
 - Chrome Web Store packaging, onboarding, demo fixture, monitoring/runbooks, and
   polished bounty submission material.
 
-Phase B's automated and owner-performed browser acceptance gates have passed.
-C1-C6 implementation and owner acceptance are complete. The exact-duration
+Phase B's automated and owner-performed browser acceptance gates passed. C1-C6
+implementation and owner acceptance are complete. The exact-duration
 lower-bound correction found during Draft PR review passed its separately
 authorized Staging regression. The later processed-bucket,
 resumable-recapture, orphan-derivative, removed-state, and processed-only
 terminal cleanup corrections passed their separately authorized additive
-Staging application and exact paused-schedule reconciliation gate. Phase C now
-requires only the final read-only PR/CI review and explicit owner merge approval.
-Production rollout and Phase D remain separately blocked.
+Staging application and exact paused-schedule reconciliation gate. Required PR
+validation and post-merge `main` CI passed, and Phase C is formally closed.
+Phase D is next. Production rollout and schedule enablement remain separately
+blocked pending their later explicit gates.
