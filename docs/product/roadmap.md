@@ -265,6 +265,7 @@ C1-C6 implementation and owner acceptance are complete. The exact-duration
 lower-bound correction found during Draft PR review passed its separately
 authorized Staging regression. The later processed-bucket,
 resumable-recapture, orphan-derivative, removed-state, and processed-only
-terminal cleanup corrections must pass separately authorized Staging
-application and final review before Phase C can merge.
+terminal cleanup corrections passed their separately authorized additive
+Staging application and exact paused-schedule reconciliation gate. Phase C now
+requires only the final read-only PR/CI review and explicit owner merge approval.
 Production rollout and Phase D remain separately blocked.

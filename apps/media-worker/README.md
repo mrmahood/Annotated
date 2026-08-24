@@ -407,7 +407,9 @@ balanced channels, a clean ending, and no crackle, clicks, warble, or dropouts.
 Gate 5d and the complete C6 owner acceptance are accepted. The full repository
 regression and the first Local corrective review also passed and were pushed to
 Draft PR #18. A later final read-only review found removed-state and
-processed-only terminal retention gaps; their forward-only migration and actual
-Local private Storage regressions now pass. Both Staging schedules remain paused,
-the latest cleanup corrections remain undeployed, and no Production deploy or
-merge is authorized.
+processed-only terminal retention gaps. Their forward-only migration, actual
+Local private Storage regressions, and exact two-case Staging reconciler gate
+now pass on immutable digest
+`sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`.
+Both Staging schedules remain paused, every disposable fixture was removed, and
+no Production deploy or merge is authorized.

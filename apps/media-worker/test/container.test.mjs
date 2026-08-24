@@ -366,6 +366,10 @@ test('C6 retention gate is exact-Staging, paused-schedule, fixture-bounded, and 
   assert.match(runner, /git status --porcelain/u);
   assert.match(runner, /origin\/codex\/phase-c-worker/u);
   assert.match(runner, /PAUSED/u);
+  assert.match(runner, /run[.]googleapis[.]com%2Fstdout/u);
+  assert.match(runner, /run[.]googleapis[.]com\/execution_name/u);
+  assert.match(runner, /removed_cleanup/u);
+  assert.match(runner, /terminal_raw_cleanup/u);
   assert.match(runner, /node \$harness cleanup/u);
   assert.doesNotMatch(runner, /scheduler jobs resume|annotated-media-dispatcher-staging.*execute/u);
 });

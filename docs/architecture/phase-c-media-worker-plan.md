@@ -1,14 +1,17 @@
 # Phase C media worker plan
 
-Status: corrective review active, 2026-08-23. Phase B and Phase C increments
+Status: final review active, 2026-08-23. Phase B and Phase C increments
 C1-C6 are implemented, and the bounded C6 Staging and owner acceptance gates
 passed with immutable non-root jobs and paused schedules. Draft PR #18's
 lower-duration correction passed exact Staging. Later review corrections for
 processed Storage, recapture, and deterministic orphan cleanup were pushed; a
 final read-only review then found removed-state and processed-only terminal
-retention gaps. Their forward-only migration and Local regressions now pass and
-await the separately authorized paused-schedule Staging gate. Production
-deployment, schedule enablement, merge, and Phase D remain separately authorized.
+retention gaps. Their forward-only migration, Local regressions, and exact
+paused-schedule Staging reconciliation gate now pass. Staging history is aligned
+through `20260824020000`, all jobs use immutable digest
+`sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
+and every disposable fixture was removed. Production deployment, schedule
+enablement, merge, and Phase D remain separately authorized.
 
 This plan narrows Phase C of `docs/architecture/media-archive-pipeline.md` into
 reviewable engineering and acceptance gates. The accepted architecture remains

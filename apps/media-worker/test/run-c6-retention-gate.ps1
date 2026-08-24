@@ -80,15 +80,34 @@ try {
   Invoke-CheckedNative { node $harness preflight } 'The bounded Staging retention fixture preflight failed.'
   $prepared = $true
   Invoke-CheckedNative { node $harness prepare } 'The bounded Staging retention fixture preparation failed.'
-  Invoke-CheckedNative {
-    & $Gcloud run jobs execute annotated-media-reconciler-staging --project=annotated-504301 --region=us-east4 --wait --format='value(metadata.name)'
-  } 'The one-shot Staging reconciler execution failed.'
+  $executionOutput = @(& $Gcloud run jobs execute annotated-media-reconciler-staging --project=annotated-504301 --region=us-east4 --wait --format='value(metadata.name)')
+  if ($LASTEXITCODE -ne 0) { throw 'The one-shot Staging reconciler execution failed.' }
+  $executionName = ([string]$executionOutput[-1]).Trim()
+  if ($executionName -notmatch '^annotated-media-reconciler-staging-[a-z0-9]+$') {
+    throw 'The one-shot Staging reconciler execution identity is invalid.'
+  }
   Invoke-CheckedNative { node $harness status } 'The bounded Staging retention lifecycle assertions failed.'
 
-  $logFilter = 'resource.type="cloud_run_job" AND resource.labels.job_name="annotated-media-reconciler-staging"'
+  $logFilter = 'resource.type="cloud_run_job" AND resource.labels.job_name="annotated-media-reconciler-staging" AND ' +
+    'logName="projects/annotated-504301/logs/run.googleapis.com%2Fstdout"'
   $logs = @(& $Gcloud logging read $logFilter --project=annotated-504301 --freshness=15m --limit=50 --order=desc --format=json)
   if ($LASTEXITCODE -ne 0) { throw 'The bounded reconciler log query failed.' }
-  $logText = $logs -join [Environment]::NewLine
+  $allLogEntries = @(($logs -join [Environment]::NewLine) | ConvertFrom-Json)
+  $logEntries = @($allLogEntries | Where-Object {
+    $_.labels.'run.googleapis.com/execution_name' -eq $executionName
+  })
+  $logText = $logEntries | ConvertTo-Json -Depth 20 -Compress
+  $fixtureMediaIds = @('c6830000-0000-4000-8000-000000000001', 'c6830000-0000-4000-8000-000000000002')
+  $cleanupEntries = @($logEntries | Where-Object {
+    $_.jsonPayload.event -eq 'cleanup_completed' -and $fixtureMediaIds -contains $_.jsonPayload.media_id
+  })
+  $expectedActions = @($cleanupEntries | ForEach-Object { [string]$_.jsonPayload.action } | Sort-Object -Unique)
+  $cycleEntries = @($logEntries | Where-Object { $_.jsonPayload.event -eq 'reconciliation_cycle_completed' })
+  if ($cleanupEntries.Count -ne 2 -or $expectedActions.Count -ne 2 -or
+      $expectedActions[0] -ne 'removed_cleanup' -or $expectedActions[1] -ne 'terminal_raw_cleanup' -or
+      $cycleEntries.Count -ne 1 -or [int]$cycleEntries[0].jsonPayload.failed_count -ne 0) {
+    throw 'The exact bounded reconciler lifecycle events are incomplete.'
+  }
   if ($logText -match 'Bearer\s|service_role|annotation-media-raw/|https://nkkunkwirvfwhmpwonqz[.]supabase[.]co/storage') {
     throw 'The bounded reconciler logs contain a prohibited secret or private path marker.'
   }
@@ -100,7 +119,7 @@ try {
   [ordered]@{
     gate = 'c6_retention_corrective_regression'; outcome = 'passed'; lifecycle_case_count = 2
     reconciler_execution_count = 1; fixtures_cleaned = $true; schedules_paused = $true
-    production_accessed = $false; immutable_image = $images[0]
+    production_accessed = $false; immutable_image = $images[0]; execution_name = $executionName
   } | ConvertTo-Json -Compress
 } finally {
   if ($prepared -and -not [string]::IsNullOrWhiteSpace($env:ANNOTATED_SERVICE_ROLE_KEY)) {

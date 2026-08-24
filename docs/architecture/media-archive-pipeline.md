@@ -728,15 +728,18 @@ names below are scopes, not files created by this design.
 
 ### C. Worker, transcode, transcription, and audio acceptance
 
-Status: corrective review. C1-C6 implementation, bounded Staging validation,
-and owner acceptance are complete. The lower-duration invariant and its
-corrective worker passed exact Staging validation. The first cleanup/status
-review corrections were pushed; the subsequent final read-only review found
-removed-state and processed-only terminal retention gaps. A forward-only
-migration, reconciler action, pgTAP coverage, and actual Local private Storage
-regressions close both. The cleanup-v2 and durable-terminal-cleanup migrations
-remain unapplied to Staging. The work breakdown, decision gates, validation
-sequence, and exit criteria are recorded in
+Status: final review. C1-C6 implementation, bounded Staging validation, and
+owner acceptance are complete. The lower-duration invariant and its corrective
+worker passed exact Staging validation. The first cleanup/status review
+corrections were pushed; the subsequent final read-only review found
+removed-state and processed-only terminal retention gaps. Forward-only
+migrations, a reconciler action, pgTAP coverage, actual Local private Storage
+regressions, and an exact two-case Staging reconciliation gate close both.
+Staging migration history is aligned through `20260824020000`; all three jobs
+use immutable digest
+`sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
+both schedules remain paused, and the disposable fixtures were removed. The
+work breakdown, decision gates, validation sequence, and exit criteria are recorded in
 `docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution
 of this accepted architecture; it does not expand the phase or authorize later
 checkpoints.

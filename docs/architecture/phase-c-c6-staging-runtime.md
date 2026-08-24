@@ -1,16 +1,30 @@
 # Phase C C6 Staging runtime
 
 Status: C6 Local validation, Staging lifecycle/recovery, codec, geometry,
-exact-duration, transcript, and owner media-quality gates passed, including the
-risk-based Gate 5d audio-crackle acceptance, 2026-08-23. Schedules remain paused
-pending review. Draft PR #18's lower-duration migration is present on exact
-Staging through `20260823235900`; immutable worker digest
-`sha256:cc920050b6699e3c4ff543f5910ea901a352dd2919c6061f4aa0f4dfdd40449f`
-passed the bounded corrective VP8/Opus lifecycle and cleanup. Later cleanup-v2,
-processed-bucket, resumable-recapture, removed-state, and processed-only
-terminal-retention corrections pass Local validation but have not been applied
-to Staging. This record covers only the Staging boundary.
+exact-duration, transcript, retention, and owner media-quality gates passed,
+including the risk-based Gate 5d audio-crackle acceptance, 2026-08-23.
+Schedules remain paused pending review. Draft PR #18's additive migrations are
+present on exact Staging through `20260824020000`; all three jobs use immutable
+worker digest
+`sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`.
+The processed-bucket, resumable-recapture, orphan-derivative, removed-state, and
+processed-only terminal-retention corrections now pass Local and bounded
+Staging validation. This record covers only the Staging boundary.
 Production deployment and merge remain prohibited.
+
+The final retention gate seeded exactly two private draft fixtures: a
+removed-state cancellation crash retaining raw, derivative, and transcript;
+and an aged failed row retaining only its derivative and transcript after raw
+deletion confirmation. One manually invoked reconciler execution,
+`annotated-media-reconciler-staging-b4xmk`, cleared both reference sets, deleted
+all three private objects and both transcripts, preserved both annotations as
+draft, and emitted the exact `removed_cleanup` and `terminal_raw_cleanup`
+events with zero cycle failures. The application-stdout-only log scan was
+sanitized and fixture teardown returned zero fixture rows. An earlier bounded
+batch also cleaned four older removed-state Staging candidates with zero
+failures, demonstrating the correction against pre-existing lifecycle state.
+Neither schedule was enabled, no dispatcher or transcriber ran, and Production
+was not accessed.
 
 Gate 5a, the exact 90,000 ms audio boundary, is accepted. A
 repository-owned runner now fails closed on the branch, Supabase ref, Production
