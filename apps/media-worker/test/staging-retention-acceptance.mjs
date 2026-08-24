@@ -20,6 +20,19 @@ const FIXTURES = Object.freeze([
 ]);
 const ARTIFACT_BYTES = Buffer.from('Annotated C6 disposable lifecycle fixture.\n', 'utf8');
 const ARTIFACT_CHECKSUM = createHash('sha256').update(ARTIFACT_BYTES).digest('hex');
+const CAPTURE_METADATA = Object.freeze({
+  version: 2,
+  capture_track: {
+    mime_type: 'audio/webm;codecs=opus', audio_track_count: 1, video_track_count: 0,
+    tracks: [{ kind: 'audio', settings: { sampleRate: 48_000, channelCount: 2 } }],
+    loopback_enabled: true,
+  },
+  timing: {
+    requested_start_ms: 0, requested_end_ms: 4_000, requested_duration_ms: 4_000,
+    lead_in_ms: 0, recorder_elapsed_ms: 4_958,
+    player_start_ms: 0, player_end_ms: 4_000, lead_in_clock: 'offscreen_monotonic',
+  },
+});
 let diagnosticPhase = 'startup';
 
 function required(value, label) {
@@ -146,7 +159,7 @@ async function prepare() {
     method: 'POST',
     body: [{
       id: removed.mediaId, annotation_id: removed.annotationId, media_type: 'audio',
-      processing_status: 'removed', processing_stage: null, capture_metadata: { version: 2 },
+      processing_status: 'removed', processing_stage: null, capture_metadata: CAPTURE_METADATA,
       raw_storage_path: removedPaths.raw, raw_mime_type: 'audio/webm', raw_byte_size: ARTIFACT_BYTES.length,
       processed_storage_path: removedPaths.processed, processed_mime_type: 'audio/mp4',
       duration_ms: 4_000, byte_size: ARTIFACT_BYTES.length, checksum_sha256: ARTIFACT_CHECKSUM,
@@ -154,7 +167,7 @@ async function prepare() {
       created_at: removedCreatedAt, updated_at: new Date(now).toISOString(),
     }, {
       id: failed.mediaId, annotation_id: failed.annotationId, media_type: 'audio',
-      processing_status: 'failed', processing_stage: null, capture_metadata: { version: 2 },
+      processing_status: 'failed', processing_stage: null, capture_metadata: CAPTURE_METADATA,
       raw_storage_path: null, raw_deleted_at: failedProcessedAt,
       processed_storage_path: failedPaths.processed, processed_mime_type: 'audio/mp4',
       duration_ms: 4_000, byte_size: ARTIFACT_BYTES.length, checksum_sha256: ARTIFACT_CHECKSUM,
