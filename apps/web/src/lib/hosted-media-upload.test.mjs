@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   AUDIO_LIMIT,
+  PROCESSED_BUCKET,
   RAW_BUCKET,
   VIDEO_LIMIT,
   assertServiceOperation,
@@ -14,8 +15,14 @@ import {
   parseAuthorizeInput,
   parseCompletionInput,
   parseCancelInput,
+  privateArtifactPaths,
+  processedStoragePath,
+  removePrivateArtifacts,
   hostedMediaErrorResponse,
   HostedMediaApiError,
+  isRecaptureCleanupPending,
+  RECAPTURE_CLEANUP_CODE,
+  RECAPTURE_CLEANUP_STAGE,
   rawStoragePath,
   validateCaptureMetadata,
   validateSupabaseApiKey,
@@ -28,9 +35,15 @@ const ANNOTATION = '22222222-2222-4222-8222-222222222222';
 const MEDIA = '33333333-3333-4333-8333-333333333333';
 const UPLOAD = '44444444-4444-4444-8444-444444444444';
 const metadata = {
-  version: 1,
-  viewport: { width: 1280, height: 720, device_pixel_ratio: 1 },
-  video_element: { start: null, end: null },
+  version: 2,
+  viewport: {
+    start: { width: 1280, height: 720, device_pixel_ratio: 1, scroll_x: 0, scroll_y: 0 },
+    end: { width: 1280, height: 720, device_pixel_ratio: 1, scroll_x: 0, scroll_y: 0 },
+  },
+  video_element: {
+    start: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+    end: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+  },
   intrinsic_video: { width: 1920, height: 1080 },
   computed_style: { object_fit: 'contain', object_position: '50% 50%' },
   fullscreen: { start: false, end: false },
@@ -38,19 +51,21 @@ const metadata = {
     mime_type: 'video/webm;codecs=vp9,opus',
     audio_track_count: 1,
     video_track_count: 1,
-    tracks: [],
+    tracks: [
+      { kind: 'audio', label: '', enabled: true, muted: false, readyState: 'live', settings: { sampleRate: 48000 } },
+      { kind: 'video', label: '', enabled: true, muted: false, readyState: 'live', settings: { width: 1280, height: 720 } },
+    ],
     loopback_enabled: true,
   },
   timing: {
     requested_start_ms: 5_000,
     requested_end_ms: 20_000,
     requested_duration_ms: 15_000,
-    recorder_started_at_ms: 1,
-    playback_acknowledged_at_ms: 2,
     lead_in_ms: 1,
     recorder_elapsed_ms: 15_010,
     player_start_ms: 5_000,
     player_end_ms: 20_000,
+    lead_in_clock: 'offscreen_monotonic',
   },
 };
 const input = {
@@ -68,6 +83,7 @@ const media = {
   media_type: 'video',
   processing_status: 'capture_pending',
   raw_storage_path: null,
+  processed_storage_path: null,
   raw_mime_type: null,
   raw_byte_size: null,
 };
@@ -105,6 +121,70 @@ test('cancellation accepts only an exact server-owned raw path and rejects path 
     ...media, processing_status: 'uploading', raw_storage_path: `${OTHER}/${ANNOTATION}/${MEDIA}/${UPLOAD}.webm`,
   }, annotation), (error) => error.code === 'RAW_PATH_INVALID');
   assert.throws(() => parseCancelInput({ ...cancel, rawStoragePath: path }), (error) => error.code === 'INVALID_REQUEST');
+});
+
+test('failed recapture derives exact raw-only and processed artifact cleanup paths', () => {
+  const raw = rawStoragePath(USER, ANNOTATION, MEDIA, UPLOAD);
+  const processed = processedStoragePath(USER, ANNOTATION, MEDIA, 'video');
+  assert.deepEqual(privateArtifactPaths(USER, ANNOTATION, {
+    ...media, processing_status: 'failed', raw_storage_path: raw,
+  }), { raw, processed: null, expectedProcessed: processed });
+  assert.deepEqual(privateArtifactPaths(USER, ANNOTATION, {
+    ...media, processing_status: 'failed', raw_storage_path: raw, processed_storage_path: processed,
+  }), { raw, processed, expectedProcessed: processed });
+  assert.throws(() => privateArtifactPaths(USER, ANNOTATION, {
+    ...media,
+    processing_status: 'failed',
+    processed_storage_path: `${OTHER}/${ANNOTATION}/${MEDIA}/excerpt.mp4`,
+  }), (error) => error.code === 'PROCESSED_PATH_INVALID');
+});
+
+test('processed Storage, recapture, and cancellation cleanup markers match the durable contracts', async () => {
+  const [foundation, workerStorage, durableCleanup, reconciler] = await Promise.all([
+    readFile(new URL('../../../../supabase/migrations/20260815120000_media_archive_foundation.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../../../media-worker/src/infrastructure/supabase-storage.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../../../supabase/migrations/20260824020000_phase_c_durable_terminal_cleanup.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../../../media-worker/src/runtime/reconciler.mjs', import.meta.url), 'utf8'),
+  ]);
+  assert.equal(PROCESSED_BUCKET, 'annotation-media');
+  assert.match(foundation, /\(\s*'annotation-media',\s*'annotation-media'/);
+  assert.match(workerStorage, /'annotation-media'/);
+  assert.equal(isRecaptureCleanupPending({
+    processing_status: 'uploading',
+    failure_stage: RECAPTURE_CLEANUP_STAGE,
+    failure_code: RECAPTURE_CLEANUP_CODE,
+  }), true);
+  assert.equal(isRecaptureCleanupPending({
+    processing_status: 'uploading',
+    failure_stage: null,
+    failure_code: null,
+  }), false);
+  assert.match(durableCleanup, /media\.processing_status = 'removed'[\s\S]*'removed_cleanup'/);
+  assert.match(durableCleanup, /media\.processed_storage_path is not null/);
+  assert.match(durableCleanup, /delete from public\.annotation_transcripts/);
+  assert.match(reconciler, /'removed_cleanup'/);
+});
+
+test('failed raw-only recapture deletes the deterministic derivative before raw bytes and surfaces bounded failures', async () => {
+  const raw = rawStoragePath(USER, ANNOTATION, MEDIA, UPLOAD);
+  const processed = processedStoragePath(USER, ANNOTATION, MEDIA, 'video');
+  const calls = [];
+  const storage = {
+    from(bucket) {
+      return { async remove(paths) { calls.push({ bucket, paths }); return { error: null }; } };
+    },
+  };
+  const paths = privateArtifactPaths(USER, ANNOTATION, {
+    ...media, processing_status: 'failed', raw_storage_path: raw, processed_storage_path: null,
+  });
+  await removePrivateArtifacts(storage, { raw: paths.raw, processed: paths.expectedProcessed });
+  assert.deepEqual(calls, [
+    { bucket: PROCESSED_BUCKET, paths: [processed] },
+    { bucket: RAW_BUCKET, paths: [raw] },
+  ]);
+  await assert.rejects(removePrivateArtifacts({
+    from() { return { async remove() { return { error: new Error('private storage detail') }; } }; },
+  }, { raw: null, processed }), (error) => error.code === 'PROCESSED_DELETE_FAILED' && error.status === 502);
 });
 
 test('bounded API errors always have a JSON body and content type', async () => {
@@ -190,7 +270,7 @@ test('authorization enforces zero, video, and audio size limits', () => {
   assert.throws(() => parseAuthorizeInput({ ...input, byteSize: 0 }), /Invalid/);
   assert.throws(() => parseAuthorizeInput({ ...input, byteSize: VIDEO_LIMIT + 1 }), /allowed size/);
   const audioMetadata = {
-    version: 1,
+    version: 2,
     capture_track: { ...metadata.capture_track, mime_type: 'audio/webm;codecs=opus', video_track_count: 0 },
     timing: metadata.timing,
   };
@@ -207,6 +287,16 @@ test('capture metadata validates the allow-list, type, range, and 92-second boun
   }, 'video', 5_000, 20_000), /does not match/);
   assert.throws(() => validateCaptureMetadata({
     ...metadata, timing: { ...metadata.timing, recorder_elapsed_ms: 92_001 },
+  }, 'video', 5_000, 20_000), /does not match/);
+  assert.throws(
+    () => validateCaptureMetadata({ ...metadata, version: 1 }, 'video', 5_000, 20_000),
+    (error) => error.code === 'RECAPTURE_REQUIRED' && error.status === 409,
+  );
+  assert.throws(() => validateCaptureMetadata({
+    ...metadata, viewport: { ...metadata.viewport, end: null },
+  }, 'video', 5_000, 20_000), /incomplete/);
+  assert.throws(() => validateCaptureMetadata({
+    ...metadata, timing: { ...metadata.timing, lead_in_clock: 'page_epoch' },
   }, 'video', 5_000, 20_000), /does not match/);
 });
 
@@ -232,11 +322,31 @@ test('routes use short-lived no-upsert authorization and transition only to proc
   assert.match(authorize, /expiresInSeconds: 7_200, upsert: false/);
   assert.match(complete, /processing_status: 'processing'/);
   assert.match(complete, /processing_stage: 'queued'/);
+  assert.match(authorize, /attempt_count: 0/);
+  assert.match(authorize + complete, /RECAPTURE_REQUIRED/);
   assert.doesNotMatch(authorize + complete, /serviceRoleKey.*jsonResponse|SUPABASE_SERVICE_ROLE_KEY.*jsonResponse/);
   assert.doesNotMatch(authorize + complete + cancel, /console\.(?:log|warn|error)\([^\n]*(?:secretKey|serviceRoleKey|SUPABASE_SERVICE_ROLE_KEY)/);
   assert.doesNotMatch(authorize + complete, /claim_annotation_media_processing|finalize_annotation_media_ready/);
   assert.match(cancel, /ownerStatus\.processing_status === 'capture_pending'/);
   assert.match(cancel, /cancel_hosted_media_annotation/);
-  assert.match(cancel, /remove\(\[media\.raw_storage_path\]\)/);
+  assert.match(authorize, /processed: retainedPaths\.expectedProcessed/);
+  assert.match(authorize, /failure_stage: RECAPTURE_CLEANUP_STAGE/);
+  assert.match(authorize, /failure_code: RECAPTURE_CLEANUP_CODE/);
+  assert.match(authorize, /requiresRecaptureCleanup = media\.processing_status === 'failed' \|\| recaptureCleanupPending/);
+  assert.match(authorize, /\.eq\('failure_stage', RECAPTURE_CLEANUP_STAGE\)/);
+  assert.match(authorize, /\.eq\('failure_code', RECAPTURE_CLEANUP_CODE\)/);
+  assert.match(complete, /isRecaptureCleanupPending\(media\)/);
+  assert.match(authorize, /\.eq\('processing_status', 'failed'\)/);
+  assert.match(authorize, /\.eq\('processing_status', expectedStatus\)/);
+  assert.match(authorize, /\.eq\('raw_storage_path', media\.raw_storage_path\)/);
+  assert.match(authorize, /\.eq\('processed_storage_path', media\.processed_storage_path\)/);
+  assert.match(authorize, /\.eq\('updated_at', expectedUpdatedAt\)/);
+  assert.ok(authorize.indexOf('const { data: fenced') < authorize.indexOf('if (requiresRecaptureCleanup)'));
+  assert.ok(authorize.indexOf('processed: retainedPaths.expectedProcessed') < authorize.indexOf('let updateQuery'));
+  assert.match(cancel, /processed: retainedPaths\.expectedProcessed/);
+  assert.match(cancel, /disposition !== 'already-cancelled'/);
+  assert.match(cancel, /\.eq\('processing_status', media\.processing_status\)/);
+  assert.ok(cancel.indexOf(".update({") < cancel.indexOf('processed: retainedPaths.expectedProcessed'));
+  assert.doesNotMatch(cancel, /ownerStatus\.processing_status === 'removed'/);
   assert.doesNotMatch(cancel, /body\.(?:path|raw_storage_path)|input\.(?:path|raw_storage_path)/);
 });

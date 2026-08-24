@@ -1,0 +1,426 @@
+[
+  {
+    "scenario": "landscape-video",
+    "output_file": "landscape-video.mp4",
+    "input": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "vp9",
+            "profile": "Profile 0",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "opus",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1
+          }
+        ],
+        "format": {
+          "format_name": "matroska,webm",
+          "duration": "4.033000",
+          "size": "151052"
+        }
+      },
+      "byteSize": 151052,
+      "checksumSha256": "40a7c0e162e11c095432444fbd2b00ce39ffee409f63ffdd6f6a1f839b051abd"
+    },
+    "crop": {
+      "x": 80,
+      "y": 44,
+      "width": 480,
+      "height": 272,
+      "scaleX": 0.5,
+      "scaleY": 0.5
+    },
+    "output": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "profile": "Main",
+            "codec_type": "video",
+            "width": 424,
+            "height": 240,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "profile": "LC",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "3.999675",
+          "size": "276362"
+        }
+      },
+      "byteSize": 276362,
+      "checksumSha256": "e3840190ff647cbc30cb7d2375080dd9d8414b431d1de2593a3e8001a0cc2b15",
+      "durationMs": 3999.6749999999997,
+      "width": 424,
+      "height": 240,
+      "mimeType": "video/mp4"
+    }
+  },
+  {
+    "scenario": "vp8-landscape-video",
+    "output_file": "vp8-landscape-video.mp4",
+    "input": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "vp8",
+            "profile": "0",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "opus",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1
+          }
+        ],
+        "format": {
+          "format_name": "matroska,webm",
+          "duration": "4.033000",
+          "size": "174114"
+        }
+      },
+      "byteSize": 174114,
+      "checksumSha256": "66f5153fdc3d4bc507ebba63db858acf64db0f354fe1393995dd092671ca9b63"
+    },
+    "crop": {
+      "x": 80,
+      "y": 44,
+      "width": 480,
+      "height": 272,
+      "scaleX": 0.5,
+      "scaleY": 0.5
+    },
+    "output": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "profile": "Main",
+            "codec_type": "video",
+            "width": 424,
+            "height": 240,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "profile": "LC",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "3.999675",
+          "size": "276575"
+        }
+      },
+      "byteSize": 276575,
+      "checksumSha256": "332306a39159ec655d80e2773b4bc57865d39b8893eafc07e43b793235588b30",
+      "durationMs": 3999.6749999999997,
+      "width": 424,
+      "height": 240,
+      "mimeType": "video/mp4"
+    }
+  },
+  {
+    "scenario": "portrait-video",
+    "output_file": "portrait-video.mp4",
+    "input": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "vp9",
+            "profile": "Profile 0",
+            "codec_type": "video",
+            "width": 360,
+            "height": 640,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "opus",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1
+          }
+        ],
+        "format": {
+          "format_name": "matroska,webm",
+          "duration": "4.033000",
+          "size": "149936"
+        }
+      },
+      "byteSize": 149936,
+      "checksumSha256": "f9ec5fab61cbf5f7bcda338818b472f61bac07dafafb0f846b379b521169b27c"
+    },
+    "crop": {
+      "x": 0,
+      "y": 20,
+      "width": 360,
+      "height": 600,
+      "scaleX": 1,
+      "scaleY": 1
+    },
+    "output": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "profile": "Main",
+            "codec_type": "video",
+            "width": 144,
+            "height": 240,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "profile": "LC",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "3.999675",
+          "size": "275367"
+        }
+      },
+      "byteSize": 275367,
+      "checksumSha256": "e62aface1d8907e077f0f1582e9dd0cf0a533f6833f9c9af79fc05622876fe32",
+      "durationMs": 3999.6749999999997,
+      "width": 144,
+      "height": 240,
+      "mimeType": "video/mp4"
+    }
+  },
+  {
+    "scenario": "letterboxed-video",
+    "output_file": "letterboxed-video.mp4",
+    "input": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "vp9",
+            "profile": "Profile 0",
+            "codec_type": "video",
+            "width": 640,
+            "height": 360,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "opus",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1
+          }
+        ],
+        "format": {
+          "format_name": "matroska,webm",
+          "duration": "4.033000",
+          "size": "146724"
+        }
+      },
+      "byteSize": 146724,
+      "checksumSha256": "e030bcccaf0d2f75f9d96303111da7ab8d920e00b8290883cce304cd2f24e2fd"
+    },
+    "crop": {
+      "x": 80,
+      "y": 44,
+      "width": 480,
+      "height": 272,
+      "scaleX": 0.5,
+      "scaleY": 0.5
+    },
+    "output": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "h264",
+            "profile": "Main",
+            "codec_type": "video",
+            "width": 424,
+            "height": 240,
+            "pix_fmt": "yuv420p"
+          },
+          {
+            "index": 1,
+            "codec_name": "aac",
+            "profile": "LC",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "3.999675",
+          "size": "276636"
+        }
+      },
+      "byteSize": 276636,
+      "checksumSha256": "1bb11a4f8b167ad78999c4b440f6d0bfc7c94aa12b683ac2a94664fb0e14fc75",
+      "durationMs": 3999.6749999999997,
+      "width": 424,
+      "height": 240,
+      "mimeType": "video/mp4"
+    }
+  },
+  {
+    "scenario": "audio-only",
+    "output_file": "audio-only.m4a",
+    "input": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "opus",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1
+          }
+        ],
+        "format": {
+          "format_name": "matroska,webm",
+          "duration": "4.043000",
+          "size": "42001"
+        }
+      },
+      "byteSize": 42001,
+      "checksumSha256": "518abf14f28e7ef393f4931064baa521bc701d1b4dec533d02905d8f5459bb39"
+    },
+    "crop": null,
+    "output": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "aac",
+            "profile": "LC",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "4.000000",
+          "size": "50006"
+        }
+      },
+      "byteSize": 50006,
+      "checksumSha256": "46365a2842d160c289015aee782e214e377f825d27fa2367317a4a648be2da4b",
+      "durationMs": 4000,
+      "width": null,
+      "height": null,
+      "mimeType": "audio/mp4"
+    }
+  },
+  {
+    "scenario": "audio-90000",
+    "output_file": "audio-90000.m4a",
+    "input": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "opus",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1
+          }
+        ],
+        "format": {
+          "format_name": "matroska,webm",
+          "duration": "90.008000",
+          "size": "41566"
+        }
+      },
+      "byteSize": 41566,
+      "checksumSha256": "15a2b60b7670c017a51591ac4868fbe4349a9652d7b46b569104de975993608d"
+    },
+    "crop": null,
+    "output": {
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "aac",
+            "profile": "LC",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+          "duration": "90.000000",
+          "size": "26110"
+        }
+      },
+      "byteSize": 26110,
+      "checksumSha256": "240c876936c46e9ee8f39ce06d13ca3c1fa1d60a1017142a253b143f8c75762e",
+      "durationMs": 90000,
+      "width": null,
+      "height": null,
+      "mimeType": "audio/mp4"
+    }
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "viewport": {
+    "start": { "width": 1280, "height": 720, "device_pixel_ratio": 1, "scroll_x": 0, "scroll_y": 0 },
+    "end": { "width": 1280, "height": 720, "device_pixel_ratio": 1, "scroll_x": 0, "scroll_y": 0 }
+  },
+  "video_element": {
+    "start": { "x": 160, "y": 90, "width": 960, "height": 540, "top": 90, "right": 1120, "bottom": 630, "left": 160 },
+    "end": { "x": 160, "y": 90, "width": 960, "height": 540, "top": 90, "right": 1120, "bottom": 630, "left": 160 }
+  },
+  "intrinsic_video": { "width": 1920, "height": 1080 },
+  "computed_style": { "object_fit": "contain", "object_position": "50% 50%" },
+  "fullscreen": { "start": false, "end": false },
+  "capture_track": {
+    "mime_type": "video/webm;codecs=vp9,opus",
+    "audio_track_count": 1,
+    "video_track_count": 1,
+    "tracks": [
+      { "kind": "audio", "settings": { "sampleRate": 48000, "channelCount": 2 } },
+      { "kind": "video", "settings": { "width": 1280, "height": 720, "frameRate": 30 } }
+    ],
+    "loopback_enabled": true
+  },
+  "timing": {
+    "requested_start_ms": 5000,
+    "requested_end_ms": 9000,
+    "requested_duration_ms": 4000,
+    "lead_in_ms": 40,
+    "recorder_elapsed_ms": 4040,
+    "player_start_ms": 5000,
+    "player_end_ms": 9000,
+    "lead_in_clock": "offscreen_monotonic"
+  }
+}

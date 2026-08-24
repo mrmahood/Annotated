@@ -1,0 +1,8 @@
+{
+  "base": "safe-landscape.json",
+  "override": {
+    "viewport": { "end": null },
+    "video_element": { "end": null }
+  },
+  "expected_failure": "unsafe_geometry"
+}

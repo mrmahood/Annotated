@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "adapter": {
+    "provider": "deterministic-fake",
+    "model": "fixture-v1",
+    "deterministic_fake": true,
+    "network_required": false
+  },
+  "source_derivative": {
+    "file": "landscape-video.mp4",
+    "checksum_sha256": "e3840190ff647cbc30cb7d2375080dd9d8414b431d1de2593a3e8001a0cc2b15",
+    "duration_ms": 3999.6749999999997
+  },
+  "ephemeral_transcription_audio": {
+    "codec": "flac",
+    "sample_rate_hz": 16000,
+    "channels": 1,
+    "byte_size": 31332,
+    "checksum_sha256": "72f26cfaca848ab6d234b457f3bd50c3bf9fc1365dc4ef76cac04f4857e77793",
+    "deleted_after_run": true
+  },
+  "normalized_transcript": {
+    "checksum_sha256": "cbfc83599e5ea28fca8bba656bd9a1e58a77144e39ba6516d2f6c1fc0dbb900a",
+    "character_count": 35,
+    "language": "en",
+    "segment_count": 2,
+    "first_segment_start_ms": 0,
+    "last_segment_end_ms": 3999,
+    "text_recorded_in_evidence": false
+  }
+}

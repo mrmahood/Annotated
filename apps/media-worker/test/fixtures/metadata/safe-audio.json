@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "capture_track": {
+    "mime_type": "audio/webm;codecs=opus",
+    "audio_track_count": 1,
+    "video_track_count": 0,
+    "tracks": [
+      { "kind": "audio", "settings": { "sampleRate": 48000, "channelCount": 2 } }
+    ],
+    "loopback_enabled": true
+  },
+  "timing": {
+    "requested_start_ms": 12000,
+    "requested_end_ms": 16000,
+    "requested_duration_ms": 4000,
+    "lead_in_ms": 35,
+    "recorder_elapsed_ms": 4035,
+    "player_start_ms": 12000,
+    "player_end_ms": 16000,
+    "lead_in_clock": "offscreen_monotonic"
+  }
+}

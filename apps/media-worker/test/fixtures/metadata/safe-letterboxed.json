@@ -1,0 +1,12 @@
+{
+  "base": "safe-landscape.json",
+  "override": {
+    "video_element": {
+      "start": { "x": 160, "y": 90, "width": 960, "height": 540, "top": 90, "right": 1120, "bottom": 630, "left": 160 },
+      "end": { "x": 160, "y": 90, "width": 960, "height": 540, "top": 90, "right": 1120, "bottom": 630, "left": 160 }
+    },
+    "intrinsic_video": { "width": 1920, "height": 804 },
+    "computed_style": { "object_fit": "contain", "object_position": "50% 50%" }
+  },
+  "expected_result": "accept_preserve_visible_letterboxing"
+}

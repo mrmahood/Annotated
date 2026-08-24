@@ -1,0 +1,149 @@
+import assert from 'node:assert/strict';
+import { access, mkdtemp, rm, stat } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { createLocalDerivative } from '../src/media/local-media-core.mjs';
+import { validateCaptureMetadataV2 } from '../src/media/capture-metadata.mjs';
+import { probeFile, validateRawProbe } from '../src/media/probe.mjs';
+import { runExecutable } from '../src/media/process.mjs';
+import { ffmpegExecutables, generatedFixtureRoot, loadMetadata } from './helpers/fixtures.mjs';
+
+const tools = ffmpegExecutables();
+const integration = tools ? test : test.skip;
+
+async function withTempDirectory(run) {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'annotated-c2-test-'));
+  try {
+    return await run(directory);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function audioMetadataForDuration(durationMs) {
+  const metadata = await loadMetadata('safe-audio.json');
+  metadata.timing.requested_start_ms = 0;
+  metadata.timing.requested_end_ms = durationMs;
+  metadata.timing.requested_duration_ms = durationMs;
+  metadata.timing.lead_in_ms = 0;
+  metadata.timing.recorder_elapsed_ms = durationMs;
+  metadata.timing.player_start_ms = 0;
+  metadata.timing.player_end_ms = durationMs;
+  return metadata;
+}
+
+for (const scenario of [
+  { name: 'landscape', media: 'landscape-video.webm', metadata: 'safe-landscape.json', type: 'video', extension: 'mp4' },
+  { name: 'VP8 landscape', media: 'vp8-landscape-video.webm', metadata: 'safe-landscape-vp8.json', type: 'video', extension: 'mp4' },
+  { name: 'portrait', media: 'portrait-video.webm', metadata: 'safe-portrait.json', type: 'video', extension: 'mp4' },
+  { name: 'letterboxed', media: 'letterboxed-video.webm', metadata: 'safe-letterboxed.json', type: 'video', extension: 'mp4' },
+  { name: 'audio', media: 'audio-only.webm', metadata: 'safe-audio.json', type: 'audio', extension: 'm4a' },
+]) {
+  integration(`creates a bounded ${scenario.name} derivative`, async () => withTempDirectory(async (directory) => {
+    const result = await createLocalDerivative({
+      ...tools,
+      mediaType: scenario.type,
+      inputPath: path.join(generatedFixtureRoot, scenario.media),
+      outputPath: path.join(directory, `excerpt.${scenario.extension}`),
+      captureMetadata: await loadMetadata(scenario.metadata),
+      requestedDurationMs: 4_000,
+    });
+    assert.match(result.output.checksumSha256, /^[a-f0-9]{64}$/);
+    assert.ok(result.output.durationMs >= 3_900 && result.output.durationMs <= 4_000);
+    if (scenario.type === 'video') {
+      assert.ok(result.output.width <= 426 && result.output.height <= 240);
+      assert.equal(result.output.width % 2, 0);
+      assert.equal(result.output.height % 2, 0);
+    } else {
+      assert.equal(result.output.width, null);
+      assert.equal(result.output.height, null);
+    }
+  }));
+}
+
+integration('malformed input fails at probe and wrong-container bytes fail validation', async () => {
+  await assert.rejects(() => probeFile(tools.ffprobePath, path.join(generatedFixtureRoot, 'malformed.webm')), (error) => error.code === 'probe_failed');
+  const wrong = await probeFile(tools.ffprobePath, path.join(generatedFixtureRoot, 'wrong-container.webm'));
+  assert.throws(() => validateRawProbe({
+    mediaType: 'video', probe: wrong, expectedByteSize: Number(wrong.format.size), requestedDurationMs: 4_000, leadInMs: 0,
+  }), (error) => error.code === 'invalid_container');
+});
+
+integration('packet timestamps recover duration for a live MediaRecorder-shaped WebM', async () => withTempDirectory(async (directory) => {
+  const inputPath = path.join(directory, 'live.webm');
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'color=c=blue:s=160x90:r=10:d=2.1',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2.1',
+    '-t', '2.1', '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'libvpx-vp9',
+    '-deadline', 'realtime', '-cpu-used', '8', '-c:a', 'libopus', '-f', 'webm', '-live', '1', inputPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  const probe = await probeFile(tools.ffprobePath, inputPath);
+  assert.equal(probe.format.duration_source, 'packet_timestamps');
+  const facts = validateRawProbe({
+    mediaType: 'video', probe, expectedByteSize: (await stat(inputPath)).size,
+    requestedDurationMs: 2_000, leadInMs: 100,
+  });
+  assert.ok(facts.durationMs >= 2_000 && facts.durationMs <= 2_120);
+}));
+
+integration('real unsupported and missing-stream fixtures fail closed before transcode', async () => {
+  const unsupportedAudio = await probeFile(tools.ffprobePath, path.join(generatedFixtureRoot, 'unsupported-vorbis-audio.webm'));
+  assert.throws(() => validateRawProbe({
+    mediaType: 'audio', probe: unsupportedAudio, expectedByteSize: Number(unsupportedAudio.format.size), requestedDurationMs: 4_000, leadInMs: 35,
+  }), (error) => error.code === 'unsupported_codec');
+
+  const missingAudio = await probeFile(tools.ffprobePath, path.join(generatedFixtureRoot, 'missing-audio.webm'));
+  assert.throws(() => validateRawProbe({
+    mediaType: 'video', probe: missingAudio, expectedByteSize: Number(missingAudio.format.size), requestedDurationMs: 4_000, leadInMs: 0,
+  }), (error) => error.code === 'missing_audio');
+
+  const missingVideo = await probeFile(tools.ffprobePath, path.join(generatedFixtureRoot, 'audio-only.webm'));
+  assert.throws(() => validateRawProbe({
+    mediaType: 'video', probe: missingVideo, expectedByteSize: Number(missingVideo.format.size), requestedDurationMs: 4_000, leadInMs: 35,
+  }), (error) => error.code === 'missing_video');
+});
+
+for (const metadata of [
+  'unsafe-partial-visibility.json',
+  'unsafe-aspect-mismatch.json',
+  'unsafe-moved-end.json',
+  'unsafe-resized-viewport.json',
+  'unsafe-changed-dpr.json',
+  'unsafe-missing-end.json',
+]) {
+  integration(`${metadata} creates no derivative`, async () => withTempDirectory(async (directory) => {
+    const outputPath = path.join(directory, 'must-not-exist.mp4');
+    const captureMetadata = await loadMetadata(metadata);
+    await assert.rejects(() => createLocalDerivative({
+      ...tools,
+      mediaType: 'video',
+      inputPath: path.join(generatedFixtureRoot, 'landscape-video.webm'),
+      outputPath,
+      captureMetadata,
+      requestedDurationMs: 4_000,
+    }), (error) => error.code === 'unsafe_geometry');
+    await assert.rejects(() => access(outputPath), (error) => error.code === 'ENOENT');
+  }));
+}
+
+for (const durationMs of [89_999, 90_000]) {
+  integration(`creates a bounded derivative at the ${durationMs}ms audio boundary`, async () => withTempDirectory(async (directory) => {
+    const result = await createLocalDerivative({
+      ...tools,
+      mediaType: 'audio',
+      inputPath: path.join(generatedFixtureRoot, `duration-${durationMs}.webm`),
+      outputPath: path.join(directory, `duration-${durationMs}.m4a`),
+      captureMetadata: await audioMetadataForDuration(durationMs),
+      requestedDurationMs: durationMs,
+    });
+    assert.ok(result.output.durationMs <= 90_000);
+    assert.ok(result.output.durationMs <= durationMs + 20);
+  }));
+}
+
+integration('rejects a 90001ms authoritative range before transcode', async () => {
+  const metadata = await audioMetadataForDuration(90_001);
+  assert.throws(() => validateCaptureMetadataV2(metadata, 'audio', 90_001), (error) => error.code === 'invalid_capture_metadata');
+});

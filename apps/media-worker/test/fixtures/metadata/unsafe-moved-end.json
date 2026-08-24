@@ -1,0 +1,9 @@
+{
+  "base": "safe-landscape.json",
+  "override": {
+    "video_element": {
+      "end": { "x": 180, "y": 90, "width": 960, "height": 540, "top": 90, "right": 1140, "bottom": 630, "left": 180 }
+    }
+  },
+  "expected_failure": "unsafe_geometry"
+}

@@ -7,9 +7,14 @@ import {
   createServiceClient,
   exactPathMatches,
   hostedMediaErrorResponse,
+  isRecaptureCleanupPending,
   jsonResponse,
   parseAuthorizeInput,
+  privateArtifactPaths,
   rawStoragePath,
+  removePrivateArtifacts,
+  RECAPTURE_CLEANUP_CODE,
+  RECAPTURE_CLEANUP_STAGE,
   stableJson,
   type AnnotationRow,
   type MediaRow,
@@ -28,7 +33,7 @@ export async function POST(request: Request) {
     const service = createServiceClient();
     const { data: mediaData, error: mediaError } = await service
       .from('annotation_media')
-      .select('id, annotation_id, media_type, processing_status, raw_storage_path, raw_mime_type, raw_byte_size, capture_metadata')
+      .select('id, annotation_id, media_type, processing_status, raw_storage_path, processed_storage_path, raw_mime_type, raw_byte_size, capture_metadata, failure_stage, failure_code, updated_at')
       .eq('id', input.mediaId)
       .maybeSingle();
     assertServiceOperation(mediaError, 'The hosted media draft could not be loaded.');
@@ -55,7 +60,12 @@ export async function POST(request: Request) {
     }
 
     let path = media.raw_storage_path;
-    if (media.processing_status === 'uploading') {
+    const recaptureCleanupPending = isRecaptureCleanupPending(media);
+    const requiresRecaptureCleanup = media.processing_status === 'failed' || recaptureCleanupPending;
+    if (media.processing_status === 'uploading' && !recaptureCleanupPending) {
+      if (media.capture_metadata?.version === 1) {
+        throw new HostedMediaApiError('RECAPTURE_REQUIRED', 409);
+      }
       if (!path || !exactPathMatches(path, user.id, input.annotationId, input.mediaId) ||
           media.raw_mime_type !== input.mimeType || Number(media.raw_byte_size) !== input.byteSize ||
           stableJson(media.capture_metadata) !== stableJson(input.captureMetadata)) {
@@ -63,7 +73,59 @@ export async function POST(request: Request) {
       }
     } else {
       path = rawStoragePath(user.id, input.annotationId, input.mediaId, crypto.randomUUID());
-      const { data: updated, error: updateError } = await service
+      const retainedPaths = privateArtifactPaths(user.id, input.annotationId, media);
+      let expectedStatus = media.processing_status;
+      let expectedUpdatedAt = media.updated_at;
+      if (media.processing_status === 'capture_pending' && (retainedPaths.raw || retainedPaths.processed)) {
+        throw new Error('The capture-pending draft unexpectedly retains private media.');
+      }
+      if (media.processing_status === 'failed') {
+        // Fence the terminal row before touching Storage. This preserves both
+        // old paths durably across a crash while preventing any worker retry
+        // from publishing the derivative being removed.
+        let fenceQuery = service
+          .from('annotation_media')
+          .update({
+            processing_status: 'uploading',
+            processing_stage: null,
+            failure_stage: RECAPTURE_CLEANUP_STAGE,
+            failure_code: RECAPTURE_CLEANUP_CODE,
+            next_attempt_at: null,
+            lease_token: null,
+            lease_expires_at: null,
+          })
+          .eq('id', input.mediaId)
+          .eq('processing_status', 'failed')
+          .eq('updated_at', media.updated_at);
+        fenceQuery = media.raw_storage_path === null
+          ? fenceQuery.is('raw_storage_path', null)
+          : fenceQuery.eq('raw_storage_path', media.raw_storage_path);
+        fenceQuery = media.processed_storage_path === null
+          ? fenceQuery.is('processed_storage_path', null)
+          : fenceQuery.eq('processed_storage_path', media.processed_storage_path);
+        const { data: fenced, error: fenceError } = await fenceQuery
+          .select('updated_at')
+          .maybeSingle();
+        assertServiceOperation(fenceError, 'The failed media draft could not be fenced for recapture.');
+        if (!fenced) throw new Error('The failed media draft changed before recapture cleanup.');
+        expectedStatus = 'uploading';
+        expectedUpdatedAt = fenced.updated_at;
+      }
+      if (requiresRecaptureCleanup) {
+        // This deletion sequence is deliberately idempotent. If Storage or
+        // transcript cleanup fails after the fence, the exact marker remains
+        // durable and the next authorization request resumes here.
+        await removePrivateArtifacts(service.storage, {
+          raw: retainedPaths.raw,
+          processed: retainedPaths.expectedProcessed,
+        });
+        const { error: transcriptError } = await service
+          .from('annotation_transcripts')
+          .delete()
+          .eq('annotation_id', input.annotationId);
+        assertServiceOperation(transcriptError, 'The retained transcript could not be cleared for recapture.');
+      }
+      let updateQuery = service
         .from('annotation_media')
         .update({
           processing_status: 'uploading',
@@ -84,12 +146,26 @@ export async function POST(request: Request) {
           raw_deleted_at: null,
           failure_stage: null,
           failure_code: null,
+          attempt_count: 0,
           next_attempt_at: null,
           lease_token: null,
           lease_expires_at: null,
         })
         .eq('id', input.mediaId)
-        .in('processing_status', ['capture_pending', 'failed'])
+        .eq('processing_status', expectedStatus);
+      updateQuery = media.raw_storage_path === null
+        ? updateQuery.is('raw_storage_path', null)
+        : updateQuery.eq('raw_storage_path', media.raw_storage_path);
+      updateQuery = media.processed_storage_path === null
+        ? updateQuery.is('processed_storage_path', null)
+        : updateQuery.eq('processed_storage_path', media.processed_storage_path);
+      if (requiresRecaptureCleanup) {
+        updateQuery = updateQuery
+          .eq('failure_stage', RECAPTURE_CLEANUP_STAGE)
+          .eq('failure_code', RECAPTURE_CLEANUP_CODE);
+      }
+      updateQuery = updateQuery.eq('updated_at', expectedUpdatedAt);
+      const { data: updated, error: updateError } = await updateQuery
         .select('id')
         .maybeSingle();
       assertServiceOperation(updateError, 'The media draft could not enter uploading state.');

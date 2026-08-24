@@ -1,8 +1,23 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, 2026-08-16. Phases A and B are implemented;
-Phase C planning is active. This document and its linked plans do not authorize
-implementation, vendor setup, infrastructure, database changes, or deployment.
+Status: accepted architecture, updated 2026-08-23. Phases A-B and Phase C
+increments C1-C6 are implemented. C6's least-privilege worker migration,
+immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded lifecycle,
+crash, codec, geometry, duration, transcript, and audio-quality gates passed in
+Staging with both schedules paused. The forward-only 20 ms duration correction
+was applied to exact Staging, and immutable worker digest
+`sha256:cc920050b6699e3c4ff543f5910ea901a352dd2919c6061f4aa0f4dfdd40449f`
+then passed a bounded first-attempt VP8/Opus lifecycle and exact cleanup. Final
+PR review found processed-bucket, resumable-recapture, orphan-derivative
+cleanup, and stale-status blockers. Those corrections passed Local validation
+and were pushed. A subsequent final read-only review found two remaining
+retention crash boundaries: cancellation could enter `removed` before Storage
+cleanup without becoming janitor-eligible, and a terminal finalization failure
+after raw confirmation could retain a processed derivative and transcript with
+no raw path. The forward-only durable-terminal-cleanup migration and Local
+regressions now close both gaps. The two latest cleanup migrations have not
+been applied to Staging. Production deployment, schedule enablement, and merge
+remain separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -136,7 +151,7 @@ live playback and the recorded WebM. The optional `captureStream()` diagnostic
 also exposed live tracks on the tested source, but it remains a diagnostic;
 `tabCapture` is the production architecture.
 
-The spike's geometry is a useful start but not yet a crop proof across zoom,
+The spike's geometry was a useful start but was not a crop proof across zoom,
 DPR, resize, fullscreen, or partial visibility. Production therefore carries
 geometry as validated processing input and fails closed when it cannot establish
 a safe transform.
@@ -713,24 +728,33 @@ names below are scopes, not files created by this design.
 
 ### C. Worker, transcode, transcription, and audio acceptance
 
-Status: planning only. The detailed work breakdown, contract audit, decision
-gates, validation sequence, and exit criteria are defined in
-`docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution of
-this accepted architecture; it does not expand the phase or authorize work.
+Status: final review. C1-C6 implementation, bounded Staging validation, and
+owner acceptance are complete. The lower-duration invariant and its corrective
+worker passed exact Staging validation. The first cleanup/status review
+corrections were pushed; the subsequent final read-only review found
+removed-state and processed-only terminal retention gaps. Forward-only
+migrations, a reconciler action, pgTAP coverage, actual Local private Storage
+regressions, and an exact two-case Staging reconciliation gate close both.
+Staging migration history is aligned through `20260824020000`; all three jobs
+use immutable digest
+`sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
+both schedules remain paused, and the disposable fixtures were removed. The
+work breakdown, decision gates, validation sequence, and exit criteria are recorded in
+`docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution
+of this accepted architecture; it does not expand the phase or authorize later
+checkpoints.
 
-- Likely files: new `apps/media-worker/` workspace, Dockerfile/FFmpeg pin,
-  transcriber adapter, processing fixtures/tests, root workspace/package lock,
-  dispatcher/reconciler server modules, and deployment documentation.
-- Migration: worker claim/stage/complete/fail RPC refinements and cleanup fields,
-  if not fully delivered in A.
-- Tests: fixture-based ffprobe validation; safe/unsafe geometry; exact crop;
-  portrait/landscape/letterboxed source; 90-second trim; required audio/video;
-  deterministic retry; lease expiry; transcript segment validation; provider
-  timeout; raw deletion before publication; terminal cleanup.
-- Manual staging: inspect 240p output in Chrome/Safari/Firefox as supported,
-  compare requested/final duration and A/V sync, confirm transcript matches only
-  the clip, run the crackle matrix, kill a job at every persistence boundary,
-  and verify recovery.
+- Implementation record: `apps/media-worker/`, its pinned non-root container,
+  transcriber adapter, processing fixtures/tests, dispatcher/reconciler entry
+  points, additive worker-contract migrations, and deployment evidence.
+- Automated evidence: fixture-based ffprobe validation; safe/unsafe geometry;
+  exact crop; portrait/landscape/letterboxed source; exact 90-second trim;
+  required audio/video; deterministic retry; lease expiry; transcript segment
+  validation; provider timeout; raw deletion before publication; and terminal
+  cleanup.
+- Owner/Staging evidence: accepted short video/audio, exact 90-second, codec,
+  geometry, audio-quality, retry, and separate persistence-boundary recovery
+  gates. Broader browser compatibility remains later-phase work.
 - Rollback: stop dispatcher/job and keep feature flag off. Queued rows stay
   private and retryable; janitor handles retention. Do not publish partial output.
 
@@ -798,27 +822,34 @@ this accepted architecture; it does not expand the phase or authorize work.
 
 ## 15. Major risks and open questions
 
-1. **Capture geometry semantics.** Confirm across DPR, zoom, fullscreen, and
-   window resizing that tab-capture frame/viewport aspect remains within the
-   proposed tolerance. Until proven, unsafe geometry must fail rather than fall
-   back to full-page video.
-2. **Chrome tabCapture bitrate and 50 MiB.** The measured 15-second 3.86 MiB clip
-   extrapolates to about 23 MiB at 90 seconds, but resolution/motion can increase
-   it. Measure worst representative cases before fixing the production cap;
-   retain 50 MiB as the MVP hard ceiling because it matches current Supabase
-   global storage configuration.
-3. **Audio crackle.** This is an explicit release gate. Its location in source,
-   tab stream, loopback, recorder chunking, or device output is not yet known.
-4. **Transcription vendor/cost/privacy.** Choose a provider only after measuring
-   90-second latency, segment quality, languages, retention/training terms,
-   regional processing, and retry behavior. The adapter keeps this reversible.
-5. **Worker host.** Cloud Run Jobs is the concrete recommendation when no
-   background platform is already owned. Existing organizational accounts,
-   regions, billing, and secret-management policy may make an equivalent
-   container worker cheaper operationally.
-6. **Codec compatibility.** Verify the pinned FFmpeg build can legally and
-   operationally produce H.264/AAC and test target browsers. WebM VP9/Opus remains
-   a fallback if product browser support permits it.
+1. **Capture geometry semantics.** The accepted Local and Staging matrices cover
+   landscape, portrait, letterbox, fullscreen stability, bounded edge movement,
+   and terminal unsafe geometry. DPR, zoom, fullscreen, and resize breadth remain
+   later compatibility work; every unproven geometry continues to fail closed
+   rather than fall back to full-page video.
+2. **Chrome tabCapture bitrate and 50 MiB.** Representative short and exact
+   90-second captures passed under the accepted 50 MiB MVP ceiling. High-motion
+   or higher-resolution inputs can still be larger, so retain the hard ceiling,
+   bounded rejection, and operational monitoring rather than silently raising
+   the cap.
+3. **Audio crackle.** The release gate is accepted: worker-boundary automation,
+   blinded listening on two owner-selected devices, real browser capture, and
+   exact 90-second Staging playback found no repeatable derivative defect. Keep
+   these regressions and reopen causal investigation only if a defect reproduces.
+4. **Transcription vendor/cost/privacy.** Staging selected OpenAI `whisper-1`
+   behind the reversible adapter, a model allowlist, and a $10 monthly hard
+   ceiling. Production authorization, current retention/training terms, regional
+   processing, language quality, latency, and ongoing cost remain separate
+   operational decisions.
+5. **Worker host.** Staging selected immutable, non-root Cloud Run Jobs with
+   least-privilege roles and paused schedules. Production provisioning,
+   schedule enablement, region, billing, and secret-management policy remain
+   separately authorized.
+6. **Codec compatibility.** The pinned FFmpeg build produced accepted H.264/AAC
+   derivatives from VP8/Opus, VP9/Opus, and audio-only Opus fixtures, including
+   owner playback. Broader target-browser compatibility remains a later
+   regression concern; unsupported input continues to fail at the private probe
+   boundary.
 7. **Existing >90-second annotations.** Audit production before validating the
    new target constraint. Decide whether they remain time-code-only legacy pages,
    are shortened with creator consent, or are hidden; never fabricate a hosted
