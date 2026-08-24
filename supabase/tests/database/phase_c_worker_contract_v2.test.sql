@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(27);
 
 select has_function(
   'private', 'release_annotation_media_processing_attempt',
@@ -141,10 +141,57 @@ select ok(
 update public.annotation_media
 set next_attempt_at = pg_catalog.now()
 where id = (select media_id from c4_claim);
+
+create temporary table c4_retry_claim as
+select claimed.*
+from private.claim_annotation_media_processing((select media_id from c4_claim), 900) as claimed;
+
 select is(
-  (select resume_stage from private.claim_annotation_media_processing((select media_id from c4_claim), 900)),
+  (select resume_stage from c4_retry_claim),
   'probing',
   'a due retry derives its resume stage from persisted facts'
+);
+
+select throws_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('a', 64),
+      'c4000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      1000,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('b', 64)
+    )
+    from c4_retry_claim
+  $$,
+  '22023',
+  'Processed duration is invalid for the requested hosted range.',
+  'a one-second derivative cannot satisfy a four-second hosted range'
+);
+
+select throws_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('a', 64),
+      'c4000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      4010,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('b', 64)
+    )
+    from c4_retry_claim
+  $$,
+  '22023',
+  'Processed duration is invalid for the requested hosted range.',
+  'a derivative may not extend beyond the authoritative four-second hosted range'
 );
 
 update public.annotation_media as media

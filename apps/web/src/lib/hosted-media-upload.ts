@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export const RAW_BUCKET = 'annotation-media-raw';
+export const PROCESSED_BUCKET = 'annotation-media-processed';
 export const VIDEO_LIMIT = 50 * 1024 * 1024;
 export const AUDIO_LIMIT = 16 * 1024 * 1024;
 export const CORS_HEADERS = {
@@ -33,8 +34,10 @@ export type MediaRow = {
   media_type: 'video' | 'audio';
   processing_status: string;
   raw_storage_path: string | null;
+  processed_storage_path: string | null;
   raw_mime_type: string | null;
   raw_byte_size: number | null;
+  updated_at: string;
 };
 export type AnnotationRow = { id: string; user_id: string; status: string };
 export type TargetRow = { start_ms: number | null; end_ms: number | null };
@@ -52,7 +55,8 @@ export type HostedMediaErrorCode =
   | 'INVALID_REQUEST' | 'AUTH_REQUIRED' | 'SERVER_MISCONFIGURED'
   | 'MEDIA_NOT_FOUND' | 'MEDIA_NOT_OWNED' | 'MEDIA_RELATION_INVALID'
   | 'MEDIA_NOT_CANCELLABLE' | 'MEDIA_ALREADY_CANCELLED'
-  | 'RAW_PATH_INVALID' | 'RAW_DELETE_FAILED' | 'CANCEL_CONFLICT'
+  | 'RAW_PATH_INVALID' | 'PROCESSED_PATH_INVALID'
+  | 'RAW_DELETE_FAILED' | 'PROCESSED_DELETE_FAILED' | 'CANCEL_CONFLICT'
   | 'RECAPTURE_REQUIRED'
   | 'UPLOAD_AUTHORIZATION_FAILED' | 'UPLOAD_COMPLETION_FAILED';
 
@@ -234,7 +238,7 @@ export function parseCancelInput(value: unknown): CancelInput {
 export function assertCancellationRelation(
   userId: string,
   input: CancelInput,
-  media: Pick<MediaRow, 'id' | 'annotation_id' | 'processing_status' | 'raw_storage_path'>,
+  media: Pick<MediaRow, 'id' | 'annotation_id' | 'media_type' | 'processing_status' | 'raw_storage_path' | 'processed_storage_path'>,
   annotation: AnnotationRow,
 ) {
   if (annotation.user_id !== userId) throw new HostedMediaApiError('MEDIA_NOT_OWNED', 403);
@@ -245,9 +249,7 @@ export function assertCancellationRelation(
   if (annotation.status !== 'draft' || media.processing_status === 'ready') {
     throw new HostedMediaApiError('MEDIA_NOT_CANCELLABLE', 409);
   }
-  if (media.raw_storage_path && !exactPathMatches(
-    media.raw_storage_path, userId, input.annotationId, input.mediaId,
-  )) throw new HostedMediaApiError('RAW_PATH_INVALID', 409);
+  privateArtifactPaths(userId, input.annotationId, media);
   return 'cancel' as const;
 }
 export function authorizeRelation(
@@ -276,6 +278,57 @@ export function rawStoragePath(userId: string, annotationId: string, mediaId: st
 export function exactPathMatches(path: string, userId: string, annotationId: string, mediaId: string) {
   const prefix = `${userId}/${annotationId}/${mediaId}/`;
   return path.startsWith(prefix) && isUuid(path.slice(prefix.length, -5)) && path.endsWith('.webm');
+}
+export function processedStoragePath(
+  userId: string,
+  annotationId: string,
+  mediaId: string,
+  mediaType: 'video' | 'audio',
+) {
+  if (![userId, annotationId, mediaId].every(isUuid)) {
+    throw new Error('Cannot derive a processed storage path from invalid identifiers.');
+  }
+  return `${userId}/${annotationId}/${mediaId}/excerpt.${mediaType === 'video' ? 'mp4' : 'm4a'}`;
+}
+export function privateArtifactPaths(
+  userId: string,
+  annotationId: string,
+  media: Pick<MediaRow, 'id' | 'media_type' | 'raw_storage_path' | 'processed_storage_path'>,
+) {
+  if (media.raw_storage_path && !exactPathMatches(
+    media.raw_storage_path, userId, annotationId, media.id,
+  )) throw new HostedMediaApiError('RAW_PATH_INVALID', 409);
+  const expectedProcessedPath = processedStoragePath(userId, annotationId, media.id, media.media_type);
+  if (media.processed_storage_path && media.processed_storage_path !== expectedProcessedPath) {
+    throw new HostedMediaApiError('PROCESSED_PATH_INVALID', 409);
+  }
+  return {
+    raw: media.raw_storage_path,
+    processed: media.processed_storage_path,
+    expectedProcessed: expectedProcessedPath,
+  };
+}
+
+type PrivateArtifactStorage = {
+  from(bucket: string): {
+    remove(paths: string[]): PromiseLike<{ error: unknown }>;
+  };
+};
+
+export async function removePrivateArtifacts(
+  storage: PrivateArtifactStorage,
+  paths: { raw: string | null; processed: string | null },
+) {
+  // Delete the deterministic derivative first. A partial cleanup must never
+  // leave reusable processed bytes behind while reporting a failed operation.
+  if (paths.processed) {
+    const { error } = await storage.from(PROCESSED_BUCKET).remove([paths.processed]);
+    if (error) throw new HostedMediaApiError('PROCESSED_DELETE_FAILED', 502);
+  }
+  if (paths.raw) {
+    const { error } = await storage.from(RAW_BUCKET).remove([paths.raw]);
+    if (error) throw new HostedMediaApiError('RAW_DELETE_FAILED', 502);
+  }
 }
 export function verifyStoredObject(
   object: StoredObject,

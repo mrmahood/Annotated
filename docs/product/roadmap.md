@@ -1,10 +1,11 @@
 # Product roadmap
 
-Status: Phase C execution, 2026-08-23. Increments C1-C5 are complete locally.
-C6 infrastructure, provider permission, the first bounded spoken-audio Staging
-lifecycle, the owner known-video and known-audio quality gates, the forced
-transient-retry gate, and all six crash-recovery boundaries pass; the remaining
-acceptance matrix is in progress.
+Status: Phase C corrective review, 2026-08-23. Increments C1-C6 and their bounded
+Staging and owner acceptance gates are complete with immutable jobs and paused
+schedules. Draft PR #18 review found a missing lower-duration invariant; its
+worker regression and forward-only database correction pass Local validation
+and remain pending review and separate Staging authorization. Production
+deployment, schedule enablement, and merge remain blocked.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -49,7 +50,7 @@ state, same-session retry, cancellation and raw cleanup, restart recovery,
 source navigation and tab closure, audible source-audio loopback, and the
 article-publication regression gate.
 
-## Phase C — current
+## Phase C — corrective review
 
 Bounded media worker, likely a Cloud Run Job or equivalent:
 
@@ -68,9 +69,9 @@ trim/crop/scale, output-validation, size, and checksum core. The focused C2
 gate passes 22/22 tests and records bounded H.264/AAC video and AAC-LC audio
 derivatives, including an exact 90,000 ms audio boundary.
 
-C3 provides the exact-derivative audio capability, normalized transcript and
+C3 provided the exact-derivative audio capability, normalized transcript and
 segment validation, and a deterministic fake with network denied. The first C4
-slice now provides production capture-metadata v2 and the additive local worker
+slice provided production capture-metadata v2 and the additive local worker
 claim/retry/reconciliation contract. Capture-metadata v1 is readable but always
 requires recapture before worker processing. The migration is applied to Local
 only; schema lint and all 229 Local pgTAP tests pass. The actual private Local
@@ -80,8 +81,9 @@ passed for one YouTube video and one synthetic audio range: source audio
 remained audible, both captures reached authoritative `processing/queued`, and
 sanitized Local inspection accepted both v2 payloads. Disposable rows, objects,
 user, processes, and temporary state were then removed, and the original
-environment files were restored. C4 and C5 are closed; C6 is active. Git
-delivery, Production access/deployment, and merge remain separately authorized.
+environment files were restored. C4 and C5 then closed and C6 began. Git
+delivery, Production access/deployment, and merge remained separately
+authorized.
 
 C5 provides the dependency-free one-ID worker entrypoint, authenticated
 bounded dispatcher, database-owned retry scheduling, expired-lease reconciler,
@@ -104,12 +106,12 @@ and worker/dispatcher/reconciler jobs exist with schedules paused. A bounded
 synthetic spoken-audio lifecycle dispatched one media ID, reused a verified
 private derivative on retry, staged an excerpt-only transcript, confirmed raw
 deletion, and reached `ready/published`. The disposable rows and objects were
-then removed. The current accepted runtime digest is
+then removed. The initial accepted runtime digest was
 `sha256:db5b20136e38284fa03f45292edeb29c398597592e6155d994b09f8fc9cffd57`.
 The known-video gate has passed its automated Staging lifecycle and owner
 playback acceptance: the exact nine-second derivative passed crop/no-magenta-
 border, motion, clear-audio, no-crackle/click, and A/V-alignment checks with no
-notes. The known-audio gate has now passed its automated Staging lifecycle: an
+notes. The known-audio gate also passed its automated Staging lifecycle: an
 exact nine-second private AAC derivative, bounded transcript, confirmed raw
 deletion, publication, sanitized logs, and complete remote cleanup all passed.
 Owner listening also passed clear speech, steady tone, no crackles, clicks,
@@ -117,8 +119,8 @@ warble, or dropouts, channel balance, and a clean ending with no notes. The
 forced transient gate also passed: attempt one remained private/draft and
 scheduled a bounded retry without output, while attempt two published exactly
 one checksum-matched private derivative after the source object was restored.
-The fixture was completely removed and the queue returned to zero. Remaining C6
-work continues with the 90-second/codec/geometry/crackle matrices. The six
+The fixture was completely removed and the queue returned to zero. At that
+checkpoint, the 90-second/codec/geometry/crackle matrices remained. The six
 separate Staging crash states recovered at `probing`, `transcribing`,
 `raw_cleanup`, and `finalizing` as dictated by authoritative facts; the
 pre-staged object was reused without duplication, already-absent raw recovered
@@ -145,8 +147,8 @@ publication, matching artifact checksum, and newest six-event sanitized worker
 sequence all passed. Its exact cleanup again returned every row, object, and
 processing candidate to zero. Owner playback passed at `01:30`: all four speech
 markers, the continuous quiet tone, channel balance, and clean ending passed,
-with no crackle, clicks, warble, or dropouts and no notes. The codec matrix is
-now locally closed: the synthetic fixture contract includes VP9/Opus,
+with no crackle, clicks, warble, or dropouts and no notes. The codec matrix then
+closed locally: the synthetic fixture contract includes VP9/Opus,
 VP8/Opus, audio-only Opus, malformed bytes, wrong-container bytes, missing
 audio, missing video, and unsupported Vorbis audio. Both supported video inputs
 produce bounded H.264 Main/AAC derivatives, audio-only Opus produces AAC, and
@@ -172,16 +174,17 @@ pinned non-root geometry candidate was built, probed, and deployed to all three
 paused Staging jobs. No database change was required.
 
 The first Staging portrait attempt reached the exact retained derivative and
-then stopped safely at `transcribing` / `transcript_invalid`. It remains draft
-with one scheduled retry and no lease; letterbox and unsafe cases did not run.
+then stopped safely at `transcribing` / `transcript_invalid`. At that checkpoint,
+it remained draft with one scheduled retry and no lease; letterbox and unsafe
+cases had not run.
 The text-free structural diagnostic passed with HTTP 200, four ordered nonblank
 segments, and a final timestamp of 10,160 ms for the exact 9,000 ms derivative.
-This isolates a 1,160 ms provider-only tail. A 2,000 ms final-tail correction
-now passes focused source and no-network container probes while rejecting any
+This isolated a 1,160 ms provider-only tail. A 2,000 ms final-tail correction
+passes focused source and no-network container probes while rejecting any
 segment that starts outside the excerpt or ends more than 2,000 ms beyond it.
 Candidate
 `sha256:f4b101880bbdf77784769f82fe5055261537f0fb6f868252b3891eb687d7b057`
-passed its runtime probes and is now deployed by immutable digest to all three
+passed its runtime probes and was deployed by immutable digest to all three
 Staging jobs without execution. Exact retained-portrait recovery, letterbox,
 and terminal unsafe geometry then ran with schedules paused; Production and
 database state remained unchanged.
@@ -194,7 +197,7 @@ and cleaned completely. Partial visibility failed closed terminally as
 and was then cleaned. The processing queue is zero. Owner playback of both
 9-second artifacts passed crop/no-magenta-border, smooth motion, clear speech,
 steady tone, channel balance, and clean ending with no crackle, clicks, warble,
-dropouts, or notes. Gate 5c is closed. Gate 5d audio-crackle is next.
+dropouts, or notes. Gate 5c closed, and Gate 5d audio-crackle followed.
 
 Gate 5d began with a network-free worker-boundary comparison: three 90-second
 samples each for audio-only Opus, VP9/Opus, and VP8/Opus. All 9/9 raw-excerpt
@@ -204,15 +207,16 @@ dropout-window, and near-zero-run checks. The owner completed all three blinded
 each pair, neither was worse, and tone, channel balance, and clean endings
 passed. Device names were withheld by owner choice. The revealed mapping varied
 which side contained the derivative and showed no repeatable derivative defect.
-The Local browser capture causal matrix is now active; Staging remains
-sequentially blocked until that Local capture evidence passes.
+At that checkpoint, the Local browser capture causal matrix became the next
+sequential gate; additional Staging work remained blocked until that Local
+capture evidence passed.
 
-A localhost-only six-variant browser harness is ready. It preserves the exact
+A localhost-only six-variant browser harness supported this work. It preserved the exact
 production manifest and recorder defaults when diagnostics are absent, captures
 through the real tabCapture/offscreen/MediaRecorder path, and stores at most
 three checksummed raw samples per variant without invoking hosted upload or
 changing database validation. Owner source/device baseline and capture evidence
-are next; no Staging audio-crackle invocation has occurred.
+followed; no additional Staging audio-crackle invocation occurred.
 
 Both no-capture public-source baselines passed on two anonymous output devices.
 The VP9-default browser variant passed three exact live captures and three Local
@@ -228,8 +232,9 @@ listening on two devices, this accepts the Local causal gate. The remaining
 browser repetitions are skipped unless a later defect requires them. The
 existing exact 90-second Staging lifecycle already passed owner playback without
 crackle, clicks, warble, or dropouts, so Gate 5d is accepted without another
-provider invocation. Full regression and delivery readiness are next;
-Production and merge remain blocked.
+provider invocation. Full regression then passed, and Draft PR #18 entered the
+corrective review described at the top of this roadmap. Production and merge
+remain blocked.
 
 ## Phase D — future
 
@@ -251,5 +256,7 @@ Hardening and bounty submission:
   polished bounty submission material.
 
 Phase B's automated and owner-performed browser acceptance gates have passed.
-C1-C5 are complete. C6 resolves the Staging host/provider/cost boundary but
-does not close the owner acceptance, rollout, Production, or merge gates.
+C1-C6 implementation and owner acceptance are complete. The exact-duration
+lower-bound correction found during Draft PR review passes full Local regression
+and must receive re-review and separately authorized Staging application before
+Phase C can merge. Production rollout and Phase D remain separately blocked.

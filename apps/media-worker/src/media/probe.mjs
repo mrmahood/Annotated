@@ -138,8 +138,9 @@ export function validateRawProbe({ mediaType, probe, expectedByteSize, requested
   }
 
   const probedDurationMs = durationMs(probe);
+  const minRawDurationMs = Math.max(1_000, requestedDurationMs + leadInMs - PROBE_DURATION_TOLERANCE_MS);
   const maxRawDurationMs = Math.min(92_000, requestedDurationMs + leadInMs + 2_000);
-  if (probedDurationMs < 1_000 || probedDurationMs > maxRawDurationMs) {
+  if (probedDurationMs < minRawDurationMs || probedDurationMs > maxRawDurationMs) {
     mediaCoreFailure('probing', 'duration_out_of_bounds', 'Raw media duration is outside the allowed recorder bound.');
   }
   return { ...found, durationMs: probedDurationMs, byteSize: size, formatNames: formatNames(probe) };
@@ -175,7 +176,9 @@ export function validateDerivativeProbe({ mediaType, probe, expectedByteSize, re
   }
 
   const probedDurationMs = durationMs(probe);
-  if (probedDurationMs < 1_000 || probedDurationMs > MAX_FINAL_DURATION_MS || probedDurationMs > requestedDurationMs + PROBE_DURATION_TOLERANCE_MS) {
+  const minDerivativeDurationMs = Math.max(1_000, requestedDurationMs - PROBE_DURATION_TOLERANCE_MS);
+  if (probedDurationMs < minDerivativeDurationMs || probedDurationMs > MAX_FINAL_DURATION_MS ||
+      probedDurationMs > requestedDurationMs) {
     mediaCoreFailure('transcoding', 'output_invalid', 'Derivative duration is outside the selected range.');
   }
   return { ...found, durationMs: probedDurationMs, byteSize: size, formatNames: names };

@@ -155,6 +155,14 @@ test('raw probe enforces the recorder overshoot ceiling', () => {
   }), errorCode('duration_out_of_bounds'));
 });
 
+test('raw probe rejects input truncated before the selected range ends', () => {
+  const truncated = structuredClone(probeByName.get('landscape-video.webm').probe);
+  truncated.format.duration = '1.000000';
+  assert.throws(() => validateRawProbe({
+    mediaType: 'video', probe: truncated, expectedByteSize: Number(truncated.format.size), requestedDurationMs: 4_000, leadInMs: 40,
+  }), errorCode('duration_out_of_bounds'));
+});
+
 test('packet timestamps provide a bounded MediaRecorder WebM duration fallback', () => {
   assert.equal(packetDurationMs('0.000000,N/A\n89.976000,0.016000\n'), 89_992);
   assert.equal(packetDurationMs('-0.007000,0.020000,\n2.000000,0.020000\n'), 2_020);
@@ -170,6 +178,34 @@ test('derivative validation rejects a probe above 90 seconds', () => {
   assert.throws(() => validateDerivativeProbe({
     mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 90_000,
   }), errorCode('output_invalid'));
+});
+
+test('derivative validation rejects any duration above the authoritative selected range', () => {
+  const probe = structuredClone(probeByName.get('wrong-container.webm').probe);
+  probe.streams = [{ codec_type: 'audio', codec_name: 'aac', profile: 'LC', sample_rate: '48000', channels: 2 }];
+  probe.format.duration = '4.010000';
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 4_000,
+  }), errorCode('output_invalid'));
+
+  probe.format.duration = '4.000000';
+  assert.equal(validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 4_000,
+  }).durationMs, 4_000);
+});
+
+test('derivative validation rejects a one-second result for a 90-second selection', () => {
+  const probe = structuredClone(probeByName.get('wrong-container.webm').probe);
+  probe.streams = [{ codec_type: 'audio', codec_name: 'aac', profile: 'LC', sample_rate: '48000', channels: 2 }];
+  probe.format.duration = '1.000000';
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 90_000,
+  }), errorCode('output_invalid'));
+
+  probe.format.duration = '89.980000';
+  assert.equal(validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 90_000,
+  }).durationMs, 89_980);
 });
 
 test('transcode argument builders fix codecs, maps, bounds, and output paths', () => {

@@ -339,7 +339,7 @@ Production. Stop without rerunning if a retained-fixture warning appears.
 Owner playback of portrait and letterbox passed at exactly 9 seconds: correct
 crop with no magenta border, smooth motion, clear speech, steady tone, balanced
 channels, and clean endings, with no crackle, clicks, warble, or dropouts. Gate
-5c is accepted. Gate 5d audio-crackle is next.
+5c is accepted, and the audio-quality investigation below completed Gate 5d.
 
 Gate 5d starts with a Local-only, network-free worker comparison:
 
@@ -404,4 +404,7 @@ evidence. The previously completed exact 90-second Staging lifecycle supplies
 the remote half of this gate: it reached ready/published in one attempt, cleaned
 raw storage, and passed owner playback with all four markers, steady tone,
 balanced channels, a clean ending, and no crackle, clicks, warble, or dropouts.
-Gate 5d is accepted; full repository regression and delivery readiness are next.
+Gate 5d and the complete C6 owner acceptance are accepted. The full repository
+regression and final Local corrective review also passed. PR #18 remains a
+Draft pending owner-authorized commit and push; Staging schedules remain paused,
+and no Production deploy or merge is authorized.

@@ -1,11 +1,12 @@
 # Phase C media worker plan
 
-Status: execution active, 2026-08-18. Phase B and Phase C increments C1-C5 are
-complete locally. The pinned C5 image build, inspection, executable probes, and
-hardened one-media Local container acceptance pass. Completed work was
-separately authorized; this plan does not by itself authorize later
-package installation, vendor setup, infrastructure, database changes, remote
-access, deployment, commit, push, or pull-request creation.
+Status: corrective review active, 2026-08-23. Phase B and Phase C increments
+C1-C6 are implemented, and the bounded C6 Staging and owner acceptance gates
+passed with immutable non-root jobs and paused schedules. Draft PR #18 review
+found a missing lower-duration invariant; its worker regression and forward-only
+database correction pass Local validation and remain pending review and separate
+Staging authorization. Production deployment, schedule enablement, commit, push,
+merge, and Phase D remain separately authorized.
 
 This plan narrows Phase C of `docs/architecture/media-archive-pipeline.md` into
 reviewable engineering and acceptance gates. The accepted architecture remains
@@ -416,24 +417,25 @@ deployed.
 
 ### C6. Staging and owner acceptance
 
-This increment requires separate approval for selected services, costs,
-credentials, staging database access, and deployment. Verify the staging ref
-before every remote database action.
+This increment required separate approval for selected services, costs,
+credentials, Staging database access, and deployment. The Staging ref was
+verified before every remote database action.
 
-C6 is in progress. The approved Cloud Run/Supabase/OpenAI boundary is
+C6 implementation and acceptance are complete. The approved
+Cloud Run/Supabase/OpenAI boundary is
 provisioned in Staging, the provider permission gate returns HTTP 200, and one
 bounded synthetic spoken-audio worker lifecycle passes through dispatch,
 derivative reuse, `whisper-1`, transcript staging, confirmed raw deletion, and
 atomic `ready/published`. A real-provider timestamp incompatibility reproduced
 in that gate is covered by a regression test and a bounded final-segment clamp.
-All three jobs use immutable digest
+At that checkpoint, all three jobs used immutable digest
 `sha256:db5b20136e38284fa03f45292edeb29c398597592e6155d994b09f8fc9cffd57`;
 the dispatcher has `roles/run.jobsExecutorWithOverrides` on the worker job only.
 The disposable fixture is removed, the queue is empty, and schedules remain
 paused. Evidence is in `docs/architecture/phase-c-c6-staging-runtime.md`.
 
-This infrastructure smoke test does not substitute for owner-performed browser
-and media-quality acceptance. Continue with the numbered gates below in order.
+That infrastructure smoke test did not substitute for owner-performed browser
+and media-quality acceptance. The numbered gates below then ran in order.
 Gate 1 produced and verified a private 9,000 ms, 426x240 H.264/AAC derivative
 and cleaned its remote fixture. Owner playback acceptance passed on 2026-08-18:
 crop/no magenta border, motion, clear audio, no crackle or clicks, and A/V
@@ -449,11 +451,11 @@ two produced exactly one checksum-matched private derivative and reached
 the separate persistence-boundary crash tests, then passed all six Staging
 scenarios. Recovery resumed exactly at `probing`, `transcribing`, `raw_cleanup`,
 or `finalizing`; deterministic processed-object reuse prevented duplication,
-and no scenario published before raw deletion confirmation. Gate 5, the
-90-second, codec, geometry, and audio-crackle matrices, is the current
-sequential stop point. Gate 5a, the exact 90-second automated and owner playback
-behavior, passed on 2026-08-23. The codec and geometry matrices are accepted;
-audio-crackle is next. The Local codec slice passes
+and no scenario published before raw deletion confirmation. Gate 5 comprised
+the 90-second, codec, geometry, and audio-crackle matrices. Gate 5a, the exact
+90-second automated and owner playback behavior, passed on 2026-08-23; the codec
+and geometry matrices followed, and audio-crackle investigation was the final
+acceptance slice. The Local codec slice passes
 24/24 focused media-core checks across supported VP9/Opus, VP8/Opus, and
 audio-only Opus inputs plus real malformed, wrong-container, missing-stream,
 and unsupported-Vorbis failures. The full worker source gate passes 65/65 with
@@ -463,7 +465,7 @@ passed at `00:09` with smooth motion, clear speech, steady tone, balanced
 channels, clean ending, and no crackle, clicks, warble, dropouts, or notes.
 Gate 5b is closed without a database migration or image change.
 
-The Local Gate 5c geometry matrix now passes 33/33 media-core checks and eight
+The Local Gate 5c geometry matrix passes 33/33 media-core checks and eight
 static/container checks. It covers the three accepted crop families, exact
 one-CSS-pixel visibility and movement tolerance, stable fullscreen and track
 aspect, all six unsafe metadata fixtures, and verifies that unsafe input creates
@@ -476,7 +478,7 @@ response ended at 10,160 ms. The text-free diagnostic passed and no retry was
 dispatched. A bounded 2,000 ms final-tail correction passes focused source and
 no-network container regressions in image
 `sha256:f4b101880bbdf77784769f82fe5055261537f0fb6f868252b3891eb687d7b057`,
-now deployed by immutable digest to all three paused Staging jobs. Portrait
+which was deployed by immutable digest to all three paused Staging jobs. Portrait
 reused the exact retained derivative on attempt two and cleaned completely;
 letterbox completed its first-attempt lifecycle and cleaned completely; terminal
 unsafe geometry remained draft with no transcript or derivative before
@@ -484,7 +486,7 @@ controlled raw cleanup. No database migration was required. Owner playback of
 both 9-second artifacts passed every crop, motion, speech, tone, channel, and
 ending check with no crackle, clicks, warble, or dropouts. Gate 5c is closed.
 
-Gate 5d has started at the worker boundary. A dependency-free Local harness ran
+Gate 5d started at the worker boundary. A dependency-free Local harness ran
 three 90-second samples for each of audio-only Opus, VP9/Opus, and VP8/Opus and
 compared raw decoded excerpts with their final AAC derivatives. All 9/9 passed
 exact duration, channel balance, discontinuity, dropout-window, and near-zero-run
@@ -493,15 +495,16 @@ were completed by the owner on two distinct output devices. Both sides of every
 pair passed, neither side was worse, and tone, channel balance, and clean endings
 passed. Device names were withheld by owner choice. The revealed mapping placed
 the derivative on B for pairs one and three and on A for pair two, providing no
-evidence of repeatable worker-derivative degradation. The Local browser capture
-causal matrix is now the active sequential step; any Gate 5d Staging lifecycle
-remains blocked until Local capture acceptance passes.
+evidence of repeatable worker-derivative degradation. At that checkpoint, the
+Local browser capture causal matrix became the next sequential step, and any
+additional Gate 5d Staging lifecycle remained blocked until Local capture
+acceptance passed.
 
 The Local-only collector and six-variant build harness are implemented. They
 retain the production manifest permissions, accept only localhost diagnostic
 origins, cap each variant at three samples, checksum each raw Blob, and bypass
 hosted authorize/upload/complete rather than falsifying loopback-off metadata.
-Owner baseline and capture listening are now the active evidence step.
+Owner baseline and capture listening were the next evidence step.
 
 Both public-source/no-capture baselines passed on both anonymous devices. The
 VP9-default variant then passed 3/3 exact live captures and 3/3 Local worker
@@ -523,7 +526,7 @@ playback supply the remote quality evidence, so another provider invocation is
 not required. Remaining browser variants are reserved for diagnosis only;
 routine repetition stops here. Gate 5d is accepted.
 
-Run owner acceptance sequentially, stopping on the first unexpected result:
+The owner ran the acceptance sequence below, stopping on any unexpected result:
 
 1. A short known video excerpt: verify crop, requested content, duration, A/V
    sync, transcript scope, raw deletion, and ready/publication transition.

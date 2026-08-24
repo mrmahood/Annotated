@@ -1,12 +1,11 @@
 # Phase C C6 Staging runtime
 
-Status: Local validation, the initial Staging worker lifecycle, the first three
-owner media-quality gates, the forced transient-retry gate, and all six
-persistence-boundary recovery gates and exact-duration corrective recovery
-passed, 2026-08-23. Gate 5d, the audio-crackle matrix, is the remaining
-sequential C6 acceptance gate. Schedules remain paused pending
-review. This record covers only the Staging boundary. Production deployment and
-merge remain prohibited.
+Status: C6 Local validation, Staging lifecycle/recovery, codec, geometry,
+exact-duration, transcript, and owner media-quality gates passed, including the
+risk-based Gate 5d audio-crackle acceptance, 2026-08-23. Schedules remain paused
+pending review. Draft PR #18's lower-duration correction passes Local validation
+and has not been applied to Staging. This record covers only the Staging
+boundary. Production deployment and merge remain prohibited.
 
 Gate 5a, the exact 90,000 ms audio boundary, is accepted. A
 repository-owned runner now fails closed on the branch, Supabase ref, Production
@@ -16,7 +15,7 @@ spoken markers at 0, 30, 60, and 85.5 seconds over a quiet continuous tone. The
 first attempt reached the provider and retained its private derivative for a
 bounded corrective retry; that exact recovery, the subsequent clean
 first-attempt rerun, and owner playback all passed. The codec and geometry
-matrices are accepted; crackle is next in sequence. The codec Local slice
+matrices followed, and crackle was the final acceptance slice. The codec Local slice
 passes supported VP9/Opus, VP8/Opus, and audio-only Opus conversions
 plus fail-closed malformed, wrong-container, missing-stream, and unsupported
 Vorbis cases. The repository-owned runner then exercised the missing positive
@@ -41,22 +40,23 @@ migration.
 After the corrected digest was deployed, the portrait matrix case passed raw
 generation, empty preflight, private upload, and dispatch. Attempt one staged
 the portrait derivative, then stopped safely at `transcribing` /
-`transcript_invalid`; the annotation remains draft with a database-owned retry
-and no lease. The runner retained that exact fixture and did not start the
-letterbox or unsafe cases. Do not dispatch the retry or clean the fixture before
-the repository-owned text-free structural diagnostic runs against the retained
-checksum-matched derivative. That diagnostic has now passed: OpenAI returned
+`transcript_invalid`; at that checkpoint, the annotation remained draft with a
+database-owned retry and no lease. The runner retained that exact fixture and
+did not start the letterbox or unsafe cases until the repository-owned text-free
+structural diagnostic ran against the checksum-matched derivative. That
+diagnostic passed: OpenAI returned
 HTTP 200, nonblank text, four ordered nonblank segments, and a final end of
 10,160 ms for the exact 9,000 ms derivative. The sole failure is 1,160 ms of
-provider timestamp tail drift. The checksum-matched derivative remains retained
-and no retry was dispatched.
+provider timestamp tail drift. The checksum-matched derivative was retained
+without dispatching a retry, then reused and cleaned during the accepted
+continuation recorded below.
 
-The bounded 2,000 ms final-tail correction now passes focused source tests and
+The bounded 2,000 ms final-tail correction passes focused source tests and
 read-only, no-network container probes while rejecting starts outside the
 excerpt and tails beyond the bound. The pinned non-root image is
 `sha256:f4b101880bbdf77784769f82fe5055261537f0fb6f868252b3891eb687d7b057`.
 It passed its runtime probes, was pushed by checksum-derived tag, and all three
-Staging jobs now use that exact immutable digest. No execution occurred during
+Staging jobs were updated to that exact immutable digest. No execution occurred during
 deployment. Exact retained-portrait recovery and the remaining letterbox and
 terminal unsafe cases then ran with both schedules paused and Production
 untouched.
@@ -72,8 +72,8 @@ or processed object/facts existed, and raw was retained only until controlled
 cleanup. The queue and all fixture objects/rows returned to zero. Owner playback
 of both exported 9-second artifacts passed: crop/no-magenta-border, smooth
 motion, clear speech, steady tone, channel balance, and clean ending all passed,
-with no crackle, clicks, warble, dropouts, or notes. Gate 5c is closed; Gate 5d
-audio-crackle is next.
+with no crackle, clicks, warble, dropouts, or notes. Gate 5c closed, and Gate 5d
+audio-crackle followed.
 
 Gate 5d is Local-first and causal. Its initial worker-boundary matrix generated
 three independent 90-second samples for each of audio-only Opus 64 kbps,
@@ -90,9 +90,9 @@ endings passed. Device names were withheld by owner choice. After recording the
 result, the mapping was revealed: pairs one and three presented raw as A, while
 pair two presented the derivative as A. No repeatable worker-derivative defect
 was observed. No network, database, provider, container, or deployed job was
-used. The Local browser capture causal matrix is next.
+used. The Local browser capture causal matrix followed.
 
-The Local capture scaffold is now implemented without weakening the hosted
+The Local capture scaffold was implemented without weakening the hosted
 metadata contract. A build-time configuration is accepted only when both the
 web app and collector are localhost HTTP origins. With no collector configured,
 the compiled production defaults remain loopback enabled, 1,000 ms timeslicing,
@@ -104,15 +104,15 @@ The six one-factor variants are VP9 default, loopback off, no timeslice, VP8
 default, VP9 explicit bitrate, and VP8 explicit bitrate, capped at three raw
 captures per variant. The harness retains capacity for all six variants, but a
 risk-based stop rule ends Local repetition once the default path and one causal
-variant pass without a reproduced defect. Staging remains blocked until that
-bounded evidence is recorded.
+variant pass without a reproduced defect. At that checkpoint, additional
+Staging evidence remained blocked until the bounded Local evidence was recorded.
 
 VP9-default browser capture is complete locally: 3/3 exact 90,000 ms captures
 passed live listening across both public sources and both anonymous devices,
 with no crackle, clicks, warble, or dropouts. A non-exact 89,394 ms calibration
 run is preserved but excluded. These real MediaRecorder Blobs reproduced two
 worker-boundary gaps before Staging: absent WebM container duration and a narrow
-viewport centered inside a wider Chrome `crop-and-scale` track. The worker now
+viewport centered inside a wider Chrome `crop-and-scale` track. The worker
 derives a bounded duration from at most 25,000 packet timestamps when a WebM
 duration is absent, rejecting truncated or malformed timing output. Geometry
 uses a uniform scale and centered offsets only when probed dimensions match the
@@ -136,7 +136,8 @@ are intentionally skipped unless later evidence reproduces a defect. The exact
 one attempt reached ready/published, raw deletion was confirmed, and owner
 playback passed all four markers, steady tone, channel balance, clean ending,
 and absence of crackle, clicks, warble, or dropouts. Gate 5d is accepted without
-another provider invocation. Full repository regression is next.
+another provider invocation. Full repository regression then passed, followed
+by the Draft PR #18 corrective review described in the status above.
 
 ## Approved boundary
 
