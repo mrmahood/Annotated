@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  required-validation:
+    name: Required validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.18.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.14.1
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install checksum-verified FFmpeg 8.1 toolchain
+        env:
+          FFMPEG_ASSET: ffmpeg-n8.1.2-44-g7c533d0f86-linux64-lgpl-8.1.tar.xz
+          FFMPEG_SHA256: 3a379bb6ce47ca7c175999ed44a8f386cc89a9b9e450774b69d98a2c45c5189b
+          FFMPEG_VERSION: n8.1.2-44-g7c533d0f86-20260816
+        run: |
+          set -euo pipefail
+          tool_root="$RUNNER_TEMP/annotated-ffmpeg"
+          archive="$tool_root/$FFMPEG_ASSET"
+          mkdir -p "$tool_root/extracted"
+          curl --fail --location --retry 3 --output "$archive" \
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/$FFMPEG_ASSET"
+          echo "$FFMPEG_SHA256  $archive" | sha256sum --check --strict
+          tar -xJf "$archive" -C "$tool_root/extracted" --strip-components=1
+          test "$("$tool_root/extracted/bin/ffmpeg" -hide_banner -version | sed -n '1s/^ffmpeg version //p' | awk '{print $1}')" = "$FFMPEG_VERSION"
+          test "$("$tool_root/extracted/bin/ffprobe" -hide_banner -version | sed -n '1s/^ffprobe version //p' | awk '{print $1}')" = "$FFMPEG_VERSION"
+          echo "ANNOTATED_FFMPEG_BIN=$tool_root/extracted/bin" >> "$GITHUB_ENV"
+
+      - name: Start isolated Local database
+        run: pnpm exec supabase db start
+
+      - name: Lint Local database
+        run: pnpm exec supabase db lint --level error
+
+      - name: Run Local database tests
+        run: pnpm exec supabase test db
+
+      - name: Run media-worker tests
+        run: node --test apps/media-worker/test/*.test.mjs
+
+      - name: Run shared-package tests
+        run: pnpm --filter @annotated/shared test
+
+      - name: Run extension tests
+        run: pnpm --dir apps/extension test
+
+      - name: Compile extension
+        run: pnpm --dir apps/extension run compile
+
+      - name: Build extension
+        run: pnpm --dir apps/extension run build
+
+      - name: Inspect generated production manifest
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+
+          const manifest = JSON.parse(await readFile('apps/extension/.output/chrome-mv3/manifest.json', 'utf8'));
+          const expectedPermissions = ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'];
+          assert.equal(manifest.manifest_version, 3);
+          assert.equal(manifest.minimum_chrome_version, '116');
+          assert.deepEqual(manifest.permissions, expectedPermissions);
+          assert.equal(Object.hasOwn(manifest, 'host_permissions'), false);
+          assert.equal(Object.hasOwn(manifest, 'content_scripts'), false);
+          NODE
+
+      - name: Run web unit tests
+        run: pnpm --dir apps/web run test:unit
+
+      - name: Lint web app
+        run: pnpm --dir apps/web run lint
+
+      - name: Build web app
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-local-publishable-placeholder
+        run: pnpm --dir apps/web run build
+
+      - name: Check patch whitespace
+        run: git diff --check 4b825dc642cb6eb9a060e54bf8d69288fbee4904 HEAD
+
+      - name: Stop isolated Local database
+        if: always()
+        continue-on-error: true
+        run: pnpm exec supabase stop --no-backup
