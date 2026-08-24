@@ -20,6 +20,9 @@ import {
   removePrivateArtifacts,
   hostedMediaErrorResponse,
   HostedMediaApiError,
+  isRecaptureCleanupPending,
+  RECAPTURE_CLEANUP_CODE,
+  RECAPTURE_CLEANUP_STAGE,
   rawStoragePath,
   validateCaptureMetadata,
   validateSupabaseApiKey,
@@ -134,6 +137,26 @@ test('failed recapture derives exact raw-only and processed artifact cleanup pat
     processing_status: 'failed',
     processed_storage_path: `${OTHER}/${ANNOTATION}/${MEDIA}/excerpt.mp4`,
   }), (error) => error.code === 'PROCESSED_PATH_INVALID');
+});
+
+test('processed Storage and resumable recapture markers match the durable contracts', async () => {
+  const [foundation, workerStorage] = await Promise.all([
+    readFile(new URL('../../../../supabase/migrations/20260815120000_media_archive_foundation.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../../../media-worker/src/infrastructure/supabase-storage.mjs', import.meta.url), 'utf8'),
+  ]);
+  assert.equal(PROCESSED_BUCKET, 'annotation-media');
+  assert.match(foundation, /\(\s*'annotation-media',\s*'annotation-media'/);
+  assert.match(workerStorage, /'annotation-media'/);
+  assert.equal(isRecaptureCleanupPending({
+    processing_status: 'uploading',
+    failure_stage: RECAPTURE_CLEANUP_STAGE,
+    failure_code: RECAPTURE_CLEANUP_CODE,
+  }), true);
+  assert.equal(isRecaptureCleanupPending({
+    processing_status: 'uploading',
+    failure_stage: null,
+    failure_code: null,
+  }), false);
 });
 
 test('failed raw-only recapture deletes the deterministic derivative before raw bytes and surfaces bounded failures', async () => {
@@ -301,12 +324,18 @@ test('routes use short-lived no-upsert authorization and transition only to proc
   assert.match(cancel, /ownerStatus\.processing_status === 'capture_pending'/);
   assert.match(cancel, /cancel_hosted_media_annotation/);
   assert.match(authorize, /processed: retainedPaths\.expectedProcessed/);
+  assert.match(authorize, /failure_stage: RECAPTURE_CLEANUP_STAGE/);
+  assert.match(authorize, /failure_code: RECAPTURE_CLEANUP_CODE/);
+  assert.match(authorize, /requiresRecaptureCleanup = media\.processing_status === 'failed' \|\| recaptureCleanupPending/);
+  assert.match(authorize, /\.eq\('failure_stage', RECAPTURE_CLEANUP_STAGE\)/);
+  assert.match(authorize, /\.eq\('failure_code', RECAPTURE_CLEANUP_CODE\)/);
+  assert.match(complete, /isRecaptureCleanupPending\(media\)/);
   assert.match(authorize, /\.eq\('processing_status', 'failed'\)/);
   assert.match(authorize, /\.eq\('processing_status', expectedStatus\)/);
   assert.match(authorize, /\.eq\('raw_storage_path', media\.raw_storage_path\)/);
   assert.match(authorize, /\.eq\('processed_storage_path', media\.processed_storage_path\)/);
   assert.match(authorize, /\.eq\('updated_at', expectedUpdatedAt\)/);
-  assert.ok(authorize.indexOf('const { data: fenced') < authorize.indexOf('processed: retainedPaths.expectedProcessed'));
+  assert.ok(authorize.indexOf('const { data: fenced') < authorize.indexOf('if (requiresRecaptureCleanup)'));
   assert.ok(authorize.indexOf('processed: retainedPaths.expectedProcessed') < authorize.indexOf('let updateQuery'));
   assert.match(cancel, /processed: retainedPaths\.expectedProcessed/);
   assert.match(cancel, /disposition !== 'already-cancelled'/);

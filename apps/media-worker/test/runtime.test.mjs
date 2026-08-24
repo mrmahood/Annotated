@@ -209,11 +209,12 @@ test('dispatcher deduplicates IDs, bounds concurrency, and never forwards candid
   assert.doesNotMatch(lines.join('\n'), /must-not-forward/u);
 });
 
-test('reconciler releases expired leases and performs exact claimed retention cleanup', async () => {
+test('reconciler releases expired leases and removes an unstaged deterministic derivative', async () => {
   const { logger, lines } = captureLogger();
   const removed = [];
-  const rawPath = 'owner/annotation/media/raw.webm';
-  const processedPath = 'owner/annotation/media/excerpt.m4a';
+  const ownerId = '55555555-5555-4555-8555-555555555555';
+  const rawPath = `${ownerId}/${annotationId}/${secondMediaId}/66666666-6666-4666-8666-666666666666.webm`;
+  const processedPath = `${ownerId}/${annotationId}/${secondMediaId}/excerpt.m4a`;
   const existing = new Set([rawPath, processedPath]);
   const store = {
     listReconciliationCandidates: async () => [
@@ -228,11 +229,13 @@ test('reconciler releases expired leases and performs exact claimed retention cl
       media_id: id,
       cleanup_reason: 'terminal_raw_cleanup',
       raw_storage_path: rawPath,
-      processed_storage_path: processedPath,
+      processed_storage_path: null,
+      expected_processed_storage_path: processedPath,
       observed_updated_at: '2026-08-15T12:00:00Z',
     }),
     confirmCleanup: async (value) => {
       assert.equal(value.media_id, secondMediaId);
+      assert.equal(value.processed_storage_path, null);
       assert.equal(existing.size, 0);
       return 'removed';
     },

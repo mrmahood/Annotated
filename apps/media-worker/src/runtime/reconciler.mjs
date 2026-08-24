@@ -15,6 +15,19 @@ async function removeIfPresent(storage, bucket, objectPath) {
   if (await storage.exists(bucket, objectPath)) throw new Error('Private object deletion was not confirmed.');
 }
 
+function requireExpectedProcessedPath(value, mediaId) {
+  if (typeof value !== 'string' || value.length > 300) {
+    throw new TypeError('Expected processed Storage path is invalid.');
+  }
+  const parts = value.split('/');
+  if (parts.length !== 4 || requireMediaId(parts[0]) !== parts[0] ||
+      requireMediaId(parts[1]) !== parts[1] || requireMediaId(parts[2]) !== mediaId ||
+      !['excerpt.mp4', 'excerpt.m4a'].includes(parts[3])) {
+    throw new TypeError('Expected processed Storage path is invalid.');
+  }
+  return value;
+}
+
 async function reconcileOne({ candidate, store, storage, logger }) {
   const mediaId = requireMediaId(candidate?.media_id);
   const action = candidate?.reconciliation_action;
@@ -32,8 +45,12 @@ async function reconcileOne({ candidate, store, storage, logger }) {
   if (claim.cleanup_reason !== action || requireMediaId(claim.media_id) !== mediaId) {
     throw new TypeError('Cleanup claim does not match its candidate.');
   }
+  const expectedProcessedPath = requireExpectedProcessedPath(claim.expected_processed_storage_path, mediaId);
+  if (claim.processed_storage_path !== null && claim.processed_storage_path !== expectedProcessedPath) {
+    throw new TypeError('Staged processed path does not match the cleanup claim.');
+  }
   await removeIfPresent(storage, 'annotation-media-raw', claim.raw_storage_path);
-  await removeIfPresent(storage, 'annotation-media', claim.processed_storage_path);
+  await removeIfPresent(storage, 'annotation-media', expectedProcessedPath);
   const result = await store.confirmCleanup(claim);
   logger?.emit('cleanup_completed', { media_id: mediaId, action, outcome: result });
   return { mediaId, status: 'cleaned', action };

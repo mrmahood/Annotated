@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(27);
+select plan(29);
 
 select has_function(
   'private', 'release_annotation_media_processing_attempt',
@@ -25,6 +25,10 @@ select has_function(
   'exact-path cleanup claim exists'
 );
 select has_function(
+  'private', 'claim_annotation_media_cleanup_v2', array['uuid'],
+  'cleanup claim with a deterministic derivative path exists'
+);
+select has_function(
   'private', 'confirm_annotation_media_cleanup',
   array['uuid', 'text', 'text', 'timestamp with time zone'],
   'stale-guarded cleanup confirmation exists'
@@ -38,6 +42,10 @@ select ok(
   and not pg_catalog.has_function_privilege('authenticated', 'private.list_annotation_media_dispatch_candidates(integer)', 'execute')
   and pg_catalog.has_function_privilege('service_role', 'private.list_annotation_media_dispatch_candidates(integer)', 'execute')
   and not pg_catalog.has_function_privilege('authenticated', 'private.claim_annotation_media_cleanup(uuid)', 'execute')
+  and not pg_catalog.has_function_privilege('public', 'private.claim_annotation_media_cleanup_v2(uuid)', 'execute')
+  and not pg_catalog.has_function_privilege('anon', 'private.claim_annotation_media_cleanup_v2(uuid)', 'execute')
+  and not pg_catalog.has_function_privilege('authenticated', 'private.claim_annotation_media_cleanup_v2(uuid)', 'execute')
+  and pg_catalog.has_function_privilege('service_role', 'private.claim_annotation_media_cleanup_v2(uuid)', 'execute')
   and pg_catalog.has_function_privilege('service_role', 'private.confirm_annotation_media_cleanup(uuid,text,text,timestamp with time zone)', 'execute'),
   'new worker functions are service-only'
 );
@@ -235,7 +243,7 @@ alter table public.annotation_media enable trigger annotation_media_set_updated_
 
 create temporary table c4_cleanup as
 select claimed.*
-from private.claim_annotation_media_cleanup(
+from private.claim_annotation_media_cleanup_v2(
   (select media.id from public.annotation_media as media
     join public.annotations on annotations.id = media.annotation_id
     where annotations.commentary_text = 'C4 legacy recapture')
@@ -245,6 +253,14 @@ select is(
   (select cleanup_reason from c4_cleanup),
   'terminal_raw_cleanup',
   'terminal raw retention produces one exact cleanup claim'
+);
+select is(
+  (select expected_processed_storage_path from c4_cleanup),
+  (select annotations.user_id::text || '/' || media.annotation_id::text || '/' || media.id::text || '/excerpt.m4a'
+    from public.annotation_media as media
+    join public.annotations as annotations on annotations.id = media.annotation_id
+    where media.id = (select media_id from c4_cleanup)),
+  'cleanup derives the exact processed path when no path was staged'
 );
 select lives_ok(
   $$

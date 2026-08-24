@@ -47,6 +47,7 @@ from (values
   ('private.list_annotation_media_dispatch_candidates(integer)'),
   ('private.list_annotation_media_reconciliation_candidates(integer)'),
   ('private.claim_annotation_media_cleanup(uuid)'),
+  ('private.claim_annotation_media_cleanup_v2(uuid)'),
   ('private.confirm_annotation_media_cleanup(uuid,text,text,timestamp with time zone)'),
   ('private.reconcile_annotation_media_processing(uuid)')
 ) as allowed(signature);

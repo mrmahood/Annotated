@@ -117,7 +117,7 @@ export class PostgresWorkerStore {
     const id = requireMediaId(mediaId);
     return this.database.json(`
       select pg_catalog.row_to_json(claimed)
-      from private.claim_annotation_media_cleanup(${sqlText(id)}::uuid) claimed;
+      from private.claim_annotation_media_cleanup_v2(${sqlText(id)}::uuid) claimed;
     `);
   }
 

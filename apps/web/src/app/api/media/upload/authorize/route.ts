@@ -7,11 +7,14 @@ import {
   createServiceClient,
   exactPathMatches,
   hostedMediaErrorResponse,
+  isRecaptureCleanupPending,
   jsonResponse,
   parseAuthorizeInput,
   privateArtifactPaths,
   rawStoragePath,
   removePrivateArtifacts,
+  RECAPTURE_CLEANUP_CODE,
+  RECAPTURE_CLEANUP_STAGE,
   stableJson,
   type AnnotationRow,
   type MediaRow,
@@ -30,7 +33,7 @@ export async function POST(request: Request) {
     const service = createServiceClient();
     const { data: mediaData, error: mediaError } = await service
       .from('annotation_media')
-      .select('id, annotation_id, media_type, processing_status, raw_storage_path, processed_storage_path, raw_mime_type, raw_byte_size, capture_metadata, updated_at')
+      .select('id, annotation_id, media_type, processing_status, raw_storage_path, processed_storage_path, raw_mime_type, raw_byte_size, capture_metadata, failure_stage, failure_code, updated_at')
       .eq('id', input.mediaId)
       .maybeSingle();
     assertServiceOperation(mediaError, 'The hosted media draft could not be loaded.');
@@ -57,7 +60,9 @@ export async function POST(request: Request) {
     }
 
     let path = media.raw_storage_path;
-    if (media.processing_status === 'uploading') {
+    const recaptureCleanupPending = isRecaptureCleanupPending(media);
+    const requiresRecaptureCleanup = media.processing_status === 'failed' || recaptureCleanupPending;
+    if (media.processing_status === 'uploading' && !recaptureCleanupPending) {
       if (media.capture_metadata?.version === 1) {
         throw new HostedMediaApiError('RECAPTURE_REQUIRED', 409);
       }
@@ -83,6 +88,8 @@ export async function POST(request: Request) {
           .update({
             processing_status: 'uploading',
             processing_stage: null,
+            failure_stage: RECAPTURE_CLEANUP_STAGE,
+            failure_code: RECAPTURE_CLEANUP_CODE,
             next_attempt_at: null,
             lease_token: null,
             lease_expires_at: null,
@@ -103,6 +110,11 @@ export async function POST(request: Request) {
         if (!fenced) throw new Error('The failed media draft changed before recapture cleanup.');
         expectedStatus = 'uploading';
         expectedUpdatedAt = fenced.updated_at;
+      }
+      if (requiresRecaptureCleanup) {
+        // This deletion sequence is deliberately idempotent. If Storage or
+        // transcript cleanup fails after the fence, the exact marker remains
+        // durable and the next authorization request resumes here.
         await removePrivateArtifacts(service.storage, {
           raw: retainedPaths.raw,
           processed: retainedPaths.expectedProcessed,
@@ -147,6 +159,11 @@ export async function POST(request: Request) {
       updateQuery = media.processed_storage_path === null
         ? updateQuery.is('processed_storage_path', null)
         : updateQuery.eq('processed_storage_path', media.processed_storage_path);
+      if (requiresRecaptureCleanup) {
+        updateQuery = updateQuery
+          .eq('failure_stage', RECAPTURE_CLEANUP_STAGE)
+          .eq('failure_code', RECAPTURE_CLEANUP_CODE);
+      }
       updateQuery = updateQuery.eq('updated_at', expectedUpdatedAt);
       const { data: updated, error: updateError } = await updateQuery
         .select('id')

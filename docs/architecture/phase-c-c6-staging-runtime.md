@@ -3,9 +3,13 @@
 Status: C6 Local validation, Staging lifecycle/recovery, codec, geometry,
 exact-duration, transcript, and owner media-quality gates passed, including the
 risk-based Gate 5d audio-crackle acceptance, 2026-08-23. Schedules remain paused
-pending review. Draft PR #18's lower-duration correction passes Local validation
-and has not been applied to Staging. This record covers only the Staging
-boundary. Production deployment and merge remain prohibited.
+pending review. Draft PR #18's lower-duration migration is present on exact
+Staging through `20260823235900`; immutable worker digest
+`sha256:cc920050b6699e3c4ff543f5910ea901a352dd2919c6061f4aa0f4dfdd40449f`
+passed the bounded corrective VP8/Opus lifecycle and cleanup. Later cleanup-v2,
+processed-bucket, and resumable-recapture corrections are Local-only and have
+not been applied to Staging. This record covers only the Staging boundary.
+Production deployment and merge remain prohibited.
 
 Gate 5a, the exact 90,000 ms audio boundary, is accepted. A
 repository-owned runner now fails closed on the branch, Supabase ref, Production

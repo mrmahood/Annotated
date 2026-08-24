@@ -4,10 +4,14 @@ Status: accepted architecture, updated 2026-08-23. Phases A-B and Phase C
 increments C1-C6 are implemented. C6's least-privilege worker migration,
 immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded lifecycle,
 crash, codec, geometry, duration, transcript, and audio-quality gates passed in
-Staging with both schedules paused. Draft PR #18 review then found that the
-worker and database enforced only the upper duration bound; the forward-only
-20 ms lower-bound correction passes Local regression and has not been applied
-to Staging. Production deployment, schedule enablement, and merge remain
+Staging with both schedules paused. The forward-only 20 ms duration correction
+was applied to exact Staging, and immutable worker digest
+`sha256:cc920050b6699e3c4ff543f5910ea901a352dd2919c6061f4aa0f4dfdd40449f`
+then passed a bounded first-attempt VP8/Opus lifecycle and exact cleanup. Final
+PR review found processed-bucket, resumable-recapture, orphan-derivative
+cleanup, and stale-status blockers. Their corrective implementation and
+regressions are Local-only; the new cleanup migration has not been applied to
+Staging. Production deployment, schedule enablement, and merge remain
 separately authorized.
 
 The bounded Phase C execution plan is
@@ -720,10 +724,11 @@ names below are scopes, not files created by this design.
 ### C. Worker, transcode, transcription, and audio acceptance
 
 Status: corrective review. C1-C6 implementation, bounded Staging validation,
-and owner acceptance are complete. Draft PR #18 review found the missing
-lower-duration invariant described at the top of this document; its worker
-regression and forward-only database correction pass Local validation and have
-not been applied to Staging. The work breakdown, decision gates, validation
+and owner acceptance are complete. The lower-duration invariant and its
+corrective worker passed exact Staging validation. Final PR review then found
+three cleanup defects plus stale status text; those corrections and their
+regressions remain Local-only, and the additive cleanup-v2 migration has not
+been applied to Staging. The work breakdown, decision gates, validation
 sequence, and exit criteria are recorded in
 `docs/architecture/phase-c-media-worker-plan.md`. That plan narrows execution
 of this accepted architecture; it does not expand the phase or authorize later

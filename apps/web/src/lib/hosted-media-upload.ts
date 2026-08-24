@@ -1,7 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export const RAW_BUCKET = 'annotation-media-raw';
-export const PROCESSED_BUCKET = 'annotation-media-processed';
+export const PROCESSED_BUCKET = 'annotation-media';
+export const RECAPTURE_CLEANUP_STAGE = 'recapture_cleanup';
+export const RECAPTURE_CLEANUP_CODE = 'private_artifacts_pending';
 export const VIDEO_LIMIT = 50 * 1024 * 1024;
 export const AUDIO_LIMIT = 16 * 1024 * 1024;
 export const CORS_HEADERS = {
@@ -37,6 +39,8 @@ export type MediaRow = {
   processed_storage_path: string | null;
   raw_mime_type: string | null;
   raw_byte_size: number | null;
+  failure_stage?: string | null;
+  failure_code?: string | null;
   updated_at: string;
 };
 export type AnnotationRow = { id: string; user_id: string; status: string };
@@ -307,6 +311,14 @@ export function privateArtifactPaths(
     processed: media.processed_storage_path,
     expectedProcessed: expectedProcessedPath,
   };
+}
+
+export function isRecaptureCleanupPending(
+  media: Pick<MediaRow, 'processing_status' | 'failure_stage' | 'failure_code'>,
+) {
+  return media.processing_status === 'uploading' &&
+    media.failure_stage === RECAPTURE_CLEANUP_STAGE &&
+    media.failure_code === RECAPTURE_CLEANUP_CODE;
 }
 
 type PrivateArtifactStorage = {

@@ -7,6 +7,7 @@ import {
   createServiceClient,
   exactPathMatches,
   hostedMediaErrorResponse,
+  isRecaptureCleanupPending,
   jsonResponse,
   parseCompletionInput,
   verifyStoredObject,
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
     const service = createServiceClient();
     const { data: mediaData, error: mediaError } = await service
       .from('annotation_media')
-      .select('id, annotation_id, media_type, processing_status, processing_stage, raw_storage_path, raw_mime_type, raw_byte_size, capture_metadata')
+      .select('id, annotation_id, media_type, processing_status, processing_stage, raw_storage_path, raw_mime_type, raw_byte_size, capture_metadata, failure_stage, failure_code')
       .eq('id', input.mediaId)
       .maybeSingle();
     assertServiceOperation(mediaError, 'The hosted media draft could not be loaded.');
@@ -37,6 +38,9 @@ export async function POST(request: Request) {
       capture_metadata: Record<string, unknown>;
     };
     if (media.capture_metadata?.version === 1) {
+      throw new HostedMediaApiError('RECAPTURE_REQUIRED', 409);
+    }
+    if (isRecaptureCleanupPending(media)) {
       throw new HostedMediaApiError('RECAPTURE_REQUIRED', 409);
     }
     const { data: annotationData, error: annotationError } = await service

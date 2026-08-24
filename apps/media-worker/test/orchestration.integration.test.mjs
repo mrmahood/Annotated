@@ -449,6 +449,7 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
       `);
       assert.equal(terminal.result_status, 'failed');
       assertDraft(terminalScenario.mediaId, null);
+      await ensureDerivativeObject(terminalScenario);
 
       database.execute(`
         begin;
@@ -459,15 +460,18 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
         commit;
       `);
       const cleanup = database.json(`
-        select pg_catalog.row_to_json(claimed) from private.claim_annotation_media_cleanup(
+        select pg_catalog.row_to_json(claimed) from private.claim_annotation_media_cleanup_v2(
           ${sqlText(terminalScenario.mediaId)}::uuid
         ) claimed;
       `);
       assert.equal(cleanup.cleanup_reason, 'terminal_raw_cleanup');
       assert.equal(cleanup.raw_storage_path, terminalScenario.rawPath);
       assert.equal(cleanup.processed_storage_path, null);
+      assert.equal(cleanup.expected_processed_storage_path, terminalScenario.processedPath);
       await storage.remove('annotation-media-raw', [cleanup.raw_storage_path]);
+      await storage.remove('annotation-media', [cleanup.expected_processed_storage_path]);
       assert.equal(await storage.exists('annotation-media-raw', cleanup.raw_storage_path), false);
+      assert.equal(await storage.exists('annotation-media', cleanup.expected_processed_storage_path), false);
       const confirmed = database.json(`
         select pg_catalog.to_json(private.confirm_annotation_media_cleanup(
           ${sqlText(terminalScenario.mediaId)}::uuid,
