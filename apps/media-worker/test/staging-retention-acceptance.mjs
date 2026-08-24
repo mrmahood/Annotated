@@ -123,11 +123,11 @@ async function prepare() {
   const failed = FIXTURES[1];
   const removedPaths = objectPaths(owner, removed);
   const failedPaths = objectPaths(owner, failed);
-  const now = Date.now();
-  const removedCreatedAt = new Date(now - 60_000).toISOString();
-  const failedCreatedAt = new Date(now - (74 * 60 * 60 * 1000)).toISOString();
-  const failedProcessedAt = new Date(now - (73.5 * 60 * 60 * 1000)).toISOString();
-  const failedUpdatedAt = new Date(now - (73 * 60 * 60 * 1000)).toISOString();
+  const removedCreatedAt = '2026-01-01T00:00:00.000Z';
+  const removedUpdatedAt = '2026-01-02T00:00:00.000Z';
+  const failedCreatedAt = '2026-01-03T00:00:00.000Z';
+  const failedProcessedAt = '2026-01-04T00:00:00.000Z';
+  const failedUpdatedAt = '2026-01-05T00:00:00.000Z';
 
   diagnosticPhase = 'upload_private_objects';
   await privateStorage.uploadNoUpsert('annotation-media-raw', removedPaths.raw, ARTIFACT_BYTES, 'audio/webm');
@@ -168,8 +168,8 @@ async function prepare() {
       raw_storage_path: removedPaths.raw, raw_mime_type: 'audio/webm', raw_byte_size: ARTIFACT_BYTES.length,
       processed_storage_path: removedPaths.processed, processed_mime_type: 'audio/mp4',
       duration_ms: 4_000, byte_size: ARTIFACT_BYTES.length, checksum_sha256: ARTIFACT_CHECKSUM,
-      processed_at: new Date(now).toISOString(), removed_at: new Date(now).toISOString(),
-      created_at: removedCreatedAt, updated_at: new Date(now).toISOString(),
+      processed_at: removedUpdatedAt, removed_at: removedUpdatedAt,
+      created_at: removedCreatedAt, updated_at: removedUpdatedAt,
     }],
   });
   diagnosticPhase = 'insert_processed_only_media';
