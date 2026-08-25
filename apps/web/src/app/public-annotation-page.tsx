@@ -10,12 +10,14 @@ import {
   getProfileSocialCounts,
   getPublicAnnotationComments,
 } from "@/lib/data/social";
+import { getAnnotationVoteSnapshot } from "@/lib/data/voting";
 import { ClaimForm } from "./a/[annotationId]/claim-form";
 import { CommentsSection } from "./a/[annotationId]/comments-section";
 import { PublishedAudioPlayer } from "./a/[annotationId]/published-audio-player";
 import { FollowButton } from "./follow-button";
 import { HostedMediaPlayer } from "./hosted-media-player";
 import { SiteHeader } from "./site-header";
+import { VoteControls } from "./vote-controls";
 
 function getDurationDateTime(durationMs: number): string {
   return `PT${durationMs / 1_000}S`;
@@ -23,10 +25,11 @@ function getDurationDateTime(durationMs: number): string {
 
 export async function PublicAnnotationPage({ annotation }: { annotation: PublicAnnotation }) {
   const currentUserId = await getCurrentUserId();
-  const [socialCounts, isFollowing, comments] = await Promise.all([
+  const [socialCounts, isFollowing, comments, voteSnapshot] = await Promise.all([
     getProfileSocialCounts(annotation.annotator.id),
     getCurrentUserFollowState(annotation.annotator.id, currentUserId),
     getPublicAnnotationComments(annotation.id),
+    getAnnotationVoteSnapshot(annotation.id, currentUserId),
   ]);
   const publicPath = getPublicAnnotationPath(annotation.route, annotation.id);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
@@ -165,6 +168,14 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
           {annotation.kind === "article" && annotation.audio && (
             <PublishedAudioPlayer publicUrl={annotation.audio.publicUrl} durationMs={annotation.audio.durationMs} />
           )}
+
+          <VoteControls
+            annotationId={annotation.id}
+            creatorId={annotation.annotator.id}
+            currentUserId={currentUserId}
+            initialSnapshot={voteSnapshot}
+            returnTo={publicPath}
+          />
 
           <CommentsSection
             key={comments.status === "available" ? `${comments.page.total}:${comments.page.comments.map((comment) => comment.id).join(",")}` : "unavailable"}
