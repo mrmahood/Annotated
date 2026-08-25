@@ -300,6 +300,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .hosted-media-section,
 .media-removed-section,
 .transcript-section,
+.vote-section,
 .comments-section,
 .claim-section { padding: clamp(20px, 4vw, 34px); }
 .annotation-header { display: flex; align-items: center; min-height: 68px; border-bottom: 1px solid var(--border); }
@@ -361,6 +362,20 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .audio-commentary-heading-row span { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem; }
 .audio-commentary-section audio { width: min(100%, 720px); height: 38px; margin-top: 14px; color-scheme: dark; }
 .audio-commentary-section .form-error { max-width: 720px; margin: 10px 0 0; }
+
+/* Voting */
+.vote-section { border-top: 1px solid var(--border); scroll-margin-top: 20px; }
+.vote-heading-row { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 14px 20px; }
+.vote-heading-row h2 { margin: 0; font-size: 1.28rem; font-weight: 600; letter-spacing: -0.02em; }
+.vote-controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.vote-button { display: inline-grid; min-width: 142px; min-height: 46px; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-small); color: var(--text-secondary); background: var(--control-background); font: inherit; font-size: 0.78rem; cursor: pointer; }
+.vote-button:hover:not(:disabled) { border-color: var(--text-muted); color: var(--text-primary); }
+.vote-button[aria-pressed="true"] { border-color: var(--text-primary); color: var(--text-primary); background: var(--background-elevated); }
+.vote-button:disabled { color: var(--text-disabled); cursor: not-allowed; }
+.vote-button > span:first-child { font-size: 1.05rem; line-height: 1; }
+.vote-button strong { min-width: 2ch; font-family: var(--font-mono); font-size: 0.72rem; font-variant-numeric: tabular-nums; text-align: right; }
+.vote-help, .vote-message, .vote-unavailable { max-width: 620px; margin: 12px 0 0; color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
+.vote-message { color: var(--text-secondary); }
 
 /* Comments */
 .comments-section { border-top: 1px solid var(--border); scroll-margin-top: 20px; }
@@ -468,7 +483,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .card-header { align-items: center; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .annotation-shell { padding: 14px 10px 36px; }
-  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .audio-commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .comments-section, .claim-section { padding: 18px; }
+  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .audio-commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .vote-section, .comments-section, .claim-section { padding: 18px; }
   .source-attribution { grid-template-columns: 1fr; align-items: stretch; gap: 18px; }
   .source-link, .public-button-claim { width: 100%; }
   .annotator-line { align-items: flex-start; flex-wrap: wrap; }
@@ -481,6 +496,10 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .profile-avatar { width: 56px; height: 56px; }
   .comment-form-footer, .comment-sign-in { align-items: stretch; flex-direction: column; }
   .comment-form-footer .public-button, .comment-sign-in .public-button { width: 100%; }
+  .vote-heading-row { align-items: stretch; flex-direction: column; }
+  .vote-heading-row .public-button { width: 100%; }
+  .vote-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vote-button { width: 100%; min-width: 0; }
 }
 
 @media (max-width: 520px) {
@@ -498,6 +517,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .pagination-current { text-align: center; }
   .comment-item { grid-template-columns: 26px minmax(0, 1fr); }
   .comment-avatar-link, .comment-avatar { width: 26px; height: 26px; }
+  .vote-controls { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
