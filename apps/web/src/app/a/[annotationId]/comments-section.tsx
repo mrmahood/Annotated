@@ -21,10 +21,12 @@ export function CommentsSection({
   annotationId,
   currentUserId,
   initialPage,
+  returnTo,
 }: {
   annotationId: string;
   currentUserId: string | null;
   initialPage: PublicCommentPage | null;
+  returnTo: string;
 }) {
   const router = useRouter();
   const postInFlight = useRef(false);
@@ -240,7 +242,7 @@ export function CommentsSection({
           <div className="comment-sign-in">
             <p>Sign in with Google to join the discussion.</p>
             <GoogleSignInButton
-              returnTo={`/a/${annotationId}#comments`}
+              returnTo={returnTo}
               label="Continue with Google"
             />
           </div>

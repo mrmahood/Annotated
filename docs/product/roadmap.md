@@ -8,7 +8,10 @@ passed; the post-merge `main` CI run also passed. Staging migration history is
 aligned through `20260824020000`, all three worker jobs use accepted immutable
 digest `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
 and both schedules remain paused. Production was not accessed or deployed.
-Phase D is the next active project phase.
+Phase D is active. D1a-D1e have completed Local-only implementation and
+automated validation; D1d owner Chrome acceptance and exact Local fixture
+cleanup are complete, and D1e reserves the framework-owned canonical-route
+roots. D2 remains unimplemented and separately authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -85,9 +88,10 @@ passed for one YouTube video and one synthetic audio range: source audio
 remained audible, both captures reached authoritative `processing/queued`, and
 sanitized Local inspection accepted both v2 payloads. Disposable rows, objects,
 user, processes, and temporary state were then removed, and the original
-environment files were restored. C4 and C5 then closed and C6 began. Git
-delivery, Production access/deployment, and merge remained separately
-authorized.
+environment files were restored. C4, C5, and C6 later closed through the
+sequential gates recorded below. Git delivery was completed through protected
+PR #18 and post-merge CI; Production access/deployment and schedule enablement
+were not authorized.
 
 C5 provides the dependency-free one-ID worker entrypoint, authenticated
 bounded dispatcher, database-owned retry scheduling, expired-lease reconciler,
@@ -243,22 +247,99 @@ authorized.
 
 ## Phase D — next
 
-Publication and product experience:
+Public annotation delivery and social experience. The detailed implementation
+and acceptance sequence is defined in
+`docs/architecture/phase-d-public-experience-plan.md`.
 
-- publish only after media ready, raw deleted, and transcript present;
-- canonical `/{creator-handle}/{annotation-slug}` route with UUID compatibility;
-- hosted playback, transcript rendering, commentary, creator/source attribution,
-  original link, claims/takedown, feed, and profile integration.
+### D1. Canonical public annotation pages
+
+- The canonical public URL is
+  `https://annotated.cbandcoop.com/{creator-handle}/{annotation-slug}`.
+  Annotation slugs remain creator-scoped, so the creator handle is a required
+  route segment.
+- Retain `/a/{annotation-UUID}` as a compatibility route. It permanently
+  redirects to the current canonical URL when a public annotation, creator
+  handle, and slug can be resolved safely.
+- Reserve framework-owned root segments such as `api`, `auth`, and `_next` from
+  creator handles before remote rollout so root-level canonical URLs cannot
+  collide with application routes.
+- Load public detail data through one trusted, allow-listed server boundary.
+  Draft, hidden, removed, and other non-public annotation states must not leak
+  through route resolution, metadata, comments, transcripts, or media delivery.
+- Preserve article rendering as the regression invariant. Add private
+  ready-media playback for hosted video/audio, excerpt-only transcript,
+  required creator commentary, creator/source attribution, original links,
+  canonical SEO and sharing metadata, comments, and the confidential claims
+  entry point.
+- Private processed media remains private. A same-origin trusted delivery
+  boundary may sign only the authoritative processed path after rechecking
+  `annotations.status = published`, `annotation_media.processing_status = ready`,
+  and `removed_at is null`. No raw path, full-source transcript, download action,
+  or signed URL belongs in public data or logs.
+
+### D2. Annotation voting
+
+- Add authenticated upvote and downvote support for published annotations using
+  an additive database design, RLS, and bounded trusted mutations.
+- Store at most one vote per authenticated user and annotation. A vote is `+1`
+  or `-1`, can change direction, and can be cleared.
+- Show separate public upvote and downvote totals without exposing voter
+  identities or a readable vote graph.
+- Initial votes do not affect feed ordering, recommendation, moderation,
+  publication, hiding, removal, claims, or takedown decisions.
+- Require published-only eligibility, stable bounded errors, mutation rate
+  limits, abuse tests, and article/hosted-media/social regression coverage.
 
 ## Phase E — future
 
-Hardening and bounty submission:
+Create experience and authentication:
 
-- browser, zoom/DPR/fullscreen/resize, and geometry test matrix;
-- expanded browser/device audio compatibility regression matrix;
-- auth/session, retry, privacy, security, and end-to-end regression;
-- Chrome Web Store packaging, onboarding, demo fixture, monitoring/runbooks, and
-  polished bounty submission material.
+- Rename the visible extension tab **Context** to **Create** and add a
+  **Text / Video / Audio** switcher at the top of the Create surface.
+- Replace mutually exclusive page classification with three separate concepts:
+  available modes, recommended mode, and selected mode. Multiple supported media
+  types may coexist on one webpage.
+- Preserve independent draft state per mode. Warn before abandoning an active
+  capture or upload, and preserve the existing honest restart/recovery behavior.
+- When a page contains multiple media players, require a bounded player-selection
+  experience; never silently choose an arbitrary player.
+- Add X.com OAuth 2.0 login alongside Google through Supabase Auth. Test explicit
+  web and extension callbacks and adopt a safe account-linking policy. Never
+  merge identities based only on display name.
+- Retain the accepted capture, private upload, draft-first, processing-status,
+  permission, no-host-permission, and article-publication boundaries while the
+  Create experience is reorganized.
+
+## Phase F — future
+
+Claims, takedown, and removal:
+
+- Preserve the existing confidential claims, takedown, media-only removal, and
+  full-record hiding/removal scope and its forward-only audit/cleanup behavior.
+- Votes must not replace, prioritize, automatically trigger, or decide a claim,
+  takedown, hiding, publication, or removal action.
+- Continue to suppress claimant identity and details from public reads and keep
+  processed-media revocation, transcript suppression, comments, and retained
+  attribution behavior inside the accepted removal design.
+
+## Phase G — future
+
+Production launch and hardening:
+
+- The Production hostname is `annotated.cbandcoop.com`. `cbandcoop.com` remains
+  the consultancy site managed through Lovable and Bluehost WordPress Plus;
+  Bluehost is currently the domain/DNS and WordPress hosting authority.
+- Do not assume WordPress Plus can host Annotated's trusted Next.js runtime.
+  Evaluate that runtime independently, with Google Cloud Run as the first
+  candidate because the project already uses Google Cloud.
+- Cover DNS, TLS, Supabase web/extension/OAuth callback URLs, cookies, CSP,
+  monitoring, alerting, rollback, retention operations, and staged Production
+  enablement. Preserve the Chrome/browser/device, zoom/DPR/fullscreen/resize,
+  auth/session, retry, privacy, security, and end-to-end regression matrices.
+- Production remains blocked until Phase D and Phase E pass Local, required CI,
+  and bounded Staging acceptance. Production access, deployment, schedule
+  enablement, DNS/OAuth/vendor configuration, and traffic cutover each require
+  their own explicit authorization.
 
 Phase B's automated and owner-performed browser acceptance gates passed. C1-C6
 implementation and owner acceptance are complete. The exact-duration
@@ -268,5 +349,15 @@ resumable-recapture, orphan-derivative, removed-state, and processed-only
 terminal cleanup corrections passed their separately authorized additive
 Staging application and exact paused-schedule reconciliation gate. Required PR
 validation and post-merge `main` CI passed, and Phase C is formally closed.
-Phase D is next. Production rollout and schedule enablement remain separately
-blocked pending their later explicit gates.
+Phase D is active. D1a's additive route/data contract, D1b's canonical
+article/historical-range routes, and D1c's private ready-media playback,
+excerpt transcript, and removed-media presentation have completed Local-only
+validation. D1d implementation, automated Local validation, owner Chrome
+acceptance, and exact fixture cleanup are complete. D1e's separately authorized
+additive migration now reserves `api`, `auth`, and `_next` across controlled,
+generated, direct-profile, and alias handle assignment; its bounded Local
+preflight returned zero current or alias conflicts and its focused pgTAP passed
+34/34. D2, commit/push/Draft PR, Staging changes, schedule enablement,
+Production access, and deployment remain unauthorized. Production rollout
+remains blocked until the Phase D and Phase E Local, CI, and bounded Staging
+gates pass and later Production authorization is explicitly granted.

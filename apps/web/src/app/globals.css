@@ -238,7 +238,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .card-creator:hover span:last-child { text-decoration: underline; text-underline-offset: 3px; }
 .card-avatar { width: 30px; height: 30px; font-size: 0.74rem; }
 .card-date, .card-byline, .card-hostname, .card-commentary p { margin: 0; }
-.card-date, .publication-date, .card-hostname, .source-hostname, .comment-meta time, .field-count {
+.card-date, .publication-date, .creator-handle, .card-hostname, .source-hostname, .comment-meta time, .field-count {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 0.67rem;
@@ -297,17 +297,21 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .clip-range-section,
 .commentary-section,
 .audio-commentary-section,
+.hosted-media-section,
+.media-removed-section,
+.transcript-section,
 .comments-section,
 .claim-section { padding: clamp(20px, 4vw, 34px); }
 .annotation-header { display: flex; align-items: center; min-height: 68px; border-bottom: 1px solid var(--border); }
 .annotator-line { display: flex; width: 100%; min-width: 0; align-items: center; gap: 10px; }
 .annotator-avatar-link, .comment-avatar-link { display: inline-flex; border-radius: 50%; }
 .public-avatar { width: 36px; height: 36px; font-size: 0.8rem; }
-.annotator-name, .publication-date, .source-byline, .source-hostname, .commentary-text, .claim-intro p, .form-success p { margin: 0; }
+.annotator-name, .publication-date, .creator-handle, .source-byline, .source-hostname, .commentary-text, .claim-intro p, .form-success p { margin: 0; }
 .annotator-name { font-size: 0.82rem; font-weight: 600; }
 .annotator-name a { text-decoration: none; }
 .annotator-name a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .publication-date { margin-top: 2px; }
+.creator-handle { margin-top: 2px; }
 .source-attribution { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; }
 .source-copy { min-width: 0; }
 .source-attribution h1 { max-width: 680px; font-size: clamp(1.55rem, 4vw, 2.45rem); overflow-wrap: anywhere; }
@@ -340,6 +344,18 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .commentary-section h2, .comments-heading-row h2 { font-size: 1.28rem; }
 .commentary-text { max-width: 720px; margin-top: 12px; color: var(--text-secondary); font-size: 0.94rem; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
 .audio-commentary-section { border-top: 1px solid var(--border); }
+.hosted-media-section, .media-removed-section, .transcript-section { border-top: 1px solid var(--border); }
+.hosted-media-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+.hosted-media-heading-row h2, .media-removed-section h2, .transcript-section h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
+.hosted-media-heading-row > span, .transcript-segments span { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem; }
+.hosted-media-section video { display: block; width: min(100%, 720px); height: auto; max-height: 520px; margin-top: 14px; background: #000; }
+.hosted-media-section audio { display: block; width: min(100%, 720px); height: 38px; margin-top: 14px; color-scheme: dark; }
+.hosted-media-error { max-width: 720px; margin: 10px 0 0; }
+.media-removed-section { background: var(--background-elevated); }
+.media-removed-section p:last-child, .transcript-text { max-width: 720px; margin: 10px 0 0; color: var(--text-secondary); font-size: 0.88rem; line-height: 1.65; white-space: pre-wrap; }
+.transcript-segments { display: grid; gap: 0; max-width: 720px; margin: 18px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.transcript-segments li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.transcript-segments p { margin: 0; color: var(--text-secondary); font-size: 0.84rem; line-height: 1.55; white-space: pre-wrap; }
 .audio-commentary-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
 .audio-commentary-heading-row h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
 .audio-commentary-heading-row span { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem; }
@@ -452,7 +468,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .card-header { align-items: center; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .annotation-shell { padding: 14px 10px 36px; }
-  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .audio-commentary-section, .comments-section, .claim-section { padding: 18px; }
+  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .audio-commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .comments-section, .claim-section { padding: 18px; }
   .source-attribution { grid-template-columns: 1fr; align-items: stretch; gap: 18px; }
   .source-link, .public-button-claim { width: 100%; }
   .annotator-line { align-items: flex-start; flex-wrap: wrap; }
@@ -465,6 +481,10 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .profile-avatar { width: 56px; height: 56px; }
   .comment-form-footer, .comment-sign-in { align-items: stretch; flex-direction: column; }
   .comment-form-footer .public-button, .comment-sign-in .public-button { width: 100%; }
+}
+
+@media (max-width: 520px) {
+  .transcript-segments li { grid-template-columns: 1fr; gap: 5px; }
 }
 
 @media (max-width: 400px) {

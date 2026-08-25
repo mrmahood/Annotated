@@ -11,10 +11,14 @@ accepted immutable digest
 and the disposable fixtures were removed. PR #18 was squash-merged into
 protected `main` as `7a6bb9042cb8295575f0c8b89b9128d499c20652` after required validation;
 post-merge `main` CI also passed. Production was not accessed or deployed,
-schedules remain paused, and Phase D is the next active phase.
+schedules remain paused, and Phase D is active. D1a-D1e have completed Local-
+only implementation and automated validation; D1d owner Chrome acceptance and
+D1e reserved-root handle hardening are complete, while D2 remains unimplemented.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
+The bounded Phase D execution plan is
+`docs/architecture/phase-d-public-experience-plan.md`.
 
 ## Decision summary
 
@@ -44,8 +48,11 @@ The bounded Phase C execution plan is
 
 ### Data model and publication
 
-The repository currently has six additive migrations, in
-`supabase/migrations/`:
+The branch currently has sixteen additive migrations in
+`supabase/migrations/`. The first twelve are merged and Staging is aligned
+through `20260824020000`; Phase D1a migrations `20260824120000` and
+`20260824123000` plus D1c migrations `20260824130000` and `20260824133000`
+are applied to Local only and have not been applied remotely:
 
 - `profiles` contains a nullable `username` with lowercase-format validation and
   a case-insensitive unique index. New-user provisioning deliberately leaves it
@@ -522,9 +529,12 @@ cleanup tests.
 
 ## 9. Slug and URL design
 
-The canonical route is `/{creator-handle}/{annotation-slug}`. The annotation UUID
-remains the database identity and all mutations, comments, claims, media, and
-worker calls use it.
+The canonical public route is
+`https://annotated.cbandcoop.com/{creator-handle}/{annotation-slug}`.
+Annotation slugs are creator-scoped, so the handle remains required. The
+annotation UUID remains the
+database identity and all mutations, comments, claims, media, worker, and vote
+calls use it.
 
 On rollout, give every profile without `username` a deterministic valid handle
 seeded from display name plus a short UUID suffix; users need not invent one to
@@ -542,11 +552,15 @@ the extremely rare short-fragment collision, deterministically extend to 12
 hex characters, then the full UUID. Store the slug once; later source-title
 changes do not alter it.
 
-The new route resolves handle (current or alias), slug, and published annotation,
-then renders by UUID. `/a/{UUID}` looks up the canonical route and 308 redirects.
-Backfill slugs and generated handles before enabling redirects; until an old row
-has both, its UUID page remains available. Canonical metadata and every share
-action use the handle/slug route.
+The new route resolves a current or permanently reserved alias handle, slug, and
+published annotation, then renders by UUID. Alias-handle requests issue a 308 to
+the current handle. `/a/{UUID}` remains a compatibility route and issues a 308
+to `/{current-handle}/{slug}` only when safe public resolution succeeds.
+Backfill slugs and generated handles before enabling redirects; until an old
+published row has both, its UUID page remains available. Draft, `claim_pending`,
+hidden, and removed annotations return the same public not-found result and do
+not reveal a canonical destination. Canonical metadata and every share action
+use the current-handle canonical route.
 
 ## 10. Landing-page data model
 
@@ -752,35 +766,46 @@ checkpoints.
 - Rollback: stop dispatcher/job and keep feature flag off. Queued rows stay
   private and retryable; janitor handles retention. Do not publish partial output.
 
-### D. Canonical public landing pages
+### D. Public annotation delivery and social experience
 
-- Likely files: new `apps/web/src/app/[creatorHandle]/[annotationSlug]/page.tsx`,
-  UUID redirect route, public loader/types, signed playback route and player
-  components, metadata, CSS, feed/cards/profile links, and web tests.
-- Migration: backfill deterministic handles/slugs and add/validate uniqueness
-  only after collision reports are reviewed.
-- Tests: route resolution/current and alias handles, canonical redirects, UUID
-  compatibility, safe loader field allow-list, signed URL denial for every
-  non-ready state, video/audio/article rendering, removed-media rendering,
-  transcript bounds, claims/comments.
-- Manual staging: share previews, direct inbound links, handle change, expired
-  playback URL refresh, source attribution, no download action, responsive and
-  accessibility checks.
-- Rollback: keep `/a/{UUID}` rendering instead of redirecting and disable new
-  canonical links. Stored handles/slugs are harmless and must not be reused.
+The exact contract audit, security boundaries, D1/D2 increments, validation,
+owner checks, rollback, and authorization sequence are recorded in
+`docs/architecture/phase-d-public-experience-plan.md`.
 
-### E. Complete extension processing UX
+- D1 adds `apps/web/src/app/[creatorHandle]/[annotationSlug]/page.tsx`, a
+  trusted canonical resolver/loader, permanent UUID and alias compatibility
+  redirects, article parity, ready hosted playback, excerpt-only transcripts,
+  attribution, metadata, comments, claims entry, and canonical feed/profile
+  links.
+- D1 adds only a same-origin trusted signing route for the private processed
+  object. It revalidates published/ready/not-removed state and derives the path
+  server-side; raw objects, private paths, provider metadata, and signed URLs
+  remain absent from public database projections and logs.
+- D2 adds one mutable or clearable `+1`/`-1` vote per authenticated user and
+  published annotation, separate public totals, RLS, bounded trusted mutation
+  and aggregate boundaries, rate limits, and abuse regressions. Votes have no
+  initial feed, publication, moderation, claim, hiding, or removal effect.
+- Rollback keeps `/a/{UUID}` able to render, disables canonical links/redirects
+  and playback signing independently, and hides the voting UI/API without
+  weakening database invariants. Applied migrations are corrected only by
+  forward migration.
 
-- Likely files: side-panel `App.tsx`, social data/types/components, navigation,
-  draft persistence and new processing-status helpers/tests.
-- Migration: none expected.
-- Tests: capture/upload/processing/ready/failed/removed presentation, retry and
-  explicit discard, reconnect/auth refresh, background completion while panel is
-  closed, canonical share URL.
-- Manual staging: start a 90-second job, close/reopen panel, restart extension,
-  force each failure stage, verify commentary is never silently lost, and ensure
-  only ready content appears in feed/detail.
-- Rollback: hide capture UI; server drafts and cleanup continue safely.
+### E. Create experience and authentication
+
+- Rename the visible extension tab **Context** to **Create** and add a bounded
+  **Text / Video / Audio** mode switcher.
+- Model available, recommended, and selected modes independently so multiple
+  supported media types can coexist. Preserve draft state per mode and warn
+  before abandoning an active capture or upload.
+- Require explicit bounded player selection when multiple players qualify;
+  never select an arbitrary player silently.
+- Add X.com OAuth 2.0 alongside Google through Supabase Auth with explicit web
+  and extension callback tests and an account-linking policy that never merges
+  users from display name alone.
+- Preserve the accepted tabCapture/offscreen Blob ownership, exact permissions,
+  private upload, authoritative status, restart, article, and no-secret
+  boundaries. Rollback hides the reorganized Create entry without deleting or
+  publishing private drafts.
 
 ### F. Claims and removal lifecycle
 
@@ -791,28 +816,41 @@ checkpoints.
   visibility check, and grants.
 - Tests: claim confidentiality, unauthorized removal, URL issuance race, media-
   only versus full removal, object-deletion retry, transcript suppression,
-  comments/text retention.
+  comments/text retention, and proof that vote state or totals cannot trigger or
+  authorize a moderation transition.
 - Manual staging: file a claim, perform authorized media removal, prove new and
   cached playback fails within the documented TTL/object deletion boundary, and
   verify audit data without claimant exposure.
 - Rollback: disable the moderation caller, not the recorded removal. Never restore
-  a deleted derivative automatically.
+  a deleted derivative automatically. Votes do not replace or automatically
+  prioritize claims, takedown, hiding, publication, or removal decisions.
 
-### G. End-to-end and bounty-demo hardening
+### G. Production launch and hardening
 
-- Likely files: cross-app E2E fixtures/scripts, operational runbook, monitoring,
-  retention reconciler, demo checklist, and focused bug fixes only.
+- Production uses `annotated.cbandcoop.com`. The consultancy site remains at
+  `cbandcoop.com` under Lovable and Bluehost WordPress Plus; Bluehost is the
+  current DNS and WordPress hosting authority.
+- Do not assume WordPress Plus can run the trusted Next.js application. Evaluate
+  the web runtime separately, with Google Cloud Run as the first candidate
+  because the project already uses Google Cloud.
+- Likely files: cross-app E2E fixtures/scripts, deployment and rollback runbooks,
+  runtime/container configuration, monitoring, retention operations, and
+  focused hardening fixes.
 - Migration: indexes/constraints only when measurements justify them.
 - Tests: complete video/audio/article paths, concurrent uploads, duplicate
   completion, worker crash, provider outage, expired JWT/signed URL, storage
   cleanup, 90-second boundary at 89,999/90,000/90,001 ms, security regression,
   and browser compatibility.
-- Manual staging: reproduce the proven 15-second YouTube result, then 90-second
-  video and audio publications; verify hosted derivative, excerpt-only
-  transcript, required commentary, source link, canonical URL, comments, claim,
-  raw deletion, and removal.
-- Rollback: retain per-surface feature flags and stop new intake first; let active
-  jobs finish or fail safely, then clean private raw objects by policy.
+- Launch design covers DNS, TLS, Supabase and OAuth callback URLs, extension
+  callbacks, cookies, CSP, secret isolation, monitoring/alerts, rollback, and
+  staged Production enablement.
+- Production remains blocked until Phase D and Phase E pass Local, required CI,
+  and bounded Staging acceptance. Production access, DNS/OAuth/vendor changes,
+  deployment, schedule enablement, and traffic cutover remain separate explicit
+  authorization checkpoints.
+- Rollback retains per-surface feature flags and stops new intake first; active
+  jobs finish or fail safely, private raw objects follow retention policy, and
+  DNS/runtime rollback never bypasses publication or signing checks.
 
 ## 15. Major risks and open questions
 

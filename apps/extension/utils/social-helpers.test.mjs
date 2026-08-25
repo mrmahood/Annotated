@@ -4,7 +4,9 @@ import {
   buildAnnotationQueryPlan,
   classifySourceUrl,
   getCommentPageRange,
+  getPublicAnnotationPath,
   mergeCommentPages,
+  parsePublicAnnotationRoute,
   PUBLIC_ANNOTATION_STATUS,
   RequestRevision,
   requireParticipation,
@@ -42,6 +44,38 @@ test('context source discrimination normalizes supported YouTube videos by video
 test('profile plans validate UUIDs', () => {
   assert.equal(buildAnnotationQueryPlan({ profileId: PROFILE_ID }).profileId, PROFILE_ID);
   assert.throws(() => buildAnnotationQueryPlan({ profileId: 'not-a-uuid' }));
+});
+
+test('public annotation paths prefer validated canonical identity with UUID fallback only', () => {
+  assert.deepEqual(
+    parsePublicAnnotationRoute('reader-one', 'source-title'),
+    { creatorHandle: 'reader-one', annotationSlug: 'source-title' },
+  );
+  assert.equal(parsePublicAnnotationRoute(null, null), null);
+  assert.equal(parsePublicAnnotationRoute('../admin', 'source-title'), undefined);
+  assert.equal(parsePublicAnnotationRoute('reader-one', null), undefined);
+  assert.equal(
+    getPublicAnnotationPath(
+      { creatorHandle: 'reader-one', annotationSlug: 'source-title' },
+      PROFILE_ID,
+    ),
+    '/reader-one/source-title',
+  );
+  assert.equal(getPublicAnnotationPath(null, PROFILE_ID), `/a/${PROFILE_ID}`);
+  assert.throws(
+    () => getPublicAnnotationPath(
+      { creatorHandle: '../admin', annotationSlug: 'source-title' },
+      PROFILE_ID,
+    ),
+    /route identity/i,
+  );
+  for (const creatorHandle of ['api', 'auth', '_next']) {
+    assert.equal(parsePublicAnnotationRoute(creatorHandle, 'source-title'), undefined);
+    assert.throws(
+      () => getPublicAnnotationPath({ creatorHandle, annotationSlug: 'source-title' }, PROFILE_ID),
+      /route identity/i,
+    );
+  }
 });
 
 test('comments are oldest first with ID ascending ties', () => {
