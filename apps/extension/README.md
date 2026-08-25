@@ -13,9 +13,11 @@ from Supabase through focused extension data modules; signed-out public reads us
 the same RLS-protected records as the companion web app.
 
 After `publish_article_annotation` succeeds, the completed capture and commentary
-are cleared and the new annotation opens inside the side panel. The public
-`/a/[annotationId]` page remains available as a secondary action; publishing no
-longer opens that page automatically.
+are cleared and the new annotation opens inside the side panel. The canonical
+public `/[creatorHandle]/[annotationSlug]` page remains available as a
+secondary action, with `/a/[annotationId]` retained only as a guarded
+compatibility fallback for incomplete historical route identity. Publishing no
+longer opens the web page automatically.
 
 Authentication continues to use Google OAuth through `chrome.identity`, with the
 Supabase session persisted in `chrome.storage.local`. The production extension

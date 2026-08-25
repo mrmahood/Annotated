@@ -3,6 +3,7 @@ import { formatMediaTime } from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
 import type { PublicAnnotationCardData } from "@/lib/data/public-discovery";
 import { getInitial, truncateExcerpt } from "@/lib/public-content";
+import { getPublicAnnotationPath } from "@/lib/public-routes";
 
 const PASSAGE_EXCERPT_LENGTH = 360;
 const COMMENTARY_EXCERPT_LENGTH = 280;
@@ -36,6 +37,7 @@ export function AnnotationCard({
     day: "numeric",
     timeZone: "UTC",
   }).format(new Date(annotation.publishedAt));
+  const detailPath = getPublicAnnotationPath(annotation.route, annotation.id);
 
   return (
     <article className="annotation-card" aria-labelledby={headingId}>
@@ -69,7 +71,7 @@ export function AnnotationCard({
       <div className="card-source">
         <p className="section-label">{sourceLabel}</p>
         <h2 id={headingId}>
-          <Link href={`/a/${annotation.id}`}>{sourceTitle}</Link>
+          <Link href={detailPath}>{sourceTitle}</Link>
         </h2>
         {sourceAttribution && <p className="card-byline">{sourceAttribution}</p>}
         <p className="card-hostname">{annotation.source.hostname}</p>
@@ -93,10 +95,10 @@ export function AnnotationCard({
 
       <footer className="card-actions">
         <div className="card-internal-actions">
-          <Link className="card-detail-link" href={`/a/${annotation.id}`}>
+          <Link className="card-detail-link" href={detailPath}>
             View annotation
           </Link>
-          <Link href={`/a/${annotation.id}#comments`}>
+          <Link href={`${detailPath}#comments`}>
             {annotation.commentCount.toLocaleString()} {annotation.commentCount === 1 ? "comment" : "comments"}
           </Link>
         </div>

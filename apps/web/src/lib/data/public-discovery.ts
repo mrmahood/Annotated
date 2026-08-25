@@ -11,6 +11,11 @@ import {
   PUBLIC_PAGE_SIZE,
 } from "@/lib/public-content";
 import {
+  isPublicAnnotationSlug,
+  isPublicCreatorHandle,
+  type PublicAnnotationRoute,
+} from "@/lib/public-routes";
+import {
   buildPublicFeedQueryPlan,
   buildPublicProfileAnnotationsQueryPlan,
   PUBLIC_ANNOTATION_STATUS,
@@ -23,6 +28,7 @@ type PublicAnnotationCardBase = {
   commentCount: number;
   commentaryText: string;
   publishedAt: string;
+  route: PublicAnnotationRoute | null;
   annotator: { id: string; displayName: string; avatarUrl: string | null };
   source: {
     canonicalUrl: string;
@@ -101,6 +107,9 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
   const publishedAt = getOptionalText(value.published_at);
   const publishedDate = publishedAt ? new Date(publishedAt) : null;
   const sourceMetadata = isRecord(source?.metadata) ? source.metadata : {};
+  const route = isPublicCreatorHandle(annotator?.username) && isPublicAnnotationSlug(value.slug)
+    ? { creatorHandle: annotator.username, annotationSlug: value.slug }
+    : null;
 
   if (
     !annotator || !source || !target ||
@@ -116,6 +125,7 @@ function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
     commentCount: 0,
     commentaryText,
     publishedAt: publishedDate.toISOString(),
+    route,
     annotator: {
       id: profileId,
       displayName: getOptionalText(annotator.display_name) ?? "Annotated reader",

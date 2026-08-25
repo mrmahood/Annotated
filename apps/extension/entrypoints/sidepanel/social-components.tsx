@@ -27,6 +27,7 @@ import {
   ANNOTATION_PAGE_SIZE,
   COMMENT_BODY_LIMIT,
   formatTimestamp,
+  getPublicAnnotationPath,
   getInitial,
   RequestRevision,
   mergeCommentPages,
@@ -475,7 +476,7 @@ export function AnnotationDetailView({
   if (status === 'loading') return <div className="compact-state view-state" role="status"><strong>Loading annotation</strong><span>Retrieving published detail…</span></div>;
   if (status === 'missing') return <div className="compact-state view-state"><strong>Annotation unavailable</strong><span>It may have been removed or is not public.</span></div>;
   if (status === 'error' || !annotation) return <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotation unavailable</strong><span>Check your connection and go back to try again.</span></div>;
-  const publicUrl = getPublicUrl(`/a/${annotation.id}`);
+  const publicUrl = getPublicUrl(getPublicAnnotationPath(annotation.route, annotation.id));
   const audioUrl = annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;

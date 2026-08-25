@@ -14,15 +14,18 @@ import {
   getCommentPageRange,
   getOptionalText,
   isUuid,
+  parsePublicAnnotationRoute,
   PUBLIC_COMMENT_STATUS,
   requireParticipation,
   sortComments,
+  type PublicAnnotationRoute,
 } from './social-helpers';
 
 type PublicAnnotationBase = {
   id: string;
   commentaryText: string;
   publishedAt: string;
+  route: PublicAnnotationRoute | null;
   creator: { id: string; displayName: string; avatarUrl: string | null };
   source: {
     canonicalUrl: string;
@@ -94,10 +97,11 @@ type UnknownRecord = Record<string, unknown>;
 
 const ANNOTATION_SELECT = `
   id,
+  slug,
   annotation_type,
   commentary_text,
   published_at,
-  creator:profiles!annotations_user_id_fkey(id, display_name, avatar_url),
+  creator:profiles!annotations_user_id_fkey(id, username, display_name, avatar_url),
   source:sources!inner(canonical_url, normalized_url, source_type, title, author, publisher, metadata),
   target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms),
   audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)
@@ -131,11 +135,12 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
   const publishedAt = getOptionalText(value.published_at);
   const sourceMetadata = isRecord(source?.metadata) ? source.metadata : {};
   const date = publishedAt ? new Date(publishedAt) : null;
+  const route = parsePublicAnnotationRoute(creator?.username, value.slug);
 
   if (
     !id || !isUuid(id) || !creatorId || !isUuid(creatorId) ||
     !commentaryText || !canonicalUrl || !normalizedUrl ||
-    !date || Number.isNaN(date.getTime())
+    !date || Number.isNaN(date.getTime()) || route === undefined
   ) {
     return null;
   }
@@ -144,6 +149,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
     id,
     commentaryText,
     publishedAt: date.toISOString(),
+    route,
     commentCount: 0,
     audio: parseAnnotationAudio(value.audio),
     creator: {
