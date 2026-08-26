@@ -9,7 +9,10 @@ run `32922199032`, was squash-merged into protected `main` as
 `32922631250`. E1b passed owner Chrome acceptance and PR CI run `32964086959`,
 then merged through PR #25 as
 `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`; post-merge `main` CI run
-`32965527019` passed. E1c and later implementation, database work, provider
+`32965527019` passed. E1c passed owner Chrome acceptance and PR CI run
+`33002721782`, then merged through PR #27 as
+`50196d283dddec40b1fe8636435adf995f91e093`; post-merge `main` CI run
+`33004543238` passed. E1d and later implementation, database work, provider
 configuration, Local services, Staging, Production, schedules, and deployment
 are not authorized by this document.
 
@@ -69,19 +72,17 @@ Phase E does not authorize:
 
 ## 3. Current Create/Context implementation audit
 
-`apps/extension/entrypoints/sidepanel/App.tsx` currently exposes three top-level
-navigation values: `context`, `feed`, and `account`. The visible label and title
-are Context. The internal `context` value can remain a compatibility alias during
-E1a/E1b; the visible label must become Create. Renaming the internal value is
-optional cleanup only if route and post-publication tests prove no behavior
-change.
+`apps/extension/entrypoints/sidepanel/App.tsx` exposes three top-level navigation
+values: `context`, `feed`, and `account`. E1b changed the visible label and title
+to Create while retaining `context` as the tested compatibility alias. The fixed
+Text/Video/Audio switcher models available, recommended, and selected modes
+independently and preserves each mode's draft while another mode is active.
 
-The Context body renders one mutually exclusive `PageSource`: Web page, YouTube,
-Podcast/web audio, or Audio unavailable. YouTube wins synchronously; otherwise
-the page begins as Web page and an asynchronous audio probe can replace it with
-Audio or Audio unavailable. Text is therefore hidden after supported media is
-detected even though an ordinary connected HTTP(S) page can still support text
-selection.
+The connected source classification remains Web page, YouTube, or Podcast/web
+audio, but it no longer makes the Create modes mutually exclusive. Text remains
+available on a scriptable connected HTTP(S) page when supported media is also
+present. Asynchronous audio detection is page-generation-bound and does not
+delete another mode's draft.
 
 Article capture and publication already use the validated immediate-publication
 RPC. Video and audio call the hosted begin RPC only after Publish, then use the
@@ -98,25 +99,27 @@ capture Blob. Phase E retains that distinction.
 
 | Mode | Exact Phase E source scope | Current limitation |
 | --- | --- | --- |
-| Text | A connected, scriptable, top-level HTTP(S) page on which existing selection capture validates the source | Hidden when media classification wins |
+| Text | A connected, scriptable, top-level HTTP(S) page on which existing selection capture validates the source | Restricted or otherwise unscriptable pages remain unavailable |
 | Video | Through E1d, a connected top-level `youtube.com` or `m.youtube.com` `/watch` page with a valid 11-character video ID and readable top-frame HTML video player | E1e adds bounded generic webpage video for readable top-frame and same-origin-frame players; inaccessible cross-origin players remain unsupported |
-| Audio | A connected top-level HTTP(S) page with an eligible top-frame `<audio>` or audio-only `<video>` with a credible source and readable metadata | Cross-origin/embedded players are inaccessible; multiple matches collapse to an ambiguous result |
+| Audio | A connected top-level HTTP(S) page with an eligible top-frame `<audio>` or operable audio-only `<video>` with a credible source and readable metadata | Cross-origin/embedded players are inaccessible; more than five eligible players fail closed |
 
 Video remains YouTube-only through E1d. A `youtu.be` URL must finish redirecting
 to a supported watch page before it is available. No switcher label may imply
 generic web-video support until E1e is implemented and enabled.
 
-`audio-page.ts` currently enumerates top-frame `audio, video`, accepts `<audio>`
-or an audio-only `<video>` with metadata, and heuristically prefers playing,
-ready, credible, and then audio elements. Candidate IDs derive from a filtered
-DOM index. A tie returns `ambiguous`; the UI asks the user to pause all but one.
-Later seek/capture code re-enumerates and applies the heuristic instead of an
-explicit identity. That is not stable enough for Phase E.
+E1c caps top-frame audio/video discovery at five eligible candidates and reads
+only the sixth to detect overflow. One candidate auto-selects; two to five use a
+native radio group in filtered DOM order; overflow fails closed. Hidden, paused,
+control-less audio-only media is inoperable and does not make an article Audio-
+capable, including the accepted Fox-shaped regressions.
 
-YouTube reads and seeks use the first matching top-frame `video`. Capture
-preparation also rediscovers a player. This is safe only while exactly one
-eligible player exists. E1c applies the explicit-player contract to every
-supported mode that can return multiple candidates.
+Each candidate identity combines mode-compatible element kind, filtered ordinal,
+and a page-side digest of its current source without returning, persisting, or
+logging the source URL or raw DOM. The selection is scoped to the normalized page
+generation. Read, range, preview/seek, hosted begin, recapture, and capture
+prepare/play/finish re-enumerate and require one exact identity match; mismatch
+invalidates only that mode's player selection while preserving range and
+commentary. Playing state is only a status hint and never reorders candidates.
 
 Top-frame one-shot `activeTab` scripting remains the boundary through E1d.
 Inaccessible cross-origin or embedded media is not enumerated, selected, or
@@ -587,7 +590,10 @@ authorization with supplied evidence.
 2. **E1b — Create rename/switcher/drafts (complete and merged).** Visible UI and
    non-destructive storage transitions merged through PR #25 as
    `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`; source support unchanged.
-3. **E1c — player discovery/selection.** Maximum five, page identity, revalidation.
+3. **E1c — player discovery/selection (complete and merged).** Maximum five,
+   page identity, explicit selection, and action-time revalidation merged through
+   PR #27 as `50196d283dddec40b1fe8636435adf995f91e093`; PR CI `33002721782` and
+   post-merge `main` CI `33004543238` passed. Video remains YouTube-only.
 4. **E1d — operation guards.** Begin/capture/upload/verification/retry/cancel/
    Processing/restart transitions.
 5. **E1e — generic webpage video.** Bounded top-frame/same-origin-frame discovery,
@@ -670,16 +676,25 @@ Dashboard, X console, redirects, Staging, and Production are separate approvals.
 10. **Local/vendor split:** fake clients and bounded callbacks in Local/CI; only
     owner end-to-end vendor flows count as acceptance.
 
-One implementation detail remains for E1b: whether to rename internal navigation
-value `context`. Recommendation: retain it as a compatibility alias unless a
-narrow type rename clearly reduces complexity; visible language changes
-regardless.
+E1b retained internal navigation value `context` as the compatibility alias;
+the visible language is Create. E1c did not reopen or alter that resolved
+boundary.
 
-## 25. Planning validation and E1a closeout record
+## 25. Planning validation and implementation closeout records
 
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
 accessed.
+
+E1c's accepted implementation was delivered as PR #27 after deterministic Local
+tests, the complete extension regression suite, TypeScript compilation,
+production extension build and manifest inspection, and owner Chrome acceptance.
+Required PR CI run `33002721782` passed. PR #27 was squash-merged into protected
+`main` as `50196d283dddec40b1fe8636435adf995f91e093`, post-merge `main` CI run
+`33004543238` passed, and local `main` was fast-forwarded to the same commit. The
+feature branch remains preserved. E1c did not access Supabase environments,
+configure providers, deploy, enable schedules, access Production, implement E1d
+operation guards, or implement E1e generic webpage video.
 
 The following E1a implementation authorization was granted verbatim and fulfilled
 through Local implementation and validation. A later owner authorization permits
