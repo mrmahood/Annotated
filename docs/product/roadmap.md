@@ -1,6 +1,7 @@
 # Product roadmap
 
-Status: Phase D complete and merged, 2026-08-25. D1 and D2 completed their
+Status: Phase D complete and merged; Phase E increment E1a complete and merged,
+2026-08-25. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -12,9 +13,10 @@ and both schedules remain paused. Every disposable D1/D2 Local and Staging
 fixture was removed and verified at zero. Production was not accessed or
 deployed. Phase E planning is defined in
 `docs/architecture/phase-e-create-auth-plan.md`. E1a implementation and
-deterministic Local validation are complete on its feature branch; Draft PR
-review, required CI, and merge remain pending. E1b and later work remain
-separately authorized.
+deterministic Local validation are complete. PR #23 passed required CI run
+`32922199032`, was squash-merged into protected `main` as
+`c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
+`32922631250`. E1b and later work remain separately authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -327,7 +329,7 @@ prefix; it was not a complete or usable credential. Optional Staging-secret
 rotation remains an owner defense-in-depth decision. No full credential was
 printed or persisted.
 
-## Phase E — next
+## Phase E — in progress
 
 Create experience and authentication:
 
@@ -335,9 +337,9 @@ The bounded planning contract is
 `docs/architecture/phase-e-create-auth-plan.md`. It records the verified current
 source/auth behavior and recommended source, player, transition, and identity
 boundaries. E1a's local capability/data contract, page-generation/revision rules,
-independent draft state, and regressions are complete pending review. No visible
-Create UI, player discovery/capture, authentication, or provider configuration
-change has begun.
+independent draft state, and regressions are complete and merged through PR #23.
+No visible Create UI, player discovery/capture, authentication, or provider
+configuration change has begun. E1b is next and separately authorized.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -395,9 +397,10 @@ successful post-merge `main` CI runs `32807426242` and `32906492506`. Staging is
 aligned through `20260825120300`, both schedules remain paused, and Production
 was not accessed or deployed. Phase D is formally closed. Phase E planning is
 documented in `docs/architecture/phase-e-create-auth-plan.md`; E1a implementation
-and deterministic Local validation are complete on its feature branch, with
-Draft PR review, required CI, and merge pending. E1b and later implementation,
-provider configuration, schedule
+and deterministic Local validation are complete. PR #23 passed required CI run
+`32922199032`, was squash-merged as
+`c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
+`32922631250`. E1b and later implementation, provider configuration, schedule
 enablement, Production access, and deployment remain separately authorized.
 Production rollout remains blocked until Phase E
 passes its Local, required CI, and bounded Staging gates and later Production
