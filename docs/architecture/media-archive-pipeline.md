@@ -120,9 +120,11 @@ publication limit, or grandfathered records over 90 seconds would disappear.
 
 The extension keeps auth in `chrome.storage.local`, drafts in
 `chrome.storage.session`, and calls Supabase directly with the publishable key
-and user JWT. It uses one-shot top-frame scripts to read or control the connected
-player. Current media publishing records only source timestamps; no bytes are
-captured or uploaded.
+and user JWT. It currently uses one-shot top-frame scripts to read or control the
+connected player. E1e may additionally enumerate readable same-origin child
+frames without adding host permissions; inaccessible cross-origin frames remain
+unsupported. Current media publishing records only source timestamps; no bytes
+are captured or uploaded.
 
 ### Storage and security conventions
 
@@ -435,6 +437,15 @@ Also reject processing if the start/end viewport or element rectangle changed
 beyond rounding tolerance. This makes scrolling, zooming, resizing, or entering
 fullscreen during a capture an explicit retry instead of applying stale crop
 coordinates.
+
+For E1e generic webpage video, a readable same-origin child-frame player may be
+mapped into top-frame viewport coordinates by accumulating each frame element's
+`getBoundingClientRect()` offset. Record and revalidate the frame path, origin,
+viewport, borders, and final mapped player rectangle at start and end. Reject
+cross-origin traversal, CSS transforms, clipping, partial visibility, frame
+navigation/reorder, or any mapping that cannot be reproduced within the existing
+rounding tolerance. Do not estimate inaccessible frame geometry or treat the
+outer iframe box as the video content rectangle.
 
 Choose option A: crop the exact visible video-element box. Preserve any
 source-rendered letterboxing, captions, watermarks, and player controls visible
@@ -814,14 +825,17 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: planning contract complete. E1a's local capability/data contract,
+Status: planning contract current through E1b. E1a's local capability/data contract,
 page-generation/revision rules, independent draft state, and regressions pass the
 focused and complete extension test suites, TypeScript compilation, and
 production build/manifest inspection. PR #23 passed required CI run
 `32922199032`, was squash-merged as
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
-`32922631250`. E1b and later implementation remain separately authorized. The
-verified audit, design, security review,
+`32922631250`. E1b passed owner Chrome acceptance and PR CI run `32964086959`,
+then merged through PR #25 as
+`9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`; post-merge `main` CI run
+`32965527019` passed. E1c and later implementation remain separately authorized.
+The verified audit, design, security review,
 increment boundaries, and acceptance plan are in
 `docs/architecture/phase-e-create-auth-plan.md`.
 
@@ -832,6 +846,10 @@ increment boundaries, and acceptance plan are in
   before abandoning an active capture or upload.
 - Require explicit bounded player selection when multiple players qualify;
   never select an arbitrary player silently.
+- Add E1e generic webpage video only after player identity and operation guards:
+  readable top-frame or same-origin-frame `<video>`, article-page source identity,
+  authoritative top-frame geometry, and fail-closed handling for inaccessible
+  cross-origin/DRM/canvas players. Keep `tabCapture` and offscreen Blob ownership.
 - Add X.com OAuth 2.0 alongside Google through Supabase Auth with explicit web
   and extension callback tests and an account-linking policy that never merges
   users from display name alone.

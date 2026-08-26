@@ -1,12 +1,15 @@
 # Phase E Create and authentication plan
 
-Status: planning contract, 2026-08-25. Phase D is complete. E1a was subsequently
+Status: planning contract, 2026-08-26. Phase D is complete. E1a was subsequently
 authorized; its implementation and deterministic Local validation are complete
 and merged, including focused and complete extension tests, TypeScript
 compilation, production build, and manifest inspection. PR #23 passed required CI
 run `32922199032`, was squash-merged into protected `main` as
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
-`32922631250`. E1b and later implementation, database work, provider
+`32922631250`. E1b passed owner Chrome acceptance and PR CI run `32964086959`,
+then merged through PR #25 as
+`9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`; post-merge `main` CI run
+`32965527019` passed. E1c and later implementation, database work, provider
 configuration, Local services, Staging, Production, schedules, and deployment
 are not authorized by this document.
 
@@ -96,12 +99,12 @@ capture Blob. Phase E retains that distinction.
 | Mode | Exact Phase E source scope | Current limitation |
 | --- | --- | --- |
 | Text | A connected, scriptable, top-level HTTP(S) page on which existing selection capture validates the source | Hidden when media classification wins |
-| Video | A connected top-level `youtube.com` or `m.youtube.com` `/watch` page with a valid 11-character video ID and readable top-frame HTML video player | Shared normalization recognizes `youtu.be`, but capture/page controls require the redirected watch page; generic webpage video is unsupported |
+| Video | Through E1d, a connected top-level `youtube.com` or `m.youtube.com` `/watch` page with a valid 11-character video ID and readable top-frame HTML video player | E1e adds bounded generic webpage video for readable top-frame and same-origin-frame players; inaccessible cross-origin players remain unsupported |
 | Audio | A connected top-level HTTP(S) page with an eligible top-frame `<audio>` or audio-only `<video>` with a credible source and readable metadata | Cross-origin/embedded players are inaccessible; multiple matches collapse to an ambiguous result |
 
-Video remains YouTube-only in Phase E. A `youtu.be` URL must finish redirecting
+Video remains YouTube-only through E1d. A `youtu.be` URL must finish redirecting
 to a supported watch page before it is available. No switcher label may imply
-generic web-video support.
+generic web-video support until E1e is implemented and enabled.
 
 `audio-page.ts` currently enumerates top-frame `audio, video`, accepts `<audio>`
 or an audio-only `<video>` with metadata, and heuristically prefers playing,
@@ -115,9 +118,40 @@ preparation also rediscovers a player. This is safe only while exactly one
 eligible player exists. E1c applies the explicit-player contract to every
 supported mode that can return multiple candidates.
 
-Top-frame one-shot `activeTab` scripting remains the boundary. Inaccessible
-cross-origin or embedded media is not enumerated, selected, or described as
-supported.
+Top-frame one-shot `activeTab` scripting remains the boundary through E1d.
+Inaccessible cross-origin or embedded media is not enumerated, selected, or
+described as supported.
+
+### Authorized E1e generic webpage-video amendment
+
+E1e expands Video only after E1c player identity and E1d operation guards are
+complete. It supports an ordinary connected HTTP(S) page when an HTML `<video>`
+is readable either in the top document or in a same-origin child frame that the
+extension can enumerate without adding host permissions. Cross-origin frames,
+DRM/encrypted media, canvas-only renderers, detached players, and players whose
+geometry cannot be mapped authoritatively remain unavailable.
+
+Enumeration remains bounded to five qualifying video candidates across the page
+and eligible frames. Identity includes page generation, normalized article-page
+identity, frame path/origin, element kind and ordinal, a non-secret player/source
+fingerprint, and bounded duration/intrinsic dimensions. Do not persist, display,
+or log signed, tokenized, blob, or ephemeral CDN media URLs. Revalidate the same
+frame and player before every read, seek, range action, hosted begin, capture
+prepare/play/finish, and retry.
+
+For a framed player, map its element rectangle into top-frame viewport
+coordinates by accumulating readable frame rectangles. Reject CSS transforms,
+clipping, partial visibility, frame navigation/reorder, origin changes, or any
+start/end geometry mismatch. Capture remains `tabCapture -> offscreen ->
+MediaRecorder`; neither frame support nor provider-specific markup may move the
+Blob into the side panel or bypass worker probe/crop validation.
+
+The connected article page, not its media-delivery URL, is the durable source.
+Reuse `sources.source_type = article` so text and generic-video annotations on
+the same normalized page do not collide. E1e therefore needs a new authenticated
+hosted-web-video begin boundary plus additive route/reader handling that
+distinguishes an article-backed `video_clip` from a YouTube clip. Database,
+worker, public rendering, and Staging changes remain separately authorized.
 
 ## 5. Existing draft and active-operation state
 
@@ -550,17 +584,21 @@ authorization with supplied evidence.
 1. **E1a — mode capability/data contract (complete and merged).** Pure models,
    page-generation/revision, independent state, and focused regressions merged
    through PR #23; no visible/capture change.
-2. **E1b — Create rename/switcher/drafts.** Visible UI and non-destructive storage
-   transitions; source support unchanged.
+2. **E1b — Create rename/switcher/drafts (complete and merged).** Visible UI and
+   non-destructive storage transitions merged through PR #25 as
+   `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`; source support unchanged.
 3. **E1c — player discovery/selection.** Maximum five, page identity, revalidation.
 4. **E1d — operation guards.** Begin/capture/upload/verification/retry/cancel/
    Processing/restart transitions.
-5. **E2a — provider-neutral auth.** Preserve Google; add attempt/provider checks
+5. **E1e — generic webpage video.** Bounded top-frame/same-origin-frame discovery,
+   explicit identity, source-safe geometry, hosted begin boundary, and focused
+   Fox-shaped acceptance; inaccessible cross-origin players fail closed.
+6. **E2a — provider-neutral auth.** Preserve Google; add attempt/provider checks
    and deterministic tests; do not configure/expose X.
-6. **E2b — X web.** Web action/callback/negative coverage behind disable boundary.
-7. **E2c — X extension and identity policy.** Add `x` with no permission change;
+7. **E2b — X web.** Web action/callback/negative coverage behind disable boundary.
+8. **E2c — X extension and identity policy.** Add `x` with no permission change;
    enforce no-manual-linking policy.
-8. **E3 — combined validation/handoff.** Full Local, owner Chrome preparation,
+9. **E3 — combined validation/handoff.** Full Local, owner Chrome preparation,
    required CI after separately authorized remote Git work, then separate live X
    configuration/bounded Staging request. Production untouched.
 
@@ -610,7 +648,10 @@ Dashboard, X console, redirects, Staging, and Production are separate approvals.
 
 ## 24. Unresolved decisions and recommendations
 
-1. **Video scope:** keep YouTube watch pages only; design generic video later.
+1. **Video scope (resolved):** keep YouTube-only behavior through E1d, then add
+   bounded generic top-frame and same-origin-frame HTML video in E1e. Continue
+   to fail closed for inaccessible cross-origin, DRM, canvas-only, or unsafe-
+   geometry players.
 2. **Mode persistence:** `chrome.storage.session` for page/tab generation, not a
    global/cross-browser preference.
 3. **Candidate maximum:** five presented, sixth only detects overflow.
