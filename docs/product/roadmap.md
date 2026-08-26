@@ -338,8 +338,11 @@ The bounded planning contract is
 source/auth behavior and recommended source, player, transition, and identity
 boundaries. E1a's local capability/data contract, page-generation/revision rules,
 independent draft state, and regressions are complete and merged through PR #23.
-No visible Create UI, player discovery/capture, authentication, or provider
-configuration change has begun. E1b is next and separately authorized.
+E1b's visible Create UI and independent non-destructive mode transitions passed
+owner Chrome acceptance and PR CI run `32964086959`, then merged through PR #25
+as `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`. Post-merge `main` CI run
+`32965527019` passed. E1b did not change player discovery/capture, source support,
+authentication, or provider configuration.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -350,6 +353,11 @@ configuration change has begun. E1b is next and separately authorized.
   capture or upload, and preserve the existing honest restart/recovery behavior.
 - When a page contains multiple media players, require a bounded player-selection
   experience; never silently choose an arbitrary player.
+- After E1c player identity and E1d operation guards, add E1e generic webpage
+  video support for readable top-frame and same-origin-frame HTML video players.
+  Keep inaccessible cross-origin players unsupported. Revalidate frame/player
+  identity and top-frame geometry before every action, preserve the article page
+  as source identity, and never persist or log ephemeral media delivery URLs.
 - Add X.com OAuth 2.0 login alongside Google through Supabase Auth. Test explicit
   web and extension callbacks and adopt a safe account-linking policy. Never
   merge identities based only on display name.
