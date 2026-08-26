@@ -15,7 +15,6 @@ import {
 } from '../../utils/audio-draft';
 import {
   classifyConnectedSource,
-  playAudioPageFrom,
   readAudioPageSnapshot,
   validateAudioPageSnapshot,
   type AudioPageSource,
@@ -86,11 +85,16 @@ import {
 import {
   extractYouTubePageMetadata,
   normalizeYouTubeVideoTitle,
-  playYouTubeVideoFrom,
-  readYouTubePlayerState,
   validateYouTubePageMetadata,
-  validateYouTubePlayerState,
 } from '../../utils/youtube-page';
+import {
+  actOnTopFramePlayer,
+  readTopFramePlayerDiscovery,
+  reconcilePlayerSelection,
+  validatePlayerDiscovery,
+  type PlayerDiscovery,
+  type PlayerMode,
+} from '../../utils/player-discovery';
 import { beginHostedYouTubeAnnotation } from '../../utils/youtube-publishing';
 import {
   MEDIA_CAPTURE_CANCEL,
@@ -175,6 +179,12 @@ type PublishState =
   | { status: 'idle' }
   | { status: 'publishing' }
   | { status: 'error'; message: string };
+
+type PlayerDiscoveryState = PlayerDiscovery & { pageGeneration: number | null };
+
+const EMPTY_PLAYER_DISCOVERY: PlayerDiscoveryState = {
+  status: 'none', candidates: [], pageGeneration: null,
+};
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 
@@ -388,6 +398,54 @@ function SourceSummary({ state }: { state: SourceState }) {
   );
 }
 
+function PlayerSelector({
+  mode,
+  discovery,
+  selectedIdentity,
+  disabled,
+  onSelect,
+}: {
+  mode: PlayerMode;
+  discovery: PlayerDiscoveryState;
+  selectedIdentity: string | null;
+  disabled: boolean;
+  onSelect: (identity: string) => void;
+}) {
+  const label = mode === 'video' ? 'video' : 'audio';
+  if (discovery.status === 'overflow') {
+    return <div className="compact-state compact-state-error" role="status"><strong>Too many {label} players</strong><span>Annotated found more than five eligible players. Close extra players or use a page with five or fewer, then refresh the source.</span></div>;
+  }
+  if (discovery.status === 'none') {
+    return <div className="compact-state compact-state-error" role="status"><strong>No usable {label} player</strong><span>Start or load the intended top-level player, then refresh the source.</span></div>;
+  }
+  if (discovery.candidates.length === 1) {
+    const candidate = discovery.candidates[0]!;
+    return <p className="single-player-status" role="status">Using {candidate.label} · {candidate.status}</p>;
+  }
+  return (
+    <fieldset className="player-selector">
+      <legend>Choose {label} player</legend>
+      <p className="player-set-status" role="status" aria-live="polite">{discovery.candidates.length} eligible {label} players. {selectedIdentity ? 'Selection ready.' : 'Choose one to continue.'}</p>
+      <div className="player-options">
+        {discovery.candidates.map((candidate, index) => (
+          <label className={`player-option${candidate.identity === selectedIdentity ? ' selected' : ''}`} key={candidate.identity}>
+            <input
+              type="radio"
+              name={`${mode}-player`}
+              value={candidate.identity}
+              checked={candidate.identity === selectedIdentity}
+              disabled={disabled}
+              onChange={() => onSelect(candidate.identity)}
+            />
+            <span className="player-option-label">{candidate.label}</span>
+            <span className="player-option-state">{index + 1} of {discovery.candidates.length} · {candidate.kind} · {candidate.status}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 function App() {
   const [supabase] = useState<SupabaseClient | null>(() => {
     try { return getSupabaseClient(); } catch { return null; }
@@ -411,6 +469,9 @@ function App() {
   const [mediaCaptureState, setMediaCaptureState] = useState<CaptureSnapshot>({ status: 'idle' });
   const [mediaCaptureOperation, setMediaCaptureOperation] = useState<HostedMediaOperation | null>(null);
   const [isCancellingHostedMedia, setIsCancellingHostedMedia] = useState(false);
+  const [videoPlayers, setVideoPlayers] = useState<PlayerDiscoveryState>(EMPTY_PLAYER_DISCOVERY);
+  const [audioPlayers, setAudioPlayers] = useState<PlayerDiscoveryState>(EMPTY_PLAYER_DISCOVERY);
+  const [playerDiscoveryRevision, setPlayerDiscoveryRevision] = useState(0);
   const hostedMediaSessionRef = useRef<HostedMediaSession | null>(null);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [navigation, dispatchNavigation] = useReducer(reduceNavigation, INITIAL_NAVIGATION);
@@ -424,6 +485,7 @@ function App() {
   const createPageRef = useRef<CreatePageGeneration | null>(null);
   const storedModeSelectionRef = useRef<StoredCreateModeSelection | null>(null);
   const previousModeSelectionRef = useRef<ModeSelectionState | null>(null);
+  const playerIdentityRef = useRef<{ video: string | null; audio: string | null }>({ video: null, audio: null });
   const authRevisionRef = useRef(0);
   const authMountedRef = useRef(false);
   const publishInFlightRef = useRef(false);
@@ -433,6 +495,10 @@ function App() {
   const commentary = createDraftState.text.commentary;
   const videoDraftState = createDraftState.video;
   const audioDraftState = createDraftState.audio;
+  playerIdentityRef.current = {
+    video: videoDraftState.playerIdentity,
+    audio: audioDraftState.playerIdentity,
+  };
   const modeCapabilities = useMemo(() => getModeCapabilities(sourceState), [sourceState]);
 
   const currentScreen = getCurrentScreen(navigation);
@@ -765,152 +831,88 @@ function App() {
     }
   }, [audioRecorder, authState.status, captureState, clearDraft, commentary, supabase]);
 
+  const runSelectedPlayerAction = useCallback(async (
+    mode: PlayerMode,
+    identity: string | null,
+    action: 'read' | 'play',
+    startSeconds: number | null,
+  ) => {
+    if (!identity || sourceState.status !== 'connected') throw new Error('Choose a player first.');
+    const context = connectedContextRef.current;
+    if (!context) throw new Error(RECONNECT_MESSAGE);
+    const expectedClassification = mode === 'video' ? 'YouTube' : 'Podcast / web audio';
+    if (sourceState.source.classification !== expectedClassification) throw new Error(RECONNECT_MESSAGE);
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
+    const execution = await chrome.scripting.executeScript({
+      target: { tabId: context.tabId, frameIds: [0] },
+      func: actOnTopFramePlayer,
+      args: [
+        mode,
+        identity,
+        sourceState.source.classification === 'YouTube'
+          ? sourceState.source.videoId
+          : sourceState.source.normalizedUrl,
+        action,
+        startSeconds,
+      ],
+    });
+    const result = execution[0]?.result;
+    if (!result?.ok || result.identity !== identity) {
+      dispatchCreateDraft({
+        type: 'patch-media', mode,
+        patch: { playerIdentity: null, playerTimeMs: null, durationMs: null, playerReadState: 'error' },
+      });
+      setPlayerDiscoveryRevision((revision) => revision + 1);
+      throw new Error('The selected player changed. Choose it again.');
+    }
+    return result;
+  }, [sourceState]);
+
   const readConnectedPlayer = useCallback(async (action: 'start' | 'end' | 'refresh') => {
     if (
       sourceState.status !== 'connected' ||
       (sourceState.source.classification !== 'YouTube' &&
         sourceState.source.classification !== 'Podcast / web audio')
     ) return;
-    const context = connectedContextRef.current;
-    if (!context) return;
-    const mode = sourceState.source.classification === 'YouTube' ? 'video' : 'audio';
+    const mode: PlayerMode = sourceState.source.classification === 'YouTube' ? 'video' : 'audio';
+    const draft = mode === 'video' ? videoDraftState : audioDraftState;
     dispatchCreateDraft({ type: 'patch-media', mode, patch: { playerReadState: 'reading' } });
     try {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
-      if (sourceState.source.classification === 'YouTube') {
-        const execution = await chrome.scripting.executeScript({
-            target: { tabId: context.tabId, frameIds: [0] },
-            func: readYouTubePlayerState,
-          });
-        const player = validateYouTubePlayerState(execution[0]?.result);
-        if (!player) throw new Error('The connected player is unavailable.');
-        const currentMs = Math.round(player.currentTime * 1_000);
-        const durationMs = player.duration === null ? null : Math.floor(player.duration * 1_000);
-        const patch = {
-          sourceKey: sourceState.source.videoId,
-          playerTimeMs: currentMs,
-          durationMs,
-          playerReadState: 'idle' as const,
-        };
-        if (action === 'start') {
-          dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { ...patch, startMs: currentMs } });
-          persistYoutubeDraft(
-            sourceState.source.url,
-            currentMs,
-            videoDraftState.endMs,
-            videoDraftState.commentary,
-          );
-        } else if (action === 'end') {
-          dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { ...patch, endMs: currentMs } });
-          persistYoutubeDraft(
-            sourceState.source.url,
-            videoDraftState.startMs,
-            currentMs,
-            videoDraftState.commentary,
-          );
-        } else {
-          dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch });
-        }
-        return;
-      }
-
-      const connectedAudioSource = sourceState.source;
-      const execution = await chrome.scripting.executeScript({
-            target: { tabId: context.tabId, frameIds: [0] },
-            func: readAudioPageSnapshot,
-            args: [false],
-          });
-      const detection = validateAudioPageSnapshot(connectedAudioSource.url, execution[0]?.result);
-      if (detection.status !== 'supported') {
-        setSourceState((state) => state.status === 'connected' &&
-          state.source.classification === 'Podcast / web audio' &&
-          state.source.normalizedUrl === connectedAudioSource.normalizedUrl
-          ? { status: 'connected', source: { ...state.source, playerId: null, playerStatus: 'unavailable' } }
-          : state);
-        dispatchCreateDraft({
-          type: 'patch-media',
-          mode: 'audio',
-          patch: {
-            sourceKey: connectedAudioSource.normalizedUrl,
-            playerTimeMs: null,
-            durationMs: null,
-            playerReadState: 'idle',
-          },
-        });
-        return;
-      }
-      setSourceState((state) => state.status === 'connected' &&
-        state.source.classification === 'Podcast / web audio' &&
-        state.source.normalizedUrl === connectedAudioSource.normalizedUrl
-        ? {
-            status: 'connected',
-            source: {
-              ...state.source,
-              playerId: detection.source.playerId,
-              playerStatus: detection.source.playerStatus,
-            },
-          }
-        : state);
-      if (detection.selection.status !== 'supported' || detection.readiness === null) {
-        dispatchCreateDraft({
-          type: 'patch-media',
-          mode: 'audio',
-          patch: {
-            sourceKey: connectedAudioSource.normalizedUrl,
-            playerTimeMs: null,
-            durationMs: null,
-            playerReadState: 'idle',
-          },
-        });
-        return;
-      }
-      if (detection.readiness.currentTime === null) {
-        dispatchCreateDraft({
-          type: 'patch-media',
-          mode: 'audio',
-          patch: {
-            sourceKey: connectedAudioSource.normalizedUrl,
-            playerTimeMs: null,
-            durationMs: null,
-            playerReadState: 'idle',
-          },
-        });
-        return;
-      }
-      const currentMs = Math.round(detection.readiness.currentTime * 1_000);
-      const durationMs = detection.readiness.duration === null
-        ? null
-        : Math.floor(detection.readiness.duration * 1_000);
+      const player = await runSelectedPlayerAction(mode, draft.playerIdentity, 'read', null);
       const patch = {
-        sourceKey: connectedAudioSource.normalizedUrl,
-        playerTimeMs: currentMs,
-        durationMs,
+        sourceKey: sourceState.source.classification === 'YouTube'
+          ? sourceState.source.videoId
+          : sourceState.source.normalizedUrl,
+        playerIdentity: draft.playerIdentity,
+        playerTimeMs: player.currentTimeMs,
+        durationMs: player.durationMs,
         playerReadState: 'idle' as const,
       };
-      if (action === 'start') {
-        dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { ...patch, startMs: currentMs } });
+      dispatchCreateDraft({
+        type: 'patch-media', mode,
+        patch: action === 'start' ? { ...patch, startMs: player.currentTimeMs }
+          : action === 'end' ? { ...patch, endMs: player.currentTimeMs } : patch,
+      });
+      if (mode === 'video' && sourceState.source.classification === 'YouTube') {
+        persistYoutubeDraft(
+          sourceState.source.url,
+          action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
+          action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
+          videoDraftState.commentary,
+        );
+      } else if (mode === 'audio' && sourceState.source.classification === 'Podcast / web audio') {
         persistAudioDraft(
-          connectedAudioSource,
-          currentMs,
-          audioDraftState.endMs,
+          sourceState.source,
+          action === 'start' ? player.currentTimeMs : audioDraftState.startMs,
+          action === 'end' ? player.currentTimeMs : audioDraftState.endMs,
           audioDraftState.commentary,
         );
-      } else if (action === 'end') {
-        dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { ...patch, endMs: currentMs } });
-        persistAudioDraft(
-          connectedAudioSource,
-          audioDraftState.startMs,
-          currentMs,
-          audioDraftState.commentary,
-        );
-      } else {
-        dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch });
       }
     } catch {
       dispatchCreateDraft({ type: 'patch-media', mode, patch: { playerReadState: 'error' } });
     }
-  }, [audioDraftState, persistAudioDraft, persistYoutubeDraft, sourceState, videoDraftState]);
+  }, [audioDraftState, persistAudioDraft, persistYoutubeDraft, runSelectedPlayerAction, sourceState, videoDraftState]);
 
   const changeYoutubeCommentary = (value: string) => {
     const sourceKey = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
@@ -930,6 +932,24 @@ function App() {
     if (sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio') {
       persistAudioDraft(sourceState.source, audioDraftState.startMs, audioDraftState.endMs, value);
     }
+  };
+
+  const choosePlayer = (mode: PlayerMode, identity: string) => {
+    const discovery = mode === 'video' ? videoPlayers : audioPlayers;
+    if (
+      discovery.status !== 'ready' || discovery.pageGeneration !== modeSelection?.page.generation ||
+      !discovery.candidates.some((candidate) => candidate.identity === identity)
+    ) return;
+    const candidate = discovery.candidates.find((entry) => entry.identity === identity)!;
+    dispatchCreateDraft({
+      type: 'patch-media', mode,
+      patch: {
+        playerIdentity: identity,
+        playerTimeMs: candidate.currentTimeMs,
+        durationMs: candidate.durationMs,
+        playerReadState: 'idle',
+      },
+    });
   };
 
   const startHostedCapture = useCallback(async (
@@ -984,7 +1004,7 @@ function App() {
       !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
       sourceState.status !== 'connected' || sourceState.source.classification !== 'YouTube' ||
       videoDraftState.startMs === null || videoDraftState.endMs === null ||
-      !videoDraftState.commentary.trim()
+      !videoDraftState.commentary.trim() || !videoDraftState.playerIdentity
     ) return;
     const rangeError = getNewMediaPublicationRangeError(
       videoDraftState.startMs,
@@ -998,6 +1018,13 @@ function App() {
     publishInFlightRef.current = true;
     setYoutubePublishState({ status: 'publishing' });
     try {
+      const player = await runSelectedPlayerAction(
+        'video', videoDraftState.playerIdentity, 'read', null,
+      );
+      const actionRangeError = getNewMediaPublicationRangeError(
+        videoDraftState.startMs, videoDraftState.endMs, player.durationMs,
+      );
+      if (actionRangeError) throw new Error(actionRangeError);
       const operation = await beginHostedYouTubeAnnotation(supabase, {
         sourceUrl: sourceState.source.url,
         title: sourceState.source.title,
@@ -1005,12 +1032,13 @@ function App() {
         startMs: videoDraftState.startMs,
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
-        videoDurationMs: videoDraftState.durationMs,
+        videoDurationMs: player.durationMs,
       });
       await startHostedCapture(operation, {
         kind: 'youtube',
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
+        playerIdentity: videoDraftState.playerIdentity,
       }, videoDraftState.startMs, videoDraftState.endMs);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
@@ -1021,7 +1049,7 @@ function App() {
     } finally {
       publishInFlightRef.current = false;
     }
-  }, [authState.status, sourceState, startHostedCapture, supabase, videoDraftState]);
+  }, [authState.status, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoDraftState]);
 
   const publishAudioClip = useCallback(async () => {
     if (
@@ -1029,7 +1057,8 @@ function App() {
       sourceState.status !== 'connected' ||
       sourceState.source.classification !== 'Podcast / web audio' ||
       audioDraftState.startMs === null || audioDraftState.endMs === null ||
-      !audioDraftState.commentary.trim() || audioDraftState.durationMs === null
+      !audioDraftState.commentary.trim() || audioDraftState.durationMs === null ||
+      !audioDraftState.playerIdentity
     ) return;
     const rangeError = getNewMediaPublicationRangeError(
       audioDraftState.startMs,
@@ -1043,6 +1072,16 @@ function App() {
     publishInFlightRef.current = true;
     setAudioPublishState({ status: 'publishing' });
     try {
+      const player = await runSelectedPlayerAction(
+        'audio', audioDraftState.playerIdentity, 'read', null,
+      );
+      if (player.durationMs === null) {
+        throw new Error('Play the audio until its duration is available, then try again.');
+      }
+      const actionRangeError = getNewMediaPublicationRangeError(
+        audioDraftState.startMs, audioDraftState.endMs, player.durationMs,
+      );
+      if (actionRangeError) throw new Error(actionRangeError);
       const operation = await beginHostedAudioClipAnnotation(supabase, {
         sourceUrl: sourceState.source.url,
         canonicalUrl: sourceState.source.canonicalUrl,
@@ -1053,12 +1092,13 @@ function App() {
         startMs: audioDraftState.startMs,
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
-        mediaDurationMs: audioDraftState.durationMs,
+        mediaDurationMs: player.durationMs,
       });
       await startHostedCapture(operation, {
         kind: 'audio',
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.normalizedUrl,
+        playerIdentity: audioDraftState.playerIdentity,
       }, audioDraftState.startMs, audioDraftState.endMs);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
@@ -1067,7 +1107,7 @@ function App() {
         message: error instanceof Error ? error.message : 'The audio clip could not be published.',
       });
     } finally { publishInFlightRef.current = false; }
-  }, [audioDraftState, authState.status, sourceState, startHostedCapture, supabase]);
+  }, [audioDraftState, authState.status, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
 
   const cancelHostedMedia = useCallback(async () => {
     const session = hostedMediaSession;
@@ -1150,10 +1190,16 @@ function App() {
         });
         return;
       }
+      if (!videoDraftState.playerIdentity) {
+        setMediaCaptureState({ status: 'error', captureId: null, code: 'connected-source-changed', message: 'Choose the original video player before recapturing this draft.' });
+        return;
+      }
+      await runSelectedPlayerAction('video', videoDraftState.playerIdentity, 'read', null);
       await startHostedCapture(session.operation, {
         kind: 'youtube',
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
+        playerIdentity: videoDraftState.playerIdentity,
       }, session.startMs, session.endMs);
     } else if (
       session.mediaType === 'audio' &&
@@ -1170,13 +1216,19 @@ function App() {
         });
         return;
       }
+      if (!audioDraftState.playerIdentity) {
+        setMediaCaptureState({ status: 'error', captureId: null, code: 'connected-source-changed', message: 'Choose the original audio player before recapturing this draft.' });
+        return;
+      }
+      await runSelectedPlayerAction('audio', audioDraftState.playerIdentity, 'read', null);
       await startHostedCapture(session.operation, {
         kind: 'audio',
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.normalizedUrl,
+        playerIdentity: audioDraftState.playerIdentity,
       }, session.startMs, session.endMs);
     }
-  }, [hostedMediaSession, sourceState, startHostedCapture]);
+  }, [audioDraftState.playerIdentity, hostedMediaSession, runSelectedPlayerAction, sourceState, startHostedCapture, videoDraftState.playerIdentity]);
 
   const playConnectedClip = useCallback(async (
     annotation: Extract<PublicAnnotation, { kind: 'youtube' }>,
@@ -1185,17 +1237,8 @@ function App() {
       sourceState.status !== 'connected' || sourceState.source.classification !== 'YouTube' ||
       sourceState.source.videoId !== annotation.source.videoId
     ) throw new Error('The connected video does not match this clip.');
-    const context = connectedContextRef.current;
-    if (!context) throw new Error(RECONNECT_MESSAGE);
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
-    const execution = await chrome.scripting.executeScript({
-      target: { tabId: context.tabId, frameIds: [0] },
-      func: playYouTubeVideoFrom,
-      args: [annotation.startMs / 1_000],
-    });
-    if (execution[0]?.result !== true) throw new Error('The YouTube player is unavailable.');
-  }, [sourceState]);
+    await runSelectedPlayerAction('video', videoDraftState.playerIdentity, 'play', annotation.startMs / 1_000);
+  }, [runSelectedPlayerAction, sourceState, videoDraftState.playerIdentity]);
 
   const playConnectedAudioClip = useCallback(async (
     annotation: Extract<PublicAnnotation, { kind: 'audio' }>,
@@ -1205,18 +1248,8 @@ function App() {
       sourceState.source.classification !== 'Podcast / web audio' ||
       sourceState.source.normalizedUrl !== annotation.source.normalizedUrl
     ) throw new Error('The connected audio source does not match this clip.');
-    const context = connectedContextRef.current;
-    if (!context) throw new Error(RECONNECT_MESSAGE);
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
-    const execution = await chrome.scripting.executeScript({
-      target: { tabId: context.tabId, frameIds: [0] },
-      func: playAudioPageFrom,
-      args: [annotation.startMs / 1_000, annotation.source.normalizedUrl],
-    });
-    const result = execution[0]?.result as { ok?: boolean } | undefined;
-    if (result?.ok !== true) throw new Error('The connected page audio could not be controlled.');
-  }, [sourceState]);
+    await runSelectedPlayerAction('audio', audioDraftState.playerIdentity, 'play', annotation.startMs / 1_000);
+  }, [audioDraftState.playerIdentity, runSelectedPlayerAction, sourceState]);
 
   const previewYoutubeDraft = useCallback(async () => {
     if (
@@ -1227,19 +1260,14 @@ function App() {
     if (!context) return;
     dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { playerReadState: 'reading' } });
     try {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
-      const execution = await chrome.scripting.executeScript({
-        target: { tabId: context.tabId, frameIds: [0] },
-        func: playYouTubeVideoFrom,
-        args: [videoDraftState.startMs / 1_000],
-      });
-      if (execution[0]?.result !== true) throw new Error('The YouTube player is unavailable.');
+      await runSelectedPlayerAction(
+        'video', videoDraftState.playerIdentity, 'play', videoDraftState.startMs / 1_000,
+      );
       dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { playerReadState: 'idle' } });
     } catch {
       dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { playerReadState: 'error' } });
     }
-  }, [sourceState, videoDraftState.startMs]);
+  }, [runSelectedPlayerAction, sourceState, videoDraftState.playerIdentity, videoDraftState.startMs]);
 
   const previewAudioDraft = useCallback(async () => {
     if (
@@ -1250,20 +1278,14 @@ function App() {
     if (!context) return;
     dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { playerReadState: 'reading' } });
     try {
-      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
-      const execution = await chrome.scripting.executeScript({
-        target: { tabId: context.tabId, frameIds: [0] },
-        func: playAudioPageFrom,
-        args: [audioDraftState.startMs / 1_000, sourceState.source.normalizedUrl],
-      });
-      const result = execution[0]?.result as { ok?: boolean } | undefined;
-      if (result?.ok !== true) throw new Error('The connected page audio could not be controlled.');
+      await runSelectedPlayerAction(
+        'audio', audioDraftState.playerIdentity, 'play', audioDraftState.startMs / 1_000,
+      );
       dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { playerReadState: 'idle' } });
     } catch {
       dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { playerReadState: 'error' } });
     }
-  }, [audioDraftState.startMs, sourceState]);
+  }, [audioDraftState.playerIdentity, audioDraftState.startMs, runSelectedPlayerAction, sourceState]);
 
   useEffect(() => {
     if (
@@ -1549,6 +1571,76 @@ function App() {
   }, [draftRestorationStatus, modeCapabilities, sourceState]);
 
   useEffect(() => {
+    const context = connectedContextRef.current;
+    const page = modeSelection?.page;
+    const connectedMode: PlayerMode | null = sourceState.status === 'connected'
+      ? sourceState.source.classification === 'YouTube'
+        ? 'video'
+        : sourceState.source.classification === 'Podcast / web audio' ? 'audio' : null
+      : null;
+    if (!context || !page || !connectedMode || sourceState.status !== 'connected') {
+      setVideoPlayers(EMPTY_PLAYER_DISCOVERY);
+      setAudioPlayers(EMPTY_PLAYER_DISCOVERY);
+      return;
+    }
+    const mode = connectedMode;
+    const pageUrl = sourceState.source.url;
+    const pageGeneration = page.generation;
+    const sourceKey = mode === 'video'
+      ? sourceState.source.classification === 'YouTube' ? sourceState.source.videoId : null
+      : sourceState.source.classification === 'Podcast / web audio' ? sourceState.source.normalizedUrl : null;
+    if (!sourceKey) return;
+    let current = true;
+    void chrome.scripting.executeScript({
+      target: { tabId: context.tabId, frameIds: [0] },
+      func: readTopFramePlayerDiscovery,
+      args: [mode],
+    }).then((execution) => {
+      if (!current || createPageRef.current?.generation !== pageGeneration) return;
+      const discovery = validatePlayerDiscovery(pageUrl, mode, execution[0]?.result);
+      const state: PlayerDiscoveryState = { ...discovery, pageGeneration };
+      if (mode === 'video') setVideoPlayers(state); else setAudioPlayers(state);
+      const previousIdentity = playerIdentityRef.current[mode];
+      const playerIdentity = reconcilePlayerSelection(discovery, previousIdentity);
+      const selected = discovery.status === 'ready'
+        ? discovery.candidates.find((candidate) => candidate.identity === playerIdentity) ?? null
+        : null;
+      dispatchCreateDraft({
+        type: 'patch-media',
+        mode,
+        patch: {
+          sourceKey,
+          playerIdentity,
+          playerTimeMs: selected?.currentTimeMs ?? null,
+          durationMs: selected?.durationMs ?? null,
+          playerReadState: previousIdentity && !playerIdentity ? 'error' : 'idle',
+        },
+      });
+    }).catch(() => {
+      if (!current || createPageRef.current?.generation !== pageGeneration) return;
+      const state: PlayerDiscoveryState = { ...EMPTY_PLAYER_DISCOVERY, pageGeneration };
+      if (mode === 'video') setVideoPlayers(state); else setAudioPlayers(state);
+      dispatchCreateDraft({
+        type: 'patch-media', mode,
+        patch: { playerIdentity: null, playerTimeMs: null, durationMs: null, playerReadState: 'error' },
+      });
+    });
+    return () => { current = false; };
+  }, [modeSelection?.page.generation, playerDiscoveryRevision, sourceState]);
+
+  useEffect(() => {
+    if (
+      hostedMediaSession || sourceState.status !== 'connected' ||
+      (sourceState.source.classification !== 'YouTube' &&
+        sourceState.source.classification !== 'Podcast / web audio')
+    ) return;
+    const timer = window.setInterval(() => {
+      setPlayerDiscoveryRevision((revision) => revision + 1);
+    }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [hostedMediaSession, sourceState]);
+
+  useEffect(() => {
     const previous = previousModeSelectionRef.current;
     previousModeSelectionRef.current = modeSelection;
     if (!previous || !modeSelection) return;
@@ -1747,11 +1839,19 @@ function App() {
     audioDraftState.endMs,
     audioDraftState.durationMs,
   );
+  const videoPlayerSelected = videoPlayers.status === 'ready' &&
+    videoPlayers.pageGeneration === modeSelection?.page.generation &&
+    videoPlayers.candidates.some((candidate) => candidate.identity === videoDraftState.playerIdentity);
+  const audioPlayerSelected = audioPlayers.status === 'ready' &&
+    audioPlayers.pageGeneration === modeSelection?.page.generation &&
+    audioPlayers.candidates.some((candidate) => candidate.identity === audioDraftState.playerIdentity);
   const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
+    videoPlayerSelected &&
     videoClipRangeError === null && videoDraftState.commentary.trim().length > 0 &&
     videoDraftState.commentary.length <= 2_000 && youtubePublishState.status !== 'publishing' &&
     hostedMediaSession === null;
   const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
+    audioPlayerSelected &&
     audioDraftState.durationMs !== null && audioClipRangeError === null &&
     audioDraftState.commentary.trim().length > 0 &&
     audioDraftState.commentary.length <= 2_000 && audioPublishState.status !== 'publishing' &&
@@ -1869,14 +1969,15 @@ function App() {
               <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>YouTube time range</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected video, set the start, continue watching, then set the end.</p>
+                <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={hostedMediaSession !== null} onSelect={(identity) => choosePlayer('video', identity)} />
                 <dl className="clip-time-grid">
                   <div><dt>START</dt><dd>{videoDraftState.startMs === null ? '--:--' : formatMediaTime(videoDraftState.startMs)}</dd></div>
                   <div><dt>END</dt><dd>{videoDraftState.endMs === null ? '--:--' : formatMediaTime(videoDraftState.endMs)}</dd></div>
                   <div><dt>LENGTH</dt><dd>{videoDraftState.startMs === null || videoDraftState.endMs === null || videoDraftState.endMs <= videoDraftState.startMs ? '--:--' : formatMediaTime(videoDraftState.endMs - videoDraftState.startMs)}</dd></div>
                 </dl>
                 {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTime(videoDraftState.durationMs)}</>}</p>}
-                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>{videoDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
-                {videoDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Preview from start</button>}
+                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>{videoDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
+                {videoDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Preview from start</button>}
                 {videoDraftState.startMs !== null && videoDraftState.endMs !== null && videoClipRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current YouTube player time could not be read. Reconnect the video and try again.</p>}
                 <div className="annotation-field"><label htmlFor="youtube-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="youtube-commentary" value={videoDraftState.commentary} maxLength={2_000} rows={6} required disabled={hostedMediaSession !== null} onChange={(event) => changeYoutubeCommentary(event.target.value)} /><span aria-live="polite">{videoDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
@@ -1889,17 +1990,15 @@ function App() {
               <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>Podcast / web audio</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected page audio, set the start, continue listening, then set the end.</p>
-                {(audioSource.playerStatus === 'duration-unavailable' || audioSource.playerStatus === 'current-time-unavailable') && <div className="compact-state" role="status"><strong>Audio player detected</strong><span>Play the episode to initialize playback timing.</span></div>}
-                {audioSource.playerStatus === 'ambiguous' && <div className="compact-state compact-state-error" role="status"><strong>Choose the episode player</strong><span>Annotated found multiple equally eligible audio players. Pause all but the episode player, then use Refresh time.</span></div>}
-                {audioSource.playerStatus === 'unavailable' && <div className="compact-state compact-state-error" role="status"><strong>Audio player unavailable</strong><span>The previously detected top-level audio player can no longer be read. Reload the page player, then use Refresh time.</span></div>}
+                <PlayerSelector mode="audio" discovery={audioPlayers} selectedIdentity={audioDraftState.playerIdentity} disabled={hostedMediaSession !== null} onSelect={(identity) => choosePlayer('audio', identity)} />
                 <dl className="clip-time-grid">
                   <div><dt>START</dt><dd>{audioDraftState.startMs === null ? '--:--' : formatMediaTime(audioDraftState.startMs)}</dd></div>
                   <div><dt>END</dt><dd>{audioDraftState.endMs === null ? '--:--' : formatMediaTime(audioDraftState.endMs)}</dd></div>
                   <div><dt>LENGTH</dt><dd>{audioDraftState.startMs === null || audioDraftState.endMs === null || audioDraftState.endMs <= audioDraftState.startMs ? '--:--' : formatMediaTime(audioDraftState.endMs - audioDraftState.startMs)}</dd></div>
                 </dl>
                 {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTime(audioDraftState.durationMs)}</>}</p>}
-                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>{audioDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
-                {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Preview / Jump to start</button>}
+                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>{audioDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
+                {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Preview / Jump to start</button>}
                 {audioDraftState.startMs !== null && audioDraftState.endMs !== null && audioClipRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
                 {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.</p>}
                 <div className="annotation-field"><label htmlFor="audio-clip-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="audio-clip-commentary" value={audioDraftState.commentary} maxLength={2_000} rows={6} required disabled={hostedMediaSession !== null} onChange={(event) => changeAudioCommentary(event.target.value)} /><span aria-live="polite">{audioDraftState.commentary.length.toLocaleString()} / 2,000</span></div>

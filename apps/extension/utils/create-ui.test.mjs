@@ -38,3 +38,20 @@ test('the switcher and editor actions have explicit 390 and 340 pixel contracts'
   assert.match(style, /\.clip-control-row \{ grid-template-columns: 1fr; \}/);
   assert.match(style, /\.create-actions \{ grid-template-columns: 1fr; \}/);
 });
+
+test('player selection is a bounded native radio group and gates every clip action', async () => {
+  const [source, style] = await Promise.all([
+    readFile(APP_URL, 'utf8'),
+    readFile(STYLE_URL, 'utf8'),
+  ]);
+  assert.match(source, /<fieldset className="player-selector">/);
+  assert.match(source, /<legend>Choose \{label\} player<\/legend>/);
+  assert.match(source, /type="radio"\s+name=\{`\$\{mode\}-player`\}/);
+  assert.match(source, /\{index \+ 1\} of \{discovery\.candidates\.length\}/);
+  assert.match(source, /Too many \{label\} players/);
+  assert.match(source, /disabled=\{!videoPlayerSelected/);
+  assert.match(source, /disabled=\{!audioPlayerSelected/);
+  assert.match(source, /runSelectedPlayerAction\(\s*'video'/);
+  assert.match(source, /runSelectedPlayerAction\(\s*'audio'/);
+  assert.match(style, /\.player-option-label[^}]*overflow-wrap: anywhere/);
+});

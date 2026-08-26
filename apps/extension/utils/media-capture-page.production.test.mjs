@@ -6,14 +6,16 @@ import {
 } from './media-capture-page.ts';
 
 const pageUrl = 'https://www.youtube.com/watch?v=abcdefghijk';
-const source = { kind: 'youtube', pageUrl, sourceKey: 'abcdefghijk' };
+const source = { kind: 'youtube', pageUrl, sourceKey: 'abcdefghijk', playerIdentity: 'video:1:f8443fef' };
 
 async function withFakeVideo(callback, overrides = {}) {
-  const names = ['location','document','window','HTMLAudioElement','HTMLVideoElement','getComputedStyle'];
+  const names = ['location','document','window','HTMLMediaElement','HTMLAudioElement','HTMLVideoElement','getComputedStyle'];
   const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
-  class Audio {}
-  class Video {
+  class Media {}
+  class Audio extends Media {}
+  class Video extends Media {
     constructor() {
+      super();
       this.currentTime = overrides.currentTime ?? 5;
       this.duration = overrides.duration ?? 120;
       this.readyState = overrides.readyState ?? 4;
@@ -21,6 +23,7 @@ async function withFakeVideo(callback, overrides = {}) {
       this.videoHeight = 1080;
       this.paused = false;
       this.ended = false;
+      this.currentSrc = 'blob:test';
     }
     pause() { this.paused = true; }
     addEventListener(_name, fn) {
@@ -40,6 +43,7 @@ async function withFakeVideo(callback, overrides = {}) {
     document: { querySelector: () => video, querySelectorAll: () => video ? [video] : [], fullscreenElement: null },
     window: { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1, scrollX: 0, scrollY: 0, setTimeout },
     HTMLAudioElement: Audio,
+    HTMLMediaElement: Media,
     HTMLVideoElement: Video,
     getComputedStyle: () => ({ objectFit: 'contain', objectPosition: '50% 50%' }),
   };
@@ -100,6 +104,10 @@ test('rejects a changed source and unavailable player', async () => {
     source, startMs: 0, endMs: 1_000,
   }), { noPlayer: true });
   assert.equal(missing.code, 'PLAYER_NOT_FOUND');
+  const replaced = await withFakeVideo(() => prepareMediaCaptureOnPage({
+    source: { ...source, playerIdentity: 'video:1:ffffffff' }, startMs: 0, endMs: 1_000,
+  }));
+  assert.equal(replaced.code, 'PLAYER_NOT_FOUND');
 });
 
 test('reports player readiness, navigation, and exact range boundaries', async () => {

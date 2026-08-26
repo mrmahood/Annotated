@@ -15,7 +15,12 @@ export const MEDIA_CAPTURE_OFFSCREEN_STATUS = 'annotated.mediaCapture.offscreenS
 export const MEDIA_CAPTURE_OFFSCREEN_EVENT = 'annotated.mediaCapture.offscreenEvent.v1';
 export const MEDIA_CAPTURE_OFFSCREEN_NEEDS_END = 'annotated.mediaCapture.offscreenNeedsEnd.v1';
 
-export type CaptureSourceIdentity = { kind: 'youtube' | 'audio'; pageUrl: string; sourceKey: string };
+export type CaptureSourceIdentity = {
+  kind: 'youtube' | 'audio';
+  pageUrl: string;
+  sourceKey: string;
+  playerIdentity: string;
+};
 export type HostedMediaOperation = {
   annotationId: string; mediaId: string; creatorHandle: string; annotationSlug: string;
   processingStatus: 'capture_pending';
@@ -226,6 +231,11 @@ export function isCaptureStartRequest(value: unknown): value is CaptureStartRequ
     (value.source.kind === 'youtube' || value.source.kind === 'audio') &&
     typeof value.source.pageUrl === 'string' && value.source.pageUrl.length > 0 &&
     typeof value.source.sourceKey === 'string' && value.source.sourceKey.length > 0 &&
+    typeof value.source.playerIdentity === 'string' && (
+      value.source.kind === 'youtube'
+        ? /^video:[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
+        : /^(?:audio|audio-only-video):[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
+    ) &&
     getCaptureRangeError(value.startMs, value.endMs) === null &&
     isHostedMediaOperation(value.operation) && typeof value.accessToken === 'string' &&
     value.accessToken.length > 20 && typeof value.apiOrigin === 'string' &&
