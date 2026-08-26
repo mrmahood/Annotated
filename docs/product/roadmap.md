@@ -10,7 +10,11 @@ aligned through `20260825120300`, all three worker jobs retain accepted immutabl
 digest `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
 and both schedules remain paused. Every disposable D1/D2 Local and Staging
 fixture was removed and verified at zero. Production was not accessed or
-deployed. Phase E is next and remains separately authorized.
+deployed. Phase E planning is defined in
+`docs/architecture/phase-e-create-auth-plan.md`. E1a implementation and
+deterministic Local validation are complete on its feature branch; Draft PR
+review, required CI, and merge remain pending. E1b and later work remain
+separately authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -327,6 +331,14 @@ printed or persisted.
 
 Create experience and authentication:
 
+The bounded planning contract is
+`docs/architecture/phase-e-create-auth-plan.md`. It records the verified current
+source/auth behavior and recommended source, player, transition, and identity
+boundaries. E1a's local capability/data contract, page-generation/revision rules,
+independent draft state, and regressions are complete pending review. No visible
+Create UI, player discovery/capture, authentication, or provider configuration
+change has begun.
+
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
 - Replace mutually exclusive page classification with three separate concepts:
@@ -381,8 +393,12 @@ are implemented, owner-accepted, applied and regression-tested in bounded
 Staging, cleaned exactly, squash-merged through PRs #20 and #21, and verified by
 successful post-merge `main` CI runs `32807426242` and `32906492506`. Staging is
 aligned through `20260825120300`, both schedules remain paused, and Production
-was not accessed or deployed. Phase D is formally closed. Phase E planning and
-implementation, schedule enablement, Production access, and deployment remain
-separately authorized. Production rollout remains blocked until Phase E passes
-its Local, required CI, and bounded Staging gates and later Production
+was not accessed or deployed. Phase D is formally closed. Phase E planning is
+documented in `docs/architecture/phase-e-create-auth-plan.md`; E1a implementation
+and deterministic Local validation are complete on its feature branch, with
+Draft PR review, required CI, and merge pending. E1b and later implementation,
+provider configuration, schedule
+enablement, Production access, and deployment remain separately authorized.
+Production rollout remains blocked until Phase E
+passes its Local, required CI, and bounded Staging gates and later Production
 authorization is explicitly granted.
