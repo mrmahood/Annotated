@@ -78,10 +78,10 @@ test('a stale asynchronous restoration cannot overwrite newer draft state', () =
   assert.equal(shouldApplyDraftRestoration(5, 5, draft, CONTEXT), true);
 });
 
-test('only publish, explicit clear, and source invalidation clear the text draft', () => {
+test('only publish and explicit clear delete the text draft', () => {
   assert.equal(shouldClearAnnotationDraft('publish-succeeded'), true);
   assert.equal(shouldClearAnnotationDraft('explicit-clear'), true);
-  assert.equal(shouldClearAnnotationDraft('source-invalidated'), true);
+  assert.equal(shouldClearAnnotationDraft('source-invalidated'), false);
   assert.equal(shouldClearAnnotationDraft('unmount'), false);
   assert.equal(shouldClearAnnotationDraft('navigation'), false);
   assert.equal(shouldClearAnnotationDraft('audio-discard'), false);

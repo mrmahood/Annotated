@@ -2,6 +2,9 @@ export const CREATE_MODES = ['text', 'video', 'audio'] as const;
 export type CreateMode = typeof CREATE_MODES[number];
 export type MediaCreateMode = Exclude<CreateMode, 'text'>;
 
+export const CREATE_MODE_SELECTION_STORAGE_KEY = 'annotated.createModeSelection.v1';
+const CREATE_MODE_SELECTION_VERSION = 1 as const;
+
 export type ModeCapability =
   | { status: 'checking' }
   | { status: 'available' }
@@ -26,6 +29,12 @@ export type ModeSelectionState = {
   recommendedMode: CreateMode | null;
   selectedMode: CreateMode | null;
   selectedBy: 'automatic' | 'explicit';
+};
+
+export type StoredCreateModeSelection = {
+  version: typeof CREATE_MODE_SELECTION_VERSION;
+  pageIdentity: CreatePageIdentity;
+  selectedMode: CreateMode;
 };
 
 export type ModeRevisionState = Record<CreateMode, number>;
@@ -109,8 +118,62 @@ function isPageIdentity(value: CreatePageIdentity): boolean {
   return (
     Number.isInteger(value.tabId) && value.tabId >= 0 &&
     Number.isInteger(value.windowId) && value.windowId >= 0 &&
-    value.sourceKey.trim().length > 0
+    typeof value.sourceKey === 'string' &&
+    value.sourceKey.trim().length > 0 &&
+    value.sourceKey.length <= 2_048
   );
+}
+
+function isCreateMode(value: unknown): value is CreateMode {
+  return typeof value === 'string' && CREATE_MODES.includes(value as CreateMode);
+}
+
+export function serializeCreateModeSelection(
+  pageIdentity: CreatePageIdentity,
+  selectedMode: CreateMode,
+): StoredCreateModeSelection {
+  if (!isPageIdentity(pageIdentity) || !isCreateMode(selectedMode)) {
+    throw new Error('The stored Create mode selection is invalid.');
+  }
+  return {
+    version: CREATE_MODE_SELECTION_VERSION,
+    pageIdentity: { ...pageIdentity },
+    selectedMode,
+  };
+}
+
+export function deserializeCreateModeSelection(value: unknown): StoredCreateModeSelection | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const identity = row.pageIdentity;
+  if (
+    row.version !== CREATE_MODE_SELECTION_VERSION ||
+    typeof identity !== 'object' || identity === null || Array.isArray(identity)
+  ) return null;
+  const pageIdentity = identity as Record<string, unknown>;
+  if (
+    typeof pageIdentity.tabId !== 'number' ||
+    typeof pageIdentity.windowId !== 'number' ||
+    typeof pageIdentity.sourceKey !== 'string'
+  ) return null;
+  const parsedIdentity: CreatePageIdentity = {
+    tabId: pageIdentity.tabId,
+    windowId: pageIdentity.windowId,
+    sourceKey: pageIdentity.sourceKey,
+  };
+  if (!isPageIdentity(parsedIdentity) || !isCreateMode(row.selectedMode)) return null;
+  return {
+    version: CREATE_MODE_SELECTION_VERSION,
+    pageIdentity: parsedIdentity,
+    selectedMode: row.selectedMode,
+  };
+}
+
+export function storedCreateModeSelectionMatches(
+  selection: StoredCreateModeSelection,
+  pageIdentity: CreatePageIdentity,
+): boolean {
+  return pageIdentityMatches(selection.pageIdentity, pageIdentity);
 }
 
 export function pageIdentityMatches(
@@ -196,12 +259,17 @@ export function updateModeCapabilities(
     state.selectedMode !== null &&
     currentCapability?.status !== 'unavailable'
   );
+  const preserveWhileChecking = (
+    state.selectedMode !== null &&
+    currentCapability?.status === 'checking'
+  );
+  const preserveSelection = preserveExplicit || preserveWhileChecking;
   return {
     ...state,
     capabilities,
     recommendedMode,
-    selectedMode: preserveExplicit ? state.selectedMode : recommendedMode,
-    selectedBy: preserveExplicit ? 'explicit' : 'automatic',
+    selectedMode: preserveSelection ? state.selectedMode : recommendedMode,
+    selectedBy: preserveSelection ? state.selectedBy : 'automatic',
   };
 }
 
@@ -361,4 +429,17 @@ export function reduceCreateDraftState(
       revision: state[action.mode].revision + 1,
     },
   };
+}
+
+export function hasCreateModeDraft(
+  state: CreateDraftState,
+  mode: CreateMode,
+): boolean {
+  if (mode === 'text') return state.text.commentary.trim().length > 0;
+  const draft = state[mode];
+  return (
+    draft.commentary.trim().length > 0 ||
+    draft.startMs !== null ||
+    draft.endMs !== null
+  );
 }

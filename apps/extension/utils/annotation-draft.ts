@@ -185,5 +185,5 @@ export function shouldApplyDraftRestoration(
 }
 
 export function shouldClearAnnotationDraft(event: AnnotationDraftLifecycleEvent): boolean {
-  return event === 'publish-succeeded' || event === 'explicit-clear' || event === 'source-invalidated';
+  return event === 'publish-succeeded' || event === 'explicit-clear';
 }
