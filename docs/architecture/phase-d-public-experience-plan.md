@@ -1,17 +1,15 @@
 # Phase D public annotation experience plan
 
-Status: D1a-D1e implemented, automated-validated against Local only, and
-owner-accepted in Chrome on Windows, 2026-08-24. All D1d Local acceptance
-fixtures and processes were removed and verified at zero. D2 remains
-unimplemented and requires separate authorization. Phase C is complete and
-merged through protected PR #18, post-merge `main` CI passed, Staging worker
-schedules remain paused, and Production was not accessed or deployed. D1a did
-not authorize or perform Staging access, schedule enablement, deployment,
-Production access, DNS, OAuth, vendor configuration, commit, push, or
-pull-request work. D1b did not mutate or validate Staging; the D1b record below
-documents one stopped environment-targeting incident. D1c required an explicit
-loopback assertion before every HTTP integration command and did not access any
-remote environment.
+Status: Phase D complete and merged, 2026-08-25. D1a-D1e and D2a-D2c passed
+their complete Local automated gates, owner Chrome acceptance, required CI,
+bounded Staging application/regression, exact cleanup, protected squash merges,
+and post-merge `main` CI. PR #20 merged D1 as
+`50a3f9c38683d46f23991fbbd3ee49d807528a00`; PR #21 merged D2 as
+`6f0f1c59acb52d5fb53dcc11dfd446b455ac5f2b`. Staging migration history is
+aligned through `20260825120300`, both worker schedules remain paused, and all
+disposable Local and Staging fixtures were removed and verified at zero.
+Production was not accessed or deployed. Phase E is next and remains separately
+authorized.
 
 This plan narrows Phase D of `docs/product/roadmap.md` and the accepted hosted
 media architecture in `docs/architecture/media-archive-pipeline.md`. Those
@@ -73,9 +71,12 @@ release-blocking regression gate. Hosted media remains draft-first and becomes
 public only after the authoritative Phase C ready transaction has verified a
 bounded derivative, an exact-excerpt transcript, and confirmed raw deletion.
 
-## 2. Current database and route contract audit
+## 2. Baseline database and route contract audit
 
-This audit describes merged `main` after migration `20260824020000`.
+This historical audit describes merged `main` after migration
+`20260824020000`, before D1/D2 implementation. The Phase D closeout state is
+recorded in sections 5 and 13; the baseline is retained to document why the
+additive boundaries were required.
 
 ### 2.1 Database and RLS contract
 
@@ -161,6 +162,13 @@ D1 must close these gaps without weakening existing RLS:
 
 D2 must add a new isolated vote domain. It must not overload comments, follows,
 annotation status, claim status, or discovery ordering.
+
+At closeout, all five D1 migrations and all four D2 migrations are applied to
+Staging, whose ledger is aligned through `20260825120300`. Canonical routing,
+private ready-media delivery, excerpt transcript projection, reserved-root
+handles, private vote rows, private limiter state, bounded public totals, and
+service-only current-user vote state are present. Applied history remains
+immutable.
 
 ## 3. D1 canonical-page design
 
@@ -329,9 +337,9 @@ Raw media is never signable, public, owner-downloadable, or a route input.
 
 ## 4. D2 voting design
 
-### 4.1 Proposed additive schema
+### 4.1 Accepted additive schema
 
-Add `public.annotation_votes` in a new migration after D1 is accepted:
+Phase D added `public.annotation_votes` after D1 was accepted:
 
 | Column/constraint | Contract |
 | --- | --- |
@@ -355,7 +363,7 @@ tests; it is not part of initial D2.
 
 ### 4.2 Trusted mutation and state boundaries
 
-Add a same-origin authenticated vote endpoint. It verifies the bearer/session
+The same-origin authenticated vote endpoint verifies the bearer/session
 user with Supabase Auth, accepts one annotation UUID and `+1`, `-1`, or `null`,
 enforces request size/content type, and calls one service-only database mutation.
 
@@ -383,7 +391,7 @@ zero. Optimistic UI must roll back to the authoritative response on failure.
 
 ### 4.3 Public aggregates and published-only eligibility
 
-Add a bounded security-definer aggregate function accepting at most 100 unique,
+The bounded security-definer aggregate function accepts at most 100 unique,
 non-null annotation UUIDs. It returns only:
 
 ```text
@@ -407,10 +415,10 @@ ordering, publication guards, claim/removal functions, and worker contracts.
 
 ### 4.4 Abuse, rate limit, and regression requirements
 
-- Enforce a deployment-compatible per-user and per-annotation mutation limit at
-  the trusted API boundary. The exact window/backing store must be approved in
-  D2a before code; tests must prove HTTP 429 plus `Retry-After`, recovery after
-  the window, and no database change on a rejected request.
+- Enforce the accepted private PostgreSQL fixed-window limits at the trusted
+  database boundary: 20 mutations per user/annotation and 100 per user across
+  annotations per 10 minutes. Tests prove HTTP 429 plus `Retry-After`, recovery
+  after the window, and no vote change on a rejected request.
 - Bound request bytes, UUID/value parsing, database statement time, response
   shape, and aggregate batch size. Reject duplicate IDs before querying.
 - The primary key limits storage amplification to one live row per user and
@@ -488,7 +496,8 @@ two-minute time-code reads pass. Staging and Production were not accessed.
 
 Exit: article layout, audio commentary, comments, claims, follow state, metadata,
 and historical range pages pass; unresolved/non-public rows leak nothing. Exit
-met against Local only; owner Chrome acceptance remains D1d.
+was met against Local only at that checkpoint; owner Chrome acceptance
+subsequently passed during D1d.
 
 ### D1c. Ready hosted playback and transcript
 
@@ -578,40 +587,73 @@ closes the corrected root-route database reservation before any remote work.
   extension, web, compile, lint, Local-bound production-build, manifest,
   package, and whitespace gates also pass.
 
-Exit: D1 Local implementation, route hardening, and owner Chrome acceptance are
-complete. Commit/push/Draft PR, CI, and bounded Staging application remain
-separate authorization gates.
+Exit: D1 Local implementation, route hardening, and owner Chrome acceptance were
+complete at that checkpoint. Commit/push/Draft PR, CI, and bounded Staging
+application were then completed under separate authorizations.
 
 ### D2a. Vote contract and Local migration
 
-- Resolve the rate-limit backing/window and creator self-vote policy.
-- Add the vote table, RLS/grants, trusted mutation, aggregate function, and
-  pgTAP/concurrency/abuse tests in a new additive Local-only migration.
+- **Implementation and Local validation complete, 2026-08-25.** Creator self-
+  votes are disallowed. Private PostgreSQL-backed fixed windows allow at most 20
+  mutations per user/annotation and 100 per user across annotations per 10
+  minutes, return bounded retry timing, and make no vote change when rejected.
+- Additive migration `20260825120000_phase_d2a_annotation_voting.sql` adds the
+  private vote table, forced RLS/revoked API table access, trusted atomic
+  mutation, bounded public aggregate, private pair/global limiter state, and
+  opportunistic expired-state cleanup. Forward corrections
+  `20260825120100_phase_d2a_vote_retry_expression_correction.sql` and
+  `20260825120200_phase_d2a_vote_cleanup_contention.sql` preserve immutable
+  history while correcting retry computation and cleanup contention.
+- Focused pgTAP, concurrency, privacy, abuse, idempotency, opposite-direction
+  race, pair/global rate-limit, unchanged-on-rejection, and exact cleanup tests
+  passed against Local Supabase.
 
-Exit: one row per user/annotation, exact `+1`/`-1`/clear behavior, separate
-totals, identity privacy, and published-only eligibility pass Local tests.
+Exit met: one row per user/annotation, exact `+1`/`-1`/clear behavior, separate
+totals, identity privacy, creator rejection, published-only eligibility, and
+both accepted mutation ceilings passed Local tests.
 
 ### D2b. Vote API and annotation-page UI
 
-- Add authenticated API validation and rate limiting.
-- Add accessible upvote/downvote controls, signed-out prompt, separate totals,
-  authoritative error rollback, and current-user state.
+- **Implementation and Local validation complete, 2026-08-25.** The same-origin
+  authenticated API derives the voter exclusively from the verified server-side
+  session, rejects cross-origin mutation and caller-supplied user IDs, maps the
+  database limit to bounded HTTP 429 plus `Retry-After`, and returns private,
+  no-store, bounded JSON.
+- Additive migration
+  `20260825120300_phase_d2b_current_vote_projection.sql` adds the service-only,
+  bounded current-user vote-state projection without exposing a public vote
+  graph.
+- The canonical detail page shows separate totals, disabled signed-out controls
+  plus an explicit sign-in action, current-user state, create/change/clear,
+  creator rejection, pending semantics, and authoritative rollback after
+  failures. Feed and profile cards remain vote-free.
 
-Exit: two Local users can vote/change/clear correctly; anonymous/private-state
-mutations fail with bounded results.
+Exit met: two Local users voted, changed, cleared, and persisted independently;
+anonymous, private-state, cross-origin, caller-ID, creator, and rate-limited
+mutations failed with bounded authoritative results.
 
 ### D2c. Discovery isolation and final Phase D regression
 
-- If totals appear on feed/profile cards, load them only through the bounded
-  aggregate; do not change ordering.
-- Prove votes do not affect discovery, publication, claims, or removal.
-- Run complete Local, CI, owner Chrome, and separately authorized bounded
-  Staging D2 gates.
+- **Complete, 2026-08-25.** Vote totals remain detail-page-only. Focused
+  discovery-isolation coverage proves votes do not affect feed/profile ordering,
+  publication, visibility, comments, follows, claims, removal, media lifecycle,
+  transcripts, or worker candidates.
+- The final Local gate passed 440/440 pgTAP assertions across 15 files, the D2
+  concurrency/privacy/abuse and authenticated HTTP harnesses, 18/18 shared,
+  98/98 extension, and 42/42 web tests, plus database lint, extension compile and
+  production build, exact manifest inspection, web lint/build, artifact privacy
+  scans, and whitespace/package checks.
+- Owner Chrome acceptance passed on Chrome 151.0.7922.170 and Windows 11 25H2,
+  including signed-out behavior, detail-only/discovery isolation, private 404,
+  create/change/persist, cross-user and social isolation, creator rejection,
+  keyboard/pending accessibility after an uncontaminated retest, 390 px layout,
+  privacy, and rate-limit rollback/recovery.
 
-Exit: Phase D acceptance is recorded, schedules remain paused, and Production
-remains untouched.
+Exit met: required CI, bounded Staging regression, exact cleanup, protected
+merge, and post-merge `main` CI passed; both schedules remain paused and
+Production remains untouched.
 
-## 6. Database migration sequencing and authorization
+## 6. Completed database migration sequencing and authorization record
 
 1. Write each migration additively; never edit the twelve merged baseline
    migrations or either D1a migration after its Local application.
@@ -634,7 +676,7 @@ remains untouched.
 If a Staging migration has been applied, rollback uses a reviewed forward
 migration or feature disablement. Do not edit or delete the applied file.
 
-## 7. Acceptance gates
+## 7. Acceptance gates — completed
 
 ### 7.1 Exact Local automated gate
 
@@ -692,9 +734,9 @@ fail on:
 - vote-based changes to feed order, moderation, publication, claims, or removal;
 - changed extension production permissions or hosted-media publication guards.
 
-Required review/CI, owner Chrome acceptance, and bounded Staging acceptance are
-separate gates; one does not substitute for another. Post-merge `main` CI is
-required before Phase D is formally closed.
+Required review/CI, owner Chrome acceptance, and bounded Staging acceptance were
+separate gates; one did not substitute for another. Both post-merge `main` CI
+runs passed and satisfied the final Phase D closure requirement.
 
 ### 7.3 Owner Chrome gate
 
@@ -806,10 +848,11 @@ private buckets, claims confidentiality, comments, source attribution, and
 paused Staging schedules. Production is not a Phase D rollback target because
 Phase D does not access or deploy Production.
 
-## 10. Exact owner manual checks eventually required
+## 10. Exact owner manual checks — completed record
 
-These checks are future acceptance instructions, not authorization to run them
-now. Use the accepted branch/build and stop at the first unexpected result.
+The owner completed these checks against the accepted Local fixtures and build.
+They remain here as the durable regression procedure; repeating them requires a
+newly authorized fixture setup and does not authorize remote work.
 
 ### 10.1 Preparation
 
@@ -909,56 +952,131 @@ Local or Staging label, annotation/media IDs where safe, screenshots, exact
 redirect status, and concise playback/accessibility notes. Do not report Chrome
 acceptance as passed unless the owner performed it and supplied the result.
 
-## 11. Unresolved decisions and risks
+## 11. Resolved decisions and remaining risks
 
-These decisions do not block planning but must be resolved at the named
-increment before implementation can exit:
+Phase D resolved these implementation decisions:
 
-1. **Creator self-votes (D2a):** decide whether creators may vote on their own
-   annotation. The schema supports either policy; it must be explicit and tested.
-2. **Rate-limit implementation (D2a):** approve the exact window, ceiling,
-   trusted backing store, retention, and multi-instance behavior. In-memory-only
-   Production limiting is not acceptable.
-3. **Signing TTL/player refresh (D1d):** D1c implements the authorized 120-second
-   TTL and one retry. Owner Chrome acceptance must still confirm expiry recovery,
-   seek/pause behavior, and whether the resulting removal latency is acceptable
-   before bounded Staging work.
-4. **Claim target hardening (D1a/F):** the current public claim insert policy does
-   not independently require a published parent. Decide whether to advance the
-   additive visibility check into D1 if security tests reproduce a practical
-   private-target submission path; claimant confidentiality cannot regress.
-5. **Generated-handle product acceptance (D1a):** deterministic handles are
-   architecturally safe and preserve links, but product must confirm whether a
-   creator must be prompted to choose one later in Phase E. D1 cannot delay
-   published canonical routes indefinitely for confirmation.
-6. **Removed-annotation presentation (D1b/F):** this plan uses not found for an
-   annotation whose own status is `removed`, while keeping a published annotation
-   visible when only its media is removed. Confirm copy and legal/audit retention
-   with the Phase F owner; do not expose confidential reason/claim data.
-7. **Metadata preview asset (D1d):** initial metadata can use text and the existing
-   site asset. A dynamic per-annotation image is optional and must not contain a
-   signed media frame, transcript body, or new image-processing dependency
-   without separate scope.
-8. **Runtime/distributed controls (Phase G):** final rate limiting, cookies, CSP,
-   callbacks, and cache behavior depend on the separately evaluated Next.js
-   runtime. Google Cloud Run is the first candidate; Bluehost WordPress Plus is
-   not assumed capable of hosting it.
+1. **Creator self-votes:** disallowed and covered at database, API, HTTP, and
+   owner-acceptance boundaries.
+2. **Rate limiting:** private PostgreSQL-backed fixed windows permit at most 20
+   mutations per user/annotation and 100 per user across annotations per 10
+   minutes. Rejections return bounded retry timing and do not mutate vote or
+   limiter state beyond the accepted decision boundary.
+3. **Signing TTL/player refresh:** fixed at 120 seconds with one bounded
+   same-origin retry. Local, owner Chrome, and Staging expiry/refresh/seek
+   evidence passed.
+4. **Initial vote placement:** totals remain canonical-detail-only and have no
+   discovery ordering or moderation effect.
+5. **Signed-out voting:** disabled controls remain visible with an explicit
+   sign-in action; vote buttons do not trigger unexpected OAuth navigation.
+
+The following decisions remain outside Phase D:
+
+1. **Claim target hardening (Phase F):** preserve claimant confidentiality and
+   decide the final published-parent insertion guard with the claim/removal
+   contract.
+2. **Generated-handle product acceptance (Phase E):** decide whether creators
+   must confirm or change deterministic handles. Existing aliases and canonical
+   links must remain durable.
+3. **Removed-annotation presentation (Phase F):** confirm final copy and legal/
+   audit retention while keeping confidential reason and claim data private.
+4. **Metadata preview asset:** the accepted text/existing-site asset remains.
+   Any dynamic per-annotation image requires separate scope and must not use a
+   signed media frame or transcript body.
+5. **Runtime/distributed controls (Phase G):** final cookies, CSP, callbacks,
+   caching, and operational rate-limit behavior depend on the selected trusted
+   Next.js runtime. Google Cloud Run remains the first candidate; Bluehost
+   WordPress Plus is not assumed capable of hosting it.
+6. **Staging secret rotation:** one D2 diagnostic emitted only five characters
+   following the standard `sb_secret_` prefix, not a complete or usable
+   credential. Optional defense-in-depth rotation remains an owner decision.
+
 ## 12. Authorization checkpoints
 
-The owner must separately authorize:
+Phase D checkpoints 1-8—implementation, additive Local migrations, owner
+Chrome gates, bounded D1/D2 Staging application/regression, commit/push/Draft
+PR, review/CI, squash merge, and post-merge closeout evidence—were separately
+authorized and completed. No authorization was inferred across checkpoints.
 
-1. D1 implementation on the existing planning branch or a named implementation
-   branch;
-2. any package or lockfile change;
-3. creation of each additive migration and Local application/testing;
-4. D1 owner Chrome acceptance;
-5. D1 Staging migration/application and each bounded remote fixture/invocation;
-6. D2 implementation and its separate additive migration;
-7. D2 owner Chrome and bounded Staging acceptance;
-8. commit, push, Draft PR, review/CI, merge, and post-merge closeout;
-9. any schedule enablement, Production access/deployment, DNS, Bluehost, Lovable,
-   OAuth/X, callback, vendor, or runtime-hosting change.
+Schedule enablement, Production access or deployment, DNS, Bluehost, Lovable,
+OAuth/X, callback, vendor, runtime-hosting, feature-branch deletion, and Phase E
+implementation remain unauthorized until separately approved. Production
+remains blocked until Phase E passes Local, required CI, and bounded Staging
+acceptance and a later Production gate is explicitly authorized.
 
-Authorization for one checkpoint does not imply another. Production remains
-blocked until Phase D and Phase E pass Local, required CI, and bounded Staging
-acceptance.
+## 13. Final Phase D closeout record
+
+### 13.1 Delivery and validation
+
+- D1 merged through protected PR #20 as
+  `50a3f9c38683d46f23991fbbd3ee49d807528a00`. Its required PR validation and
+  post-merge `main` CI run `32807426242` passed.
+- D2 merged through protected PR #21 as
+  `6f0f1c59acb52d5fb53dcc11dfd446b455ac5f2b`. Its required PR validation and
+  post-merge `main` CI run `32906492506` passed.
+- D1's final Local gate passed 356/356 pgTAP, 18/18 shared, 98/98 extension,
+  31/31 web, and 13/13 focused route/playback tests, plus schema lint, compile,
+  lint/build, generated-manifest, artifact-privacy, package, and whitespace
+  checks.
+- D2's final Local gate passed 440/440 pgTAP across 15 files, the complete
+  concurrency/privacy/abuse and authenticated HTTP harnesses, 18/18 shared,
+  98/98 extension, and 42/42 web tests, plus the same compile, lint/build,
+  manifest, privacy, package, and whitespace boundaries.
+- Owner Chrome acceptance passed on Chrome 151.0.7922.170, Windows 11 25H2.
+  D1 covered corrected canonical/UUID/historical-handle routing, old `/lons`
+  denial, article and historical parity, ready video/audio playback and signing
+  expiry, excerpt transcript, removed/private states, comments/follow/claim,
+  extension links/permissions, 390 px layout, keyboard/focus, and privacy. D2
+  covered signed-out behavior, detail-only discovery isolation, private 404,
+  create/change/persist, cross-user/social isolation, creator rejection,
+  keyboard/pending semantics, 390 px layout, privacy, 429 rollback, bounded
+  retry, and recovery.
+
+### 13.2 Bounded Staging and cleanup
+
+- Staging project `nkkunkwirvfwhmpwonqz` is aligned through all five D1
+  migrations (`20260824120000` through `20260824140000`) and all four D2
+  migrations (`20260825120000` through `20260825120300`).
+- D1 passed structural/RLS/grant/private-bucket assertions, canonical article
+  and historical-handle routing, normal hosted video/audio one-ID processing,
+  raw deletion, ready publication, excerpt transcript, same-origin 307 signing,
+  Range 206 playback, exact 120-second expiry, refresh, discovery, comments,
+  claims confidentiality, and public/log privacy. The bounded `whisper-1`
+  fixtures cost approximately $0.0016.
+- D2 passed 14/14 structural assertions; session-derived identity; signed-out,
+  same-origin/cross-origin, caller-ID, creator, draft, and removed boundaries;
+  create/idempotent/change/clear and concurrency; pair limit 20 with unchanged
+  HTTP 429 state and `Retry-After: 598`; global limit 100 with unchanged HTTP
+  429 state and `Retry-After: 583`; exact-window recovery; vote privacy; and
+  discovery/publication/comments/follows/claims/removal/media/worker isolation.
+  D2 invoked no hosted processing or external provider and cost $0.
+- Every exact disposable Local and Staging user, session, profile, alias, source,
+  annotation, target, vote, limiter row, comment, follow, claim, transcript,
+  media row, raw object, processed object, temporary file, harness, and server
+  process was removed and verified at zero as applicable. Both worker schedules
+  remained paused before, during, and after the bounded gates.
+
+### 13.3 Sanitized security findings
+
+- Raw and processed buckets remain private. Public projections and generated
+  artifacts expose no raw/processed path, checksum, signed URL, provider
+  metadata, claimant data, voter identity graph, private limiter state, full-
+  source transcript, or server credential.
+- Route, signing, and voting boundaries derive authoritative identity and paths
+  server-side, reject caller substitution and non-public states, use bounded no-
+  store responses, and leave publication, moderation, social, media, and worker
+  state isolated from votes.
+- One D1 disposable harness assertion emitted an already short-lived processed-
+  media token into private task output. The related object was deleted
+  immediately, the token expired, and the corrected closeout harness completed
+  without further token-shaped output. No service or user credential was
+  exposed.
+- One D2 diagnostic emitted only five characters following the standard
+  `sb_secret_` prefix. It was not a complete or usable credential. No full key,
+  access token, database URL, password, signed URL, or voter identity was
+  printed or persisted; optional Staging-secret rotation remains an owner
+  defense-in-depth decision.
+- No package or lockfile changed. Production was not accessed, no schedule was
+  enabled, and nothing was deployed.
+
+Phase D is formally closed. Phase E planning is the next product checkpoint.

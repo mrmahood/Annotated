@@ -1,6 +1,6 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, updated 2026-08-24. Phases A-B and Phase C
+Status: accepted architecture, updated 2026-08-25. Phases A-B and Phase C
 increments C1-C6 are implemented and accepted. C6's least-privilege worker
 migrations, immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded
 lifecycle, crash, codec, geometry, exact-duration, transcript, retention, and
@@ -10,10 +10,13 @@ accepted immutable digest
 `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
 and the disposable fixtures were removed. PR #18 was squash-merged into
 protected `main` as `7a6bb9042cb8295575f0c8b89b9128d499c20652` after required validation;
-post-merge `main` CI also passed. Production was not accessed or deployed,
-schedules remain paused, and Phase D is active. D1a-D1e have completed Local-
-only implementation and automated validation; D1d owner Chrome acceptance and
-D1e reserved-root handle hardening are complete, while D2 remains unimplemented.
+post-merge `main` CI also passed. Phase D is complete: D1 and D2 passed Local,
+owner Chrome, required CI, bounded Staging regression, exact cleanup, protected
+squash merge, and post-merge `main` CI. PR #20 merged D1 as
+`50a3f9c38683d46f23991fbbd3ee49d807528a00`; PR #21 merged D2 as
+`6f0f1c59acb52d5fb53dcc11dfd446b455ac5f2b`. Staging migration history is
+aligned through `20260825120300`. Production was not accessed or deployed,
+schedules remain paused, and Phase E is next.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -44,15 +47,21 @@ The bounded Phase D execution plan is
 - Use `profiles.username` as the current creator handle, reserve old handles,
   and store an immutable annotation slug. The UUID remains authoritative.
 
-## 1. Existing architecture findings
+## 1. Baseline architecture findings
+
+This section records the pre-implementation audit that informed Phases A-D.
+The Phase D closeout state supersedes its historical migration and route counts:
+the repository now has 21 additive migrations, Staging is aligned through
+`20260825120300`, canonical creator/slug routes and compatibility redirects are
+active, and the private voting domain is present. The remaining architectural
+findings continue to explain why those boundaries were chosen.
 
 ### Data model and publication
 
-The branch currently has sixteen additive migrations in
-`supabase/migrations/`. The first twelve are merged and Staging is aligned
-through `20260824020000`; Phase D1a migrations `20260824120000` and
-`20260824123000` plus D1c migrations `20260824130000` and `20260824133000`
-are applied to Local only and have not been applied remotely:
+At the Phase D planning baseline, the branch had sixteen additive migrations in
+`supabase/migrations/`. The first twelve were merged and Staging was aligned
+through `20260824020000`; the initial D1 migrations were then Local-only. The
+closeout state is recorded above; the bullets below preserve the baseline audit:
 
 - `profiles` contains a nullable `username` with lowercase-format validation and
   a case-insensitive unique index. New-user provisioning deliberately leaves it
@@ -772,6 +781,13 @@ The exact contract audit, security boundaries, D1/D2 increments, validation,
 owner checks, rollback, and authorization sequence are recorded in
 `docs/architecture/phase-d-public-experience-plan.md`.
 
+Status: complete and merged. D1 and D2 passed complete Local automation, owner
+Chrome acceptance, required CI, bounded sequential Staging regression, exact
+cleanup, protected squash merge, and post-merge `main` CI. Staging is aligned
+through `20260825120300`; both schedules remain paused and Production was not
+accessed or deployed. D1's bounded hosted acceptance cost approximately $0.0016
+for `whisper-1`; D2 cost $0.
+
 - D1 adds `apps/web/src/app/[creatorHandle]/[annotationSlug]/page.tsx`, a
   trusted canonical resolver/loader, permanent UUID and alias compatibility
   redirects, article parity, ready hosted playback, excerpt-only transcripts,
@@ -791,6 +807,10 @@ owner checks, rollback, and authorization sequence are recorded in
   forward migration.
 
 ### E. Create experience and authentication
+
+Status: next and separately authorized. Begin with a repository contract audit
+and bounded implementation/acceptance plan before changing the Create surface or
+authentication behavior.
 
 - Rename the visible extension tab **Context** to **Create** and add a bounded
   **Text / Video / Audio** mode switcher.
@@ -844,7 +864,7 @@ owner checks, rollback, and authorization sequence are recorded in
 - Launch design covers DNS, TLS, Supabase and OAuth callback URLs, extension
   callbacks, cookies, CSP, secret isolation, monitoring/alerts, rollback, and
   staged Production enablement.
-- Production remains blocked until Phase D and Phase E pass Local, required CI,
+- Production remains blocked until Phase E passes Local, required CI,
   and bounded Staging acceptance. Production access, DNS/OAuth/vendor changes,
   deployment, schedule enablement, and traffic cutover remain separate explicit
   authorization checkpoints.

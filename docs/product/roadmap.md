@@ -1,17 +1,16 @@
 # Product roadmap
 
-Status: Phase C complete and merged, 2026-08-24. Increments C1-C6, their Local
-and bounded Staging validation, and their owner acceptance gates are complete.
-PR #18 was squash-merged into protected `main` as
-`7a6bb9042cb8295575f0c8b89b9128d499c20652` after its required validation
-passed; the post-merge `main` CI run also passed. Staging migration history is
-aligned through `20260824020000`, all three worker jobs use accepted immutable
+Status: Phase D complete and merged, 2026-08-25. D1 and D2 completed their
+Local automated gates, owner Chrome acceptance, required CI, bounded Staging
+application/regression, exact fixture cleanup, protected squash merges, and
+post-merge `main` CI. PR #20 merged D1 as
+`50a3f9c38683d46f23991fbbd3ee49d807528a00`; PR #21 merged D2 as
+`6f0f1c59acb52d5fb53dcc11dfd446b455ac5f2b`. Staging migration history is
+aligned through `20260825120300`, all three worker jobs retain accepted immutable
 digest `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
-and both schedules remain paused. Production was not accessed or deployed.
-Phase D is active. D1a-D1e have completed Local-only implementation and
-automated validation; D1d owner Chrome acceptance and exact Local fixture
-cleanup are complete, and D1e reserves the framework-owned canonical-route
-roots. D2 remains unimplemented and separately authorized.
+and both schedules remain paused. Every disposable D1/D2 Local and Staging
+fixture was removed and verified at zero. Production was not accessed or
+deployed. Phase E is next and remains separately authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -245,7 +244,7 @@ review, protected validation, and squash merge recorded at the top of this
 roadmap. Production rollout and schedule enablement remain separately
 authorized.
 
-## Phase D — next
+## Phase D — complete
 
 Public annotation delivery and social experience. The detailed implementation
 and acceptance sequence is defined in
@@ -290,7 +289,41 @@ and acceptance sequence is defined in
 - Require published-only eligibility, stable bounded errors, mutation rate
   limits, abuse tests, and article/hosted-media/social regression coverage.
 
-## Phase E — future
+D1 shipped through PR #20 after its Local gate (356/356 pgTAP, 18/18 shared,
+98/98 extension, 31/31 web, and 13/13 focused route/playback tests), owner Chrome
+acceptance, green required CI, and bounded Staging regression. Its five additive
+migrations are applied through `20260824140000`. Canonical/UUID/alias routing,
+private ready video/audio delivery, exact 120-second signing, Range playback,
+excerpt-only transcripts, removed/private states, discovery, extension links,
+comments, follows, claims confidentiality, responsive layout, accessibility,
+and privacy passed. Exact cleanup returned all disposable rows, objects, users,
+and processes to zero. The bounded hosted fixtures incurred approximately
+$0.0016 in `whisper-1` cost; both schedules remained paused.
+
+D2 shipped through PR #21 after its Local gate (440/440 pgTAP, 18/18 shared,
+98/98 extension, 42/42 web, concurrency/privacy/abuse, and authenticated HTTP
+coverage), owner Chrome acceptance, green required CI, and bounded Staging
+regression. Its four additive migrations are applied through
+`20260825120300`. Creator self-votes are disallowed; private PostgreSQL fixed-
+window limits allow at most 20 mutations per user/annotation and 100 per user
+across annotations per 10 minutes. Separate totals, session-derived identity,
+same-origin enforcement, create/change/clear, concurrency, HTTP 429 rollback and
+recovery, voter privacy, and complete discovery/publication/social/media/worker
+isolation passed. Exact cleanup returned all disposable rows, limiter state,
+users, sessions, and processes to zero. D2 used no hosted processing or external
+provider and cost $0; both schedules remained paused.
+
+The D1 and D2 security reviews found no remaining public path, signed URL,
+provider metadata, claimant data, voter graph, limiter state, or usable secret
+exposure. One D1 disposable harness emitted an already short-lived processed-
+media token into private task output; the object was deleted, the token expired,
+and the corrected harness completed without further token output. One D2
+diagnostic emitted only five characters following the standard `sb_secret_`
+prefix; it was not a complete or usable credential. Optional Staging-secret
+rotation remains an owner defense-in-depth decision. No full credential was
+printed or persisted.
+
+## Phase E — next
 
 Create experience and authentication:
 
@@ -336,28 +369,20 @@ Production launch and hardening:
   monitoring, alerting, rollback, retention operations, and staged Production
   enablement. Preserve the Chrome/browser/device, zoom/DPR/fullscreen/resize,
   auth/session, retry, privacy, security, and end-to-end regression matrices.
-- Production remains blocked until Phase D and Phase E pass Local, required CI,
+- Production remains blocked until Phase E passes Local, required CI,
   and bounded Staging acceptance. Production access, deployment, schedule
   enablement, DNS/OAuth/vendor configuration, and traffic cutover each require
   their own explicit authorization.
 
 Phase B's automated and owner-performed browser acceptance gates passed. C1-C6
-implementation and owner acceptance are complete. The exact-duration
-lower-bound correction found during Draft PR review passed its separately
-authorized Staging regression. The later processed-bucket,
-resumable-recapture, orphan-derivative, removed-state, and processed-only
-terminal cleanup corrections passed their separately authorized additive
-Staging application and exact paused-schedule reconciliation gate. Required PR
-validation and post-merge `main` CI passed, and Phase C is formally closed.
-Phase D is active. D1a's additive route/data contract, D1b's canonical
-article/historical-range routes, and D1c's private ready-media playback,
-excerpt transcript, and removed-media presentation have completed Local-only
-validation. D1d implementation, automated Local validation, owner Chrome
-acceptance, and exact fixture cleanup are complete. D1e's separately authorized
-additive migration now reserves `api`, `auth`, and `_next` across controlled,
-generated, direct-profile, and alias handle assignment; its bounded Local
-preflight returned zero current or alias conflicts and its focused pgTAP passed
-34/34. D2, commit/push/Draft PR, Staging changes, schedule enablement,
-Production access, and deployment remain unauthorized. Production rollout
-remains blocked until the Phase D and Phase E Local, CI, and bounded Staging
-gates pass and later Production authorization is explicitly granted.
+implementation and owner acceptance are complete, and Phase C is formally
+closed. Phase D's D1a-D1e canonical public experience and D2a-D2c voting work
+are implemented, owner-accepted, applied and regression-tested in bounded
+Staging, cleaned exactly, squash-merged through PRs #20 and #21, and verified by
+successful post-merge `main` CI runs `32807426242` and `32906492506`. Staging is
+aligned through `20260825120300`, both schedules remain paused, and Production
+was not accessed or deployed. Phase D is formally closed. Phase E planning and
+implementation, schedule enablement, Production access, and deployment remain
+separately authorized. Production rollout remains blocked until Phase E passes
+its Local, required CI, and bounded Staging gates and later Production
+authorization is explicitly granted.
