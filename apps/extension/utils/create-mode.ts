@@ -1,0 +1,364 @@
+export const CREATE_MODES = ['text', 'video', 'audio'] as const;
+export type CreateMode = typeof CREATE_MODES[number];
+export type MediaCreateMode = Exclude<CreateMode, 'text'>;
+
+export type ModeCapability =
+  | { status: 'checking' }
+  | { status: 'available' }
+  | { status: 'unavailable'; reason: string };
+
+export type ModeCapabilities = Record<CreateMode, ModeCapability>;
+
+export type CreatePageIdentity = {
+  tabId: number;
+  windowId: number;
+  sourceKey: string;
+};
+
+export type CreatePageGeneration = {
+  generation: number;
+  identity: CreatePageIdentity;
+};
+
+export type ModeSelectionState = {
+  page: CreatePageGeneration;
+  capabilities: ModeCapabilities;
+  recommendedMode: CreateMode | null;
+  selectedMode: CreateMode | null;
+  selectedBy: 'automatic' | 'explicit';
+};
+
+export type ModeRevisionState = Record<CreateMode, number>;
+
+export type ModeAsyncToken = {
+  pageGeneration: number;
+  pageIdentity: CreatePageIdentity;
+  mode: CreateMode;
+  modeRevision: number;
+};
+
+export type PlayerReadState = 'idle' | 'reading' | 'error';
+
+export type TextCreateDraftState = {
+  commentary: string;
+  revision: number;
+};
+
+export type MediaCreateDraftState = {
+  sourceKey: string | null;
+  playerIdentity: string | null;
+  startMs: number | null;
+  endMs: number | null;
+  durationMs: number | null;
+  playerTimeMs: number | null;
+  commentary: string;
+  playerReadState: PlayerReadState;
+  revision: number;
+};
+
+export type CreateDraftState = {
+  text: TextCreateDraftState;
+  video: MediaCreateDraftState;
+  audio: MediaCreateDraftState;
+};
+
+type MediaDraftPatch = Partial<Omit<MediaCreateDraftState, 'revision'>>;
+
+export type CreateDraftAction =
+  | { type: 'set-text-commentary'; commentary: string }
+  | { type: 'patch-media'; mode: MediaCreateMode; patch: MediaDraftPatch }
+  | { type: 'restore-media'; mode: MediaCreateMode; sourceKey: string; startMs: number | null; endMs: number | null; commentary: string }
+  | { type: 'reset-mode'; mode: CreateMode }
+  | { type: 'advance-revision'; mode: CreateMode };
+
+const COMMENTARY_LIMIT = 2_000;
+const CAPABILITY_REASON_LIMIT = 160;
+
+const EMPTY_MEDIA_DRAFT: Omit<MediaCreateDraftState, 'revision'> = {
+  sourceKey: null,
+  playerIdentity: null,
+  startMs: null,
+  endMs: null,
+  durationMs: null,
+  playerTimeMs: null,
+  commentary: '',
+  playerReadState: 'idle',
+};
+
+export function createInitialModeCapabilities(): ModeCapabilities {
+  return {
+    text: { status: 'checking' },
+    video: { status: 'checking' },
+    audio: { status: 'checking' },
+  };
+}
+
+export function createInitialModeRevisions(): ModeRevisionState {
+  return { text: 0, video: 0, audio: 0 };
+}
+
+export function createInitialDraftState(): CreateDraftState {
+  return {
+    text: { commentary: '', revision: 0 },
+    video: { ...EMPTY_MEDIA_DRAFT, revision: 0 },
+    audio: { ...EMPTY_MEDIA_DRAFT, revision: 0 },
+  };
+}
+
+function isPageIdentity(value: CreatePageIdentity): boolean {
+  return (
+    Number.isInteger(value.tabId) && value.tabId >= 0 &&
+    Number.isInteger(value.windowId) && value.windowId >= 0 &&
+    value.sourceKey.trim().length > 0
+  );
+}
+
+export function pageIdentityMatches(
+  first: CreatePageIdentity,
+  second: CreatePageIdentity,
+): boolean {
+  return (
+    first.tabId === second.tabId &&
+    first.windowId === second.windowId &&
+    first.sourceKey === second.sourceKey
+  );
+}
+
+export function updatePageGeneration(
+  current: CreatePageGeneration | null,
+  identity: CreatePageIdentity,
+): CreatePageGeneration {
+  if (!isPageIdentity(identity)) throw new Error('The Create page identity is invalid.');
+  if (current && pageIdentityMatches(current.identity, identity)) return current;
+  return {
+    generation: (current?.generation ?? 0) + 1,
+    identity: { ...identity },
+  };
+}
+
+function isAvailable(capability: ModeCapability): boolean {
+  return capability.status === 'available';
+}
+
+function validateModeCapabilities(capabilities: ModeCapabilities): void {
+  for (const mode of CREATE_MODES) {
+    const capability = capabilities[mode] as ModeCapability | undefined;
+    if (!capability || (
+      capability.status !== 'checking' &&
+      capability.status !== 'available' &&
+      capability.status !== 'unavailable'
+    )) {
+      throw new Error('The Create mode capability is invalid.');
+    }
+    if (
+      capability.status === 'unavailable' &&
+      (!capability.reason.trim() || capability.reason.length > CAPABILITY_REASON_LIMIT)
+    ) {
+      throw new Error('The Create mode capability reason is invalid.');
+    }
+  }
+}
+
+export function getRecommendedMode(capabilities: ModeCapabilities): CreateMode | null {
+  validateModeCapabilities(capabilities);
+  if (isAvailable(capabilities.video)) return 'video';
+  if (isAvailable(capabilities.audio)) return 'audio';
+  if (isAvailable(capabilities.text)) return 'text';
+  return null;
+}
+
+export function createModeSelectionState(
+  page: CreatePageGeneration,
+  capabilities: ModeCapabilities,
+): ModeSelectionState {
+  validateModeCapabilities(capabilities);
+  const recommendedMode = getRecommendedMode(capabilities);
+  return {
+    page,
+    capabilities,
+    recommendedMode,
+    selectedMode: recommendedMode,
+    selectedBy: 'automatic',
+  };
+}
+
+export function updateModeCapabilities(
+  state: ModeSelectionState,
+  capabilities: ModeCapabilities,
+): ModeSelectionState {
+  validateModeCapabilities(capabilities);
+  const recommendedMode = getRecommendedMode(capabilities);
+  const currentCapability = state.selectedMode
+    ? capabilities[state.selectedMode]
+    : null;
+  const preserveExplicit = (
+    state.selectedBy === 'explicit' &&
+    state.selectedMode !== null &&
+    currentCapability?.status !== 'unavailable'
+  );
+  return {
+    ...state,
+    capabilities,
+    recommendedMode,
+    selectedMode: preserveExplicit ? state.selectedMode : recommendedMode,
+    selectedBy: preserveExplicit ? 'explicit' : 'automatic',
+  };
+}
+
+export function selectCreateMode(
+  state: ModeSelectionState,
+  mode: CreateMode,
+): ModeSelectionState {
+  if (!isAvailable(state.capabilities[mode])) return state;
+  return { ...state, selectedMode: mode, selectedBy: 'explicit' };
+}
+
+export function moveSelectionToPage(
+  state: ModeSelectionState,
+  page: CreatePageGeneration,
+  capabilities: ModeCapabilities,
+): ModeSelectionState {
+  if (
+    state.page.generation === page.generation &&
+    pageIdentityMatches(state.page.identity, page.identity)
+  ) {
+    return updateModeCapabilities(state, capabilities);
+  }
+  return createModeSelectionState(page, capabilities);
+}
+
+export function advanceModeRevision(
+  revisions: ModeRevisionState,
+  mode: CreateMode,
+): ModeRevisionState {
+  return { ...revisions, [mode]: revisions[mode] + 1 };
+}
+
+export function createModeAsyncToken(
+  page: CreatePageGeneration,
+  revisions: ModeRevisionState,
+  mode: CreateMode,
+): ModeAsyncToken {
+  return {
+    pageGeneration: page.generation,
+    pageIdentity: { ...page.identity },
+    mode,
+    modeRevision: revisions[mode],
+  };
+}
+
+export function isModeAsyncTokenCurrent(
+  token: ModeAsyncToken,
+  page: CreatePageGeneration,
+  revisions: ModeRevisionState,
+): boolean {
+  return (
+    token.pageGeneration === page.generation &&
+    pageIdentityMatches(token.pageIdentity, page.identity) &&
+    token.modeRevision === revisions[token.mode]
+  );
+}
+
+function validCommentary(value: string): boolean {
+  return value.length <= COMMENTARY_LIMIT;
+}
+
+function validTime(value: number | null): boolean {
+  return value === null || (Number.isSafeInteger(value) && value >= 0);
+}
+
+function validateMediaPatch(patch: MediaDraftPatch): void {
+  if (patch.commentary !== undefined && !validCommentary(patch.commentary)) {
+    throw new Error('The Create commentary is invalid.');
+  }
+  for (const key of ['startMs', 'endMs', 'durationMs', 'playerTimeMs'] as const) {
+    if (patch[key] !== undefined && !validTime(patch[key])) {
+      throw new Error('The Create media time is invalid.');
+    }
+  }
+  if (
+    patch.playerReadState !== undefined &&
+    patch.playerReadState !== 'idle' &&
+    patch.playerReadState !== 'reading' &&
+    patch.playerReadState !== 'error'
+  ) {
+    throw new Error('The Create player read state is invalid.');
+  }
+  if (
+    (patch.sourceKey !== undefined && patch.sourceKey !== null && !patch.sourceKey.trim()) ||
+    (patch.playerIdentity !== undefined && patch.playerIdentity !== null && !patch.playerIdentity.trim())
+  ) {
+    throw new Error('The Create media identity is invalid.');
+  }
+}
+
+export function reduceCreateDraftState(
+  state: CreateDraftState,
+  action: CreateDraftAction,
+): CreateDraftState {
+  if (action.type === 'set-text-commentary') {
+    if (!validCommentary(action.commentary)) throw new Error('The Create commentary is invalid.');
+    return {
+      ...state,
+      text: {
+        commentary: action.commentary,
+        revision: state.text.revision + 1,
+      },
+    };
+  }
+  if (action.type === 'patch-media') {
+    validateMediaPatch(action.patch);
+    const current = state[action.mode];
+    return {
+      ...state,
+      [action.mode]: {
+        ...current,
+        ...action.patch,
+        revision: current.revision + 1,
+      },
+    };
+  }
+  if (action.type === 'restore-media') {
+    validateMediaPatch(action);
+    const current = state[action.mode];
+    return {
+      ...state,
+      [action.mode]: {
+        ...EMPTY_MEDIA_DRAFT,
+        sourceKey: action.sourceKey,
+        startMs: action.startMs,
+        endMs: action.endMs,
+        commentary: action.commentary,
+        revision: current.revision + 1,
+      },
+    };
+  }
+  if (action.type === 'reset-mode') {
+    if (action.mode === 'text') {
+      return {
+        ...state,
+        text: { commentary: '', revision: state.text.revision + 1 },
+      };
+    }
+    return {
+      ...state,
+      [action.mode]: {
+        ...EMPTY_MEDIA_DRAFT,
+        revision: state[action.mode].revision + 1,
+      },
+    };
+  }
+  if (action.mode === 'text') {
+    return {
+      ...state,
+      text: { ...state.text, revision: state.text.revision + 1 },
+    };
+  }
+  return {
+    ...state,
+    [action.mode]: {
+      ...state[action.mode],
+      revision: state[action.mode].revision + 1,
+    },
+  };
+}

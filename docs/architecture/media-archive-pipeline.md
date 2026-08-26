@@ -16,12 +16,17 @@ squash merge, and post-merge `main` CI. PR #20 merged D1 as
 `50a3f9c38683d46f23991fbbd3ee49d807528a00`; PR #21 merged D2 as
 `6f0f1c59acb52d5fb53dcc11dfd446b455ac5f2b`. Staging migration history is
 aligned through `20260825120300`. Production was not accessed or deployed,
-schedules remain paused, and Phase E is next.
+schedules remain paused. Phase E planning is defined. E1a implementation and
+deterministic Local validation are complete on its feature branch; Draft PR
+review, required CI, and merge remain pending. E1b and later work remain
+separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
 The bounded Phase D execution plan is
 `docs/architecture/phase-d-public-experience-plan.md`.
+The bounded Phase E planning contract is
+`docs/architecture/phase-e-create-auth-plan.md`.
 
 ## Decision summary
 
@@ -808,9 +813,14 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: next and separately authorized. Begin with a repository contract audit
-and bounded implementation/acceptance plan before changing the Create surface or
-authentication behavior.
+Status: planning contract complete. E1a's local capability/data contract,
+page-generation/revision rules, independent draft state, and regressions pass the
+focused and complete extension test suites, TypeScript compilation, and
+production build/manifest inspection. Draft PR review, required CI, and merge are
+pending. E1b and later implementation remain separately authorized. The verified
+audit, design, security review,
+increment boundaries, and acceptance plan are in
+`docs/architecture/phase-e-create-auth-plan.md`.
 
 - Rename the visible extension tab **Context** to **Create** and add a bounded
   **Text / Video / Audio** mode switcher.

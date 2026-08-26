@@ -58,6 +58,10 @@ import { getSupabaseClient } from '../../utils/supabase';
 import { getWebAppOrigin } from '../../utils/web-app-url';
 import { publishArticleAnnotation } from '../../utils/annotation-publishing';
 import {
+  createInitialDraftState,
+  reduceCreateDraftState,
+} from '../../utils/create-mode';
+import {
   YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
   deserializeYouTubeClipDraft,
   serializeYouTubeClipDraft,
@@ -296,7 +300,11 @@ function App() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [sourceState, setSourceState] = useState<SourceState>({ status: 'loading' });
   const [captureState, setCaptureState] = useState<CaptureState>({ status: 'idle' });
-  const [commentary, setCommentary] = useState('');
+  const [createDraftState, dispatchCreateDraft] = useReducer(
+    reduceCreateDraftState,
+    undefined,
+    createInitialDraftState,
+  );
   const [draftRestorationStatus, setDraftRestorationStatus] = useState<'loading' | 'ready'>('loading');
   const [publishState, setPublishState] = useState<PublishState>({ status: 'idle' });
   const [youtubePublishState, setYoutubePublishState] = useState<PublishState>({ status: 'idle' });
@@ -306,13 +314,6 @@ function App() {
   const [mediaCaptureOperation, setMediaCaptureOperation] = useState<HostedMediaOperation | null>(null);
   const [isCancellingHostedMedia, setIsCancellingHostedMedia] = useState(false);
   const hostedMediaSessionRef = useRef<HostedMediaSession | null>(null);
-  const [clipStartMs, setClipStartMs] = useState<number | null>(null);
-  const [clipEndMs, setClipEndMs] = useState<number | null>(null);
-  const [videoDurationMs, setVideoDurationMs] = useState<number | null>(null);
-  const [playerTimeMs, setPlayerTimeMs] = useState<number | null>(null);
-  const [youtubeCommentary, setYoutubeCommentary] = useState('');
-  const [audioCommentary, setAudioCommentary] = useState('');
-  const [playerReadState, setPlayerReadState] = useState<'idle' | 'reading' | 'error'>('idle');
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [navigation, dispatchNavigation] = useReducer(reduceNavigation, INITIAL_NAVIGATION);
   const connectedContextRef = useRef<ActiveTabContext | null>(null);
@@ -327,6 +328,10 @@ function App() {
   const publishInFlightRef = useRef(false);
   const socialCacheRef = useRef<SessionSocialCache>(new Map());
   const audioRecorder = useAudioRecorder();
+
+  const commentary = createDraftState.text.commentary;
+  const videoDraftState = createDraftState.video;
+  const audioDraftState = createDraftState.audio;
 
   const currentScreen = getCurrentScreen(navigation);
   const currentUserId = authState.status === 'signed-in' ? authState.account.id : null;
@@ -350,13 +355,8 @@ function App() {
 
   const clearYoutubeDraft = useCallback(async () => {
     youtubeDraftRef.current = null;
-    setClipStartMs(null);
-    setClipEndMs(null);
-    setVideoDurationMs(null);
-    setPlayerTimeMs(null);
-    setYoutubeCommentary('');
+    dispatchCreateDraft({ type: 'reset-mode', mode: 'video' });
     setYoutubePublishState({ status: 'idle' });
-    setPlayerReadState('idle');
     try {
       await chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY);
     } catch {
@@ -387,13 +387,8 @@ function App() {
 
   const clearAudioDraft = useCallback(async () => {
     audioDraftRef.current = null;
-    setClipStartMs(null);
-    setClipEndMs(null);
-    setVideoDurationMs(null);
-    setPlayerTimeMs(null);
-    setAudioCommentary('');
+    dispatchCreateDraft({ type: 'reset-mode', mode: 'audio' });
     setAudioPublishState({ status: 'idle' });
-    setPlayerReadState('idle');
     try {
       await chrome.storage.session.remove(AUDIO_CLIP_DRAFT_STORAGE_KEY);
     } catch { console.warn('Unable to clear the audio clip draft.'); }
@@ -477,7 +472,7 @@ function App() {
     captureRevisionRef.current += 1;
     audioRecorder.discard();
     setCaptureState({ status: 'idle' });
-    setCommentary('');
+    dispatchCreateDraft({ type: 'reset-mode', mode: 'text' });
     setPublishState({ status: 'idle' });
     await removePersistedDraft();
   }, [audioRecorder.discard, removePersistedDraft]);
@@ -595,7 +590,7 @@ function App() {
       }
       audioRecorder.discard();
       setCaptureState({ status: 'captured', data: result.data });
-      setCommentary('');
+      dispatchCreateDraft({ type: 'set-text-commentary', commentary: '' });
       setPublishState({ status: 'idle' });
       persistDraft(draft);
     } catch (error) {
@@ -668,7 +663,8 @@ function App() {
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
-    setPlayerReadState('reading');
+    const mode = sourceState.source.classification === 'YouTube' ? 'video' : 'audio';
+    dispatchCreateDraft({ type: 'patch-media', mode, patch: { playerReadState: 'reading' } });
     try {
       const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
@@ -681,16 +677,31 @@ function App() {
         if (!player) throw new Error('The connected player is unavailable.');
         const currentMs = Math.round(player.currentTime * 1_000);
         const durationMs = player.duration === null ? null : Math.floor(player.duration * 1_000);
-        setPlayerTimeMs(currentMs);
-        setVideoDurationMs(durationMs);
+        const patch = {
+          sourceKey: sourceState.source.videoId,
+          playerTimeMs: currentMs,
+          durationMs,
+          playerReadState: 'idle' as const,
+        };
         if (action === 'start') {
-          setClipStartMs(currentMs);
-          persistYoutubeDraft(sourceState.source.url, currentMs, clipEndMs, youtubeCommentary);
+          dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { ...patch, startMs: currentMs } });
+          persistYoutubeDraft(
+            sourceState.source.url,
+            currentMs,
+            videoDraftState.endMs,
+            videoDraftState.commentary,
+          );
         } else if (action === 'end') {
-          setClipEndMs(currentMs);
-          persistYoutubeDraft(sourceState.source.url, clipStartMs, currentMs, youtubeCommentary);
+          dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { ...patch, endMs: currentMs } });
+          persistYoutubeDraft(
+            sourceState.source.url,
+            videoDraftState.startMs,
+            currentMs,
+            videoDraftState.commentary,
+          );
+        } else {
+          dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch });
         }
-        setPlayerReadState('idle');
         return;
       }
 
@@ -707,9 +718,16 @@ function App() {
           state.source.normalizedUrl === connectedAudioSource.normalizedUrl
           ? { status: 'connected', source: { ...state.source, playerId: null, playerStatus: 'unavailable' } }
           : state);
-        setPlayerTimeMs(null);
-        setVideoDurationMs(null);
-        setPlayerReadState('idle');
+        dispatchCreateDraft({
+          type: 'patch-media',
+          mode: 'audio',
+          patch: {
+            sourceKey: connectedAudioSource.normalizedUrl,
+            playerTimeMs: null,
+            durationMs: null,
+            playerReadState: 'idle',
+          },
+        });
         return;
       }
       setSourceState((state) => state.status === 'connected' &&
@@ -725,47 +743,82 @@ function App() {
           }
         : state);
       if (detection.selection.status !== 'supported' || detection.readiness === null) {
-        setPlayerTimeMs(null);
-        setVideoDurationMs(null);
-        setPlayerReadState('idle');
+        dispatchCreateDraft({
+          type: 'patch-media',
+          mode: 'audio',
+          patch: {
+            sourceKey: connectedAudioSource.normalizedUrl,
+            playerTimeMs: null,
+            durationMs: null,
+            playerReadState: 'idle',
+          },
+        });
         return;
       }
       if (detection.readiness.currentTime === null) {
-        setPlayerTimeMs(null);
-        setVideoDurationMs(null);
-        setPlayerReadState('idle');
+        dispatchCreateDraft({
+          type: 'patch-media',
+          mode: 'audio',
+          patch: {
+            sourceKey: connectedAudioSource.normalizedUrl,
+            playerTimeMs: null,
+            durationMs: null,
+            playerReadState: 'idle',
+          },
+        });
         return;
       }
       const currentMs = Math.round(detection.readiness.currentTime * 1_000);
       const durationMs = detection.readiness.duration === null
         ? null
         : Math.floor(detection.readiness.duration * 1_000);
-      setPlayerTimeMs(currentMs);
-      setVideoDurationMs(durationMs);
+      const patch = {
+        sourceKey: connectedAudioSource.normalizedUrl,
+        playerTimeMs: currentMs,
+        durationMs,
+        playerReadState: 'idle' as const,
+      };
       if (action === 'start') {
-        setClipStartMs(currentMs);
-        persistAudioDraft(connectedAudioSource, currentMs, clipEndMs, audioCommentary);
+        dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { ...patch, startMs: currentMs } });
+        persistAudioDraft(
+          connectedAudioSource,
+          currentMs,
+          audioDraftState.endMs,
+          audioDraftState.commentary,
+        );
       } else if (action === 'end') {
-        setClipEndMs(currentMs);
-        persistAudioDraft(connectedAudioSource, clipStartMs, currentMs, audioCommentary);
+        dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { ...patch, endMs: currentMs } });
+        persistAudioDraft(
+          connectedAudioSource,
+          audioDraftState.startMs,
+          currentMs,
+          audioDraftState.commentary,
+        );
+      } else {
+        dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch });
       }
-      setPlayerReadState('idle');
     } catch {
-      setPlayerReadState('error');
+      dispatchCreateDraft({ type: 'patch-media', mode, patch: { playerReadState: 'error' } });
     }
-  }, [audioCommentary, clipEndMs, clipStartMs, persistAudioDraft, persistYoutubeDraft, sourceState, youtubeCommentary]);
+  }, [audioDraftState, persistAudioDraft, persistYoutubeDraft, sourceState, videoDraftState]);
 
   const changeYoutubeCommentary = (value: string) => {
-    setYoutubeCommentary(value);
+    const sourceKey = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
+      ? sourceState.source.videoId
+      : videoDraftState.sourceKey;
+    dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { commentary: value, sourceKey } });
     if (sourceState.status === 'connected' && sourceState.source.classification === 'YouTube') {
-      persistYoutubeDraft(sourceState.source.url, clipStartMs, clipEndMs, value);
+      persistYoutubeDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
     }
   };
 
   const changeAudioCommentary = (value: string) => {
-    setAudioCommentary(value);
+    const sourceKey = sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio'
+      ? sourceState.source.normalizedUrl
+      : audioDraftState.sourceKey;
+    dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { commentary: value, sourceKey } });
     if (sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio') {
-      persistAudioDraft(sourceState.source, clipStartMs, clipEndMs, value);
+      persistAudioDraft(sourceState.source, audioDraftState.startMs, audioDraftState.endMs, value);
     }
   };
 
@@ -820,14 +873,15 @@ function App() {
     if (
       !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
       sourceState.status !== 'connected' || sourceState.source.classification !== 'YouTube' ||
-      clipStartMs === null || clipEndMs === null || !youtubeCommentary.trim()
+      videoDraftState.startMs === null || videoDraftState.endMs === null ||
+      !videoDraftState.commentary.trim()
     ) return;
     const rangeError = getNewMediaPublicationRangeError(
-      clipStartMs,
-      clipEndMs,
-      videoDurationMs,
+      videoDraftState.startMs,
+      videoDraftState.endMs,
+      videoDraftState.durationMs,
     );
-    if (rangeError || youtubeCommentary.length > 2_000) {
+    if (rangeError || videoDraftState.commentary.length > 2_000) {
       setYoutubePublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
       return;
     }
@@ -838,16 +892,16 @@ function App() {
         sourceUrl: sourceState.source.url,
         title: sourceState.source.title,
         channelName: sourceState.source.channelName,
-        startMs: clipStartMs,
-        endMs: clipEndMs,
-        commentaryText: youtubeCommentary,
-        videoDurationMs,
+        startMs: videoDraftState.startMs,
+        endMs: videoDraftState.endMs,
+        commentaryText: videoDraftState.commentary,
+        videoDurationMs: videoDraftState.durationMs,
       });
       await startHostedCapture(operation, {
         kind: 'youtube',
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
-      }, clipStartMs, clipEndMs);
+      }, videoDraftState.startMs, videoDraftState.endMs);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
       setYoutubePublishState({
@@ -857,22 +911,22 @@ function App() {
     } finally {
       publishInFlightRef.current = false;
     }
-  }, [authState.status, clipEndMs, clipStartMs, sourceState, startHostedCapture, supabase, videoDurationMs, youtubeCommentary]);
+  }, [authState.status, sourceState, startHostedCapture, supabase, videoDraftState]);
 
   const publishAudioClip = useCallback(async () => {
     if (
       !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
       sourceState.status !== 'connected' ||
       sourceState.source.classification !== 'Podcast / web audio' ||
-      clipStartMs === null || clipEndMs === null || !audioCommentary.trim() ||
-      videoDurationMs === null
+      audioDraftState.startMs === null || audioDraftState.endMs === null ||
+      !audioDraftState.commentary.trim() || audioDraftState.durationMs === null
     ) return;
     const rangeError = getNewMediaPublicationRangeError(
-      clipStartMs,
-      clipEndMs,
-      videoDurationMs,
+      audioDraftState.startMs,
+      audioDraftState.endMs,
+      audioDraftState.durationMs,
     );
-    if (rangeError || audioCommentary.length > 2_000) {
+    if (rangeError || audioDraftState.commentary.length > 2_000) {
       setAudioPublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
       return;
     }
@@ -886,16 +940,16 @@ function App() {
         author: sourceState.source.author,
         publisher: sourceState.source.publisher,
         showName: sourceState.source.showName,
-        startMs: clipStartMs,
-        endMs: clipEndMs,
-        commentaryText: audioCommentary,
-        mediaDurationMs: videoDurationMs,
+        startMs: audioDraftState.startMs,
+        endMs: audioDraftState.endMs,
+        commentaryText: audioDraftState.commentary,
+        mediaDurationMs: audioDraftState.durationMs,
       });
       await startHostedCapture(operation, {
         kind: 'audio',
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.normalizedUrl,
-      }, clipStartMs, clipEndMs);
+      }, audioDraftState.startMs, audioDraftState.endMs);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
       setAudioPublishState({
@@ -903,7 +957,7 @@ function App() {
         message: error instanceof Error ? error.message : 'The audio clip could not be published.',
       });
     } finally { publishInFlightRef.current = false; }
-  }, [audioCommentary, authState.status, clipEndMs, clipStartMs, sourceState, startHostedCapture, supabase, videoDurationMs]);
+  }, [audioDraftState, authState.status, sourceState, startHostedCapture, supabase]);
 
   const cancelHostedMedia = useCallback(async () => {
     const session = hostedMediaSession;
@@ -1056,48 +1110,50 @@ function App() {
 
   const previewYoutubeDraft = useCallback(async () => {
     if (
-      clipStartMs === null || sourceState.status !== 'connected' ||
+      videoDraftState.startMs === null || sourceState.status !== 'connected' ||
       sourceState.source.classification !== 'YouTube'
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
-    setPlayerReadState('reading');
+    dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { playerReadState: 'reading' } });
     try {
       const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
       const execution = await chrome.scripting.executeScript({
         target: { tabId: context.tabId, frameIds: [0] },
         func: playYouTubeVideoFrom,
-        args: [clipStartMs / 1_000],
+        args: [videoDraftState.startMs / 1_000],
       });
       if (execution[0]?.result !== true) throw new Error('The YouTube player is unavailable.');
-      setPlayerReadState('idle');
+      dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { playerReadState: 'idle' } });
     } catch {
-      setPlayerReadState('error');
+      dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { playerReadState: 'error' } });
     }
-  }, [clipStartMs, sourceState]);
+  }, [sourceState, videoDraftState.startMs]);
 
   const previewAudioDraft = useCallback(async () => {
     if (
-      clipStartMs === null || sourceState.status !== 'connected' ||
+      audioDraftState.startMs === null || sourceState.status !== 'connected' ||
       sourceState.source.classification !== 'Podcast / web audio'
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
-    setPlayerReadState('reading');
+    dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { playerReadState: 'reading' } });
     try {
       const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
       const execution = await chrome.scripting.executeScript({
         target: { tabId: context.tabId, frameIds: [0] },
         func: playAudioPageFrom,
-        args: [clipStartMs / 1_000, sourceState.source.normalizedUrl],
+        args: [audioDraftState.startMs / 1_000, sourceState.source.normalizedUrl],
       });
       const result = execution[0]?.result as { ok?: boolean } | undefined;
       if (result?.ok !== true) throw new Error('The connected page audio could not be controlled.');
-      setPlayerReadState('idle');
-    } catch { setPlayerReadState('error'); }
-  }, [clipStartMs, sourceState]);
+      dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { playerReadState: 'idle' } });
+    } catch {
+      dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { playerReadState: 'error' } });
+    }
+  }, [audioDraftState.startMs, sourceState]);
 
   useEffect(() => {
     if (
@@ -1165,9 +1221,14 @@ function App() {
         sourceState.source.canonicalUrl,
       )
     ) {
-      setClipStartMs(draft.startMs);
-      setClipEndMs(draft.endMs);
-      setAudioCommentary(draft.commentary);
+      dispatchCreateDraft({
+        type: 'restore-media',
+        mode: 'audio',
+        sourceKey: draft.source.normalizedUrl,
+        startMs: draft.startMs,
+        endMs: draft.endMs,
+        commentary: draft.commentary,
+      });
     } else if (draft) {
       void clearAudioDraft();
     }
@@ -1288,7 +1349,7 @@ function App() {
         if (!youtubeContext && shouldApplyDraftRestoration(restorationRevision, draftRevisionRef.current, draft, context)) {
           draftRef.current = draft;
           setCaptureState({ status: 'captured', data: draft.capture });
-          setCommentary(draft.commentary);
+          dispatchCreateDraft({ type: 'set-text-commentary', commentary: draft.commentary });
         } else if (restorationRevision === draftRevisionRef.current && storedDraftValue !== undefined) {
           draftRef.current = null;
           void removePersistedDraft();
@@ -1300,9 +1361,14 @@ function App() {
           youtubeClipDraftBelongsToSource(youtubeDraft, context.url)
         ) {
           youtubeDraftRef.current = youtubeDraft;
-          setClipStartMs(youtubeDraft.startMs);
-          setClipEndMs(youtubeDraft.endMs);
-          setYoutubeCommentary(youtubeDraft.commentary);
+          dispatchCreateDraft({
+            type: 'restore-media',
+            mode: 'video',
+            sourceKey: youtubeDraft.source.videoId,
+            startMs: youtubeDraft.startMs,
+            endMs: youtubeDraft.endMs,
+            commentary: youtubeDraft.commentary,
+          });
         } else if (restorationRevision === draftRevisionRef.current && storedYoutubeDraftValue !== undefined) {
           youtubeDraftRef.current = null;
           void chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY);
@@ -1412,7 +1478,7 @@ function App() {
 
   const changeCommentary = (value: string) => {
     draftRevisionRef.current += 1;
-    setCommentary(value);
+    dispatchCreateDraft({ type: 'set-text-commentary', commentary: value });
     const draft = draftRef.current;
     if (!draft) return;
     const updatedDraft = updateAnnotationDraftCommentary(draft, value);
@@ -1443,18 +1509,24 @@ function App() {
   const audioUnavailableSource = sourceState.status === 'connected' && sourceState.source.classification === 'Audio unavailable'
     ? sourceState.source
     : null;
-  const clipRangeError = getNewMediaPublicationRangeError(
-    clipStartMs,
-    clipEndMs,
-    videoDurationMs,
+  const videoClipRangeError = getNewMediaPublicationRangeError(
+    videoDraftState.startMs,
+    videoDraftState.endMs,
+    videoDraftState.durationMs,
+  );
+  const audioClipRangeError = getNewMediaPublicationRangeError(
+    audioDraftState.startMs,
+    audioDraftState.endMs,
+    audioDraftState.durationMs,
   );
   const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
-    clipRangeError === null && youtubeCommentary.trim().length > 0 &&
-    youtubeCommentary.length <= 2_000 && youtubePublishState.status !== 'publishing' &&
+    videoClipRangeError === null && videoDraftState.commentary.trim().length > 0 &&
+    videoDraftState.commentary.length <= 2_000 && youtubePublishState.status !== 'publishing' &&
     hostedMediaSession === null;
   const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
-    videoDurationMs !== null && clipRangeError === null && audioCommentary.trim().length > 0 &&
-    audioCommentary.length <= 2_000 && audioPublishState.status !== 'publishing' &&
+    audioDraftState.durationMs !== null && audioClipRangeError === null &&
+    audioDraftState.commentary.trim().length > 0 &&
+    audioDraftState.commentary.length <= 2_000 && audioPublishState.status !== 'publishing' &&
     hostedMediaSession === null;
   const hostedMediaPanel = hostedMediaSession ? (
     <div className="compact-state hosted-media-progress" role="status">
@@ -1542,16 +1614,16 @@ function App() {
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected video, set the start, continue watching, then set the end.</p>
                 <dl className="clip-time-grid">
-                  <div><dt>START</dt><dd>{clipStartMs === null ? '--:--' : formatMediaTime(clipStartMs)}</dd></div>
-                  <div><dt>END</dt><dd>{clipEndMs === null ? '--:--' : formatMediaTime(clipEndMs)}</dd></div>
-                  <div><dt>LENGTH</dt><dd>{clipStartMs === null || clipEndMs === null || clipEndMs <= clipStartMs ? '--:--' : formatMediaTime(clipEndMs - clipStartMs)}</dd></div>
+                  <div><dt>START</dt><dd>{videoDraftState.startMs === null ? '--:--' : formatMediaTime(videoDraftState.startMs)}</dd></div>
+                  <div><dt>END</dt><dd>{videoDraftState.endMs === null ? '--:--' : formatMediaTime(videoDraftState.endMs)}</dd></div>
+                  <div><dt>LENGTH</dt><dd>{videoDraftState.startMs === null || videoDraftState.endMs === null || videoDraftState.endMs <= videoDraftState.startMs ? '--:--' : formatMediaTime(videoDraftState.endMs - videoDraftState.startMs)}</dd></div>
                 </dl>
-                {playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(playerTimeMs)}</strong>{videoDurationMs !== null && <> / {formatMediaTime(videoDurationMs)}</>}</p>}
-                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>{playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
-                {clipStartMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>Preview from start</button>}
-                {clipStartMs !== null && clipEndMs !== null && clipRangeError && <p className="inline-error" role="alert">{clipRangeError}</p>}
-                {playerReadState === 'error' && <p className="inline-error" role="alert">The current YouTube player time could not be read. Reconnect the video and try again.</p>}
-                <div className="annotation-field"><label htmlFor="youtube-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="youtube-commentary" value={youtubeCommentary} maxLength={2_000} rows={6} required disabled={hostedMediaSession !== null} onChange={(event) => changeYoutubeCommentary(event.target.value)} /><span aria-live="polite">{youtubeCommentary.length.toLocaleString()} / 2,000</span></div>
+                {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTime(videoDraftState.durationMs)}</>}</p>}
+                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>{videoDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
+                {videoDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={videoDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Preview from start</button>}
+                {videoDraftState.startMs !== null && videoDraftState.endMs !== null && videoClipRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
+                {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current YouTube player time could not be read. Reconnect the video and try again.</p>}
+                <div className="annotation-field"><label htmlFor="youtube-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="youtube-commentary" value={videoDraftState.commentary} maxLength={2_000} rows={6} required disabled={hostedMediaSession !== null} onChange={(event) => changeYoutubeCommentary(event.target.value)} /><span aria-live="polite">{videoDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearYoutubeDraft()} disabled={youtubePublishState.status === 'publishing' || hostedMediaSession !== null}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginGoogleSignIn()}>Continue with Google</button> : <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
               </>}
@@ -1565,16 +1637,16 @@ function App() {
                 {audioSource.playerStatus === 'ambiguous' && <div className="compact-state compact-state-error" role="status"><strong>Choose the episode player</strong><span>Annotated found multiple equally eligible audio players. Pause all but the episode player, then use Refresh time.</span></div>}
                 {audioSource.playerStatus === 'unavailable' && <div className="compact-state compact-state-error" role="status"><strong>Audio player unavailable</strong><span>The previously detected top-level audio player can no longer be read. Reload the page player, then use Refresh time.</span></div>}
                 <dl className="clip-time-grid">
-                  <div><dt>START</dt><dd>{clipStartMs === null ? '--:--' : formatMediaTime(clipStartMs)}</dd></div>
-                  <div><dt>END</dt><dd>{clipEndMs === null ? '--:--' : formatMediaTime(clipEndMs)}</dd></div>
-                  <div><dt>LENGTH</dt><dd>{clipStartMs === null || clipEndMs === null || clipEndMs <= clipStartMs ? '--:--' : formatMediaTime(clipEndMs - clipStartMs)}</dd></div>
+                  <div><dt>START</dt><dd>{audioDraftState.startMs === null ? '--:--' : formatMediaTime(audioDraftState.startMs)}</dd></div>
+                  <div><dt>END</dt><dd>{audioDraftState.endMs === null ? '--:--' : formatMediaTime(audioDraftState.endMs)}</dd></div>
+                  <div><dt>LENGTH</dt><dd>{audioDraftState.startMs === null || audioDraftState.endMs === null || audioDraftState.endMs <= audioDraftState.startMs ? '--:--' : formatMediaTime(audioDraftState.endMs - audioDraftState.startMs)}</dd></div>
                 </dl>
-                {playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(playerTimeMs)}</strong>{videoDurationMs !== null && <> / {formatMediaTime(videoDurationMs)}</>}</p>}
-                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>{playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
-                {clipStartMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={playerReadState === 'reading' || hostedMediaSession !== null}>Preview / Jump to start</button>}
-                {clipStartMs !== null && clipEndMs !== null && clipRangeError && <p className="inline-error" role="alert">{clipRangeError}</p>}
-                {playerReadState === 'error' && <p className="inline-error" role="alert">The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.</p>}
-                <div className="annotation-field"><label htmlFor="audio-clip-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="audio-clip-commentary" value={audioCommentary} maxLength={2_000} rows={6} required disabled={hostedMediaSession !== null} onChange={(event) => changeAudioCommentary(event.target.value)} /><span aria-live="polite">{audioCommentary.length.toLocaleString()} / 2,000</span></div>
+                {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTime(audioDraftState.durationMs)}</>}</p>}
+                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>{audioDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
+                {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={audioDraftState.playerReadState === 'reading' || hostedMediaSession !== null}>Preview / Jump to start</button>}
+                {audioDraftState.startMs !== null && audioDraftState.endMs !== null && audioClipRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
+                {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.</p>}
+                <div className="annotation-field"><label htmlFor="audio-clip-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="audio-clip-commentary" value={audioDraftState.commentary} maxLength={2_000} rows={6} required disabled={hostedMediaSession !== null} onChange={(event) => changeAudioCommentary(event.target.value)} /><span aria-live="polite">{audioDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || hostedMediaSession !== null}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginGoogleSignIn()}>Continue with Google</button> : <button className="button button-primary" type="button" onClick={() => void publishAudioClip()} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
               </>}
