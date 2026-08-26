@@ -2,17 +2,23 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  CREATE_MODES,
+  CREATE_MODE_SELECTION_STORAGE_KEY,
   advanceModeRevision,
   createInitialDraftState,
   createInitialModeCapabilities,
   createInitialModeRevisions,
   createModeAsyncToken,
   createModeSelectionState,
+  deserializeCreateModeSelection,
   getRecommendedMode,
+  hasCreateModeDraft,
   isModeAsyncTokenCurrent,
   moveSelectionToPage,
   reduceCreateDraftState,
   selectCreateMode,
+  serializeCreateModeSelection,
+  storedCreateModeSelectionMatches,
   updateModeCapabilities,
   updatePageGeneration,
 } from './create-mode.ts';
@@ -28,6 +34,7 @@ function capabilities({ text = 'available', video = 'unavailable', audio = 'unav
 }
 
 test('recommendation is deterministic and independent from simultaneous availability', () => {
+  assert.deepEqual(CREATE_MODES, ['text', 'video', 'audio']);
   assert.deepEqual(createInitialModeCapabilities(), {
     text: { status: 'checking' },
     video: { status: 'checking' },
@@ -43,6 +50,19 @@ test('recommendation is deterministic and independent from simultaneous availabi
   }));
 });
 
+test('page-scoped explicit mode selection round-trips through bounded session storage', () => {
+  const stored = serializeCreateModeSelection(IDENTITY, 'audio');
+  assert.equal(CREATE_MODE_SELECTION_STORAGE_KEY, 'annotated.createModeSelection.v1');
+  assert.deepEqual(deserializeCreateModeSelection(structuredClone(stored)), stored);
+  assert.equal(storedCreateModeSelectionMatches(stored, { ...IDENTITY }), true);
+  assert.equal(storedCreateModeSelectionMatches(stored, { ...IDENTITY, tabId: 43 }), false);
+  assert.equal(deserializeCreateModeSelection({ ...stored, selectedMode: 'image' }), null);
+  assert.equal(deserializeCreateModeSelection({
+    ...stored,
+    pageIdentity: { ...IDENTITY, sourceKey: 'x'.repeat(2_049) },
+  }), null);
+});
+
 test('an explicit supported selection survives recommendation changes and checking states', () => {
   const page = updatePageGeneration(null, IDENTITY);
   let state = createModeSelectionState(page, capabilities({ audio: 'available' }));
@@ -54,6 +74,18 @@ test('an explicit supported selection survives recommendation changes and checki
   assert.equal(state.selectedMode, 'text');
   state = updateModeCapabilities(state, capabilities({ text: 'checking', video: 'available' }));
   assert.equal(state.selectedMode, 'text');
+});
+
+test('a temporary checking state does not force an automatic selection to disappear', () => {
+  const page = updatePageGeneration(null, IDENTITY);
+  const state = createModeSelectionState(page, capabilities({ video: 'available' }));
+  const checking = updateModeCapabilities(state, capabilities({
+    text: 'checking',
+    video: 'checking',
+    audio: 'checking',
+  }));
+  assert.equal(checking.selectedMode, 'video');
+  assert.equal(checking.selectedBy, 'automatic');
 });
 
 test('an unavailable explicit selection falls back without deleting another capability', () => {
@@ -138,6 +170,9 @@ test('Text, Video, and Audio draft slices mutate and reset independently', () =>
   assert.equal(state.audio.commentary, '');
   assert.equal(state.audio.startMs, null);
   assert.equal(state.audio.revision, beforeAudioReset.audio.revision + 1);
+  assert.equal(hasCreateModeDraft(state, 'text'), true);
+  assert.equal(hasCreateModeDraft(state, 'video'), true);
+  assert.equal(hasCreateModeDraft(state, 'audio'), false);
 });
 
 test('draft contract rejects invalid commentary, times, and media identities', () => {

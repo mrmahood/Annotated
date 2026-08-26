@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { normalizeArticleUrl, ArticleUrlNormalizationError } from '@annotated/shared/url-normalization';
 import {
   formatMediaTime,
@@ -58,8 +58,23 @@ import { getSupabaseClient } from '../../utils/supabase';
 import { getWebAppOrigin } from '../../utils/web-app-url';
 import { publishArticleAnnotation } from '../../utils/annotation-publishing';
 import {
+  CREATE_MODES,
+  CREATE_MODE_SELECTION_STORAGE_KEY,
+  createModeSelectionState,
   createInitialDraftState,
+  deserializeCreateModeSelection,
+  hasCreateModeDraft,
+  moveSelectionToPage,
   reduceCreateDraftState,
+  selectCreateMode,
+  serializeCreateModeSelection,
+  storedCreateModeSelectionMatches,
+  updatePageGeneration,
+  type CreateMode,
+  type CreatePageGeneration,
+  type ModeCapabilities,
+  type ModeSelectionState,
+  type StoredCreateModeSelection,
 } from '../../utils/create-mode';
 import {
   YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
@@ -130,15 +145,7 @@ type YouTubePageSource = {
   metadataResolved: boolean;
 };
 
-type AudioUnavailablePageSource = {
-  title: string;
-  hostname: string;
-  url: string;
-  classification: 'Audio unavailable';
-  reason: 'no-audio';
-};
-
-type PageSource = ArticlePageSource | YouTubePageSource | AudioPageSource | AudioUnavailablePageSource;
+type PageSource = ArticlePageSource | YouTubePageSource | AudioPageSource;
 
 type SourceState =
   | { status: 'loading' }
@@ -223,6 +230,95 @@ function getSourceState(title: string, value: string): SourceState {
   }
 }
 
+const CREATE_MODE_LABELS: Record<CreateMode, string> = {
+  text: 'Text',
+  video: 'Video',
+  audio: 'Audio',
+};
+
+function createUnavailableCapabilities(reason: string): ModeCapabilities {
+  return {
+    text: { status: 'unavailable', reason },
+    video: { status: 'unavailable', reason },
+    audio: { status: 'unavailable', reason },
+  };
+}
+
+function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
+  if (
+    sourceState.status === 'loading' ||
+    sourceState.status === 'refreshing'
+  ) {
+    return {
+      text: { status: 'checking' },
+      video: { status: 'checking' },
+      audio: { status: 'checking' },
+    };
+  }
+  if (sourceState.status !== 'connected') {
+    const reason = sourceState.status === 'different-tab'
+      ? 'Return to the connected tab or connect this tab.'
+      : sourceState.status === 'reconnect-required'
+        ? 'Reconnect Annotated to this page.'
+        : 'Connect a supported HTTP(S) page first.';
+    return createUnavailableCapabilities(reason);
+  }
+  if (sourceState.source.classification === 'YouTube') {
+    return {
+      text: { status: 'available' },
+      video: { status: 'available' },
+      audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not YouTube video.' },
+    };
+  }
+  if (sourceState.source.classification === 'Podcast / web audio') {
+    return {
+      text: { status: 'available' },
+      video: { status: 'unavailable', reason: 'Video mode supports connected YouTube watch pages only.' },
+      audio: { status: 'available' },
+    };
+  }
+  return {
+    text: { status: 'available' },
+    video: { status: 'unavailable', reason: 'Video mode supports connected YouTube watch pages only.' },
+    audio: sourceState.source.audioDetectionResolved
+      ? { status: 'unavailable', reason: 'No supported top-level page audio was found.' }
+      : { status: 'checking' },
+  };
+}
+
+function getCreatePageSourceKey(url: string): string | null {
+  try {
+    return getYouTubeVideoIdentity(url).normalizedUrl;
+  } catch {
+    try { return normalizeArticleUrl(url); } catch { return null; }
+  }
+}
+
+function getModeCapabilitySummary(selection: ModeSelectionState | null): string {
+  if (!selection) return 'Connect a supported page to choose a creation mode.';
+  const available = CREATE_MODES
+    .filter((mode) => selection.capabilities[mode].status === 'available')
+    .map((mode) => CREATE_MODE_LABELS[mode]);
+  const checking = CREATE_MODES
+    .filter((mode) => selection.capabilities[mode].status === 'checking')
+    .map((mode) => CREATE_MODE_LABELS[mode]);
+  const unavailable = CREATE_MODES.flatMap((mode) => {
+    const capability = selection.capabilities[mode];
+    return capability.status === 'unavailable'
+      ? [`${CREATE_MODE_LABELS[mode]} unavailable: ${capability.reason}`]
+      : [];
+  });
+  const availableMessage = available.length > 0
+    ? `${available.join(', ')} ${available.length === 1 ? 'is' : 'are'} available.`
+    : 'No creation mode is available yet.';
+  const checkingMessage = checking.length > 0 ? ` Checking ${checking.join(' and ')}.` : '';
+  const recommendedMessage = selection.recommendedMode
+    ? ` ${CREATE_MODE_LABELS[selection.recommendedMode]} is recommended.`
+    : '';
+  const unavailableMessage = unavailable.length > 0 ? ` ${unavailable.join(' ')}` : '';
+  return `${availableMessage}${checkingMessage}${recommendedMessage}${unavailableMessage}`;
+}
+
 function getExtractionErrorMessage(reason: Exclude<SelectionExtractionResult, { ok: true }>['reason']) {
   if (reason === 'NO_SELECTION') return 'Highlight a passage on the page, then try again.';
   if (reason === 'SELECTION_TOO_LONG') return 'Selections can contain up to 2,000 characters. Choose a shorter passage and try again.';
@@ -287,7 +383,7 @@ function SourceSummary({ state }: { state: SourceState }) {
   return (
     <div className="source-summary">
       <span className="source-type">{state.source.classification}</span>
-      <div><span className="section-label">Connected source</span><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}{state.source.classification === 'Audio unavailable' && <p>This audio page does not expose a usable top-level HTML media player.</p>}<p>{state.source.hostname}</p></div>
+      <div><span className="section-label">Connected source</span><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}<p>{state.source.hostname}</p></div>
     </div>
   );
 }
@@ -305,6 +401,8 @@ function App() {
     undefined,
     createInitialDraftState,
   );
+  const [modeSelection, setModeSelection] = useState<ModeSelectionState | null>(null);
+  const [modeAnnouncement, setModeAnnouncement] = useState('');
   const [draftRestorationStatus, setDraftRestorationStatus] = useState<'loading' | 'ready'>('loading');
   const [publishState, setPublishState] = useState<PublishState>({ status: 'idle' });
   const [youtubePublishState, setYoutubePublishState] = useState<PublishState>({ status: 'idle' });
@@ -323,6 +421,9 @@ function App() {
   const draftRef = useRef<AnnotationDraft | null>(null);
   const youtubeDraftRef = useRef<YouTubeClipDraft | null>(null);
   const audioDraftRef = useRef<AudioClipDraft | null>(null);
+  const createPageRef = useRef<CreatePageGeneration | null>(null);
+  const storedModeSelectionRef = useRef<StoredCreateModeSelection | null>(null);
+  const previousModeSelectionRef = useRef<ModeSelectionState | null>(null);
   const authRevisionRef = useRef(0);
   const authMountedRef = useRef(false);
   const publishInFlightRef = useRef(false);
@@ -332,6 +433,7 @@ function App() {
   const commentary = createDraftState.text.commentary;
   const videoDraftState = createDraftState.video;
   const audioDraftState = createDraftState.audio;
+  const modeCapabilities = useMemo(() => getModeCapabilities(sourceState), [sourceState]);
 
   const currentScreen = getCurrentScreen(navigation);
   const currentUserId = authState.status === 'signed-in' ? authState.account.id : null;
@@ -483,33 +585,47 @@ function App() {
 
   const enterReconnectRequired = useCallback(() => {
     void clearDraft('source-invalidated');
-    void clearYoutubeDraft();
-    void clearAudioDraft();
     setCaptureState({ status: 'reconnect-required', message: RECONNECT_MESSAGE });
     setSourceState({ status: 'reconnect-required' });
     setRefreshSuccess(false);
-  }, [clearAudioDraft, clearDraft, clearYoutubeDraft]);
+  }, [clearDraft]);
 
   const showStoredContext = useCallback((context: ActiveTabContext | null) => {
     contextObservedRef.current = true;
     const draft = draftRef.current;
-    if (draft && (!context || !annotationDraftBelongsToContext(draft, context))) {
-      void clearDraft('source-invalidated');
+    if (draft && context && annotationDraftBelongsToContext(draft, context)) {
+      setCaptureState({ status: 'captured', data: draft.capture });
+      dispatchCreateDraft({ type: 'set-text-commentary', commentary: draft.commentary });
+    } else if (draft) {
+      captureRevisionRef.current += 1;
+      setCaptureState({ status: 'idle' });
     }
     const youtubeDraft = youtubeDraftRef.current;
-    if (youtubeDraft && (!context || !youtubeClipDraftBelongsToSource(youtubeDraft, context.url))) {
-      void clearYoutubeDraft();
+    if (youtubeDraft && context && youtubeClipDraftBelongsToSource(youtubeDraft, context.url)) {
+      dispatchCreateDraft({
+        type: 'restore-media',
+        mode: 'video',
+        sourceKey: youtubeDraft.source.videoId,
+        startMs: youtubeDraft.startMs,
+        endMs: youtubeDraft.endMs,
+        commentary: youtubeDraft.commentary,
+      });
     }
-    if (
-      audioDraftRef.current &&
-      (!context || classifyConnectedSource(context.url, 'not-audio-page') === 'youtube')
-    ) {
-      void clearAudioDraft();
+    const audioDraft = audioDraftRef.current;
+    if (audioDraft && context && audioClipDraftBelongsToSource(audioDraft, context.url)) {
+      dispatchCreateDraft({
+        type: 'restore-media',
+        mode: 'audio',
+        sourceKey: audioDraft.source.normalizedUrl,
+        startMs: audioDraft.startMs,
+        endMs: audioDraft.endMs,
+        commentary: audioDraft.commentary,
+      });
     }
     connectedContextRef.current = context;
     setSourceState(context ? getSourceState(context.title, context.url) : { status: 'not-connected' });
     setRefreshSuccess(false);
-  }, [clearAudioDraft, clearDraft, clearYoutubeDraft]);
+  }, []);
 
   const loadSource = useCallback(async () => {
     setRefreshSuccess(false);
@@ -540,12 +656,6 @@ function App() {
       if (freshTab.url !== context.url && !isSameOrigin(context.url, freshTab.url)) { enterReconnectRequired(); return; }
       if (freshTab.url !== context.url) {
         const refreshedContext = { ...context, title: freshTab.title, url: freshTab.url };
-        if (draftRef.current && !annotationDraftBelongsToContext(draftRef.current, refreshedContext)) {
-          await clearDraft('source-invalidated');
-        }
-        if (youtubeDraftRef.current && !youtubeClipDraftBelongsToSource(youtubeDraftRef.current, refreshedContext.url)) {
-          await clearYoutubeDraft();
-        }
         connectedContextRef.current = refreshedContext;
         await chrome.storage.session.set({ [ACTIVE_TAB_CONTEXT_KEY]: refreshedContext });
         socialCacheRef.current.clear();
@@ -556,7 +666,7 @@ function App() {
     } catch {
       setSourceState({ status: 'unexpected-error', message: 'Unable to refresh the connected source. Try again.' });
     }
-  }, [clearDraft, clearYoutubeDraft, enterReconnectRequired]);
+  }, [clearDraft, enterReconnectRequired]);
 
   const captureSelection = useCallback(async () => {
     const revision = ++captureRevisionRef.current;
@@ -1183,13 +1293,7 @@ function App() {
         if (detection.status === 'no-audio') {
           return {
             status: 'connected',
-            source: {
-              title: state.source.title,
-              hostname: state.source.hostname,
-              url: state.source.url,
-              classification: 'Audio unavailable',
-              reason: detection.status,
-            },
+            source: { ...state.source, audioDetectionResolved: true },
           };
         }
         return {
@@ -1197,7 +1301,6 @@ function App() {
           source: { ...state.source, audioDetectionResolved: true },
         };
       });
-      if (detection.status === 'not-audio-page') void clearAudioDraft();
     }).catch(() => {
       if (!current) return;
       setSourceState((state) => state.status === 'connected' &&
@@ -1206,7 +1309,7 @@ function App() {
         : state);
     });
     return () => { current = false; };
-  }, [clearAudioDraft, sourceState]);
+  }, [sourceState]);
 
   useEffect(() => {
     if (
@@ -1229,10 +1332,8 @@ function App() {
         endMs: draft.endMs,
         commentary: draft.commentary,
       });
-    } else if (draft) {
-      void clearAudioDraft();
     }
-  }, [clearAudioDraft, draftRestorationStatus, sourceState]);
+  }, [draftRestorationStatus, sourceState]);
 
   useEffect(() => {
     if (
@@ -1326,6 +1427,7 @@ function App() {
         ANNOTATION_DRAFT_STORAGE_KEY,
         YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
         AUDIO_CLIP_DRAFT_STORAGE_KEY,
+        CREATE_MODE_SELECTION_STORAGE_KEY,
       ]),
       chrome.storage.local.get(HOSTED_MEDIA_SESSION_KEY),
     ])
@@ -1340,22 +1442,26 @@ function App() {
           setSourceState(context ? getSourceState(context.title, context.url) : { status: 'not-connected' });
         }
 
+        const storedModeSelectionValue = stored[CREATE_MODE_SELECTION_STORAGE_KEY];
+        const storedModeSelection = deserializeCreateModeSelection(storedModeSelectionValue);
+        storedModeSelectionRef.current = storedModeSelection;
+        if (storedModeSelectionValue !== undefined && storedModeSelection === null) {
+          void chrome.storage.session.remove(CREATE_MODE_SELECTION_STORAGE_KEY);
+        }
+
         const storedDraftValue = stored[ANNOTATION_DRAFT_STORAGE_KEY];
         const draft = deserializeAnnotationDraft(storedDraftValue);
-        let youtubeContext = false;
-        if (context) {
-          try { getYouTubeVideoIdentity(context.url); youtubeContext = true; } catch { /* Article context. */ }
-        }
-        if (!youtubeContext && shouldApplyDraftRestoration(restorationRevision, draftRevisionRef.current, draft, context)) {
+        draftRef.current = draft;
+        if (shouldApplyDraftRestoration(restorationRevision, draftRevisionRef.current, draft, context)) {
           draftRef.current = draft;
           setCaptureState({ status: 'captured', data: draft.capture });
           dispatchCreateDraft({ type: 'set-text-commentary', commentary: draft.commentary });
-        } else if (restorationRevision === draftRevisionRef.current && storedDraftValue !== undefined) {
-          draftRef.current = null;
+        } else if (restorationRevision === draftRevisionRef.current && storedDraftValue !== undefined && draft === null) {
           void removePersistedDraft();
         }
         const storedYoutubeDraftValue = stored[YOUTUBE_CLIP_DRAFT_STORAGE_KEY];
         const youtubeDraft = deserializeYouTubeClipDraft(storedYoutubeDraftValue);
+        youtubeDraftRef.current = youtubeDraft;
         if (
           restorationRevision === draftRevisionRef.current && youtubeDraft && context &&
           youtubeClipDraftBelongsToSource(youtubeDraft, context.url)
@@ -1369,16 +1475,19 @@ function App() {
             endMs: youtubeDraft.endMs,
             commentary: youtubeDraft.commentary,
           });
-        } else if (restorationRevision === draftRevisionRef.current && storedYoutubeDraftValue !== undefined) {
-          youtubeDraftRef.current = null;
+        } else if (
+          restorationRevision === draftRevisionRef.current &&
+          storedYoutubeDraftValue !== undefined && youtubeDraft === null
+        ) {
           void chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY);
         }
         const storedAudioDraftValue = stored[AUDIO_CLIP_DRAFT_STORAGE_KEY];
         const audioDraft = deserializeAudioClipDraft(storedAudioDraftValue);
-        if (restorationRevision === draftRevisionRef.current && audioDraft && !youtubeContext) {
-          audioDraftRef.current = audioDraft;
-        } else if (restorationRevision === draftRevisionRef.current && storedAudioDraftValue !== undefined) {
-          audioDraftRef.current = null;
+        audioDraftRef.current = audioDraft;
+        if (
+          restorationRevision === draftRevisionRef.current &&
+          storedAudioDraftValue !== undefined && audioDraft === null
+        ) {
           void chrome.storage.session.remove(AUDIO_CLIP_DRAFT_STORAGE_KEY);
         }
         const hostedSession = localStored[HOSTED_MEDIA_SESSION_KEY];
@@ -1398,6 +1507,82 @@ function App() {
       });
     return () => { mounted = false; chrome.storage.onChanged.removeListener(storageChange); chrome.runtime.onMessage.removeListener(runtimeMessage); };
   }, [removePersistedDraft, showStoredContext]);
+
+  useEffect(() => {
+    if (draftRestorationStatus !== 'ready') return;
+    if (sourceState.status === 'loading' || sourceState.status === 'refreshing') {
+      setModeSelection((current) => current
+        ? moveSelectionToPage(current, current.page, modeCapabilities)
+        : current);
+      return;
+    }
+    const context = connectedContextRef.current;
+    if (sourceState.status !== 'connected' || !context) {
+      setModeSelection(null);
+      return;
+    }
+    const sourceKey = getCreatePageSourceKey(context.url);
+    if (!sourceKey) {
+      setModeSelection(null);
+      return;
+    }
+    const page = updatePageGeneration(createPageRef.current, {
+      tabId: context.tabId,
+      windowId: context.windowId,
+      sourceKey,
+    });
+    createPageRef.current = page;
+    setModeSelection((current) => {
+      let next = current
+        ? moveSelectionToPage(current, page, modeCapabilities)
+        : createModeSelectionState(page, modeCapabilities);
+      const stored = storedModeSelectionRef.current;
+      if (
+        stored &&
+        storedCreateModeSelectionMatches(stored, page.identity) &&
+        modeCapabilities[stored.selectedMode].status === 'available'
+      ) {
+        next = selectCreateMode(next, stored.selectedMode);
+      }
+      return next;
+    });
+  }, [draftRestorationStatus, modeCapabilities, sourceState]);
+
+  useEffect(() => {
+    const previous = previousModeSelectionRef.current;
+    previousModeSelectionRef.current = modeSelection;
+    if (!previous || !modeSelection) return;
+    if (previous.page.generation !== modeSelection.page.generation) {
+      setModeAnnouncement('');
+      return;
+    }
+    const previousMode = previous.selectedMode;
+    const previousCapability = previousMode
+      ? modeSelection.capabilities[previousMode]
+      : null;
+    if (
+      previousMode &&
+      previousMode !== modeSelection.selectedMode &&
+      previousCapability?.status === 'unavailable'
+    ) {
+      const nextLabel = modeSelection.selectedMode
+        ? CREATE_MODE_LABELS[modeSelection.selectedMode]
+        : 'no mode';
+      setModeAnnouncement(
+        `${CREATE_MODE_LABELS[previousMode]} is unavailable. Switched to ${nextLabel}. ${previousCapability.reason}`,
+      );
+      const stored = storedModeSelectionRef.current;
+      if (stored && storedCreateModeSelectionMatches(stored, modeSelection.page.identity)) {
+        storedModeSelectionRef.current = null;
+        void chrome.storage.session.remove(CREATE_MODE_SELECTION_STORAGE_KEY);
+      }
+    } else if (
+      previous.selectedMode === modeSelection.selectedMode &&
+      previous.capabilities !== modeSelection.capabilities
+    ) {
+      setModeAnnouncement('');
+    }
+  }, [modeSelection]);
 
   useEffect(() => {
     if (!supabase || authState.status !== 'signed-in' || !hostedMediaSession) return;
@@ -1485,6 +1670,19 @@ function App() {
     if (updatedDraft) persistDraft(updatedDraft);
   };
 
+  const chooseCreateMode = (mode: CreateMode) => {
+    if (!modeSelection) return;
+    const next = selectCreateMode(modeSelection, mode);
+    if (next === modeSelection) return;
+    setModeSelection(next);
+    const stored = serializeCreateModeSelection(next.page.identity, mode);
+    storedModeSelectionRef.current = stored;
+    void chrome.storage.session
+      .set({ [CREATE_MODE_SELECTION_STORAGE_KEY]: stored })
+      .catch(() => console.warn('Unable to save the selected Create mode.'));
+    setModeAnnouncement(`${CREATE_MODE_LABELS[mode]} mode selected.`);
+  };
+
   const selectRoot = (view: TopLevelView) => dispatchNavigation({ type: 'select-root', view });
   const navigationCallbacks = {
     openAnnotation: (annotationId: string) => dispatchNavigation({ type: 'push', screen: { kind: 'annotation', annotationId } }),
@@ -1506,9 +1704,39 @@ function App() {
   const audioSource = sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio'
     ? sourceState.source
     : null;
-  const audioUnavailableSource = sourceState.status === 'connected' && sourceState.source.classification === 'Audio unavailable'
-    ? sourceState.source
-    : null;
+  const connectedContext = sourceState.status === 'connected' ? connectedContextRef.current : null;
+  const selectedCreateMode = modeSelection?.selectedMode ?? null;
+  const textDraftAttached = Boolean(
+    draftRef.current && connectedContext && annotationDraftBelongsToContext(draftRef.current, connectedContext),
+  );
+  const videoDraftAttached = Boolean(
+    youtubeDraftRef.current && youtubeSource &&
+    youtubeClipDraftBelongsToSource(youtubeDraftRef.current, youtubeSource.url),
+  );
+  const audioDraftAttached = Boolean(
+    audioDraftRef.current && audioSource &&
+    audioClipDraftBelongsToSource(audioDraftRef.current, audioSource.url, audioSource.canonicalUrl),
+  );
+  const detachedDraftModes: Record<CreateMode, boolean> = {
+    text: draftRef.current !== null && !textDraftAttached,
+    video: youtubeDraftRef.current !== null && !videoDraftAttached,
+    audio: audioDraftRef.current !== null && !audioDraftAttached,
+  };
+  const savedDraftModes: Record<CreateMode, boolean> = {
+    text: draftRef.current !== null || hasCreateModeDraft(createDraftState, 'text'),
+    video: youtubeDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'video'),
+    audio: audioDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'audio'),
+  };
+  const modeStatusMessage = modeAnnouncement || getModeCapabilitySummary(modeSelection);
+  const discardSelectedDetachedDraft = () => {
+    if (selectedCreateMode === 'text') {
+      void clearDraft('explicit-clear');
+    } else if (selectedCreateMode === 'video') {
+      void clearYoutubeDraft();
+    } else if (selectedCreateMode === 'audio') {
+      void clearAudioDraft();
+    }
+  };
   const videoClipRangeError = getNewMediaPublicationRangeError(
     videoDraftState.startMs,
     videoDraftState.endMs,
@@ -1576,10 +1804,10 @@ function App() {
       <header className="app-header">
         <div className="app-bar">
           {currentScreen.kind !== 'root' ? <button className="back-button" type="button" onClick={() => dispatchNavigation({ type: 'back' })} aria-label="Go back">←</button> : <span className="wordmark">ANNOTATED</span>}
-          <span className="view-title">{currentScreen.kind === 'annotation' || currentScreen.kind === 'comments' ? 'Annotation' : currentScreen.kind === 'profile' ? 'Creator' : currentScreen.view === 'context' ? 'Context' : currentScreen.view === 'feed' ? 'Feed' : 'Account'}</span>
+          <span className="view-title">{currentScreen.kind === 'annotation' || currentScreen.kind === 'comments' ? 'Annotation' : currentScreen.kind === 'profile' ? 'Creator' : currentScreen.view === 'context' ? 'Create' : currentScreen.view === 'feed' ? 'Feed' : 'Account'}</span>
         </div>
         <nav className="top-tabs" aria-label="Primary">
-          {(['context', 'feed', 'account'] as const).map((view) => <button key={view} type="button" className={currentScreen.kind === 'root' && currentScreen.view === view ? 'active' : ''} aria-current={currentScreen.kind === 'root' && currentScreen.view === view ? 'page' : undefined} onClick={() => selectRoot(view)}>{view === 'account' ? 'Me' : `${view.slice(0, 1).toUpperCase()}${view.slice(1)}`}</button>)}
+          {(['context', 'feed', 'account'] as const).map((view) => <button key={view} type="button" className={currentScreen.kind === 'root' && currentScreen.view === view ? 'active' : ''} aria-current={currentScreen.kind === 'root' && currentScreen.view === view ? 'page' : undefined} onClick={() => selectRoot(view)}>{view === 'context' ? 'Create' : view === 'account' ? 'Me' : 'Feed'}</button>)}
         </nav>
       </header>
 
@@ -1605,10 +1833,38 @@ function App() {
 
       {currentScreen.kind === 'root' && currentScreen.view === 'context' && (
         <div className="root-view context-view">
+          <header className="view-intro create-intro"><span className="section-label">New annotation</span><h1>Create</h1><p>Choose Text, Video, or Audio without losing work in another mode.</p></header>
+          <fieldset className="create-mode-switcher">
+            <legend>Create mode</legend>
+            <div className="create-mode-options">
+              {CREATE_MODES.map((mode) => {
+                const capability = modeSelection?.capabilities[mode] ?? modeCapabilities[mode];
+                const selected = selectedCreateMode === mode;
+                const unavailable = capability.status !== 'available';
+                const stateLabel = capability.status === 'checking'
+                  ? 'Checking…'
+                  : capability.status === 'unavailable'
+                    ? 'Unavailable'
+                    : !selected && savedDraftModes[mode]
+                      ? 'Draft saved'
+                      : modeSelection?.recommendedMode === mode
+                        ? 'Recommended'
+                        : 'Available';
+                return (
+                  <label className={`create-mode-option${selected ? ' selected' : ''}${unavailable ? ' unavailable' : ''}`} key={mode}>
+                    <input type="radio" name="create-mode" value={mode} checked={selected} disabled={unavailable} onChange={() => chooseCreateMode(mode)} />
+                    <span className="create-mode-label">{CREATE_MODE_LABELS[mode]}</span>
+                    <span className="create-mode-state">{stateLabel}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          <p className="create-mode-status" role="status" aria-live="polite">{modeStatusMessage}</p>
           <section className="context-source"><SourceSummary state={sourceState} /><div className="source-actions"><button className="button button-secondary button-small" type="button" onClick={() => void loadSource()} disabled={isRefreshing || isCapturing}>{isRefreshing ? 'Refreshing…' : 'Refresh source'}</button>{refreshSuccess && <span role="status">Source updated</span>}</div></section>
-          {hostedMediaPanel}
-          {supabase && contextUrl && contextCacheKey && !audioUnavailableSource && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={audioSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} emptyTitle={youtubeSource ? 'No clips on this video yet' : audioSource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : audioSource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : audioSource ? 'Clips on this episode' : 'On this source'} />}
-          {youtubeSource ? (
+          {selectedCreateMode && detachedDraftModes[selectedCreateMode] ? (
+            <div className="compact-state detached-draft" role="status"><strong>{CREATE_MODE_LABELS[selectedCreateMode]} draft saved</strong><span>This draft belongs to another connected source. Return to that source to continue, or discard it to start here.</span><button className="button button-secondary" type="button" onClick={discardSelectedDetachedDraft}>Discard {CREATE_MODE_LABELS[selectedCreateMode]} draft and start here</button></div>
+          ) : selectedCreateMode === 'video' && youtubeSource ? (
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading">
               <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>YouTube time range</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
@@ -1628,7 +1884,7 @@ function App() {
                 {youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
               </>}
             </section>
-          ) : audioSource ? (
+          ) : selectedCreateMode === 'audio' && audioSource ? (
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading">
               <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>Podcast / web audio</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
@@ -1651,13 +1907,15 @@ function App() {
                 {audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
               </>}
             </section>
-          ) : audioUnavailableSource ? (
-            <div className="compact-state compact-state-error"><strong>Audio player unavailable</strong><span>This audio page does not expose a usable top-level HTML audio element.</span></div>
-          ) : (
+          ) : selectedCreateMode === 'text' ? (
             <section className="create-panel" aria-labelledby="create-heading"><div className="section-heading"><h2 id="create-heading">Create annotation</h2><span>Article text</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><div className="annotation-field"><label htmlFor="annotation-commentary">Your commentary</label><textarea id="annotation-commentary" value={commentary} maxLength={2_000} rows={6} onChange={(event) => changeCommentary(event.target.value)} /><span aria-live="polite">{commentary.length.toLocaleString()} / 2,000</span></div><AudioRecorder controller={audioRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginGoogleSignIn()}>Continue with Google</button> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here. Selections and commentary may contain up to 2,000 characters each.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
             </section>
+          ) : (
+            <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
           )}
+          {hostedMediaPanel}
+          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={audioSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} emptyTitle={youtubeSource ? 'No clips on this video yet' : audioSource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : audioSource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : audioSource ? 'Clips on this episode' : 'On this source'} />}
         </div>
       )}
     </main>
