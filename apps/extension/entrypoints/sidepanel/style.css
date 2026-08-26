@@ -125,6 +125,17 @@ button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px sol
 .context-view > .social-list-section { margin-top: 18px; margin-bottom: 18px; }
 .create-panel { margin-top: 18px; padding-top: 5px; border-top: 1px solid var(--border); }
 .create-help { margin: 5px 0 12px; color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
+.single-player-status { margin: 0 0 12px; padding: 8px 9px; border: 1px solid var(--border); color: var(--text-secondary); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
+.player-selector { min-width: 0; margin: 0 0 12px; padding: 0; border: 0; }
+.player-selector legend { margin-bottom: 7px; color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.player-set-status { margin: 0 0 7px; color: var(--text-muted); font-size: 10px; line-height: 1.4; }
+.player-options { display: grid; gap: 6px; }
+.player-option { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; gap: 2px 7px; padding: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; }
+.player-option.selected { border-color: var(--text-primary); background: var(--surface-active); }
+.player-option:has(input:focus-visible) { outline: 2px solid var(--text-primary); outline-offset: 2px; }
+.player-option input { width: 15px; height: 15px; grid-row: 1 / -1; align-self: center; margin: 0; accent-color: var(--control-primary); }
+.player-option-label { min-width: 0; font-size: 11px; font-weight: 650; overflow-wrap: anywhere; }
+.player-option-state { color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; overflow-wrap: anywhere; }
 .captured-passage { margin: 0; padding: 11px; border: 1px solid var(--border); border-left: 2px solid var(--border-strong); color: var(--text-evidence); background: var(--background-elevated); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .capture-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; margin: 0; padding: 10px 0; }
 .capture-metadata dt, .annotation-field label { color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; }

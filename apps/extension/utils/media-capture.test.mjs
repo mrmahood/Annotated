@@ -28,6 +28,7 @@ const source = {
   kind: 'youtube',
   pageUrl: 'https://www.youtube.com/watch?v=abcdefghijk',
   sourceKey: 'abcdefghijk',
+  playerIdentity: 'video:1:f8443fef',
 };
 const request = {
   tabId: 42,
@@ -96,6 +97,9 @@ test('runtime request validation requires every explicit production field', () =
   }), true);
   assert.equal(isCaptureStartRequest({ ...request, endMs: undefined }), false);
   assert.equal(isCaptureStartRequest({ ...request, source: { ...source, kind: undefined } }), false);
+  assert.equal(isCaptureStartRequest({ ...request, source: { ...source, playerIdentity: undefined } }), false);
+  assert.equal(isCaptureStartRequest({ ...request, source: { ...source, playerIdentity: 'video:6:f8443fef' } }), false);
+  assert.equal(isCaptureStartRequest({ ...request, source: { ...source, playerIdentity: 'audio:1:f8443fef' } }), false);
   assert.equal(isCaptureStartRequest({ ...request, operation: { ...operation, mediaId: undefined } }), false);
   assert.equal(isCaptureStartRequest({ ...request, accessToken: undefined }), false);
 });

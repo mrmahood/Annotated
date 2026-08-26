@@ -13,6 +13,7 @@ const base = {
   paused: true,
   ended: false,
   sourcePresent: true,
+  operable: true,
 };
 
 test('prefers the currently playing audio element', () => {
@@ -152,6 +153,53 @@ test('a visible video descriptor does not turn a normal page into podcast mode',
   });
   assert.equal(result.status, 'not-audio-page');
   assert.equal(classifyConnectedSource('https://example.com/article', result.status), 'article');
+});
+
+test('hidden inoperable audio-only media does not make a Fox-shaped article audio-capable', () => {
+  const articleUrl = 'https://www.foxnews.com/us/prosecutor-infamous-killer-mom-case-says-women-lindsay-clancy-jury-may-bring-strange-twist-verdict';
+  const result = validateAudioPageSnapshot(articleUrl, {
+    pageUrl: articleUrl,
+    candidates: [{
+      ...base,
+      playerId: 'audio-only-video:0',
+      elementType: 'audio-only-video',
+      duration: 292.968,
+      operable: false,
+    }],
+    metadata: { title: 'Fox News article' },
+  });
+
+  assert.equal(result.status, 'not-audio-page');
+  assert.equal(classifyConnectedSource(articleUrl, result.status), 'article');
+});
+
+test('hidden vendor media plus a visible Fox article video does not enable Audio', () => {
+  const articleUrl = 'https://www.foxnews.com/politics/la-dem-candidates-torched-disgusted-residents-disgraceful-debate-both-bad';
+  const result = validateAudioPageSnapshot(articleUrl, {
+    pageUrl: articleUrl,
+    candidates: [
+      {
+        ...base,
+        playerId: 'audio-only-video:0',
+        elementType: 'audio-only-video',
+        currentTime: 0,
+        duration: 336.216,
+        operable: false,
+      },
+      {
+        ...base,
+        playerId: 'video:1',
+        elementType: 'video',
+        currentTime: 7.041667,
+        duration: 7.041667,
+        ended: true,
+      },
+    ],
+    metadata: { title: 'Fox News article', audioMetadataPresent: false },
+  });
+
+  assert.equal(result.status, 'not-audio-page');
+  assert.equal(classifyConnectedSource(articleUrl, result.status), 'article');
 });
 
 test('an audio element without a media source is not a credible player', () => {

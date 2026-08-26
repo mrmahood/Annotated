@@ -39,22 +39,41 @@ export async function prepareMediaCaptureOnPage(
     ? youtubeId(location.href) === request.source.sourceKey
     : comparable(location.href) === comparable(request.source.pageUrl);
   const selectMedia = (): HTMLMediaElement | null => {
-    if (request.source.kind === 'youtube') {
-      const video = document.querySelector('video');
-      return video instanceof HTMLVideoElement ? video : null;
+    const digest = (value: string) => {
+      let hash = 0x811c9dc5;
+      for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index); hash = Math.imul(hash, 0x01000193);
+      }
+      return (hash >>> 0).toString(16).padStart(8, '0');
+    };
+    const sourceFor = (element: HTMLMediaElement) => element.currentSrc ||
+      element.getAttribute('src') || element.querySelector<HTMLSourceElement>('source[src]')?.src || '';
+    const operableAudioVideo = (element: HTMLVideoElement) => {
+      if (!element.paused && !element.ended) return true;
+      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
+      return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
+        style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    };
+    const candidates: HTMLMediaElement[] = [];
+    for (const element of document.querySelectorAll('audio, video')) {
+      if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
+      const accepted = request.source.kind === 'youtube'
+        ? element instanceof HTMLVideoElement
+        : element instanceof HTMLAudioElement || (
+          element instanceof HTMLVideoElement && element.readyState >= 1 &&
+          element.videoWidth === 0 && element.videoHeight === 0 && operableAudioVideo(element)
+        );
+      if (accepted) candidates.push(element);
+      if (candidates.length > 5) break;
     }
-    const candidates = [...document.querySelectorAll('audio, video')]
-      .filter((element): element is HTMLMediaElement =>
-        element instanceof HTMLAudioElement ||
-        (element instanceof HTMLVideoElement && element.videoWidth === 0 && element.videoHeight === 0))
-      .filter((element) => Boolean(
-        element.currentSrc || element.getAttribute('src') || element.querySelector('source[src]'),
-      ));
-    const playing = candidates.filter((element) => !element.paused && !element.ended);
-    const pool = playing.length ? playing : candidates;
-    const audio = pool.filter((element) => element instanceof HTMLAudioElement);
-    const preferred = audio.length ? audio : pool;
-    return preferred.length === 1 ? preferred[0]! : null;
+    if (candidates.length > 5) return null;
+    const matches = candidates.filter((element, index) => {
+      const kind = element instanceof HTMLAudioElement ? 'audio'
+        : request.source.kind === 'audio' ? 'audio-only-video' : 'video';
+      return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` ===
+        request.source.playerIdentity;
+    });
+    return matches.length === 1 ? matches[0]! : null;
   };
   const geometryFor = (media: HTMLMediaElement): CaptureGeometry => {
     const video = media instanceof HTMLVideoElement ? media : null;
@@ -163,19 +182,40 @@ export async function playMediaForCaptureOnPage(
     ? youtubeId(location.href) === source.sourceKey
     : comparable(location.href) === comparable(source.pageUrl);
   const selectMedia = (): HTMLMediaElement | null => {
-    if (source.kind === 'youtube') {
-      const video = document.querySelector('video');
-      return video instanceof HTMLVideoElement ? video : null;
+    const digest = (value: string) => {
+      let hash = 0x811c9dc5;
+      for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index); hash = Math.imul(hash, 0x01000193);
+      }
+      return (hash >>> 0).toString(16).padStart(8, '0');
+    };
+    const sourceFor = (element: HTMLMediaElement) => element.currentSrc ||
+      element.getAttribute('src') || element.querySelector<HTMLSourceElement>('source[src]')?.src || '';
+    const operableAudioVideo = (element: HTMLVideoElement) => {
+      if (!element.paused && !element.ended) return true;
+      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
+      return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
+        style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    };
+    const candidates: HTMLMediaElement[] = [];
+    for (const element of document.querySelectorAll('audio, video')) {
+      if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
+      const accepted = source.kind === 'youtube'
+        ? element instanceof HTMLVideoElement
+        : element instanceof HTMLAudioElement || (
+          element instanceof HTMLVideoElement && element.readyState >= 1 &&
+          element.videoWidth === 0 && element.videoHeight === 0 && operableAudioVideo(element)
+        );
+      if (accepted) candidates.push(element);
+      if (candidates.length > 5) break;
     }
-    const candidates = [...document.querySelectorAll('audio, video')]
-      .filter((element): element is HTMLMediaElement => element instanceof HTMLAudioElement ||
-        (element instanceof HTMLVideoElement && element.videoWidth === 0 && element.videoHeight === 0))
-      .filter((element) => Boolean(element.currentSrc || element.getAttribute('src') || element.querySelector('source[src]')));
-    const playing = candidates.filter((element) => !element.paused && !element.ended);
-    const pool = playing.length ? playing : candidates;
-    const audio = pool.filter((element) => element instanceof HTMLAudioElement);
-    const preferred = audio.length ? audio : pool;
-    return preferred.length === 1 ? preferred[0]! : null;
+    if (candidates.length > 5) return null;
+    const matches = candidates.filter((element, index) => {
+      const kind = element instanceof HTMLAudioElement ? 'audio'
+        : source.kind === 'audio' ? 'audio-only-video' : 'video';
+      return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` === source.playerIdentity;
+    });
+    return matches.length === 1 ? matches[0]! : null;
   };
   const acknowledgedAtMs = Date.now();
   if (!sourceMatches()) return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'connected-source-changed' };
@@ -217,19 +257,40 @@ export function finishMediaCaptureOnPage(
     ? youtubeId(location.href) === source.sourceKey
     : comparable(location.href) === comparable(source.pageUrl);
   const selectMedia = (): HTMLMediaElement | null => {
-    if (source.kind === 'youtube') {
-      const video = document.querySelector('video');
-      return video instanceof HTMLVideoElement ? video : null;
+    const digest = (value: string) => {
+      let hash = 0x811c9dc5;
+      for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index); hash = Math.imul(hash, 0x01000193);
+      }
+      return (hash >>> 0).toString(16).padStart(8, '0');
+    };
+    const sourceFor = (element: HTMLMediaElement) => element.currentSrc ||
+      element.getAttribute('src') || element.querySelector<HTMLSourceElement>('source[src]')?.src || '';
+    const operableAudioVideo = (element: HTMLVideoElement) => {
+      if (!element.paused && !element.ended) return true;
+      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
+      return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
+        style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    };
+    const candidates: HTMLMediaElement[] = [];
+    for (const element of document.querySelectorAll('audio, video')) {
+      if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
+      const accepted = source.kind === 'youtube'
+        ? element instanceof HTMLVideoElement
+        : element instanceof HTMLAudioElement || (
+          element instanceof HTMLVideoElement && element.readyState >= 1 &&
+          element.videoWidth === 0 && element.videoHeight === 0 && operableAudioVideo(element)
+        );
+      if (accepted) candidates.push(element);
+      if (candidates.length > 5) break;
     }
-    const candidates = [...document.querySelectorAll('audio, video')]
-      .filter((element): element is HTMLMediaElement => element instanceof HTMLAudioElement ||
-        (element instanceof HTMLVideoElement && element.videoWidth === 0 && element.videoHeight === 0))
-      .filter((element) => Boolean(element.currentSrc || element.getAttribute('src') || element.querySelector('source[src]')));
-    const playing = candidates.filter((element) => !element.paused && !element.ended);
-    const pool = playing.length ? playing : candidates;
-    const audio = pool.filter((element) => element instanceof HTMLAudioElement);
-    const preferred = audio.length ? audio : pool;
-    return preferred.length === 1 ? preferred[0]! : null;
+    if (candidates.length > 5) return null;
+    const matches = candidates.filter((element, index) => {
+      const kind = element instanceof HTMLAudioElement ? 'audio'
+        : source.kind === 'audio' ? 'audio-only-video' : 'video';
+      return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` === source.playerIdentity;
+    });
+    return matches.length === 1 ? matches[0]! : null;
   };
   const geometryFor = (media: HTMLMediaElement): CaptureGeometry => {
     const video = media instanceof HTMLVideoElement ? media : null;

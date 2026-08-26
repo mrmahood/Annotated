@@ -9,6 +9,7 @@ export type AudioPlayerCandidate = {
   paused: boolean;
   ended: boolean;
   sourcePresent: boolean;
+  operable: boolean;
 };
 
 export type AudioPlayerSelection =
@@ -77,7 +78,7 @@ export function getAudioPlayerReadiness(candidate: AudioPlayerCandidate): AudioP
 export function selectAudioPlayerCandidate(candidates: AudioPlayerCandidate[]): AudioPlayerSelection {
   const credible = candidates.filter((candidate) =>
     (candidate.elementType === 'audio' || candidate.elementType === 'audio-only-video') &&
-    candidate.sourcePresent,
+    candidate.sourcePresent && candidate.operable,
   );
   if (credible.length === 0) return { status: 'no-audio' };
   const playing = credible.filter((candidate) => !candidate.paused && !candidate.ended);
@@ -106,17 +107,29 @@ export function readAudioPageSnapshot(includeMetadata: boolean) {
       return element instanceof HTMLVideoElement && element.readyState >= 1 &&
         element.videoWidth === 0 && element.videoHeight === 0;
     });
-  const candidates = elements.map((element, index) => ({
-    playerId: `${element instanceof HTMLAudioElement ? 'audio' : 'audio-only-video'}:${index}`,
-    elementType: element instanceof HTMLAudioElement ? 'audio' as const : 'audio-only-video' as const,
-    currentTime: Number.isFinite(element.currentTime) && element.currentTime >= 0
-      ? element.currentTime
-      : null,
-    duration: Number.isFinite(element.duration) ? element.duration : null,
-    paused: element.paused,
-    ended: element.ended,
-    sourcePresent: Boolean(element.currentSrc || element.getAttribute('src') || element.querySelector('source[src]')),
-  }));
+  const candidates = elements.map((element, index) => {
+    const audioOnlyVideo = element instanceof HTMLVideoElement;
+    const playing = !element.paused && !element.ended;
+    const rect = audioOnlyVideo ? element.getBoundingClientRect() : null;
+    const style = audioOnlyVideo ? getComputedStyle(element) : null;
+    const operable = !audioOnlyVideo || playing || Boolean(
+      element.controls && rect && rect.width > 0 && rect.height > 0 &&
+      element.getClientRects().length > 0 && style && style.display !== 'none' &&
+      style.visibility !== 'hidden' && style.opacity !== '0',
+    );
+    return {
+      playerId: `${element instanceof HTMLAudioElement ? 'audio' : 'audio-only-video'}:${index}`,
+      elementType: element instanceof HTMLAudioElement ? 'audio' as const : 'audio-only-video' as const,
+      currentTime: Number.isFinite(element.currentTime) && element.currentTime >= 0
+        ? element.currentTime
+        : null,
+      duration: Number.isFinite(element.duration) ? element.duration : null,
+      paused: element.paused,
+      ended: element.ended,
+      sourcePresent: Boolean(element.currentSrc || element.getAttribute('src') || element.querySelector('source[src]')),
+      operable,
+    };
+  });
   return {
     pageUrl: location.href,
     candidates,
@@ -156,7 +169,7 @@ export function validateAudioPageSnapshot(expectedPageUrl: string, value: unknow
       )) ||
       (item.duration !== null && (typeof item.duration !== 'number' || !Number.isFinite(item.duration))) ||
       typeof item.paused !== 'boolean' || typeof item.ended !== 'boolean' ||
-      typeof item.sourcePresent !== 'boolean'
+      typeof item.sourcePresent !== 'boolean' || typeof item.operable !== 'boolean'
     ) continue;
     candidates.push(item as AudioPlayerCandidate);
   }
