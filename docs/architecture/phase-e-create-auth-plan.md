@@ -2,11 +2,13 @@
 
 Status: planning contract, 2026-08-25. Phase D is complete. E1a was subsequently
 authorized; its implementation and deterministic Local validation are complete
-on the feature branch, including focused and complete extension tests, TypeScript
-compilation, production build, and manifest inspection. Draft PR review, required
-CI, and merge remain pending. E1b and later implementation, database work,
-provider configuration, Local services, Staging, Production, schedules, and
-deployment are not authorized by this document.
+and merged, including focused and complete extension tests, TypeScript
+compilation, production build, and manifest inspection. PR #23 passed required CI
+run `32922199032`, was squash-merged into protected `main` as
+`c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
+`32922631250`. E1b and later implementation, database work, provider
+configuration, Local services, Staging, Production, schedules, and deployment
+are not authorized by this document.
 
 This plan is subordinate to the durable security and media rules in
 `docs/architecture/media-archive-pipeline.md`. Future-code descriptions define a
@@ -545,9 +547,9 @@ authorization with supplied evidence.
 
 ## 21. Sequencing and narrow authorization boundaries
 
-1. **E1a — mode capability/data contract (implemented and locally validated;
-   review/CI pending).** Pure models, page-generation/revision, independent state,
-   focused regressions; no visible/capture change.
+1. **E1a — mode capability/data contract (complete and merged).** Pure models,
+   page-generation/revision, independent state, and focused regressions merged
+   through PR #23; no visible/capture change.
 2. **E1b — Create rename/switcher/drafts.** Visible UI and non-destructive storage
    transitions; source support unchanged.
 3. **E1c — player discovery/selection.** Maximum five, page identity, revalidation.
@@ -627,12 +629,12 @@ Dashboard, X console, redirects, Staging, and Production are separate approvals.
 10. **Local/vendor split:** fake clients and bounded callbacks in Local/CI; only
     owner end-to-end vendor flows count as acceptance.
 
-One implementation detail remains for E1a review: whether to rename internal
-navigation value `context`. Recommendation: retain as compatibility alias through
-E1b unless a narrow type rename clearly reduces complexity; visible language
-changes regardless.
+One implementation detail remains for E1b: whether to rename internal navigation
+value `context`. Recommendation: retain it as a compatibility alias unless a
+narrow type rename clearly reduces complexity; visible language changes
+regardless.
 
-## 25. Planning validation and next authorization
+## 25. Planning validation and E1a closeout record
 
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
@@ -641,7 +643,14 @@ accessed.
 The following E1a implementation authorization was granted verbatim and fulfilled
 through Local implementation and validation. A later owner authorization permits
 the production build/manifest check, commit, push, and Draft PR for this exact E1a
-diff. Neither authorization permits E1b:
+diff, and a final owner authorization permitted ready-for-review transition,
+squash merge, post-merge `main` CI verification, and local `main` fast-forward.
+PR #23 passed required CI run `32922199032`, was squash-merged into protected
+`main` as `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main`
+CI run `32922631250`. Local `main` was fast-forwarded to the same commit, and the
+local and remote `codex/phase-e-planning` branches remain preserved. No owner
+Chrome acceptance is claimed because E1a made no authorized visible behavior
+change. None of these authorizations permits E1b:
 
 > Authorize E1a only on `codex/phase-e-planning`: implement the pure Create mode
 > capability/data contract, page-generation and revision rules, independent

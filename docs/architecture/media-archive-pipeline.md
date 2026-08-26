@@ -17,9 +17,10 @@ squash merge, and post-merge `main` CI. PR #20 merged D1 as
 `6f0f1c59acb52d5fb53dcc11dfd446b455ac5f2b`. Staging migration history is
 aligned through `20260825120300`. Production was not accessed or deployed,
 schedules remain paused. Phase E planning is defined. E1a implementation and
-deterministic Local validation are complete on its feature branch; Draft PR
-review, required CI, and merge remain pending. E1b and later work remain
-separately authorized.
+deterministic Local validation are complete. PR #23 passed required CI run
+`32922199032`, was squash-merged into protected `main` as
+`c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
+`32922631250`. E1b and later work remain separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -816,9 +817,11 @@ for `whisper-1`; D2 cost $0.
 Status: planning contract complete. E1a's local capability/data contract,
 page-generation/revision rules, independent draft state, and regressions pass the
 focused and complete extension test suites, TypeScript compilation, and
-production build/manifest inspection. Draft PR review, required CI, and merge are
-pending. E1b and later implementation remain separately authorized. The verified
-audit, design, security review,
+production build/manifest inspection. PR #23 passed required CI run
+`32922199032`, was squash-merged as
+`c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
+`32922631250`. E1b and later implementation remain separately authorized. The
+verified audit, design, security review,
 increment boundaries, and acceptance plan are in
 `docs/architecture/phase-e-create-auth-plan.md`.
 
