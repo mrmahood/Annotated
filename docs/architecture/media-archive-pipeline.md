@@ -20,7 +20,11 @@ schedules remain paused. Phase E planning is defined. E1a implementation and
 deterministic Local validation are complete. PR #23 passed required CI run
 `32922199032`, was squash-merged into protected `main` as
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
-`32922631250`. E1b and later work remain separately authorized.
+`32922631250`. E1b merged through PR #25 as
+`9938d36a2e8bb9fbd96aaa4899ded664cdc7c587` after PR CI `32964086959` and
+post-merge `main` CI `32965527019`. E1c merged through PR #27 as
+`50196d283dddec40b1fe8636435adf995f91e093` after PR CI `33002721782`; post-merge
+`main` CI `33004543238` passed. E1d and later work remain separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -825,7 +829,7 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: planning contract current through E1b. E1a's local capability/data contract,
+Status: planning contract current through E1c. E1a's local capability/data contract,
 page-generation/revision rules, independent draft state, and regressions pass the
 focused and complete extension test suites, TypeScript compilation, and
 production build/manifest inspection. PR #23 passed required CI run
@@ -834,7 +838,13 @@ production build/manifest inspection. PR #23 passed required CI run
 `32922631250`. E1b passed owner Chrome acceptance and PR CI run `32964086959`,
 then merged through PR #25 as
 `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`; post-merge `main` CI run
-`32965527019` passed. E1c and later implementation remain separately authorized.
+`32965527019` passed. E1c's bounded top-frame player discovery/selection,
+stable page/player identity, action-time revalidation, and Fox-shaped hidden
+media corrections passed owner Chrome acceptance and PR CI run `33002721782`,
+then merged through PR #27 as
+`50196d283dddec40b1fe8636435adf995f91e093`; post-merge `main` CI run
+`33004543238` passed. Video remains YouTube-only through E1d. E1d and later
+implementation remain separately authorized.
 The verified audit, design, security review,
 increment boundaries, and acceptance plan are in
 `docs/architecture/phase-e-create-auth-plan.md`.

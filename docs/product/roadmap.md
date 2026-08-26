@@ -1,7 +1,7 @@
 # Product roadmap
 
-Status: Phase D complete and merged; Phase E increment E1a complete and merged,
-2026-08-25. D1 and D2 completed their
+Status: Phase D complete and merged; Phase E increments E1a-E1c complete and
+merged, 2026-08-26. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -16,7 +16,12 @@ deployed. Phase E planning is defined in
 deterministic Local validation are complete. PR #23 passed required CI run
 `32922199032`, was squash-merged into protected `main` as
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
-`32922631250`. E1b and later work remain separately authorized.
+`32922631250`. E1b merged through PR #25 as
+`9938d36a2e8bb9fbd96aaa4899ded664cdc7c587` after PR CI `32964086959`;
+post-merge `main` CI `32965527019` passed. E1c merged through PR #27 as
+`50196d283dddec40b1fe8636435adf995f91e093` after PR CI `33002721782`;
+post-merge `main` CI `33004543238` passed. E1d and later work remain separately
+authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -342,7 +347,14 @@ E1b's visible Create UI and independent non-destructive mode transitions passed
 owner Chrome acceptance and PR CI run `32964086959`, then merged through PR #25
 as `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587`. Post-merge `main` CI run
 `32965527019` passed. E1b did not change player discovery/capture, source support,
-authentication, or provider configuration.
+authentication, or provider configuration. E1c's bounded top-frame player
+discovery, explicit selection for two to five candidates, stable page/player
+identity, action-time revalidation, and Fox-shaped hidden-media corrections
+passed owner Chrome acceptance and PR CI run `33002721782`, then merged through
+PR #27 as `50196d283dddec40b1fe8636435adf995f91e093`. Post-merge `main` CI run
+`33004543238` passed. Video remains YouTube-only; E1c did not implement E1d
+operation guards, E1e generic webpage video, authentication, or provider
+configuration.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -408,8 +420,11 @@ documented in `docs/architecture/phase-e-create-auth-plan.md`; E1a implementatio
 and deterministic Local validation are complete. PR #23 passed required CI run
 `32922199032`, was squash-merged as
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
-`32922631250`. E1b and later implementation, provider configuration, schedule
-enablement, Production access, and deployment remain separately authorized.
+`32922631250`. E1b merged through PR #25 and E1c merged through PR #27 as
+`50196d283dddec40b1fe8636435adf995f91e093`; E1c PR CI `33002721782` and
+post-merge `main` CI `33004543238` passed. E1d and later implementation,
+provider configuration, schedule enablement, Production access, and deployment
+remain separately authorized.
 Production rollout remains blocked until Phase E
 passes its Local, required CI, and bounded Staging gates and later Production
 authorization is explicitly granted.
