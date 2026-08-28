@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  finishMediaCaptureOnPage,
+  playMediaForCaptureOnPage,
   prepareMediaCaptureOnPage,
   readTopFramePreparationResult,
 } from './media-capture-page.ts';
@@ -26,6 +28,7 @@ async function withFakeVideo(callback, overrides = {}) {
       this.currentSrc = 'blob:test';
     }
     pause() { this.paused = true; }
+    async play() { this.paused = false; }
     addEventListener(_name, fn) {
       queueMicrotask(() => {
         if (overrides.navigateOnSeek) values.location.href = overrides.navigateOnSeek;
@@ -36,16 +39,28 @@ async function withFakeVideo(callback, overrides = {}) {
     getBoundingClientRect() {
       return { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 };
     }
+    getClientRects() { return [{}]; }
   }
   const video = overrides.noPlayer ? null : new Video();
+  const inlinePreview = overrides.inlinePreview ? new Video() : null;
+  if (inlinePreview) inlinePreview.currentSrc = 'blob:inline-preview';
+  const players = [video, inlinePreview].filter(Boolean);
   const values = {
     location: { href: overrides.url ?? pageUrl },
-    document: { querySelector: () => video, querySelectorAll: () => video ? [video] : [], fullscreenElement: null },
+    document: {
+      querySelector: () => video,
+      querySelectorAll: () => players,
+      elementsFromPoint: () => video ? [video] : [],
+      fullscreenElement: null,
+    },
     window: { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1, scrollX: 0, scrollY: 0, setTimeout },
     HTMLAudioElement: Audio,
     HTMLMediaElement: Media,
     HTMLVideoElement: Video,
-    getComputedStyle: () => ({ objectFit: 'contain', objectPosition: '50% 50%' }),
+    getComputedStyle: () => ({
+      objectFit: 'contain', objectPosition: '50% 50%',
+      display: 'block', visibility: 'visible', opacity: '1',
+    }),
   };
   try {
     for (const [name, value] of Object.entries(values)) {
@@ -80,6 +95,15 @@ test('serialized injected function is closure-free, awaited, and serializable', 
   assert.equal(result.prepared.playerCurrentTimeBeforeRecordingMs, 10_000);
   assert.doesNotThrow(() => structuredClone(result));
   assert.doesNotThrow(() => JSON.stringify(result));
+});
+
+test('hidden YouTube inline preview cannot displace the selected player during capture actions', async () => {
+  await withFakeVideo(async () => {
+    const prepared = await prepareMediaCaptureOnPage({ source, startMs: 5_000, endMs: 20_000 });
+    assert.equal(prepared.ok, true);
+    assert.equal((await playMediaForCaptureOnPage(source, 5_000)).ok, true);
+    assert.equal(finishMediaCaptureOnPage(source, true).sourceMatches, true);
+  }, { inlinePreview: true });
 });
 
 test('selects frameId 0 and distinguishes missing from malformed results', async () => {

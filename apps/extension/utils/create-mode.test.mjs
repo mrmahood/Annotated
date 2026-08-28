@@ -135,6 +135,23 @@ test('mode revisions and page generations reject stale asynchronous results', ()
   assert.equal(isModeAsyncTokenCurrent(createModeAsyncToken(first, revisions, 'text'), next, revisions), false);
 });
 
+test('transient player-read status does not revise an otherwise unchanged draft', () => {
+  const state = reduceCreateDraftState(createInitialDraftState(), {
+    type: 'patch-media',
+    mode: 'video',
+    patch: { playerIdentity: 'video:1:12345678' },
+  });
+  const reading = reduceCreateDraftState(state, {
+    type: 'set-player-read-state',
+    mode: 'video',
+    state: 'reading',
+  });
+  assert.equal(reading.video.playerReadState, 'reading');
+  assert.equal(reading.video.revision, state.video.revision);
+  assert.deepEqual(reading.audio, state.audio);
+  assert.deepEqual(reading.text, state.text);
+});
+
 test('Text, Video, and Audio draft slices mutate and reset independently', () => {
   let state = createInitialDraftState();
   state = reduceCreateDraftState(state, { type: 'set-text-commentary', commentary: 'Text note' });

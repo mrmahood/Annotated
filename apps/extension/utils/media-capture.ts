@@ -26,7 +26,7 @@ export type HostedMediaOperation = {
   processingStatus: 'capture_pending';
 };
 export type CaptureStartRequest = {
-  tabId: number; source: CaptureSourceIdentity; startMs: number; endMs: number;
+  captureId: string; tabId: number; source: CaptureSourceIdentity; startMs: number; endMs: number;
   operation: HostedMediaOperation; accessToken: string; apiOrigin: string;
 };
 export type CaptureRect = {
@@ -171,6 +171,10 @@ function isInteger(value: unknown): value is number { return Number.isSafeIntege
 export function isCurrentCaptureId(activeCaptureId: string | null, expectedCaptureId: string) {
   return activeCaptureId === expectedCaptureId;
 }
+export function isCaptureId(value: unknown): value is string {
+  return typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 export function isMediaUuid(value: unknown): value is string {
   return typeof value === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -227,7 +231,7 @@ export function isHostedMediaOperation(value: unknown): value is HostedMediaOper
 }
 export function isCaptureStartRequest(value: unknown): value is CaptureStartRequest {
   if (!isRecord(value) || !isRecord(value.source)) return false;
-  return isInteger(value.tabId) && value.tabId >= 0 &&
+  return isCaptureId(value.captureId) && isInteger(value.tabId) && value.tabId >= 0 &&
     (value.source.kind === 'youtube' || value.source.kind === 'audio') &&
     typeof value.source.pageUrl === 'string' && value.source.pageUrl.length > 0 &&
     typeof value.source.sourceKey === 'string' && value.source.sourceKey.length > 0 &&
@@ -246,6 +250,14 @@ export function isMediaCaptureStartMessage(value: unknown): value is {
 } {
   return isRecord(value) && value.target === 'background' &&
     value.type === MEDIA_CAPTURE_START && isCaptureStartRequest(value.request);
+}
+export function isMediaCaptureCancelMessage(value: unknown): value is {
+  target: 'background'; type: typeof MEDIA_CAPTURE_CANCEL;
+  captureId: string | null; operation: HostedMediaOperation;
+} {
+  return isRecord(value) && value.target === 'background' && value.type === MEDIA_CAPTURE_CANCEL &&
+    (value.captureId === null || isCaptureId(value.captureId)) &&
+    isHostedMediaOperation(value.operation);
 }
 export function isCapturePreparedPage(value: unknown): value is CapturePreparedPage {
   if (!isRecord(value) || !isRecord(value.geometry)) return false;
@@ -271,9 +283,10 @@ export function isCapturePreparedPage(value: unknown): value is CapturePreparedP
 export function isOffscreenStartMessage(value: unknown): value is OffscreenStartMessage {
   return isRecord(value) && value.target === 'offscreen' &&
     value.type === MEDIA_CAPTURE_OFFSCREEN_START &&
-    typeof value.captureId === 'string' && value.captureId.length >= 8 &&
+    isCaptureId(value.captureId) &&
     typeof value.streamId === 'string' && value.streamId.length > 0 &&
     isCaptureStartRequest(value.request) && isCapturePreparedPage(value.prepared) &&
+    value.captureId === value.request.captureId &&
     value.request.startMs === value.prepared.requestedStartMs &&
     value.request.endMs === value.prepared.requestedEndMs;
 }

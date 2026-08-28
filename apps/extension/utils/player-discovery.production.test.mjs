@@ -9,7 +9,7 @@ const pageUrl = 'https://www.youtube.com/watch?v=abcdefghijk';
 
 async function withPlayers(players, callback, url = pageUrl) {
   const names = [
-    'location', 'document', 'HTMLMediaElement', 'HTMLAudioElement', 'HTMLVideoElement', 'getComputedStyle',
+    'location', 'document', 'window', 'HTMLMediaElement', 'HTMLAudioElement', 'HTMLVideoElement', 'getComputedStyle',
   ];
   const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   class Media {
@@ -26,7 +26,9 @@ async function withPlayers(players, callback, url = pageUrl) {
     getAttribute(name) { return name === 'aria-label' ? this.label : null; }
     querySelector() { return null; }
     closest() { return null; }
-    getBoundingClientRect() { return { width: 640, height: 360 }; }
+    getBoundingClientRect() {
+      return { x: 0, y: 0, width: 640, height: 360, top: 0, right: 640, bottom: 360, left: 0 };
+    }
     getClientRects() { return [{}]; }
     async play() { this.paused = false; }
   }
@@ -41,7 +43,11 @@ async function withPlayers(players, callback, url = pageUrl) {
     : new Video(player.source, player.label, player.width, player.height));
   const values = {
     location: { href: url },
-    document: { querySelectorAll: () => instances },
+    document: {
+      querySelectorAll: () => instances,
+      elementsFromPoint: () => instances.filter((instance) => instance.exposed !== false),
+    },
+    window: { innerWidth: 1280, innerHeight: 720 },
     HTMLMediaElement: Media,
     HTMLAudioElement: Audio,
     HTMLVideoElement: Video,
@@ -110,6 +116,20 @@ test('action-time revalidation rejects source, fingerprint, and ordinal changes'
     assert.deepEqual(await act('video', discover('video').candidates[0].identity, 'other-video', 'read', null), {
       ok: false, reason: 'source-mismatch',
     });
+  });
+});
+
+test('YouTube inline-preview video hidden behind the main player is never a candidate', async () => {
+  const act = Function(`return (${actOnTopFramePlayer.toString()})`)();
+  await withPlayers([
+    { kind: 'video', source: 'blob:main', label: 'YouTube Video Player' },
+    { kind: 'video', source: 'blob:inline-preview', label: 'YouTube Video Player' },
+  ], async (instances) => {
+    instances[1].exposed = false;
+    const discovery = readTopFramePlayerDiscovery('video');
+    assert.equal(discovery.candidates.length, 1);
+    assert.equal(discovery.candidates[0].label, 'YouTube Video Player');
+    assert.equal((await act('video', discovery.candidates[0].identity, 'abcdefghijk', 'read', null)).ok, true);
   });
 });
 

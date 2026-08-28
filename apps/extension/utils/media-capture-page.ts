@@ -54,11 +54,23 @@ export async function prepareMediaCaptureOnPage(
       return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
         style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     };
+    const videoExposed = (element: HTMLVideoElement) => {
+      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
+      const left = Math.max(0, rect.left); const right = Math.min(window.innerWidth, rect.right);
+      const top = Math.max(0, rect.top); const bottom = Math.min(window.innerHeight, rect.bottom);
+      if (right <= left || bottom <= top || element.getClientRects().length === 0 ||
+          style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0) return false;
+      return [
+        [(left + right) / 2, (top + bottom) / 2],
+        [left + (right - left) / 4, top + (bottom - top) / 4],
+        [right - (right - left) / 4, bottom - (bottom - top) / 4],
+      ].some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+    };
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
       const accepted = request.source.kind === 'youtube'
-        ? element instanceof HTMLVideoElement
+        ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
           element.videoWidth === 0 && element.videoHeight === 0 && operableAudioVideo(element)
@@ -197,11 +209,23 @@ export async function playMediaForCaptureOnPage(
       return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
         style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     };
+    const videoExposed = (element: HTMLVideoElement) => {
+      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
+      const left = Math.max(0, rect.left); const right = Math.min(window.innerWidth, rect.right);
+      const top = Math.max(0, rect.top); const bottom = Math.min(window.innerHeight, rect.bottom);
+      if (right <= left || bottom <= top || element.getClientRects().length === 0 ||
+          style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0) return false;
+      return [
+        [(left + right) / 2, (top + bottom) / 2],
+        [left + (right - left) / 4, top + (bottom - top) / 4],
+        [right - (right - left) / 4, bottom - (bottom - top) / 4],
+      ].some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+    };
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
       const accepted = source.kind === 'youtube'
-        ? element instanceof HTMLVideoElement
+        ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
           element.videoWidth === 0 && element.videoHeight === 0 && operableAudioVideo(element)
@@ -272,11 +296,23 @@ export function finishMediaCaptureOnPage(
       return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
         style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     };
+    const videoExposed = (element: HTMLVideoElement) => {
+      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
+      const left = Math.max(0, rect.left); const right = Math.min(window.innerWidth, rect.right);
+      const top = Math.max(0, rect.top); const bottom = Math.min(window.innerHeight, rect.bottom);
+      if (right <= left || bottom <= top || element.getClientRects().length === 0 ||
+          style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0) return false;
+      return [
+        [(left + right) / 2, (top + bottom) / 2],
+        [left + (right - left) / 4, top + (bottom - top) / 4],
+        [right - (right - left) / 4, bottom - (bottom - top) / 4],
+      ].some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+    };
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
       const accepted = source.kind === 'youtube'
-        ? element instanceof HTMLVideoElement
+        ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
           element.videoWidth === 0 && element.videoHeight === 0 && operableAudioVideo(element)

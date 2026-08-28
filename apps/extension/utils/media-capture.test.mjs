@@ -10,6 +10,7 @@ import {
   getCaptureRangeError,
   isCaptureStartRequest,
   isCurrentCaptureId,
+  isMediaCaptureCancelMessage,
   isMediaCaptureStartMessage,
   isOffscreenStartMessage,
   selectCaptureMimeType,
@@ -31,6 +32,7 @@ const source = {
   playerIdentity: 'video:1:f8443fef',
 };
 const request = {
+  captureId: '44444444-4444-4444-8444-444444444444',
   tabId: 42,
   source,
   startMs: 5_000,
@@ -95,13 +97,242 @@ test('runtime request validation requires every explicit production field', () =
   assert.equal(isMediaCaptureStartMessage({
     target: 'background', type: MEDIA_CAPTURE_START, request,
   }), true);
+  assert.equal(isMediaCaptureCancelMessage({
+    target: 'background', type: 'annotated.mediaCapture.cancel.v1',
+    captureId: request.captureId, operation,
+  }), true);
+  assert.equal(isMediaCaptureCancelMessage({
+    target: 'background', type: 'annotated.mediaCapture.cancel.v1',
+    captureId: null, operation,
+  }), true);
+  assert.equal(isMediaCaptureCancelMessage({
+    target: 'background', type: 'annotated.mediaCapture.cancel.v1', captureId: null,
+  }), false);
   assert.equal(isCaptureStartRequest({ ...request, endMs: undefined }), false);
+  assert.equal(isCaptureStartRequest({ ...request, captureId: 'capture-unbounded' }), false);
   assert.equal(isCaptureStartRequest({ ...request, source: { ...source, kind: undefined } }), false);
   assert.equal(isCaptureStartRequest({ ...request, source: { ...source, playerIdentity: undefined } }), false);
   assert.equal(isCaptureStartRequest({ ...request, source: { ...source, playerIdentity: 'video:6:f8443fef' } }), false);
   assert.equal(isCaptureStartRequest({ ...request, source: { ...source, playerIdentity: 'audio:1:f8443fef' } }), false);
   assert.equal(isCaptureStartRequest({ ...request, operation: { ...operation, mediaId: undefined } }), false);
   assert.equal(isCaptureStartRequest({ ...request, accessToken: undefined }), false);
+});
+
+test('stale cancellation and offscreen events cannot affect a newer capture attempt', async () => {
+  let onMessage;
+  const events = [];
+  let returnStaleStatus = false;
+  let terminalRemoveGate = null;
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [{ contextType: 'OFFSCREEN_DOCUMENT' }],
+      sendMessage: async (message) => {
+        events.push(message);
+        return returnStaleStatus && message?.type === 'annotated.mediaCapture.offscreenStatus.v1'
+          ? { snapshot: { status: 'uploading', captureId: '55555555-5555-4555-8555-555555555555', progress: 100 } }
+          : { status: 'capturing', captureId: message?.captureId ?? request.captureId };
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {},
+      async remove() { if (terminalRemoveGate) await terminalRemoveGate.promise; },
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript({ func }) {
+      if (func.name.includes('prepare')) return [{ frameId: 0, result: {
+        ok: true,
+        prepared: {
+          sourceKind: 'youtube', requestedStartMs: 5_000, requestedEndMs: 20_000,
+          requestedDurationMs: 15_000, playerCurrentTimeBeforeRecordingMs: 5_000,
+          mediaDurationMs: 120_000, pageUrl: source.pageUrl,
+          geometry: {
+            viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+            boundingClientRect: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+            videoWidth: 1920, videoHeight: 1080, objectFit: 'contain', objectPosition: '50% 50%',
+            fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+          },
+        },
+      } }];
+      return [{ frameId: 0, result: { ok: true, acknowledgedAtMs: 1, currentTimeMs: 5_000 } }];
+    } },
+    tabCapture: { async getMediaStreamId() { return 'stream'; } },
+    offscreen: { async createDocument() {} },
+  };
+  installMediaCapture(fakeChrome);
+  const started = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  assert.equal(started.ok, true);
+
+  const staleCancel = await new Promise((resolve) => {
+    assert.equal(onMessage({
+      target: 'background', type: 'annotated.mediaCapture.cancel.v1',
+      captureId: '55555555-5555-4555-8555-555555555555', operation,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(staleCancel, { ok: true, cancelled: false });
+
+  const staleEvent = await new Promise((resolve) => {
+    onMessage({
+      target: 'background', type: 'annotated.mediaCapture.offscreenEvent.v1',
+      snapshot: { status: 'uploading', captureId: '55555555-5555-4555-8555-555555555555', progress: 100 },
+    }, {}, resolve);
+  });
+  assert.equal(staleEvent.ok, false);
+  assert.equal(events.some((event) => event?.snapshot?.captureId === '55555555-5555-4555-8555-555555555555'), false);
+
+  const staleRetry = await new Promise((resolve) => {
+    onMessage({
+      target: 'background', type: 'annotated.mediaCapture.retry.v1',
+      captureId: '55555555-5555-4555-8555-555555555555', accessToken: 'a'.repeat(40),
+    }, {}, resolve);
+  });
+  assert.equal(staleRetry.ok, false);
+
+  returnStaleStatus = true;
+  const status = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: 'annotated.mediaCapture.status.v1' }, {}, resolve), true);
+  });
+  assert.equal(status.snapshot.captureId, request.captureId);
+
+  const mismatchedOperationCancel = await new Promise((resolve) => {
+    assert.equal(onMessage({
+      target: 'background', type: 'annotated.mediaCapture.cancel.v1', captureId: null,
+      operation: { ...operation, mediaId: '33333333-3333-4333-8333-333333333333' },
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(mismatchedOperationCancel, { ok: true, cancelled: false });
+
+  const restoredPanelCancel = await new Promise((resolve) => {
+    assert.equal(onMessage({
+      target: 'background', type: 'annotated.mediaCapture.cancel.v1',
+      captureId: null, operation,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(restoredPanelCancel, { ok: true, cancelled: true });
+
+  returnStaleStatus = false;
+  const restarted = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  assert.equal(restarted.ok, true);
+
+  let releaseTerminalRemove;
+  terminalRemoveGate = {
+    promise: new Promise((resolve) => { releaseTerminalRemove = resolve; }),
+  };
+  let terminalSettled = false;
+  const terminalResponse = new Promise((resolve) => {
+    assert.equal(onMessage({
+      target: 'background', type: 'annotated.mediaCapture.offscreenEvent.v1',
+      snapshot: {
+        status: 'verifying-upload', captureId: request.captureId,
+        annotationId: operation.annotationId, mediaId: operation.mediaId,
+      },
+    }, {}, (value) => { terminalSettled = true; resolve(value); }), true);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(terminalSettled, false);
+  const newerRequest = {
+    ...request,
+    captureId: '66666666-6666-4666-8666-666666666666',
+  };
+  let newerStartSettled = false;
+  const newerStart = new Promise((resolve) => {
+    assert.equal(onMessage({
+      target: 'background', type: MEDIA_CAPTURE_START, request: newerRequest,
+    }, {}, (value) => { newerStartSettled = true; resolve(value); }), true);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(newerStartSettled, false);
+  releaseTerminalRemove();
+  assert.deepEqual(await terminalResponse, { ok: true });
+  assert.equal((await newerStart).ok, true);
+  terminalRemoveGate = null;
+
+  const completedStatus = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: 'annotated.mediaCapture.status.v1' }, {}, resolve), true);
+  });
+  assert.equal(completedStatus.snapshot.captureId, newerRequest.captureId);
+  assert.equal(completedStatus.operation.mediaId, operation.mediaId);
+});
+
+test('a completed recorder restored after worker suspension is reconciled before the next begin', async () => {
+  let onMessage;
+  let removals = 0;
+  const { accessToken: _accessToken, ...safeRequest } = request;
+  const nextRequest = { ...request, captureId: '77777777-7777-4777-8777-777777777777' };
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [{ contextType: 'OFFSCREEN_DOCUMENT' }],
+      sendMessage: async (message) => {
+        if (message?.type === 'annotated.mediaCapture.offscreenStatus.v1') return {
+          snapshot: {
+            status: 'verifying-upload', captureId: request.captureId,
+            annotationId: operation.annotationId, mediaId: operation.mediaId,
+          },
+        };
+        if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+          return { status: 'capturing', captureId: message.captureId };
+        }
+        return { ok: true };
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        if (key === 'annotated.mediaCapture.active.v1') return {
+          [key]: { captureId: request.captureId, request: safeRequest },
+        };
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {},
+      async remove() { removals += 1; },
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript({ func }) {
+      if (func.name.includes('prepare')) return [{ frameId: 0, result: {
+        ok: true,
+        prepared: {
+          sourceKind: 'youtube', requestedStartMs: 5_000, requestedEndMs: 20_000,
+          requestedDurationMs: 15_000, playerCurrentTimeBeforeRecordingMs: 5_000,
+          mediaDurationMs: 120_000, pageUrl: source.pageUrl,
+          geometry: {
+            viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+            boundingClientRect: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+            videoWidth: 1920, videoHeight: 1080, objectFit: 'contain', objectPosition: '50% 50%',
+            fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+          },
+        },
+      } }];
+      return [{ frameId: 0, result: { ok: true, acknowledgedAtMs: 1, currentTimeMs: 5_000 } }];
+    } },
+    tabCapture: { async getMediaStreamId() { return 'stream'; } },
+    offscreen: { async createDocument() {} },
+  };
+  installMediaCapture(fakeChrome);
+  const started = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request: nextRequest }, {}, resolve), true);
+  });
+  assert.equal(started.ok, true);
+  assert.equal(started.snapshot.captureId, nextRequest.captureId);
+  assert.equal(removals, 1);
 });
 
 test('capture binds the exact connected tab and stable source identity', () => {
@@ -137,14 +368,14 @@ test('offscreen messages reject stale or malformed ranges and carry no inferred 
   const message = {
     target: 'offscreen',
     type: 'annotated.mediaCapture.offscreenStart.v1',
-    captureId: 'capture-123',
+    captureId: request.captureId,
     streamId: 'stream',
     request,
     prepared,
   };
   assert.equal(isOffscreenStartMessage(message), true);
   assert.equal(isOffscreenStartMessage({ ...message, prepared: { ...prepared, requestedEndMs: 20_001 } }), false);
-  assert.equal(isOffscreenStartMessage({ ...message, captureId: 'stale' }), false);
+  assert.equal(isOffscreenStartMessage({ ...message, captureId: '55555555-5555-4555-8555-555555555555' }), false);
 });
 
 test('capture metadata v2 requires video end geometry and uses monotonic lead-in', () => {
