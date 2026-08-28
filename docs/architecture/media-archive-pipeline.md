@@ -1,6 +1,6 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, updated 2026-08-25. Phases A-B and Phase C
+Status: accepted architecture, updated 2026-08-27. Phases A-B and Phase C
 increments C1-C6 are implemented and accepted. C6's least-privilege worker
 migrations, immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded
 lifecycle, crash, codec, geometry, exact-duration, transcript, retention, and
@@ -24,7 +24,10 @@ deterministic Local validation are complete. PR #23 passed required CI run
 `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587` after PR CI `32964086959` and
 post-merge `main` CI `32965527019`. E1c merged through PR #27 as
 `50196d283dddec40b1fe8636435adf995f91e093` after PR CI `33002721782`; post-merge
-`main` CI `33004543238` passed. E1d and later work remain separately authorized.
+`main` CI `33004543238` passed. E1d merged through PR #29 as
+`ac456e072302f3cfecf70c7dfdbfa79e45ad8ace` after PR CI `33135378733`;
+post-merge `main` CI `33135718601` passed. E1e and later work remain separately
+authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -829,7 +832,7 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: planning contract current through E1c. E1a's local capability/data contract,
+Status: planning contract current through E1d. E1a's local capability/data contract,
 page-generation/revision rules, independent draft state, and regressions pass the
 focused and complete extension test suites, TypeScript compilation, and
 production build/manifest inspection. PR #23 passed required CI run
@@ -843,7 +846,13 @@ stable page/player identity, action-time revalidation, and Fox-shaped hidden
 media corrections passed owner Chrome acceptance and PR CI run `33002721782`,
 then merged through PR #27 as
 `50196d283dddec40b1fe8636435adf995f91e093`; post-merge `main` CI run
-`33004543238` passed. Video remains YouTube-only through E1d. E1d and later
+`33004543238` passed. E1d's operation guards cover bounded begin, capture,
+upload authorization and verification, retry, authoritative cancellation,
+Processing, restart recovery, safe-default switching, stale-result isolation,
+and completed-recorder reconciliation. PR #29 passed required CI run
+`33135378733`, was squash-merged as
+`ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`, and passed post-merge `main` CI run
+`33135718601`. Video remained YouTube-only through E1d. E1e and later
 implementation remain separately authorized.
 The verified audit, design, security review,
 increment boundaries, and acceptance plan are in
@@ -856,7 +865,7 @@ increment boundaries, and acceptance plan are in
   before abandoning an active capture or upload.
 - Require explicit bounded player selection when multiple players qualify;
   never select an arbitrary player silently.
-- Add E1e generic webpage video only after player identity and operation guards:
+- Add E1e generic webpage video now that player identity and operation guards are merged:
   readable top-frame or same-origin-frame `<video>`, article-page source identity,
   authoritative top-frame geometry, and fail-closed handling for inaccessible
   cross-origin/DRM/canvas players. Keep `tabCapture` and offscreen Blob ownership.

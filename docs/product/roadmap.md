@@ -1,7 +1,7 @@
 # Product roadmap
 
-Status: Phase D complete and merged; Phase E increments E1a-E1c complete and
-merged, 2026-08-26. D1 and D2 completed their
+Status: Phase D complete and merged; Phase E increments E1a-E1d complete and
+merged, 2026-08-27. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -20,7 +20,9 @@ deterministic Local validation are complete. PR #23 passed required CI run
 `9938d36a2e8bb9fbd96aaa4899ded664cdc7c587` after PR CI `32964086959`;
 post-merge `main` CI `32965527019` passed. E1c merged through PR #27 as
 `50196d283dddec40b1fe8636435adf995f91e093` after PR CI `33002721782`;
-post-merge `main` CI `33004543238` passed. E1d and later work remain separately
+post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
+`ac456e072302f3cfecf70c7dfdbfa79e45ad8ace` after PR CI `33135378733`;
+post-merge `main` CI `33135718601` passed. E1e and later work remain separately
 authorized.
 
 The hosted-media architecture is defined in
@@ -352,9 +354,13 @@ discovery, explicit selection for two to five candidates, stable page/player
 identity, action-time revalidation, and Fox-shaped hidden-media corrections
 passed owner Chrome acceptance and PR CI run `33002721782`, then merged through
 PR #27 as `50196d283dddec40b1fe8636435adf995f91e093`. Post-merge `main` CI run
-`33004543238` passed. Video remains YouTube-only; E1c did not implement E1d
-operation guards, E1e generic webpage video, authentication, or provider
-configuration.
+`33004543238` passed. E1d's bounded begin/capture/upload/verification/retry/
+cancel/Processing/restart guards, safe-default switching, stale-result
+isolation, and completed-recorder reconciliation were delivered through PR #29
+as `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`. Required PR CI run
+`33135378733` and post-merge `main` CI run `33135718601` passed. Video remained
+YouTube-only through E1d; E1e generic webpage video, authentication, and
+provider configuration remain separate increments.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -365,7 +371,7 @@ configuration.
   capture or upload, and preserve the existing honest restart/recovery behavior.
 - When a page contains multiple media players, require a bounded player-selection
   experience; never silently choose an arbitrary player.
-- After E1c player identity and E1d operation guards, add E1e generic webpage
+- With E1c player identity and E1d operation guards merged, add E1e generic webpage
   video support for readable top-frame and same-origin-frame HTML video players.
   Keep inaccessible cross-origin players unsupported. Revalidate frame/player
   identity and top-frame geometry before every action, preserve the article page
@@ -422,7 +428,9 @@ and deterministic Local validation are complete. PR #23 passed required CI run
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
 `32922631250`. E1b merged through PR #25 and E1c merged through PR #27 as
 `50196d283dddec40b1fe8636435adf995f91e093`; E1c PR CI `33002721782` and
-post-merge `main` CI `33004543238` passed. E1d and later implementation,
+post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
+`ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`; E1d PR CI `33135378733` and
+post-merge `main` CI `33135718601` passed. E1e and later implementation,
 provider configuration, schedule enablement, Production access, and deployment
 remain separately authorized.
 Production rollout remains blocked until Phase E

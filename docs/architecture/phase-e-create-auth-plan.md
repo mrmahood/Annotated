@@ -1,6 +1,6 @@
 # Phase E Create and authentication plan
 
-Status: planning contract, 2026-08-26. Phase D is complete. E1a was subsequently
+Status: planning contract, updated 2026-08-27. Phase D is complete. E1a was subsequently
 authorized; its implementation and deterministic Local validation are complete
 and merged, including focused and complete extension tests, TypeScript
 compilation, production build, and manifest inspection. PR #23 passed required CI
@@ -12,7 +12,9 @@ then merged through PR #25 as
 `32965527019` passed. E1c passed owner Chrome acceptance and PR CI run
 `33002721782`, then merged through PR #27 as
 `50196d283dddec40b1fe8636435adf995f91e093`; post-merge `main` CI run
-`33004543238` passed. E1d and later implementation, database work, provider
+`33004543238` passed. E1d passed required PR CI run `33135378733`, then merged
+through PR #29 as `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`; post-merge
+`main` CI run `33135718601` passed. E1e and later implementation, database work, provider
 configuration, Local services, Staging, Production, schedules, and deployment
 are not authorized by this document.
 
@@ -594,8 +596,12 @@ authorization with supplied evidence.
    page identity, explicit selection, and action-time revalidation merged through
    PR #27 as `50196d283dddec40b1fe8636435adf995f91e093`; PR CI `33002721782` and
    post-merge `main` CI `33004543238` passed. Video remains YouTube-only.
-4. **E1d — operation guards.** Begin/capture/upload/verification/retry/cancel/
-   Processing/restart transitions.
+4. **E1d — operation guards (complete and merged).** Bounded begin/capture/
+   upload authorization and verification/retry/authoritative cancel/Processing/
+   restart transitions, safe-default switching, stale-result isolation, and
+   completed-recorder reconciliation merged through PR #29 as
+   `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`; PR CI `33135378733` and
+   post-merge `main` CI `33135718601` passed. Video remains YouTube-only.
 5. **E1e — generic webpage video.** Bounded top-frame/same-origin-frame discovery,
    explicit identity, source-safe geometry, hosted begin boundary, and focused
    Fox-shaped acceptance; inaccessible cross-origin players fail closed.
@@ -685,6 +691,18 @@ boundary.
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
 accessed.
+
+E1d's merged implementation was delivered as PR #29 after deterministic Local
+tests, the complete extension regression suite, TypeScript compilation,
+production extension build and manifest inspection, and owner Chrome acceptance
+exercises that surfaced bounded operation-guard defects followed by their
+reconciliation and required Local revalidation. Required PR CI run `33135378733`
+passed. PR #29 was squash-merged into protected `main` as
+`ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`, post-merge `main` CI run
+`33135718601` passed, and local `main` was fast-forwarded to the same commit. The
+feature branch remains preserved. E1d did not access Supabase environments,
+configure providers, deploy, enable schedules, access Production, or implement
+E1e generic webpage video.
 
 E1c's accepted implementation was delivered as PR #27 after deterministic Local
 tests, the complete extension regression suite, TypeScript compilation,
