@@ -19,6 +19,7 @@ import {
   MEDIA_CAPTURE_RETRY,
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
+  isMediaCaptureCancelMessage,
   isMediaCaptureStartMessage,
   isCurrentCaptureId,
   sourceIdentityMatchesUrl,
@@ -52,6 +53,7 @@ export function installMediaCapture(chrome: ExtensionChrome) {
   let active: ActiveCapture | null = null;
   let lastSnapshot: CaptureSnapshot = { status: 'idle' };
   let creatingOffscreen: Promise<void> | null = null;
+  let activePersistence: Promise<void> = Promise.resolve();
   const offscreenUrl = (chrome.runtime.getURL as (path: string) => string)(OFFSCREEN_URL);
   const restoreActive = chrome.storage.session.get(ACTIVE_CAPTURE_KEY).then((stored) => {
     const value = stored[ACTIVE_CAPTURE_KEY] as {
@@ -60,6 +62,7 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     } | undefined;
     if (
       value && typeof value.captureId === 'string' && value.request &&
+      value.request.captureId === value.captureId &&
       typeof value.request.tabId === 'number' && value.request.source &&
       typeof value.request.startMs === 'number' && typeof value.request.endMs === 'number' &&
       value.request.operation && typeof value.request.apiOrigin === 'string'
@@ -73,11 +76,22 @@ export function installMediaCapture(chrome: ExtensionChrome) {
 
   async function persistActive(value: ActiveCapture | null) {
     active = value;
-    if (!value) return chrome.storage.session.remove(ACTIVE_CAPTURE_KEY);
-    const { accessToken: _accessToken, ...safeRequest } = value.request;
-    return chrome.storage.session.set({
-      [ACTIVE_CAPTURE_KEY]: { captureId: value.captureId, request: safeRequest },
-    });
+    const persist = async () => {
+      if (!value) return chrome.storage.session.remove(ACTIVE_CAPTURE_KEY);
+      const { accessToken: _accessToken, ...safeRequest } = value.request;
+      return chrome.storage.session.set({
+        [ACTIVE_CAPTURE_KEY]: { captureId: value.captureId, request: safeRequest },
+      });
+    };
+    const next = activePersistence.then(persist, persist);
+    activePersistence = next.then(() => undefined, () => undefined);
+    await next;
+  }
+
+  async function clearActiveIfCurrent(captureId: string) {
+    if (active?.captureId !== captureId) return false;
+    await persistActive(null);
+    return true;
   }
 
   async function hasOffscreenDocument() {
@@ -85,6 +99,39 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       contextTypes: ['OFFSCREEN_DOCUMENT'],
       documentUrls: [offscreenUrl],
     })).length > 0;
+  }
+
+  function snapshotRetainsCapture(snapshot: CaptureSnapshot, captureId: string) {
+    if (!('captureId' in snapshot) || snapshot.captureId !== captureId) return false;
+    return ['capturing', 'stopping', 'uploading', 'waiting-to-upload'].includes(snapshot.status) ||
+      (snapshot.status === 'error' && snapshot.code === 'upload-failed');
+  }
+
+  async function reconcileActiveCapture() {
+    await restoreActive;
+    const capture = active;
+    if (!capture) return;
+    if (lastSnapshot.status === 'preparing' && lastSnapshot.captureId === capture.captureId) return;
+    if (!await hasOffscreenDocument()) {
+      await clearActiveIfCurrent(capture.captureId);
+      return;
+    }
+    try {
+      const response = await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        type: MEDIA_CAPTURE_OFFSCREEN_STATUS,
+      });
+      const offscreenSnapshot = response?.snapshot as CaptureSnapshot | undefined;
+      if (!offscreenSnapshot || typeof offscreenSnapshot !== 'object') return;
+      if (
+        'captureId' in offscreenSnapshot && typeof offscreenSnapshot.captureId === 'string' &&
+        offscreenSnapshot.captureId !== capture.captureId
+      ) return;
+      lastSnapshot = offscreenSnapshot;
+      if (!snapshotRetainsCapture(offscreenSnapshot, capture.captureId)) {
+        await clearActiveIfCurrent(capture.captureId);
+      }
+    } catch { /* Fail closed while the offscreen recorder cannot be reconciled. */ }
   }
 
   async function ensureOffscreenDocument() {
@@ -133,7 +180,7 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       });
     } catch { /* The offscreen document may already have stopped. */ }
     await finishPage(capture);
-    await persistActive(null);
+    await clearActiveIfCurrent(capture.captureId);
     emit({ status: 'cancelled', captureId: capture.captureId, code, message }, capture.request.operation);
     return true;
   }
@@ -180,17 +227,16 @@ export function installMediaCapture(chrome: ExtensionChrome) {
   }
 
   async function begin(request: CaptureStartRequest): Promise<CaptureStartResponse> {
-    await restoreActive;
-    if (active && !await hasOffscreenDocument()) await persistActive(null);
+    await reconcileActiveCapture();
     if (active) return { ok: false, snapshot: failure('busy', 'Another media capture is already active.', active.captureId) };
-    const captureId = crypto.randomUUID();
+    const captureId = request.captureId;
     const capture = { captureId, request };
     await persistActive(capture);
     emit({ status: 'preparing', captureId });
     try {
       const prepared = await validateAndPrepare(captureId, request);
       if (!prepared.ok) {
-        await persistActive(null);
+        await clearActiveIfCurrent(captureId);
         console.warn('[Annotated capture preparation]', {
           code: prepared.code,
           captureId,
@@ -212,7 +258,7 @@ export function installMediaCapture(chrome: ExtensionChrome) {
         prepared: prepared.prepared,
       }) as CaptureSnapshot;
       if (started.status === 'error') {
-        await persistActive(null);
+        await clearActiveIfCurrent(captureId);
         emit(started);
         return { ok: false, snapshot: started };
       }
@@ -252,15 +298,33 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       void begin(message.request).then(sendResponse);
       return true;
     }
+    if (isMediaCaptureCancelMessage(message)) {
+      void (async () => {
+        await restoreActive;
+        const capture = active;
+        const sameOperation = Boolean(
+          capture && capture.request.operation.annotationId === message.operation.annotationId &&
+          capture.request.operation.mediaId === message.operation.mediaId,
+        );
+        const sameCapture = message.captureId === null || message.captureId === capture?.captureId;
+        if (!capture || !sameOperation || !sameCapture) {
+          sendResponse({ ok: true, cancelled: false });
+          return;
+        }
+        const cancelled = await cancelActive('unexpected', 'Capture cancelled by the user.');
+        sendResponse({ ok: true, cancelled });
+      })();
+      return true;
+    }
     if (typeof message !== 'object' || message === null || !('target' in message)) return undefined;
     const row = message as Record<string, unknown>;
     if (row.target === 'background' && row.type === MEDIA_CAPTURE_CANCEL) {
-      void cancelActive('unexpected', 'Capture cancelled by the user.').then(sendResponse);
-      return true;
+      sendResponse({ ok: false, cancelled: false, error: 'Malformed capture cancellation request.' });
+      return undefined;
     }
     if (row.target === 'background' && row.type === MEDIA_CAPTURE_RETRY) {
       if (typeof row.captureId !== 'string' || typeof row.accessToken !== 'string' ||
-          row.accessToken.length < 20) {
+          row.accessToken.length < 20 || !active || row.captureId !== active.captureId) {
         sendResponse({ ok: false, error: 'Malformed upload retry request.' });
         return undefined;
       }
@@ -274,10 +338,17 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     }
     if (row.target === 'background' && row.type === MEDIA_CAPTURE_STATUS) {
       void (async () => {
-        if (await hasOffscreenDocument()) {
+        await reconcileActiveCapture();
+        if (active && await hasOffscreenDocument()) {
           try {
             const response = await chrome.runtime.sendMessage({ target: 'offscreen', type: MEDIA_CAPTURE_OFFSCREEN_STATUS });
-            if (response?.snapshot) lastSnapshot = response.snapshot;
+            const snapshot = response?.snapshot as CaptureSnapshot | undefined;
+            const expectedCaptureId = active?.captureId ??
+              ('captureId' in lastSnapshot ? lastSnapshot.captureId : null);
+            if (
+              snapshot && typeof snapshot === 'object' && 'captureId' in snapshot &&
+              snapshot.captureId === expectedCaptureId
+            ) lastSnapshot = snapshot;
           } catch { /* Use last known safe snapshot. */ }
         }
         sendResponse({ ok: true, snapshot: lastSnapshot, operation: active?.request.operation ?? null });
@@ -285,26 +356,33 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       return true;
     }
     if (row.target === 'background' && row.type === MEDIA_CAPTURE_OFFSCREEN_EVENT) {
-      const snapshot = row.snapshot as CaptureSnapshot;
+      const snapshot = row.snapshot as CaptureSnapshot | undefined;
       const capture = active;
-      if (snapshot?.status === 'verifying-upload' || snapshot?.status === 'processing' ||
-          snapshot?.status === 'cancelled' || snapshot?.status === 'error') {
-        if (capture && (!('captureId' in snapshot) || snapshot.captureId === capture.captureId)) {
-          void finishPage(capture).then((end) => {
-            if (end) void chrome.runtime.sendMessage({
-              target: 'offscreen',
-              type: 'annotated.mediaCapture.offscreenPlayerEnd.v1',
-              captureId: capture.captureId,
-              playerEndMs: end.currentTimeMs,
-              geometry: end.geometry,
-            }).catch(() => undefined);
-          });
-          if (snapshot.status !== 'error' || snapshot.code !== 'upload-failed') void persistActive(null);
-        }
+      if (!capture || !snapshot || typeof snapshot !== 'object' ||
+          !('captureId' in snapshot) || snapshot.captureId !== capture.captureId) {
+        sendResponse({ ok: false, error: 'Stale capture identifier.' });
+        return undefined;
       }
-      emit(snapshot, capture?.request.operation ?? null);
-      sendResponse({ ok: true });
-      return undefined;
+      void (async () => {
+        const terminal = snapshot.status === 'verifying-upload' || snapshot.status === 'processing' ||
+          snapshot.status === 'cancelled' || snapshot.status === 'error';
+        if (terminal) {
+          const end = await finishPage(capture);
+          if (end) await chrome.runtime.sendMessage({
+            target: 'offscreen',
+            type: 'annotated.mediaCapture.offscreenPlayerEnd.v1',
+            captureId: capture.captureId,
+            playerEndMs: end.currentTimeMs,
+            geometry: end.geometry,
+          }).catch(() => undefined);
+        }
+        emit(snapshot, capture.request.operation);
+        if (terminal && (snapshot.status !== 'error' || snapshot.code !== 'upload-failed')) {
+          await clearActiveIfCurrent(capture.captureId);
+        }
+        sendResponse({ ok: true });
+      })();
+      return true;
     }
     if (row.target === 'background' && row.type === MEDIA_CAPTURE_OFFSCREEN_NEEDS_END) {
       const capture = active;

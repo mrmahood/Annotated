@@ -104,11 +104,29 @@ export function readTopFramePlayerDiscovery(mode: PlayerMode) {
       element.getClientRects().length > 0 && style.display !== 'none' &&
       style.visibility !== 'hidden' && style.opacity !== '0';
   };
+  const videoExposed = (element: HTMLVideoElement) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const left = Math.max(0, rect.left);
+    const right = Math.min(window.innerWidth, rect.right);
+    const top = Math.max(0, rect.top);
+    const bottom = Math.min(window.innerHeight, rect.bottom);
+    if (
+      right <= left || bottom <= top || element.getClientRects().length === 0 ||
+      style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0
+    ) return false;
+    const points = [
+      [(left + right) / 2, (top + bottom) / 2],
+      [left + (right - left) / 4, top + (bottom - top) / 4],
+      [right - (right - left) / 4, bottom - (bottom - top) / 4],
+    ];
+    return points.some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+  };
   const eligible: HTMLMediaElement[] = [];
   for (const entry of document.querySelectorAll('audio, video')) {
     if (!(entry instanceof HTMLMediaElement) || !sourceFor(entry)) continue;
     const accepted = mode === 'video'
-      ? entry instanceof HTMLVideoElement
+      ? entry instanceof HTMLVideoElement && videoExposed(entry)
       : entry instanceof HTMLAudioElement || (
         entry instanceof HTMLVideoElement && entry.readyState >= 1 &&
         entry.videoWidth === 0 && entry.videoHeight === 0 && audioVideoOperable(entry)
@@ -202,11 +220,29 @@ export async function actOnTopFramePlayer(
       element.getClientRects().length > 0 && style.display !== 'none' &&
       style.visibility !== 'hidden' && style.opacity !== '0';
   };
+  const videoExposed = (element: HTMLVideoElement) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const left = Math.max(0, rect.left);
+    const right = Math.min(window.innerWidth, rect.right);
+    const top = Math.max(0, rect.top);
+    const bottom = Math.min(window.innerHeight, rect.bottom);
+    if (
+      right <= left || bottom <= top || element.getClientRects().length === 0 ||
+      style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0
+    ) return false;
+    const points = [
+      [(left + right) / 2, (top + bottom) / 2],
+      [left + (right - left) / 4, top + (bottom - top) / 4],
+      [right - (right - left) / 4, bottom - (bottom - top) / 4],
+    ];
+    return points.some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+  };
   const eligible: HTMLMediaElement[] = [];
   for (const entry of document.querySelectorAll('audio, video')) {
     if (!(entry instanceof HTMLMediaElement) || !sourceFor(entry)) continue;
     const accepted = mode === 'video'
-      ? entry instanceof HTMLVideoElement
+      ? entry instanceof HTMLVideoElement && videoExposed(entry)
       : entry instanceof HTMLAudioElement || (
         entry instanceof HTMLVideoElement && entry.readyState >= 1 &&
         entry.videoWidth === 0 && entry.videoHeight === 0 && audioVideoOperable(entry)

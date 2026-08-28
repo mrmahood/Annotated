@@ -76,6 +76,7 @@ type MediaDraftPatch = Partial<Omit<MediaCreateDraftState, 'revision'>>;
 export type CreateDraftAction =
   | { type: 'set-text-commentary'; commentary: string }
   | { type: 'patch-media'; mode: MediaCreateMode; patch: MediaDraftPatch }
+  | { type: 'set-player-read-state'; mode: MediaCreateMode; state: PlayerReadState }
   | { type: 'restore-media'; mode: MediaCreateMode; sourceKey: string; startMs: number | null; endMs: number | null; commentary: string }
   | { type: 'reset-mode'; mode: CreateMode }
   | { type: 'advance-revision'; mode: CreateMode };
@@ -383,6 +384,16 @@ export function reduceCreateDraftState(
         ...current,
         ...action.patch,
         revision: current.revision + 1,
+      },
+    };
+  }
+  if (action.type === 'set-player-read-state') {
+    validateMediaPatch({ playerReadState: action.state });
+    return {
+      ...state,
+      [action.mode]: {
+        ...state[action.mode],
+        playerReadState: action.state,
       },
     };
   }

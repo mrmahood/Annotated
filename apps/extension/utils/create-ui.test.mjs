@@ -51,7 +51,9 @@ test('player selection is a bounded native radio group and gates every clip acti
   assert.match(source, /Too many \{label\} players/);
   assert.match(source, /disabled=\{!videoPlayerSelected/);
   assert.match(source, /disabled=\{!audioPlayerSelected/);
-  assert.match(source, /runSelectedPlayerAction\(\s*'video'/);
-  assert.match(source, /runSelectedPlayerAction\(\s*'audio'/);
+  assert.match(source, /getPlayerActionToken\('video'/);
+  assert.match(source, /getPlayerActionToken\('audio'/);
+  assert.match(source, /runSelectedPlayerAction\(token,/);
+  assert.match(source, /playerTokenIsCurrent\(token\)/);
   assert.match(style, /\.player-option-label[^}]*overflow-wrap: anywhere/);
 });
