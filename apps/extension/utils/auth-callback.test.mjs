@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  AUTH_PROVIDER_METADATA,
+  ENABLED_EXTENSION_AUTH_PROVIDERS,
+  createExtensionAuthController,
+  ExtensionAuthError,
   isAuthCancellation,
   isExpectedAuthCallback,
   parseAuthCallbackTokens,
-} from './auth-callback.ts';
+  userHasAuthProvider,
+  userHasEnabledAuthProvider,
+} from './auth-boundary.ts';
 
 const expectedRedirect =
   'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/auth/callback';
@@ -27,6 +33,13 @@ test('accepts only the expected chromiumapp.org callback origin and path', () =>
     ),
     false,
   );
+  assert.equal(
+    isExpectedAuthCallback(
+      `${expectedRedirect}?unexpected=true#access_token=x`,
+      expectedRedirect,
+    ),
+    false,
+  );
 });
 
 test('parses Supabase tokens from the callback fragment', () => {
@@ -42,6 +55,36 @@ test('rejects missing callback tokens', () => {
   assert.throws(
     () => parseAuthCallbackTokens(`${expectedRedirect}#access_token=${accessToken}`),
     /authentication response was incomplete/i,
+  );
+});
+
+test('rejects duplicate callback tokens without exposing their values', () => {
+  const duplicate = 'duplicate-sensitive-token';
+  assert.throws(
+    () => parseAuthCallbackTokens(
+      `${expectedRedirect}#access_token=${accessToken}&access_token=${duplicate}&refresh_token=${refreshToken}`,
+    ),
+    (error) => {
+      assert.equal(error.message.includes(duplicate), false);
+      assert.match(error.message, /authentication response was incomplete/i);
+      return true;
+    },
+  );
+});
+
+test('maps provider denial to a provider-neutral bounded error', () => {
+  const detail = 'sensitive-provider-denial-detail';
+  assert.throws(
+    () => parseAuthCallbackTokens(
+      `${expectedRedirect}#error=access_denied&error_description=${detail}`,
+    ),
+    (error) => {
+      assert.equal(error instanceof ExtensionAuthError, true);
+      assert.equal(error.kind, 'oauth');
+      assert.equal(error.message.includes(detail), false);
+      assert.equal(error.message.includes('Google'), false);
+      return true;
+    },
   );
 });
 
@@ -67,4 +110,166 @@ test('classifies user-cancelled identity flows as recoverable cancellation', () 
   assert.equal(isAuthCancellation(new Error('The user did not approve access.')), true);
   assert.equal(isAuthCancellation(new Error('The window was closed by the user.')), true);
   assert.equal(isAuthCancellation(new Error('Network request failed')), false);
+});
+
+test('keeps X closed while exposing provider-neutral metadata and identity checks', () => {
+  assert.deepEqual(ENABLED_EXTENSION_AUTH_PROVIDERS, ['google']);
+  assert.equal(AUTH_PROVIDER_METADATA.google.label, 'Google');
+  assert.equal(AUTH_PROVIDER_METADATA.x.label, 'X');
+  assert.equal(userHasAuthProvider({ identities: [{ provider: 'google' }] }, 'google'), true);
+  assert.equal(userHasAuthProvider({ identities: [{ provider: 'x' }] }, 'google'), false);
+  assert.equal(userHasEnabledAuthProvider({ identities: [{ provider: 'google' }] }), true);
+  assert.equal(userHasEnabledAuthProvider({ identities: [{ provider: 'x' }] }), false);
+});
+
+function createAuthFixture({
+  callbackUrl = `${expectedRedirect}#access_token=${accessToken}&refresh_token=${refreshToken}`,
+  user = { id: 'user-1', identities: [{ provider: 'google' }] },
+  launch,
+  setSessionError = null,
+} = {}) {
+  const calls = { oauth: [], session: [], signOut: [] };
+  const supabase = {
+    auth: {
+      async signInWithOAuth(options) {
+        calls.oauth.push(options);
+        return { data: { url: 'https://example.supabase.co/auth/v1/authorize' }, error: null };
+      },
+      async setSession(tokens) {
+        calls.session.push(tokens);
+        return {
+          data: { user: setSessionError ? null : user },
+          error: setSessionError,
+        };
+      },
+      async signOut(options) {
+        calls.signOut.push(options);
+        return { error: null };
+      },
+    },
+  };
+  const runtime = {
+    getRedirectURL: () => expectedRedirect,
+    launchWebAuthFlow: launch ?? (async () => callbackUrl),
+    timeoutMs: 20,
+  };
+  return { calls, runtime, supabase };
+}
+
+test('provider-neutral extension sign-in preserves the Google flow and verifies identity', async () => {
+  const { calls, runtime, supabase } = createAuthFixture();
+  const controller = createExtensionAuthController(runtime);
+  const user = await controller.signInWithProvider(supabase, 'google');
+
+  assert.equal(user.id, 'user-1');
+  assert.deepEqual(calls.oauth, [{
+    provider: 'google',
+    options: { skipBrowserRedirect: true, redirectTo: expectedRedirect },
+  }]);
+  assert.deepEqual(calls.session, [{
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  }]);
+  assert.deepEqual(calls.signOut, []);
+});
+
+test('provider mismatch purges the attempted session and returns a token-safe error', async () => {
+  const { calls, runtime, supabase } = createAuthFixture({
+    user: { id: 'user-1', identities: [{ provider: 'x' }] },
+  });
+  const controller = createExtensionAuthController(runtime);
+
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'google'),
+    (error) => {
+      assert.equal(error instanceof ExtensionAuthError, true);
+      assert.equal(error.kind, 'provider-mismatch');
+      assert.equal(error.message.includes(accessToken), false);
+      assert.equal(error.message.includes(refreshToken), false);
+      return true;
+    },
+  );
+  assert.deepEqual(calls.signOut, [{ scope: 'local' }]);
+});
+
+test('session failure purges partial state and reports a bounded error', async () => {
+  const { calls, runtime, supabase } = createAuthFixture({
+    setSessionError: new Error('sensitive provider failure'),
+  });
+  const controller = createExtensionAuthController(runtime);
+
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'google'),
+    (error) => error instanceof ExtensionAuthError &&
+      error.kind === 'session' &&
+      !error.message.includes('sensitive provider failure'),
+  );
+  assert.deepEqual(calls.signOut, [{ scope: 'local' }]);
+});
+
+test('cancelled Chrome flow is recoverable and does not create a session', async () => {
+  const { calls, runtime, supabase } = createAuthFixture({
+    launch: async () => { throw new Error('The user did not approve access.'); },
+  });
+  const controller = createExtensionAuthController(runtime);
+
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'google'),
+    (error) => error instanceof ExtensionAuthError && error.kind === 'cancelled',
+  );
+  assert.deepEqual(calls.session, []);
+  assert.deepEqual(calls.signOut, []);
+});
+
+test('OAuth start failures are generic and release the attempt lock', async () => {
+  const { calls, runtime, supabase } = createAuthFixture();
+  supabase.auth.signInWithOAuth = async (options) => {
+    calls.oauth.push(options);
+    return { data: { url: null }, error: new Error('sensitive-start-detail') };
+  };
+  const controller = createExtensionAuthController(runtime);
+
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'google'),
+    (error) => error instanceof ExtensionAuthError &&
+      error.kind === 'oauth' &&
+      !error.message.includes('sensitive-start-detail'),
+  );
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'google'),
+    (error) => error instanceof ExtensionAuthError && error.kind === 'oauth',
+  );
+  assert.equal(calls.oauth.length, 2);
+});
+
+test('one active attempt blocks concurrency and a timed-out attempt cannot satisfy a later one', async () => {
+  let resolveFirst;
+  const firstLaunch = new Promise((resolve) => { resolveFirst = resolve; });
+  const { runtime, supabase } = createAuthFixture({ launch: () => firstLaunch });
+  const controller = createExtensionAuthController(runtime);
+  const first = controller.signInWithProvider(supabase, 'google');
+
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'google'),
+    (error) => error instanceof ExtensionAuthError && error.kind === 'attempt-active',
+  );
+  await assert.rejects(
+    first,
+    (error) => error instanceof ExtensionAuthError && error.kind === 'timeout',
+  );
+
+  resolveFirst(`${expectedRedirect}#access_token=${accessToken}&refresh_token=${refreshToken}`);
+  const secondFixture = createAuthFixture();
+  const user = await controller.signInWithProvider(secondFixture.supabase, 'google');
+  assert.equal(user.id, 'user-1');
+});
+
+test('disabled X start fails before opening OAuth', async () => {
+  const { calls, runtime, supabase } = createAuthFixture();
+  const controller = createExtensionAuthController(runtime);
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'x'),
+    (error) => error instanceof ExtensionAuthError && error.kind === 'unsupported-provider',
+  );
+  assert.deepEqual(calls.oauth, []);
 });

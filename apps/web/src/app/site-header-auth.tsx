@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { webAuthStarter } from "@/lib/auth/auth-boundary";
 import { createClient } from "@/lib/supabase/client";
 import { getInitial } from "@/lib/public-content";
 
@@ -28,18 +29,16 @@ export function SiteHeaderAuth({
     setErrorMessage(null);
 
     try {
-      const callbackUrl = new URL("/auth/callback", window.location.origin);
-      callbackUrl.searchParams.set("next", returnTo);
       const supabase = createClient();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: callbackUrl.href },
-      });
-
-      if (error) throw error;
+      await webAuthStarter.start(
+        supabase,
+        "google",
+        returnTo,
+        window.location.origin,
+      );
     } catch {
       setPending(null);
-      setErrorMessage("Google sign-in could not be started. Please try again.");
+      setErrorMessage("Sign-in could not be started. Please try again.");
     }
   };
 

@@ -7,7 +7,7 @@ import {
   type VoteSnapshot,
   type VoteValue,
 } from "@/lib/voting";
-import { GoogleSignInButton } from "./google-sign-in-button";
+import { ProviderSignInButton } from "./provider-sign-in-button";
 
 type VoteErrorBody = Partial<VoteSnapshot> & {
   error?: unknown;
@@ -106,7 +106,8 @@ export function VoteControls({
           <h2 id="vote-heading">Votes</h2>
         </div>
         {!currentUserId && initialSnapshot && (
-          <GoogleSignInButton
+          <ProviderSignInButton
+            provider="google"
             returnTo={`${returnTo}#votes`}
             label="Sign in to vote"
             className="public-button public-button-secondary"

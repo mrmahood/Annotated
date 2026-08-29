@@ -15,7 +15,7 @@ import {
 } from "@/lib/data/social-query";
 import { getInitial } from "@/lib/public-content";
 import { createClient } from "@/lib/supabase/client";
-import { GoogleSignInButton } from "../../google-sign-in-button";
+import { ProviderSignInButton } from "../../provider-sign-in-button";
 
 export function CommentsSection({
   annotationId,
@@ -241,7 +241,8 @@ export function CommentsSection({
         ) : (
           <div className="comment-sign-in">
             <p>Sign in with Google to join the discussion.</p>
-            <GoogleSignInButton
+            <ProviderSignInButton
+              provider="google"
               returnTo={returnTo}
               label="Continue with Google"
             />
