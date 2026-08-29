@@ -1,7 +1,7 @@
 # Product roadmap
 
-Status: Phase D complete and merged; Phase E increments E1a-E1e complete and
-merged, 2026-08-28. D1 and D2 completed their
+Status: Phase D complete and merged; Phase E increments E1a-E1e and E2a
+complete and merged, 2026-08-29. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -25,8 +25,11 @@ post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
 post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
 and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
 after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-origin
-player adapters, generic webpage-video publication, authentication, and later
-work remain separately authorized.
+player adapters and generic webpage-video publication remain separately
+authorized. E2a passed Owner Chrome acceptance and merged through PR #33 as
+`83db250f9f07eeb747399546f1138b8503c44781` after PR CI `33259588362`;
+post-merge `main` CI `33260246341` passed. X remained absent and unconfigured;
+E2b, E2c, and later work remain separately authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -369,7 +372,14 @@ passed required CI run `33230216132`, was squash-merged as
 `185d1a386ac374f7a1d9fe56dda97b872553b671`, and passed post-merge `main` CI run
 `33230745060`. Inaccessible cross-origin players continue to fail closed;
 cross-origin adapters and generic webpage-video publication remain separate
-increments, as do authentication and provider configuration.
+increments. E2a's provider-neutral web and extension authentication boundaries,
+bounded attempt/provider/callback/session validation, one-attempt handling,
+safe cleanup, provider-mismatch rejection, and token-safe errors preserved the
+proven Google flow. E2a passed Owner Chrome acceptance and PR CI run
+`33259588362`, then merged through PR #33 as
+`83db250f9f07eeb747399546f1138b8503c44781`; post-merge `main` CI run
+`33260246341` passed. X remained absent and unconfigured; E2b and E2c remain
+separate increments.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -387,6 +397,9 @@ increments, as do authentication and provider configuration.
   delivery URLs. Inaccessible cross-origin players remain unsupported pending a
   separately authorized player-adapter contract; generic webpage publication is
   also deferred to a separate server/data/public-reader increment.
+- E2a placed existing Google sign-in behind provider-neutral web and extension
+  boundaries with bounded attempt, callback, provider, session, retry, cleanup,
+  and token-safe error handling. It did not display, execute, or configure X.
 - Add X.com OAuth 2.0 login alongside Google through Supabase Auth. Test explicit
   web and extension callbacks and adopt a safe account-linking policy. Never
   merge identities based only on display name.
@@ -444,9 +457,12 @@ post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
 post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
 and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`;
 E1e PR CI `33230216132` and post-merge `main` CI `33230745060` passed.
-Cross-origin player adapters, generic webpage-video publication, later
-implementation, provider configuration, schedule enablement, Production access,
-and deployment remain separately authorized.
+E2a passed Owner Chrome acceptance and merged through PR #33 as
+`83db250f9f07eeb747399546f1138b8503c44781`; E2a PR CI `33259588362` and
+post-merge `main` CI `33260246341` passed. Cross-origin player adapters, generic
+webpage-video publication, E2b/E2c, provider configuration, later implementation,
+schedule enablement, Production access, and deployment remain separately
+authorized.
 Production rollout remains blocked until Phase E
 passes its Local, required CI, and bounded Staging gates and later Production
 authorization is explicitly granted.

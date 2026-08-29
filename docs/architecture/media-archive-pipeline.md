@@ -1,6 +1,6 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, updated 2026-08-28. Phases A-B and Phase C
+Status: accepted architecture, updated 2026-08-29. Phases A-B and Phase C
 increments C1-C6 are implemented and accepted. C6's least-privilege worker
 migrations, immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded
 lifecycle, crash, codec, geometry, exact-duration, transcript, retention, and
@@ -29,8 +29,11 @@ post-merge `main` CI `32965527019`. E1c merged through PR #27 as
 post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
 and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
 after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-origin
-player adapters, generic webpage-video publication, and later work remain
-separately authorized.
+player adapters and generic webpage-video publication remain separately
+authorized. E2a passed Owner Chrome acceptance and merged through PR #33 as
+`83db250f9f07eeb747399546f1138b8503c44781` after PR CI `33259588362`;
+post-merge `main` CI `33260246341` passed. X remained absent and unconfigured;
+E2b, E2c, and later work remain separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -836,11 +839,11 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: planning contract current through E1e. E1a's local capability/data contract,
-page-generation/revision rules, independent draft state, and regressions pass the
-focused and complete extension test suites, TypeScript compilation, and
-production build/manifest inspection. PR #23 passed required CI run
-`32922199032`, was squash-merged as
+Status: planning contract current through E2a. E1a's local capability/data
+contract, page-generation/revision rules, independent draft state, and
+regressions pass the focused and complete extension test suites, TypeScript
+compilation, and production build/manifest inspection. PR #23 passed required
+CI run `32922199032`, was squash-merged as
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
 `32922631250`. E1b passed owner Chrome acceptance and PR CI run `32964086959`,
 then merged through PR #25 as
@@ -864,6 +867,15 @@ passed required CI run `33230216132`, was squash-merged as
 `185d1a386ac374f7a1d9fe56dda97b872553b671`, and passed post-merge `main` CI run
 `33230745060`. Inaccessible cross-origin players fail closed; cross-origin player
 adapters and generic webpage-video publication remain separately authorized.
+E2a's provider-neutral web and extension authentication boundaries added bounded
+attempt/provider/callback/session validation, one-attempt handling, safe cleanup,
+provider-mismatch rejection, and token-safe errors while preserving Google.
+Owner Chrome acceptance passed, including unchanged authenticated article,
+comments, follows, voting, YouTube, and Audio workflows. PR #33 passed required
+CI run `33259588362`, was squash-merged as
+`83db250f9f07eeb747399546f1138b8503c44781`, and passed post-merge `main` CI run
+`33260246341`. X remained absent and unconfigured; E2b and E2c remain separately
+authorized.
 The verified audit, design, security review,
 increment boundaries, and acceptance plan are in
 `docs/architecture/phase-e-create-auth-plan.md`.
@@ -880,6 +892,9 @@ increment boundaries, and acceptance plan are in
   handling for inaccessible cross-origin, DRM, and canvas players. It preserves
   `tabCapture` and offscreen Blob ownership. Cross-origin adapters and generic
   webpage-video publication remain deferred behind separate authorization.
+- E2a places the proven Google flow behind provider-neutral web and extension
+  boundaries with bounded attempt, callback, provider, session, retry, cleanup,
+  and token-safe error handling. It does not display, execute, or configure X.
 - Add X.com OAuth 2.0 alongside Google through Supabase Auth with explicit web
   and extension callback tests and an account-linking policy that never merges
   users from display name alone.

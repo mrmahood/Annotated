@@ -1,10 +1,10 @@
 # Phase E Create and authentication plan
 
-Status: planning contract, updated 2026-08-28. Phase D is complete. E1a was subsequently
-authorized; its implementation and deterministic Local validation are complete
-and merged, including focused and complete extension tests, TypeScript
-compilation, production build, and manifest inspection. PR #23 passed required CI
-run `32922199032`, was squash-merged into protected `main` as
+Status: planning contract, updated 2026-08-29. Phase D is complete. E1a was
+subsequently authorized; its implementation and deterministic Local validation
+are complete and merged, including focused and complete extension tests,
+TypeScript compilation, production build, and manifest inspection. PR #23 passed
+required CI run `32922199032`, was squash-merged into protected `main` as
 `c902c2b8688c8d547cfd471f5ebe325833d22948`, and passed post-merge `main` CI run
 `32922631250`. E1b passed owner Chrome acceptance and PR CI run `32964086959`,
 then merged through PR #25 as
@@ -17,9 +17,13 @@ through PR #29 as `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`; post-merge
 `main` CI run `33135718601` passed. E1e passed Owner Chrome acceptance and
 merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
 after required PR CI run `33230216132`; post-merge `main` CI run `33230745060`
-passed. Cross-origin player adapters, generic webpage-video publication, later
-implementation, database work, provider configuration, Local services, Staging,
-Production, schedules, and deployment are not authorized by this document.
+passed. E2a passed Owner Chrome acceptance and merged through PR #33 as
+`83db250f9f07eeb747399546f1138b8503c44781` after required PR CI run
+`33259588362`; post-merge `main` CI run `33260246341` passed. X remained absent
+and unconfigured. Cross-origin player adapters, generic webpage-video
+publication, E2b/E2c and later implementation, database work, provider
+configuration, Local services, Staging, Production, schedules, and deployment
+are not authorized by this document.
 
 This plan is subordinate to the durable security and media rules in
 `docs/architecture/media-archive-pipeline.md`. Future-code descriptions define a
@@ -363,10 +367,12 @@ preconditions, not permission to change them.
 
 ## 12. Provider-neutral authentication design
 
-Create a closed provider type `google | x` plus safe label metadata. Web and
-extension expose separate **Continue with Google** and **Continue with X**
-buttons. Shared code owns start, callback-state validation, session setup,
-expected-provider verification, cancellation, and provider-neutral safe errors.
+E2a created a closed provider type `google | x` plus safe label metadata, while
+enabling and exposing only **Continue with Google**. Shared code owns start,
+callback-state validation, session setup, expected-provider verification,
+cancellation, and provider-neutral safe errors. E2b and E2c may expose
+**Continue with X** only after their separate implementation and configuration
+authorizations.
 
 Web start passes an allowlisted relative next path and integrity-protected
 expected-provider hint through server-controlled state. The callback exchanges
@@ -382,8 +388,8 @@ purges the attempted session, and returns a generic error. Allow one active auth
 attempt per extension context; a stale callback cannot satisfy a later attempt.
 
 Do not migrate the current extension implicit callback solely because the
-Supabase X adapter uses PKCE in its provider-to-Supabase exchange. E2a verifies
-current client behavior before any flow migration. Any later-required PKCE
+Supabase X adapter uses PKCE in its provider-to-Supabase exchange. E2a verified
+current client behavior without requiring a flow migration. Any later-required PKCE
 verifier is short-lived attempt state and never logged.
 
 ## 13. X callback, session, and error contract
@@ -549,8 +555,8 @@ Every reproduced defect receives a regression.
 
 ### Web
 
-- E2a: separate provider buttons share an interface; Google, safe/unsafe next,
-  one exchange, generic errors, and signed-out recovery remain.
+- E2a: the provider-button interface exposes only enabled Google; safe/unsafe
+  next, one exchange, generic errors, and signed-out recovery remain.
 - E2b: X start/success, denial/cancel, missing/duplicate/malformed/invalid/expired
   code, exchange failure, expected-provider mismatch, missing identity,
   concurrent/stale attempt, invalid session, refresh rotation, purge, and
@@ -620,8 +626,13 @@ authorization with supplied evidence.
    `main` CI `33230745060` passed. Owner Chrome acceptance completed. Inaccessible
    cross-origin players fail closed, and their adapters plus generic webpage
    publication remain separate increments.
-6. **E2a — provider-neutral auth.** Preserve Google; add attempt/provider checks
-   and deterministic tests; do not configure/expose X.
+6. **E2a — provider-neutral auth (complete and merged).** Provider-neutral web
+   and extension boundaries preserve Google and add bounded attempt/provider/
+   callback/session checks, one-attempt handling, safe cleanup, mismatch
+   rejection, and token-safe errors. Owner Chrome acceptance completed. PR #33
+   passed required CI run `33259588362`, was squash-merged as
+   `83db250f9f07eeb747399546f1138b8503c44781`, and passed post-merge `main` CI run
+   `33260246341`. X remained absent and unconfigured.
 7. **E2b — X web.** Web action/callback/negative coverage behind disable boundary.
 8. **E2c — X extension and identity policy.** Add `x` with no permission change;
    enforce no-manual-linking policy.
@@ -706,6 +717,21 @@ boundary.
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
 accessed.
+
+E2a's accepted implementation was delivered as PR #33 after focused and complete
+extension and web regression suites, extension TypeScript compilation,
+production extension and web builds, production-manifest inspection, web lint,
+and Owner-completed Chrome acceptance. Acceptance verified existing Google
+sign-in, cancellation/retry, duplicate-attempt rejection, session restoration,
+sign-out, and signed-out recovery on both surfaces; X remained absent and
+non-executable. Authenticated article publication, comments, follows, voting,
+YouTube, and Audio smoke tests passed, and extension permissions remained
+unchanged. Required PR CI run `33259588362` passed. PR #33 was squash-merged into
+protected `main` as `83db250f9f07eeb747399546f1138b8503c44781`, post-merge
+`main` CI run `33260246341` passed, and local `main` was fast-forwarded to the
+same commit. The feature branch remains preserved. E2a did not expose or
+configure X, change media behavior, access Supabase environments, deploy, enable
+schedules, or access Production.
 
 E1e's accepted implementation was delivered as PR #31 after deterministic Local
 tests, the complete extension regression suite, TypeScript compilation,
