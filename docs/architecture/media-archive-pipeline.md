@@ -32,8 +32,10 @@ after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-orig
 player adapters and generic webpage-video publication remain separately
 authorized. E2a passed Owner Chrome acceptance and merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781` after PR CI `33259588362`;
-post-merge `main` CI `33260246341` passed. X remained absent and unconfigured;
-E2b, E2c, and later work remain separately authorized.
+post-merge `main` CI `33260246341` passed. E2b passed Owner Local web acceptance
+and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`
+after PR CI `33265858275`; post-merge `main` CI `33267265075` passed. X remains
+disabled and unconfigured; E2c and later work remain separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -839,7 +841,7 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: planning contract current through E2a. E1a's local capability/data
+Status: planning contract current through E2b. E1a's local capability/data
 contract, page-generation/revision rules, independent draft state, and
 regressions pass the focused and complete extension test suites, TypeScript
 compilation, and production build/manifest inspection. PR #23 passed required
@@ -874,7 +876,11 @@ Owner Chrome acceptance passed, including unchanged authenticated article,
 comments, follows, voting, YouTube, and Audio workflows. PR #33 passed required
 CI run `33259588362`, was squash-merged as
 `83db250f9f07eeb747399546f1138b8503c44781`, and passed post-merge `main` CI run
-`33260246341`. X remained absent and unconfigured; E2b and E2c remain separately
+`33260246341`. E2b's web-only X OAuth start and callback boundary remained behind
+an explicit disabled-by-default capability and passed Owner Local web acceptance.
+PR #35 passed required CI run `33265858275`, was squash-merged as
+`617cfdbeee4ebee6feacefa1abeb07775a250663`, and passed post-merge `main` CI run
+`33267265075`. X remains disabled and unconfigured; E2c remains separately
 authorized.
 The verified audit, design, security review,
 increment boundaries, and acceptance plan are in
@@ -895,9 +901,11 @@ increment boundaries, and acceptance plan are in
 - E2a places the proven Google flow behind provider-neutral web and extension
   boundaries with bounded attempt, callback, provider, session, retry, cleanup,
   and token-safe error handling. It does not display, execute, or configure X.
-- Add X.com OAuth 2.0 alongside Google through Supabase Auth with explicit web
-  and extension callback tests and an account-linking policy that never merges
-  users from display name alone.
+- E2b adds web-only X OAuth start and callback handling behind an explicit
+  disabled-by-default capability. It keeps X invisible and non-executable and
+  configures no provider. E2c extension handling, live enablement, and an
+  identity policy that never merges users from display name alone remain
+  separate increments.
 - Preserve the accepted tabCapture/offscreen Blob ownership, exact permissions,
   private upload, authoritative status, restart, article, and no-secret
   boundaries. Rollback hides the reorganized Create entry without deleting or

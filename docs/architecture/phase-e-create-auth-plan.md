@@ -19,11 +19,14 @@ merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
 after required PR CI run `33230216132`; post-merge `main` CI run `33230745060`
 passed. E2a passed Owner Chrome acceptance and merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781` after required PR CI run
-`33259588362`; post-merge `main` CI run `33260246341` passed. X remained absent
+`33259588362`; post-merge `main` CI run `33260246341` passed. E2b passed Owner
+Local web acceptance and merged through PR #35 as
+`617cfdbeee4ebee6feacefa1abeb07775a250663` after required PR CI run
+`33265858275`; post-merge `main` CI run `33267265075` passed. X remains disabled
 and unconfigured. Cross-origin player adapters, generic webpage-video
-publication, E2b/E2c and later implementation, database work, provider
-configuration, Local services, Staging, Production, schedules, and deployment
-are not authorized by this document.
+publication, E2c and later implementation, database work, provider configuration
+or enablement, Local services, Staging, Production, schedules, and deployment are
+not authorized by this document.
 
 This plan is subordinate to the durable security and media rules in
 `docs/architecture/media-archive-pipeline.md`. Future-code descriptions define a
@@ -370,9 +373,11 @@ preconditions, not permission to change them.
 E2a created a closed provider type `google | x` plus safe label metadata, while
 enabling and exposing only **Continue with Google**. Shared code owns start,
 callback-state validation, session setup, expected-provider verification,
-cancellation, and provider-neutral safe errors. E2b and E2c may expose
-**Continue with X** only after their separate implementation and configuration
-authorizations.
+cancellation, and provider-neutral safe errors. E2b implemented the web-only X
+start and callback path behind an explicit disabled-by-default capability; it
+did not expose or enable **Continue with X**. Any live web exposure requires a
+separate provider configuration and enablement authorization, and extension
+support remains the separate E2c increment.
 
 Web start passes an allowlisted relative next path and integrity-protected
 expected-provider hint through server-controlled state. The callback exchanges
@@ -403,9 +408,11 @@ dashboard, allowlist, or vendor change is authorized here.
 
 The current Supabase X adapter requests `users.email`, `tweet.read`, `users.read`,
 and `offline.access` by default. Phase E adds no application-requested scope and
-uses no tweets, follows, DMs, or write access. E2b reverifies defaults and need
-before configuration. Annotated has no product need for provider access/refresh
-tokens: application code must not read, copy, transmit, log, or add them to
+uses no tweets, follows, DMs, or write access. E2b reverified the identifiers,
+defaults, callback requirements, and provider-token persistence boundary before
+implementation; no provider was configured. Annotated has no product need for
+provider access/refresh tokens: application code must not read, copy, transmit,
+log, or add them to
 application-owned records or storage. E2 must audit the Supabase client's actual
 serialized-session behavior. If its browser persistence includes provider tokens,
 stop and design a supported exclusion boundary before enabling X. The ordinary
@@ -633,7 +640,13 @@ authorization with supplied evidence.
    passed required CI run `33259588362`, was squash-merged as
    `83db250f9f07eeb747399546f1138b8503c44781`, and passed post-merge `main` CI run
    `33260246341`. X remained absent and unconfigured.
-7. **E2b — X web.** Web action/callback/negative coverage behind disable boundary.
+7. **E2b — X web (complete and merged).** Web-only X start/callback behavior,
+   bounded provider/attempt/session validation, negative coverage, safe returns,
+   cleanup, refresh behavior, and token-safe responses remain behind an explicit
+   disabled-by-default capability. Owner Local web acceptance completed. PR #35
+   passed required CI run `33265858275`, was squash-merged as
+   `617cfdbeee4ebee6feacefa1abeb07775a250663`, and passed post-merge `main` CI run
+   `33267265075`. X remains disabled and unconfigured.
 8. **E2c — X extension and identity policy.** Add `x` with no permission change;
    enforce no-manual-linking policy.
 9. **E3 — combined validation/handoff.** Full Local, owner Chrome preparation,
@@ -717,6 +730,21 @@ boundary.
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
 accessed.
+
+E2b's accepted implementation was delivered as PR #35 after focused X web-auth
+tests, the complete web unit suite, web lint/build, authentication regressions,
+and Owner-completed Local web acceptance. Acceptance confirmed that X was absent
+from the UI, direct and unsafe X starts failed safely through `/auth/error`, and
+existing Google cancellation/retry, safe returns, refresh/session restoration,
+sign-out, and signed-out recovery remained intact. Browser console, network,
+cookie, and storage checks exposed no callback codes or provider tokens. Required
+PR CI run `33265858275` passed. PR #35 was squash-merged into protected `main` as
+`617cfdbeee4ebee6feacefa1abeb07775a250663`, post-merge `main` CI run
+`33267265075` passed, and local `main` was fast-forwarded to the same commit. The
+feature branch remains preserved. X remains disabled and unconfigured; no
+Supabase environment was accessed, and E2b did not change extension
+authentication or media behavior, deploy, enable schedules, or access
+Production.
 
 E2a's accepted implementation was delivered as PR #33 after focused and complete
 extension and web regression suites, extension TypeScript compilation,
