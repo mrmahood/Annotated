@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import './x-web-auth.test.mjs';
 import {
   AUTH_PROVIDER_METADATA,
+  DEFAULT_WEB_AUTH_CAPABILITIES,
   ENABLED_WEB_AUTH_PROVIDERS,
   WebAuthError,
   completeWebAuthCallback,
@@ -23,8 +25,9 @@ test('rejects absolute and protocol-relative next paths', () => {
   assert.equal(getSafeNextPath(null), '/');
 });
 
-test('provider-neutral metadata keeps only Google enabled for E2a', () => {
+test('provider-neutral metadata keeps X explicitly disabled for E2b delivery', () => {
   assert.deepEqual(ENABLED_WEB_AUTH_PROVIDERS, ['google']);
+  assert.deepEqual(DEFAULT_WEB_AUTH_CAPABILITIES, { google: true, x: false });
   assert.equal(AUTH_PROVIDER_METADATA.google.label, 'Google');
   assert.equal(AUTH_PROVIDER_METADATA.x.label, 'X');
   assert.equal(userHasAuthProvider({ identities: [{ provider: 'google' }] }, 'google'), true);
@@ -141,7 +144,16 @@ function createCallbackFixture({
     },
     async setSession(tokens) {
       calls.session.push(tokens);
-      return { data: { user: sessionError ? null : sessionUser }, error: sessionError };
+      return {
+        data: {
+          session: sessionError ? null : {
+            access_token: 'refreshed-annotated-access-token',
+            refresh_token: 'rotated-annotated-refresh-token',
+          },
+          user: sessionError ? null : sessionUser,
+        },
+        error: sessionError,
+      };
     },
     async signOut(options) {
       calls.signOut.push(options);
