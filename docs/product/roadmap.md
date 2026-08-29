@@ -1,6 +1,6 @@
 # Product roadmap
 
-Status: Phase D complete and merged; Phase E increments E1a-E1e and E2a
+Status: Phase D complete and merged; Phase E increments E1a-E1e and E2a-E2b
 complete and merged, 2026-08-29. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
@@ -28,8 +28,10 @@ after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-orig
 player adapters and generic webpage-video publication remain separately
 authorized. E2a passed Owner Chrome acceptance and merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781` after PR CI `33259588362`;
-post-merge `main` CI `33260246341` passed. X remained absent and unconfigured;
-E2b, E2c, and later work remain separately authorized.
+post-merge `main` CI `33260246341` passed. E2b passed Owner Local web acceptance
+and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`
+after PR CI `33265858275`; post-merge `main` CI `33267265075` passed. X remains
+disabled and unconfigured; E2c and later work remain separately authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -378,8 +380,13 @@ safe cleanup, provider-mismatch rejection, and token-safe errors preserved the
 proven Google flow. E2a passed Owner Chrome acceptance and PR CI run
 `33259588362`, then merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781`; post-merge `main` CI run
-`33260246341` passed. X remained absent and unconfigured; E2b and E2c remain
-separate increments.
+`33260246341` passed. E2b's web-only X OAuth start and callback boundary,
+deterministic negative coverage, safe returns, stale-attempt isolation, cleanup,
+refresh handling, and token-safe responses passed Owner Local web acceptance.
+PR #35 passed required CI run `33265858275`, was squash-merged as
+`617cfdbeee4ebee6feacefa1abeb07775a250663`, and passed post-merge `main` CI run
+`33267265075`. X remains disabled and unconfigured; E2c remains a separate
+increment.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -400,9 +407,11 @@ separate increments.
 - E2a placed existing Google sign-in behind provider-neutral web and extension
   boundaries with bounded attempt, callback, provider, session, retry, cleanup,
   and token-safe error handling. It did not display, execute, or configure X.
-- Add X.com OAuth 2.0 login alongside Google through Supabase Auth. Test explicit
-  web and extension callbacks and adopt a safe account-linking policy. Never
-  merge identities based only on display name.
+- E2b added the web-only X OAuth start and callback path behind an explicit
+  disabled-by-default capability. X remains neither visible nor executable, and
+  no provider was configured. E2c extension support, live provider enablement,
+  and the safe identity policy remain separate increments; never merge
+  identities based only on display name.
 - Retain the accepted capture, private upload, draft-first, processing-status,
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
@@ -459,8 +468,11 @@ and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`;
 E1e PR CI `33230216132` and post-merge `main` CI `33230745060` passed.
 E2a passed Owner Chrome acceptance and merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781`; E2a PR CI `33259588362` and
-post-merge `main` CI `33260246341` passed. Cross-origin player adapters, generic
-webpage-video publication, E2b/E2c, provider configuration, later implementation,
+post-merge `main` CI `33260246341` passed. E2b passed Owner Local web acceptance
+and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`;
+E2b PR CI `33265858275` and post-merge `main` CI `33267265075` passed. X remains
+disabled and unconfigured. Cross-origin player adapters, generic webpage-video
+publication, E2c, provider configuration or enablement, later implementation,
 schedule enablement, Production access, and deployment remain separately
 authorized.
 Production rollout remains blocked until Phase E
