@@ -477,7 +477,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       upload.captureId === row.captureId) {
     upload.playerEndMs = typeof row.playerEndMs === 'number' ? row.playerEndMs : null;
     upload.endGeometry = typeof row.geometry === 'object' ? row.geometry as CaptureGeometry : null;
-    if (upload.prepared.sourceKind === 'youtube' &&
+    if (upload.prepared.sourceKind !== 'audio' &&
         (!upload.endGeometry || !upload.endGeometry.boundingClientRect)) {
       retained = null;
       sendSnapshot({

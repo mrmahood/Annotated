@@ -160,6 +160,8 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     try {
       const result = await chrome.scripting.executeScript({
         target: { tabId: capture.request.tabId, frameIds: [0] },
+        // No bearer token or delivery URL is passed into the page world.
+        world: capture.request.source.kind === 'web-video' ? 'MAIN' : 'ISOLATED',
         func: finishMediaCaptureOnPage,
         args: [capture.request.source, true],
       });
@@ -208,6 +210,8 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     try {
       const results = await chrome.scripting.executeScript({
         target: { tabId: request.tabId, frameIds: [0] },
+        // Generic-video preparation requires readable same-origin frame traversal.
+        world: request.source.kind === 'web-video' ? 'MAIN' : 'ISOLATED',
         func: prepareMediaCaptureOnPage,
         args: [{ source: request.source, startMs: request.startMs, endMs: request.endMs }],
       });
@@ -264,6 +268,8 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       }
       const playback = await chrome.scripting.executeScript({
         target: { tabId: request.tabId, frameIds: [0] },
+        // Keep YouTube and audio isolated; only generic webpage video uses MAIN.
+        world: request.source.kind === 'web-video' ? 'MAIN' : 'ISOLATED',
         func: playMediaForCaptureOnPage,
         args: [request.source, request.startMs],
       });

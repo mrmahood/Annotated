@@ -349,6 +349,23 @@ test('capture binds the exact connected tab and stable source identity', () => {
   assert.equal(sourceIdentityMatchesUrl(source, 'https://m.youtube.com/watch?v=abcdefghijk&t=10'), true);
 });
 
+test('generic webpage video capture binds normalized article and frame/player identity', () => {
+  const webSource = {
+    kind: 'web-video',
+    pageUrl: 'https://www.foxnews.com/politics/story?utm_source=mail#player',
+    sourceKey: 'https://www.foxnews.com/politics/story',
+    playerIdentity: 'web-video:1.2:2:1234abcd',
+  };
+  const webRequest = { ...request, source: webSource };
+  assert.equal(isCaptureStartRequest(webRequest), true);
+  assert.equal(sourceIdentityMatchesUrl(webSource, 'https://www.foxnews.com/politics/story?utm_medium=social'), true);
+  assert.equal(sourceIdentityMatchesUrl(webSource, 'https://www.foxnews.com/politics/other'), false);
+  assert.equal(isCaptureStartRequest({ ...webRequest, source: {
+    ...webSource,
+    playerIdentity: 'web-video:1.2:2:https://secret.example/video.m3u8',
+  } }), false);
+});
+
 test('offscreen messages reject stale or malformed ranges and carry no inferred mode', () => {
   const prepared = {
     sourceKind: 'youtube',
@@ -401,6 +418,30 @@ test('capture metadata v2 requires video end geometry and uses monotonic lead-in
   assert.equal(result.timing.lead_in_ms, 37);
   assert.deepEqual(result.viewport.start, result.viewport.end);
   assert.throws(() => buildCaptureMetadataV2({ ...input, endGeometry: null }), /recapture-required/);
+});
+
+test('generic webpage video capture rejects changed frame mapping before upload metadata is built', () => {
+  const frameMapping = {
+    path: '1.2', origin: 'https://www.foxnews.com', viewportWidth: 640, viewportHeight: 360,
+    borderLeft: 0, borderRight: 0, borderTop: 0, borderBottom: 0,
+  };
+  const geometry = {
+    viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+    boundingClientRect: { x: 100, y: 50, width: 640, height: 360, top: 50, right: 740, bottom: 410, left: 100 },
+    videoWidth: 1280, videoHeight: 720, objectFit: 'contain', objectPosition: '50% 50%',
+    fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0, frameMapping,
+  };
+  const prepared = {
+    sourceKind: 'web-video', requestedStartMs: 1_000, requestedEndMs: 5_000,
+    requestedDurationMs: 4_000, playerCurrentTimeBeforeRecordingMs: 1_000,
+    mediaDurationMs: 120_000, pageUrl: 'https://www.foxnews.com/politics/story', geometry,
+  };
+  const input = { prepared, endGeometry: structuredClone(geometry), selectedMimeType: 'video/webm',
+    tracks: [], audioTrackCount: 1, videoTrackCount: 1, loopbackEnabled: true,
+    leadInMs: 10, recorderElapsedMs: 4_010, playerStartMs: 1_000, playerEndMs: 5_000 };
+  assert.equal(buildCaptureMetadataV2(input).version, 2);
+  input.endGeometry.frameMapping.path = '2.1';
+  assert.throws(() => buildCaptureMetadataV2(input), /recapture-required/);
 });
 
 test('uses WebM MIME fallback and a hard 92-second failsafe', () => {
@@ -457,6 +498,10 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(background, /createDocument/);
   assert.match(background, /getMediaStreamId/);
   assert.ok(background.indexOf('if (!prepared.ok)') < background.indexOf('getMediaStreamId'));
+  assert.equal(
+    background.match(/world: (?:capture\.request|request)\.source\.kind === 'web-video' \? 'MAIN' : 'ISOLATED'/g)?.length,
+    3,
+  );
   assert.match(background, /tabs\.onRemoved/);
   assert.match(background, /tabs\.onUpdated/);
   assert.match(offscreen, /new Blob\(/);

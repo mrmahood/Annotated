@@ -1,4 +1,5 @@
 import { normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 
 export const MEDIA_CAPTURE_MAX_DURATION_MS = 90_000;
 export const MEDIA_CAPTURE_FAILSAFE_MS = 92_000;
@@ -16,7 +17,7 @@ export const MEDIA_CAPTURE_OFFSCREEN_EVENT = 'annotated.mediaCapture.offscreenEv
 export const MEDIA_CAPTURE_OFFSCREEN_NEEDS_END = 'annotated.mediaCapture.offscreenNeedsEnd.v1';
 
 export type CaptureSourceIdentity = {
-  kind: 'youtube' | 'audio';
+  kind: 'youtube' | 'web-video' | 'audio';
   pageUrl: string;
   sourceKey: string;
   playerIdentity: string;
@@ -38,9 +39,13 @@ export type CaptureGeometry = {
   boundingClientRect: CaptureRect | null; videoWidth: number | null; videoHeight: number | null;
   objectFit: string | null; objectPosition: string | null; fullscreen: boolean;
   fullscreenElement: string | null; scrollX: number; scrollY: number;
+  frameMapping: null | {
+    path: string; origin: string; viewportWidth: number; viewportHeight: number;
+    borderLeft: number; borderRight: number; borderTop: number; borderBottom: number;
+  };
 };
 export type CapturePreparedPage = {
-  sourceKind: 'youtube' | 'audio'; requestedStartMs: number; requestedEndMs: number;
+  sourceKind: 'youtube' | 'web-video' | 'audio'; requestedStartMs: number; requestedEndMs: number;
   requestedDurationMs: number; playerCurrentTimeBeforeRecordingMs: number;
   mediaDurationMs: number | null; pageUrl: string; geometry: CaptureGeometry;
 };
@@ -98,13 +103,24 @@ function viewportSample(geometry: CaptureGeometry): CaptureViewport {
 
 export function buildCaptureMetadataV2(input: CaptureMetadataV2Input): CaptureMetadata {
   const start = input.prepared.geometry;
-  const video = input.prepared.sourceKind === 'youtube';
+  const video = input.prepared.sourceKind !== 'audio';
   if (video && (
     !input.endGeometry || !start.boundingClientRect || !input.endGeometry.boundingClientRect ||
     start.videoWidth === null || start.videoHeight === null ||
     start.objectFit === null || start.objectPosition === null
   )) {
     throw new Error('recapture-required');
+  }
+  if (input.prepared.sourceKind === 'web-video') {
+    const first = start.frameMapping;
+    const last = input.endGeometry?.frameMapping;
+    const close = (left: number, right: number) => Math.abs(left - right) <= 1;
+    if (!first || !last || first.path !== last.path || first.origin !== last.origin ||
+        !close(first.viewportWidth, last.viewportWidth) || !close(first.viewportHeight, last.viewportHeight) ||
+        !close(first.borderLeft, last.borderLeft) || !close(first.borderRight, last.borderRight) ||
+        !close(first.borderTop, last.borderTop) || !close(first.borderBottom, last.borderBottom)) {
+      throw new Error('recapture-required');
+    }
   }
   const end = input.endGeometry;
   return {
@@ -210,6 +226,10 @@ export function sourceIdentityMatchesUrl(source: CaptureSourceIdentity, value: s
       return (host === 'youtube.com' || host === 'm.youtube.com') &&
         actual.pathname === '/watch' && actual.searchParams.get('v') === source.sourceKey;
     }
+    if (source.kind === 'web-video') {
+      return normalizeArticleUrl(actual.href) === source.sourceKey &&
+        normalizeArticleUrl(source.pageUrl) === source.sourceKey;
+    }
     return normalizeAudioSourceUrl(actual.href) === source.sourceKey &&
       normalizeAudioSourceUrl(source.pageUrl) === source.sourceKey;
   } catch { return false; }
@@ -232,12 +252,14 @@ export function isHostedMediaOperation(value: unknown): value is HostedMediaOper
 export function isCaptureStartRequest(value: unknown): value is CaptureStartRequest {
   if (!isRecord(value) || !isRecord(value.source)) return false;
   return isCaptureId(value.captureId) && isInteger(value.tabId) && value.tabId >= 0 &&
-    (value.source.kind === 'youtube' || value.source.kind === 'audio') &&
+    (value.source.kind === 'youtube' || value.source.kind === 'web-video' || value.source.kind === 'audio') &&
     typeof value.source.pageUrl === 'string' && value.source.pageUrl.length > 0 &&
     typeof value.source.sourceKey === 'string' && value.source.sourceKey.length > 0 &&
     typeof value.source.playerIdentity === 'string' && (
       value.source.kind === 'youtube'
         ? /^video:[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
+        : value.source.kind === 'web-video'
+          ? /^web-video:(?:top|[1-9][0-9]*(?:\.[1-9][0-9]*)*):[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
         : /^(?:audio|audio-only-video):[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
     ) &&
     getCaptureRangeError(value.startMs, value.endMs) === null &&
@@ -268,7 +290,14 @@ export function isCapturePreparedPage(value: unknown): value is CapturePreparedP
   const rect = geometry.boundingClientRect;
   const validRect = rect === null || (isRecord(rect) &&
     ['x','y','width','height','top','right','bottom','left'].every((key) => finite(rect[key])));
-  return (value.sourceKind === 'youtube' || value.sourceKind === 'audio') &&
+  const frameMapping = geometry.frameMapping;
+  const noFrameMapping = frameMapping === null || frameMapping === undefined;
+  const validFrameMapping = noFrameMapping || (isRecord(frameMapping) &&
+    typeof frameMapping.path === 'string' && /^(?:top|[1-9][0-9]*(?:\.[1-9][0-9]*)*)$/.test(frameMapping.path) &&
+    typeof frameMapping.origin === 'string' && /^https?:\/\//.test(frameMapping.origin) &&
+    ['viewportWidth','viewportHeight','borderLeft','borderRight','borderTop','borderBottom']
+      .every((key) => finite(frameMapping[key])));
+  return (value.sourceKind === 'youtube' || value.sourceKind === 'web-video' || value.sourceKind === 'audio') &&
     isInteger(value.requestedStartMs) && isInteger(value.requestedEndMs) &&
     value.requestedDurationMs === value.requestedEndMs - value.requestedStartMs &&
     getCaptureRangeError(value.requestedStartMs, value.requestedEndMs) === null &&
@@ -278,7 +307,8 @@ export function isCapturePreparedPage(value: unknown): value is CapturePreparedP
     nullableFinite(geometry.videoWidth) && nullableFinite(geometry.videoHeight) &&
     nullableString(geometry.objectFit) && nullableString(geometry.objectPosition) &&
     typeof geometry.fullscreen === 'boolean' && nullableString(geometry.fullscreenElement) &&
-    finite(geometry.scrollX) && finite(geometry.scrollY);
+    finite(geometry.scrollX) && finite(geometry.scrollY) && validFrameMapping &&
+    (value.sourceKind === 'web-video' ? !noFrameMapping : noFrameMapping);
 }
 export function isOffscreenStartMessage(value: unknown): value is OffscreenStartMessage {
   return isRecord(value) && value.target === 'offscreen' &&

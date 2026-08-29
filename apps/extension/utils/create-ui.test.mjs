@@ -55,5 +55,22 @@ test('player selection is a bounded native radio group and gates every clip acti
   assert.match(source, /getPlayerActionToken\('audio'/);
   assert.match(source, /runSelectedPlayerAction\(token,/);
   assert.match(source, /playerTokenIsCurrent\(token\)/);
+  assert.match(source, /videoRangeDisplay\.start/);
+  assert.match(source, /videoRangeDisplay\.end/);
+  assert.match(source, /videoRangeDisplay\.length/);
+  assert.match(source, /audioRangeDisplay\.length/);
   assert.match(style, /\.player-option-label[^}]*overflow-wrap: anywhere/);
+});
+
+test('generic webpage video is discovered independently and cannot cross the unimplemented server boundary', async () => {
+  const source = await readFile(APP_URL, 'utf8');
+  assert.match(source, /const genericVideo = sourceState\.source\.classification !== 'YouTube'/);
+  assert.match(source, /args: \[probe\.mode, probe\.genericVideo\]/);
+  assert.match(source, /videoDetectionResolved: true, videoAvailable: playerDiscoveryMakesModeAvailable\(discovery\)/);
+  assert.match(source, /world: probe\.genericVideo \? 'MAIN' : 'ISOLATED'/);
+  assert.match(source, /world: genericVideo \? 'MAIN' : 'ISOLATED'/);
+  assert.match(source, /webVideoClipDraftBelongsToSource/);
+  assert.match(source, /Publishing not enabled/);
+  assert.match(source, /separately authorized article-backed hosted-video server contract/);
+  assert.doesNotMatch(source, /beginHostedYouTubeAnnotation\(supabase, \{[\s\S]{0,500}webVideoSource/);
 });
