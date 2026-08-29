@@ -7,8 +7,8 @@ export default function AuthenticationErrorPage() {
         <p className="eyebrow">ANNOTATED</p>
         <h1 id="auth-error-title">Sign-in did not finish</h1>
         <p className="lede">
-          The Google authentication response could not be completed. Return to
-          Annotated and try again.
+          The authentication response could not be completed. Return to Annotated
+          and try again.
         </p>
         <Link className="button button-primary" href="/">
           Return to sign in

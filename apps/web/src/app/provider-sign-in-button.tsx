@@ -1,13 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import {
+  getAuthProviderLabel,
+  isEnabledWebAuthProvider,
+  type AuthProvider,
+  webAuthStarter,
+} from "@/lib/auth/auth-boundary";
 import { createClient } from "@/lib/supabase/client";
 
-export function GoogleSignInButton({
+export function ProviderSignInButton({
+  provider,
   returnTo,
-  label = "Continue with Google",
+  label,
   className = "public-button public-button-primary",
 }: {
+  provider: AuthProvider;
   returnTo: string;
   label?: string;
   className?: string;
@@ -15,27 +23,28 @@ export function GoogleSignInButton({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  if (!isEnabledWebAuthProvider(provider)) return null;
+
   const signIn = async () => {
     setPending(true);
     setError(null);
     try {
-      const callbackUrl = new URL("/auth/callback", window.location.origin);
-      callbackUrl.searchParams.set("next", returnTo);
-      const { error: authError } = await createClient().auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: callbackUrl.href },
-      });
-      if (authError) throw authError;
+      await webAuthStarter.start(
+        createClient(),
+        provider,
+        returnTo,
+        window.location.origin,
+      );
     } catch {
       setPending(false);
-      setError("Google sign-in could not be started. Please try again.");
+      setError("Sign-in could not be started. Please try again.");
     }
   };
 
   return (
     <div className="inline-auth-action">
       <button className={className} type="button" onClick={signIn} disabled={pending}>
-        {pending ? "Continuing…" : label}
+        {pending ? "Continuing…" : label ?? `Continue with ${getAuthProviderLabel(provider)}`}
       </button>
       {error && <p className="form-error" role="alert">{error}</p>}
     </div>
