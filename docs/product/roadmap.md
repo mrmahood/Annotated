@@ -1,7 +1,7 @@
 # Product roadmap
 
-Status: Phase D complete and merged; Phase E increments E1a-E1d complete and
-merged, 2026-08-27. D1 and D2 completed their
+Status: Phase D complete and merged; Phase E increments E1a-E1e complete and
+merged, 2026-08-28. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -22,8 +22,11 @@ post-merge `main` CI `32965527019` passed. E1c merged through PR #27 as
 `50196d283dddec40b1fe8636435adf995f91e093` after PR CI `33002721782`;
 post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
 `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace` after PR CI `33135378733`;
-post-merge `main` CI `33135718601` passed. E1e and later work remain separately
-authorized.
+post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
+and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
+after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-origin
+player adapters, generic webpage-video publication, authentication, and later
+work remain separately authorized.
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -358,9 +361,15 @@ PR #27 as `50196d283dddec40b1fe8636435adf995f91e093`. Post-merge `main` CI run
 cancel/Processing/restart guards, safe-default switching, stale-result
 isolation, and completed-recorder reconciliation were delivered through PR #29
 as `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`. Required PR CI run
-`33135378733` and post-merge `main` CI run `33135718601` passed. Video remained
-YouTube-only through E1d; E1e generic webpage video, authentication, and
-provider configuration remain separate increments.
+`33135378733` and post-merge `main` CI run `33135718601` passed. E1e's bounded
+top-frame and readable same-origin-frame HTML video support, stable frame/player
+identity, authoritative geometry, action-time revalidation, ad exclusion, and
+tenth-second range display passed Owner Chrome acceptance. PR #31
+passed required CI run `33230216132`, was squash-merged as
+`185d1a386ac374f7a1d9fe56dda97b872553b671`, and passed post-merge `main` CI run
+`33230745060`. Inaccessible cross-origin players continue to fail closed;
+cross-origin adapters and generic webpage-video publication remain separate
+increments, as do authentication and provider configuration.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -371,11 +380,13 @@ provider configuration remain separate increments.
   capture or upload, and preserve the existing honest restart/recovery behavior.
 - When a page contains multiple media players, require a bounded player-selection
   experience; never silently choose an arbitrary player.
-- With E1c player identity and E1d operation guards merged, add E1e generic webpage
-  video support for readable top-frame and same-origin-frame HTML video players.
-  Keep inaccessible cross-origin players unsupported. Revalidate frame/player
-  identity and top-frame geometry before every action, preserve the article page
-  as source identity, and never persist or log ephemeral media delivery URLs.
+- E1e added generic webpage video for readable top-frame and same-origin-frame
+  HTML video players. It revalidates frame/player identity and top-frame geometry
+  before each action, preserves the article page as source identity, excludes
+  transient advertising media, and never persists or logs ephemeral media
+  delivery URLs. Inaccessible cross-origin players remain unsupported pending a
+  separately authorized player-adapter contract; generic webpage publication is
+  also deferred to a separate server/data/public-reader increment.
 - Add X.com OAuth 2.0 login alongside Google through Supabase Auth. Test explicit
   web and extension callbacks and adopt a safe account-linking policy. Never
   merge identities based only on display name.
@@ -430,9 +441,12 @@ and deterministic Local validation are complete. PR #23 passed required CI run
 `50196d283dddec40b1fe8636435adf995f91e093`; E1c PR CI `33002721782` and
 post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
 `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`; E1d PR CI `33135378733` and
-post-merge `main` CI `33135718601` passed. E1e and later implementation,
-provider configuration, schedule enablement, Production access, and deployment
-remain separately authorized.
+post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
+and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`;
+E1e PR CI `33230216132` and post-merge `main` CI `33230745060` passed.
+Cross-origin player adapters, generic webpage-video publication, later
+implementation, provider configuration, schedule enablement, Production access,
+and deployment remain separately authorized.
 Production rollout remains blocked until Phase E
 passes its Local, required CI, and bounded Staging gates and later Production
 authorization is explicitly granted.

@@ -1,6 +1,6 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, updated 2026-08-27. Phases A-B and Phase C
+Status: accepted architecture, updated 2026-08-28. Phases A-B and Phase C
 increments C1-C6 are implemented and accepted. C6's least-privilege worker
 migrations, immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded
 lifecycle, crash, codec, geometry, exact-duration, transcript, retention, and
@@ -26,8 +26,11 @@ post-merge `main` CI `32965527019`. E1c merged through PR #27 as
 `50196d283dddec40b1fe8636435adf995f91e093` after PR CI `33002721782`; post-merge
 `main` CI `33004543238` passed. E1d merged through PR #29 as
 `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace` after PR CI `33135378733`;
-post-merge `main` CI `33135718601` passed. E1e and later work remain separately
-authorized.
+post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
+and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
+after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-origin
+player adapters, generic webpage-video publication, and later work remain
+separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -127,11 +130,12 @@ publication limit, or grandfathered records over 90 seconds would disappear.
 
 The extension keeps auth in `chrome.storage.local`, drafts in
 `chrome.storage.session`, and calls Supabase directly with the publishable key
-and user JWT. It currently uses one-shot top-frame scripts to read or control the
-connected player. E1e may additionally enumerate readable same-origin child
-frames without adding host permissions; inaccessible cross-origin frames remain
-unsupported. Current media publishing records only source timestamps; no bytes
-are captured or uploaded.
+and user JWT. E1e uses bounded, one-shot scripts to enumerate readable top-frame
+and same-origin child-frame HTML video players without adding host permissions;
+inaccessible cross-origin frames remain unsupported. The article page remains the
+durable source identity, and ephemeral media delivery URLs are neither persisted
+nor logged. Generic webpage-video publication remains unavailable pending a
+separately authorized authenticated server/data/public-reader contract.
 
 ### Storage and security conventions
 
@@ -832,7 +836,7 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: planning contract current through E1d. E1a's local capability/data contract,
+Status: planning contract current through E1e. E1a's local capability/data contract,
 page-generation/revision rules, independent draft state, and regressions pass the
 focused and complete extension test suites, TypeScript compilation, and
 production build/manifest inspection. PR #23 passed required CI run
@@ -852,8 +856,14 @@ Processing, restart recovery, safe-default switching, stale-result isolation,
 and completed-recorder reconciliation. PR #29 passed required CI run
 `33135378733`, was squash-merged as
 `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`, and passed post-merge `main` CI run
-`33135718601`. Video remained YouTube-only through E1d. E1e and later
-implementation remain separately authorized.
+`33135718601`. Video remained YouTube-only through E1d. E1e's bounded top-frame
+and readable same-origin-frame HTML video discovery, stable identity,
+authoritative geometry, action-time revalidation, transient-ad exclusion, and
+tenth-second range display passed Owner Chrome acceptance. PR #31
+passed required CI run `33230216132`, was squash-merged as
+`185d1a386ac374f7a1d9fe56dda97b872553b671`, and passed post-merge `main` CI run
+`33230745060`. Inaccessible cross-origin players fail closed; cross-origin player
+adapters and generic webpage-video publication remain separately authorized.
 The verified audit, design, security review,
 increment boundaries, and acceptance plan are in
 `docs/architecture/phase-e-create-auth-plan.md`.
@@ -865,10 +875,11 @@ increment boundaries, and acceptance plan are in
   before abandoning an active capture or upload.
 - Require explicit bounded player selection when multiple players qualify;
   never select an arbitrary player silently.
-- Add E1e generic webpage video now that player identity and operation guards are merged:
-  readable top-frame or same-origin-frame `<video>`, article-page source identity,
-  authoritative top-frame geometry, and fail-closed handling for inaccessible
-  cross-origin/DRM/canvas players. Keep `tabCapture` and offscreen Blob ownership.
+- E1e adds readable top-frame and same-origin-frame `<video>` support with
+  article-page source identity, authoritative top-frame geometry, and fail-closed
+  handling for inaccessible cross-origin, DRM, and canvas players. It preserves
+  `tabCapture` and offscreen Blob ownership. Cross-origin adapters and generic
+  webpage-video publication remain deferred behind separate authorization.
 - Add X.com OAuth 2.0 alongside Google through Supabase Auth with explicit web
   and extension callback tests and an account-linking policy that never merges
   users from display name alone.

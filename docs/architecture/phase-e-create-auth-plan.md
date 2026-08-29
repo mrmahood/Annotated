@@ -1,6 +1,6 @@
 # Phase E Create and authentication plan
 
-Status: planning contract, updated 2026-08-27. Phase D is complete. E1a was subsequently
+Status: planning contract, updated 2026-08-28. Phase D is complete. E1a was subsequently
 authorized; its implementation and deterministic Local validation are complete
 and merged, including focused and complete extension tests, TypeScript
 compilation, production build, and manifest inspection. PR #23 passed required CI
@@ -14,9 +14,12 @@ then merged through PR #25 as
 `50196d283dddec40b1fe8636435adf995f91e093`; post-merge `main` CI run
 `33004543238` passed. E1d passed required PR CI run `33135378733`, then merged
 through PR #29 as `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`; post-merge
-`main` CI run `33135718601` passed. E1e and later implementation, database work, provider
-configuration, Local services, Staging, Production, schedules, and deployment
-are not authorized by this document.
+`main` CI run `33135718601` passed. E1e passed Owner Chrome acceptance and
+merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
+after required PR CI run `33230216132`; post-merge `main` CI run `33230745060`
+passed. Cross-origin player adapters, generic webpage-video publication, later
+implementation, database work, provider configuration, Local services, Staging,
+Production, schedules, and deployment are not authorized by this document.
 
 This plan is subordinate to the durable security and media rules in
 `docs/architecture/media-archive-pipeline.md`. Future-code descriptions define a
@@ -54,8 +57,8 @@ source, full transcript, or download action; and the accepted
 
 Phase E does not authorize:
 
-- generic webpage-video, iframe, cross-origin player, DRM, paywall, download,
-  full-source transcript, or full-source archive support;
+- generic webpage-video publication, inaccessible cross-origin player adapters,
+  DRM, paywall, download, full-source transcript, or full-source archive support;
 - extension host permissions, persistent content scripts, remote page
   instrumentation, new production permissions, or a Chrome minimum below 116;
 - moving the complete raw Blob through the side panel or background service
@@ -102,12 +105,13 @@ capture Blob. Phase E retains that distinction.
 | Mode | Exact Phase E source scope | Current limitation |
 | --- | --- | --- |
 | Text | A connected, scriptable, top-level HTTP(S) page on which existing selection capture validates the source | Restricted or otherwise unscriptable pages remain unavailable |
-| Video | Through E1d, a connected top-level `youtube.com` or `m.youtube.com` `/watch` page with a valid 11-character video ID and readable top-frame HTML video player | E1e adds bounded generic webpage video for readable top-frame and same-origin-frame players; inaccessible cross-origin players remain unsupported |
+| Video | A connected supported YouTube watch page, or an ordinary HTTP(S) page with a readable qualifying HTML video in the top frame or a same-origin child frame | Inaccessible cross-origin, DRM, canvas-only, hidden/inoperable, source-invalid, or unsafe-geometry players remain unsupported; generic webpage publication is deferred |
 | Audio | A connected top-level HTTP(S) page with an eligible top-frame `<audio>` or operable audio-only `<video>` with a credible source and readable metadata | Cross-origin/embedded players are inaccessible; more than five eligible players fail closed |
 
-Video remains YouTube-only through E1d. A `youtu.be` URL must finish redirecting
-to a supported watch page before it is available. No switcher label may imply
-generic web-video support until E1e is implemented and enabled.
+Video remained YouTube-only through E1d. A `youtu.be` URL must finish redirecting
+to a supported watch page before it is available. E1e adds bounded generic web-
+video availability for readable top-frame and same-origin-frame HTML players;
+that availability does not imply that generic webpage publication is enabled.
 
 E1c caps top-frame audio/video discovery at five eligible candidates and reads
 only the sixth to detect overflow. One candidate auto-selects; two to five use a
@@ -123,13 +127,13 @@ prepare/play/finish re-enumerate and require one exact identity match; mismatch
 invalidates only that mode's player selection while preserving range and
 commentary. Playing state is only a status hint and never reorders candidates.
 
-Top-frame one-shot `activeTab` scripting remains the boundary through E1d.
-Inaccessible cross-origin or embedded media is not enumerated, selected, or
-described as supported.
+E1e retains bounded one-shot `activeTab` scripting while adding readable same-
+origin child-frame enumeration. Inaccessible cross-origin or embedded media is
+not enumerated, selected, or described as supported.
 
 ### Authorized E1e generic webpage-video amendment
 
-E1e expands Video only after E1c player identity and E1d operation guards are
+E1e expanded Video after E1c player identity and E1d operation guards were
 complete. It supports an ordinary connected HTTP(S) page when an HTML `<video>`
 is readable either in the top document or in a same-origin child frame that the
 extension can enumerate without adding host permissions. Cross-origin frames,
@@ -152,11 +156,12 @@ MediaRecorder`; neither frame support nor provider-specific markup may move the
 Blob into the side panel or bypass worker probe/crop validation.
 
 The connected article page, not its media-delivery URL, is the durable source.
-Reuse `sources.source_type = article` so text and generic-video annotations on
-the same normalized page do not collide. E1e therefore needs a new authenticated
-hosted-web-video begin boundary plus additive route/reader handling that
-distinguishes an article-backed `video_clip` from a YouTube clip. Database,
-worker, public rendering, and Staging changes remain separately authorized.
+E1e's client-side draft and capture contract reuses article source identity
+without persisting ephemeral delivery URLs. Publishing remains intentionally
+unavailable until a separately authorized authenticated hosted-web-video begin
+boundary and additive data/route/reader handling can distinguish an article-
+backed `video_clip` from a YouTube clip. Database, worker, public rendering, and
+Staging changes remain separately authorized.
 
 ## 5. Existing draft and active-operation state
 
@@ -528,6 +533,10 @@ Every reproduced defect receives a regression.
 - E1d: every transition-table row, safe dialog default, begin race, capture,
   stopping, authorization/upload/verification/retry, authoritative cancel,
   Processing switch, restart Recapture/Cancel, and stale-result isolation.
+- E1e: top-frame and same-origin-frame discovery, bounded global ordering and
+  overflow, stable frame/player identity, top-frame geometry, source replacement
+  and reorder, transient-ad rejection, action-time revalidation, independent
+  drafts, and exact tenth-second range display.
 - E2a: all Google success/failure plus exact callback origin/path, denial, cancel,
   timeout, malformed/duplicate fragment, missing/malformed bounded tokens, session
   failure, provider mismatch, one-attempt rule, purge, redacted errors.
@@ -568,7 +577,8 @@ draft-loss, or credential mismatch.
 | YouTube/coexistence | Open supported top-level watch page; use Video and Text if capture supports exact page | YouTube-only Video; explicit selection/drafts persist; record exact Text result |
 | Audio/Text+Audio | Open controlled same-origin audio page; draft both modes | Both available, recommendation advisory, drafts independent |
 | Multiple audio | Open 2/5/6 eligible-player fixtures; keyboard/screen-reader check | 2/5 explicit choice; 6 overflow/block; stable bounded labels; no URL leak |
-| Multiple video | If controlled supported YouTube multi-player case is reproducible, test 2/5/6 | Same rules; otherwise record not empirically reproducible and rely on synthetic automation—do not claim pass |
+| Generic webpage video | Open controlled top-frame and same-origin-frame fixtures; exercise playing/paused range, Text switching, reorder/source replacement, and overflow | Stable selection; drafts persist; visible Start/End difference equals Length to a tenth; unsafe changes and sixth candidate fail closed |
+| Cross-origin video | Open a controlled inaccessible cross-origin player | Video remains unavailable; no identity, geometry, or delivery URL leaks |
 | Player change | Select then remove/change fixture player before preview and Publish | Fail closed; draft stays; reselect/revalidate; unrelated draft unchanged |
 | Capture switch | Start disposable hosted capture; switch in prepare/record | Prepare locks; capture prompts safe default; confirmation waits for cancel |
 | Upload/retry switch | Reach upload and approved retryable condition; switch | Prompt; no silent Blob drop; Retry/Cancel accurate; no signed URL visible |
@@ -602,9 +612,14 @@ authorization with supplied evidence.
    completed-recorder reconciliation merged through PR #29 as
    `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace`; PR CI `33135378733` and
    post-merge `main` CI `33135718601` passed. Video remains YouTube-only.
-5. **E1e — generic webpage video.** Bounded top-frame/same-origin-frame discovery,
-   explicit identity, source-safe geometry, hosted begin boundary, and focused
-   Fox-shaped acceptance; inaccessible cross-origin players fail closed.
+5. **E1e — generic webpage video (complete and merged).** Bounded top-frame and
+   readable same-origin-frame discovery, explicit identity, source-safe geometry,
+   action-time revalidation, transient-ad exclusion, independent drafts, and
+   tenth-second range display merged through PR #31 as
+   `185d1a386ac374f7a1d9fe56dda97b872553b671`; PR CI `33230216132` and post-merge
+   `main` CI `33230745060` passed. Owner Chrome acceptance completed. Inaccessible
+   cross-origin players fail closed, and their adapters plus generic webpage
+   publication remain separate increments.
 6. **E2a — provider-neutral auth.** Preserve Google; add attempt/provider checks
    and deterministic tests; do not configure/expose X.
 7. **E2b — X web.** Web action/callback/negative coverage behind disable boundary.
@@ -691,6 +706,23 @@ boundary.
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
 accessed.
+
+E1e's accepted implementation was delivered as PR #31 after deterministic Local
+tests, the complete extension regression suite, TypeScript compilation,
+production extension build and manifest inspection, and Owner-completed Chrome
+acceptance. Acceptance verified Fox-shaped transient-ad rejection without false
+Audio/Video availability, direct top-frame and readable same-origin-frame HTML5
+players, independent Text/Video draft preservation, accurate playing and paused
+tenth-second ranges, and unchanged YouTube behavior. Required PR CI run
+`33230216132` passed. PR #31 was squash-merged into protected `main` as
+`185d1a386ac374f7a1d9fe56dda97b872553b671`, post-merge `main` CI run
+`33230745060` passed, and local `main` was fast-forwarded to the same commit. The
+feature branch remains preserved. E1e supports bounded top-frame and readable
+same-origin-frame HTML video while continuing to fail closed for inaccessible
+cross-origin players. Cross-origin player adapters and the authenticated article-
+backed hosted-video server/data/public-reader publication contract remain
+deferred. E1e did not access Supabase environments, configure providers, deploy,
+enable schedules, or access Production.
 
 E1d's merged implementation was delivered as PR #29 after deterministic Local
 tests, the complete extension regression suite, TypeScript compilation,
