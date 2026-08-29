@@ -35,10 +35,24 @@ export async function prepareMediaCaptureOnPage(
         : null;
     } catch { return null; }
   };
+  const articleKey = (value: string) => {
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      url.hostname = url.hostname.toLowerCase(); url.hash = '';
+      const tracking = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid']);
+      for (const key of [...url.searchParams.keys()]) if (tracking.has(key.toLowerCase())) url.searchParams.delete(key);
+      url.searchParams.sort(); if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, '');
+      return url.href;
+    } catch { return null; }
+  };
   const sourceMatches = () => request.source.kind === 'youtube'
     ? youtubeId(location.href) === request.source.sourceKey
-    : comparable(location.href) === comparable(request.source.pageUrl);
-  const selectMedia = (): HTMLMediaElement | null => {
+    : request.source.kind === 'web-video'
+      ? articleKey(location.href) === request.source.sourceKey && articleKey(request.source.pageUrl) === request.source.sourceKey
+      : comparable(location.href) === comparable(request.source.pageUrl);
+  type FrameMapping = NonNullable<CaptureGeometry['frameMapping']> & { offsetX: number; offsetY: number };
+  const selectMedia = (): { media: HTMLMediaElement; mapping: FrameMapping | null } | null => {
     const digest = (value: string) => {
       let hash = 0x811c9dc5;
       for (let index = 0; index < value.length; index += 1) {
@@ -54,18 +68,101 @@ export async function prepareMediaCaptureOnPage(
       return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
         style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     };
-    const videoExposed = (element: HTMLVideoElement) => {
-      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
-      const left = Math.max(0, rect.left); const right = Math.min(window.innerWidth, rect.right);
-      const top = Math.max(0, rect.top); const bottom = Math.min(window.innerHeight, rect.bottom);
+    const styleFor = (ownerWindow: Window, element: Element) =>
+      typeof ownerWindow.getComputedStyle === 'function' ? ownerWindow.getComputedStyle(element) : getComputedStyle(element);
+    const safeGenericSource = (value: string, ownerWindow: Window) => {
+      if (!value || value.length > 4_096) return false;
+      try {
+        const url = new URL(value, ownerWindow.location.href || `${ownerWindow.location.origin}/`);
+        return (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') &&
+          url.username === '' && url.password === '';
+      } catch { return false; }
+    };
+    const advertisingMarker = /(?:^|[\s_-])(?:ad|ads|advert|advertisement|advertising|preroll|midroll|postroll|sponsored|vast|vpaid)(?:$|[\s_-])/i;
+    const looksLikeAdvertisingVideo = (element: HTMLVideoElement) => {
+      let node: Element | null = element;
+      for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
+        const className = typeof node.className === 'string' ? node.className : '';
+        const marker = [node.id, className, node.getAttribute('aria-label'), node.getAttribute('role'),
+          node.getAttribute('data-ad'), node.getAttribute('data-ad-slot'),
+          node.getAttribute('data-advertisement'), node.getAttribute('data-testid')].filter(Boolean).join(' ');
+        if (advertisingMarker.test(marker)) return true;
+      }
+      return false;
+    };
+    const videoExposed = (element: HTMLVideoElement, ownerDocument: Document = document, ownerWindow: Window = window) => {
+      const rect = element.getBoundingClientRect(); const style = styleFor(ownerWindow, element);
+      const left = Math.max(0, rect.left); const right = Math.min(ownerWindow.innerWidth, rect.right);
+      const top = Math.max(0, rect.top); const bottom = Math.min(ownerWindow.innerHeight, rect.bottom);
       if (right <= left || bottom <= top || element.getClientRects().length === 0 ||
           style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0) return false;
       return [
         [(left + right) / 2, (top + bottom) / 2],
         [left + (right - left) / 4, top + (bottom - top) / 4],
         [right - (right - left) / 4, bottom - (bottom - top) / 4],
-      ].some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+      ].some(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(element));
     };
+    if (request.source.kind === 'web-video') {
+      const candidates: Array<{ media: HTMLVideoElement; mapping: FrameMapping }> = [];
+      const topOrigin = new URL(location.href).origin;
+      const collect = (ownerDocument: Document, ownerWindow: Window, mapping: FrameMapping) => {
+        for (const entry of ownerDocument.querySelectorAll('video')) {
+          if (!sourceFor(entry) || entry.readyState < 1 ||
+              entry.videoWidth <= 0 || entry.videoHeight <= 0 || !Number.isFinite(entry.duration) || entry.duration <= 0 ||
+              !safeGenericSource(sourceFor(entry), ownerWindow) ||
+              looksLikeAdvertisingVideo(entry) ||
+              entry.mediaKeys || (entry as HTMLVideoElement & { webkitKeys?: unknown }).webkitKeys || entry.srcObject ||
+              styleFor(ownerWindow, entry).transform !== 'none' || !videoExposed(entry, ownerDocument, ownerWindow) ||
+              entry.getBoundingClientRect().left < -1 || entry.getBoundingClientRect().top < -1 ||
+              entry.getBoundingClientRect().right > ownerWindow.innerWidth + 1 ||
+              entry.getBoundingClientRect().bottom > ownerWindow.innerHeight + 1) continue;
+          candidates.push({ media: entry, mapping });
+          if (candidates.length > 5) return;
+        }
+        const frames = [...ownerDocument.querySelectorAll('iframe, frame')];
+        for (const [index, frame] of frames.entries()) {
+          if (candidates.length > 5) return;
+          try {
+            const childWindow = (frame as HTMLIFrameElement).contentWindow;
+            const childDocument = (frame as HTMLIFrameElement).contentDocument;
+            if (!childWindow || !childDocument || childWindow.location.origin !== topOrigin) continue;
+            const rect = (frame as HTMLElement).getBoundingClientRect(); const style = styleFor(ownerWindow, frame);
+            const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0;
+            const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+            const borderTop = Number.parseFloat(style.borderTopWidth) || 0;
+            const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
+            const frameExposed = [
+              [rect.left + rect.width / 2, rect.top + rect.height / 2],
+              [rect.left + rect.width / 4, rect.top + rect.height / 4],
+              [rect.right - rect.width / 4, rect.bottom - rect.height / 4],
+            ].every(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(frame));
+            const safe = style.transform === 'none' && style.display !== 'none' && style.visibility !== 'hidden' &&
+              Number(style.opacity) > 0 && rect.left >= -1 && rect.top >= -1 &&
+              rect.right <= ownerWindow.innerWidth + 1 && rect.bottom <= ownerWindow.innerHeight + 1 &&
+              Math.abs(rect.width - childWindow.innerWidth - borderLeft - borderRight) <= 1 &&
+              Math.abs(rect.height - childWindow.innerHeight - borderTop - borderBottom) <= 1 && frameExposed;
+            if (!safe) continue;
+            collect(childDocument, childWindow, {
+              path: mapping.path === 'top' ? `${index + 1}` : `${mapping.path}.${index + 1}`,
+              origin: childWindow.location.origin,
+              viewportWidth: childWindow.innerWidth, viewportHeight: childWindow.innerHeight,
+              borderLeft, borderRight, borderTop, borderBottom,
+              offsetX: mapping.offsetX + rect.left + borderLeft,
+              offsetY: mapping.offsetY + rect.top + borderTop,
+            });
+          } catch { /* Cross-origin and navigated frames fail closed. */ }
+        }
+      };
+      collect(document, window, {
+        path: 'top', origin: topOrigin, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+        borderLeft: 0, borderRight: 0, borderTop: 0, borderBottom: 0, offsetX: 0, offsetY: 0,
+      });
+      if (candidates.length > 5) return null;
+      const pageKey = articleKey(location.href);
+      const matches = candidates.filter(({ media, mapping }, index) =>
+        `web-video:${mapping.path}:${index + 1}:${digest(`${pageKey}|${mapping.origin}|${mapping.path}|video|${sourceFor(media)}|${Math.round(media.duration * 1_000)}|${media.videoWidth}x${media.videoHeight}`)}` === request.source.playerIdentity);
+      return matches.length === 1 ? matches[0]! : null;
+    }
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
@@ -85,12 +182,18 @@ export async function prepareMediaCaptureOnPage(
       return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` ===
         request.source.playerIdentity;
     });
-    return matches.length === 1 ? matches[0]! : null;
+    return matches.length === 1 ? { media: matches[0]!, mapping: null } : null;
   };
-  const geometryFor = (media: HTMLMediaElement): CaptureGeometry => {
-    const video = media instanceof HTMLVideoElement ? media : null;
-    const rect = video?.getBoundingClientRect() ?? null;
-    const style = video ? getComputedStyle(video) : null;
+  const geometryFor = (media: HTMLMediaElement, mapping: FrameMapping | null): CaptureGeometry => {
+    const video = mapping ? media as HTMLVideoElement : media instanceof HTMLVideoElement ? media : null;
+    const localRect = video?.getBoundingClientRect() ?? null;
+    const rect = localRect && mapping ? {
+      x: localRect.x + mapping.offsetX, y: localRect.y + mapping.offsetY,
+      width: localRect.width, height: localRect.height,
+      top: localRect.top + mapping.offsetY, right: localRect.right + mapping.offsetX,
+      bottom: localRect.bottom + mapping.offsetY, left: localRect.left + mapping.offsetX,
+    } : localRect;
+    const style = video ? (video.ownerDocument?.defaultView?.getComputedStyle(video) ?? getComputedStyle(video)) : null;
     const fullscreenElement = document.fullscreenElement;
     return {
       viewportWidth: window.innerWidth,
@@ -110,6 +213,12 @@ export async function prepareMediaCaptureOnPage(
         : null,
       scrollX: window.scrollX,
       scrollY: window.scrollY,
+      frameMapping: mapping ? {
+        path: mapping.path, origin: mapping.origin,
+        viewportWidth: mapping.viewportWidth, viewportHeight: mapping.viewportHeight,
+        borderLeft: mapping.borderLeft, borderRight: mapping.borderRight,
+        borderTop: mapping.borderTop, borderBottom: mapping.borderBottom,
+      } : null,
     };
   };
 
@@ -121,10 +230,11 @@ export async function prepareMediaCaptureOnPage(
       !Number.isSafeInteger(request.endMs) || durationMs < 1_000 || durationMs > 90_000) {
     return { ok: false, code: 'RANGE_INVALID', message: 'The selected range must be between 1 and 90 seconds.' };
   }
-  const media = selectMedia();
-  if (!media) {
+  const selected = selectMedia();
+  if (!selected) {
     return { ok: false, code: 'PLAYER_NOT_FOUND', message: 'A usable top-level player was not available.' };
   }
+  const { media, mapping } = selected;
   if (!Number.isFinite(media.currentTime) || (media.readyState === 0 && !Number.isFinite(media.duration))) {
     return { ok: false, code: 'PLAYER_NOT_READY', message: 'The connected player is not ready yet.' };
   }
@@ -166,7 +276,7 @@ export async function prepareMediaCaptureOnPage(
       playerCurrentTimeBeforeRecordingMs: Math.round(media.currentTime * 1_000),
       mediaDurationMs,
       pageUrl: location.href,
-      geometry: geometryFor(media),
+      geometry: geometryFor(media, mapping),
     },
   };
 }
@@ -190,9 +300,21 @@ export async function playMediaForCaptureOnPage(
       return url.href;
     } catch { return null; }
   };
+  const articleKey = (value: string) => {
+    try {
+      const url = new URL(value); if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      url.hostname = url.hostname.toLowerCase(); url.hash = '';
+      const tracking = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid']);
+      for (const key of [...url.searchParams.keys()]) if (tracking.has(key.toLowerCase())) url.searchParams.delete(key);
+      url.searchParams.sort(); if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, '');
+      return url.href;
+    } catch { return null; }
+  };
   const sourceMatches = () => source.kind === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
-    : comparable(location.href) === comparable(source.pageUrl);
+    : source.kind === 'web-video'
+      ? articleKey(location.href) === source.sourceKey && articleKey(source.pageUrl) === source.sourceKey
+      : comparable(location.href) === comparable(source.pageUrl);
   const selectMedia = (): HTMLMediaElement | null => {
     const digest = (value: string) => {
       let hash = 0x811c9dc5;
@@ -209,18 +331,86 @@ export async function playMediaForCaptureOnPage(
       return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
         style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     };
-    const videoExposed = (element: HTMLVideoElement) => {
-      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
-      const left = Math.max(0, rect.left); const right = Math.min(window.innerWidth, rect.right);
-      const top = Math.max(0, rect.top); const bottom = Math.min(window.innerHeight, rect.bottom);
+    const styleFor = (ownerWindow: Window, element: Element) =>
+      typeof ownerWindow.getComputedStyle === 'function' ? ownerWindow.getComputedStyle(element) : getComputedStyle(element);
+    const safeGenericSource = (value: string, ownerWindow: Window) => {
+      if (!value || value.length > 4_096) return false;
+      try {
+        const url = new URL(value, ownerWindow.location.href || `${ownerWindow.location.origin}/`);
+        return (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') &&
+          url.username === '' && url.password === '';
+      } catch { return false; }
+    };
+    const advertisingMarker = /(?:^|[\s_-])(?:ad|ads|advert|advertisement|advertising|preroll|midroll|postroll|sponsored|vast|vpaid)(?:$|[\s_-])/i;
+    const looksLikeAdvertisingVideo = (element: HTMLVideoElement) => {
+      let node: Element | null = element;
+      for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
+        const className = typeof node.className === 'string' ? node.className : '';
+        const marker = [node.id, className, node.getAttribute('aria-label'), node.getAttribute('role'),
+          node.getAttribute('data-ad'), node.getAttribute('data-ad-slot'),
+          node.getAttribute('data-advertisement'), node.getAttribute('data-testid')].filter(Boolean).join(' ');
+        if (advertisingMarker.test(marker)) return true;
+      }
+      return false;
+    };
+    const videoExposed = (element: HTMLVideoElement, ownerDocument: Document = document, ownerWindow: Window = window) => {
+      const rect = element.getBoundingClientRect(); const style = styleFor(ownerWindow, element);
+      const left = Math.max(0, rect.left); const right = Math.min(ownerWindow.innerWidth, rect.right);
+      const top = Math.max(0, rect.top); const bottom = Math.min(ownerWindow.innerHeight, rect.bottom);
       if (right <= left || bottom <= top || element.getClientRects().length === 0 ||
           style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0) return false;
       return [
         [(left + right) / 2, (top + bottom) / 2],
         [left + (right - left) / 4, top + (bottom - top) / 4],
         [right - (right - left) / 4, bottom - (bottom - top) / 4],
-      ].some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+      ].some(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(element));
     };
+    if (source.kind === 'web-video') {
+      const candidates: Array<{ media: HTMLVideoElement; path: string; origin: string }> = [];
+      const topOrigin = new URL(location.href).origin;
+      const collect = (ownerDocument: Document, ownerWindow: Window, path: string) => {
+        for (const entry of ownerDocument.querySelectorAll('video')) {
+          if (!sourceFor(entry) || entry.readyState < 1 ||
+              entry.videoWidth <= 0 || entry.videoHeight <= 0 || !Number.isFinite(entry.duration) || entry.duration <= 0 ||
+              !safeGenericSource(sourceFor(entry), ownerWindow) ||
+              looksLikeAdvertisingVideo(entry) ||
+              entry.mediaKeys || (entry as HTMLVideoElement & { webkitKeys?: unknown }).webkitKeys || entry.srcObject ||
+              styleFor(ownerWindow, entry).transform !== 'none' || !videoExposed(entry, ownerDocument, ownerWindow) ||
+              entry.getBoundingClientRect().left < -1 || entry.getBoundingClientRect().top < -1 ||
+              entry.getBoundingClientRect().right > ownerWindow.innerWidth + 1 ||
+              entry.getBoundingClientRect().bottom > ownerWindow.innerHeight + 1) continue;
+          candidates.push({ media: entry, path, origin: ownerWindow.location.origin });
+          if (candidates.length > 5) return;
+        }
+        const frames = [...ownerDocument.querySelectorAll('iframe, frame')];
+        for (const [index, frame] of frames.entries()) {
+          if (candidates.length > 5) return;
+          try {
+            const childWindow = (frame as HTMLIFrameElement).contentWindow; const childDocument = (frame as HTMLIFrameElement).contentDocument;
+            if (!childWindow || !childDocument || childWindow.location.origin !== topOrigin) continue;
+            const rect = (frame as HTMLElement).getBoundingClientRect(); const style = styleFor(ownerWindow, frame);
+            const borders = [style.borderLeftWidth, style.borderRightWidth, style.borderTopWidth, style.borderBottomWidth]
+              .map((value) => Number.parseFloat(value) || 0);
+            const frameExposed = [
+              [rect.left + rect.width / 2, rect.top + rect.height / 2],
+              [rect.left + rect.width / 4, rect.top + rect.height / 4],
+              [rect.right - rect.width / 4, rect.bottom - rect.height / 4],
+            ].every(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(frame));
+            if (style.transform !== 'none' || style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0 ||
+                rect.left < -1 || rect.top < -1 || rect.right > ownerWindow.innerWidth + 1 || rect.bottom > ownerWindow.innerHeight + 1 ||
+                Math.abs(rect.width - childWindow.innerWidth - borders[0]! - borders[1]!) > 1 ||
+                Math.abs(rect.height - childWindow.innerHeight - borders[2]! - borders[3]!) > 1 || !frameExposed) continue;
+            collect(childDocument, childWindow, path === 'top' ? `${index + 1}` : `${path}.${index + 1}`);
+          } catch { /* Inaccessible frames fail closed. */ }
+        }
+      };
+      collect(document, window, 'top');
+      if (candidates.length > 5) return null;
+      const pageKey = articleKey(location.href);
+      const matches = candidates.filter(({ media, path, origin }, index) =>
+        `web-video:${path}:${index + 1}:${digest(`${pageKey}|${origin}|${path}|video|${sourceFor(media)}|${Math.round(media.duration * 1_000)}|${media.videoWidth}x${media.videoHeight}`)}` === source.playerIdentity);
+      return matches.length === 1 ? matches[0]!.media : null;
+    }
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
@@ -277,10 +467,23 @@ export function finishMediaCaptureOnPage(
       return url.href;
     } catch { return null; }
   };
+  const articleKey = (value: string) => {
+    try {
+      const url = new URL(value); if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      url.hostname = url.hostname.toLowerCase(); url.hash = '';
+      const tracking = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid']);
+      for (const key of [...url.searchParams.keys()]) if (tracking.has(key.toLowerCase())) url.searchParams.delete(key);
+      url.searchParams.sort(); if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, '');
+      return url.href;
+    } catch { return null; }
+  };
   const sourceStillMatches = () => source.kind === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
-    : comparable(location.href) === comparable(source.pageUrl);
-  const selectMedia = (): HTMLMediaElement | null => {
+    : source.kind === 'web-video'
+      ? articleKey(location.href) === source.sourceKey && articleKey(source.pageUrl) === source.sourceKey
+      : comparable(location.href) === comparable(source.pageUrl);
+  type FrameMapping = NonNullable<CaptureGeometry['frameMapping']> & { offsetX: number; offsetY: number };
+  const selectMedia = (): { media: HTMLMediaElement; mapping: FrameMapping | null } | null => {
     const digest = (value: string) => {
       let hash = 0x811c9dc5;
       for (let index = 0; index < value.length; index += 1) {
@@ -296,18 +499,91 @@ export function finishMediaCaptureOnPage(
       return element.controls && rect.width > 0 && rect.height > 0 && element.getClientRects().length > 0 &&
         style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
     };
-    const videoExposed = (element: HTMLVideoElement) => {
-      const rect = element.getBoundingClientRect(); const style = getComputedStyle(element);
-      const left = Math.max(0, rect.left); const right = Math.min(window.innerWidth, rect.right);
-      const top = Math.max(0, rect.top); const bottom = Math.min(window.innerHeight, rect.bottom);
+    const styleFor = (ownerWindow: Window, element: Element) =>
+      typeof ownerWindow.getComputedStyle === 'function' ? ownerWindow.getComputedStyle(element) : getComputedStyle(element);
+    const safeGenericSource = (value: string, ownerWindow: Window) => {
+      if (!value || value.length > 4_096) return false;
+      try {
+        const url = new URL(value, ownerWindow.location.href || `${ownerWindow.location.origin}/`);
+        return (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') &&
+          url.username === '' && url.password === '';
+      } catch { return false; }
+    };
+    const advertisingMarker = /(?:^|[\s_-])(?:ad|ads|advert|advertisement|advertising|preroll|midroll|postroll|sponsored|vast|vpaid)(?:$|[\s_-])/i;
+    const looksLikeAdvertisingVideo = (element: HTMLVideoElement) => {
+      let node: Element | null = element;
+      for (let depth = 0; node && depth < 6; depth += 1, node = node.parentElement) {
+        const className = typeof node.className === 'string' ? node.className : '';
+        const marker = [node.id, className, node.getAttribute('aria-label'), node.getAttribute('role'),
+          node.getAttribute('data-ad'), node.getAttribute('data-ad-slot'),
+          node.getAttribute('data-advertisement'), node.getAttribute('data-testid')].filter(Boolean).join(' ');
+        if (advertisingMarker.test(marker)) return true;
+      }
+      return false;
+    };
+    const videoExposed = (element: HTMLVideoElement, ownerDocument: Document = document, ownerWindow: Window = window) => {
+      const rect = element.getBoundingClientRect(); const style = styleFor(ownerWindow, element);
+      const left = Math.max(0, rect.left); const right = Math.min(ownerWindow.innerWidth, rect.right);
+      const top = Math.max(0, rect.top); const bottom = Math.min(ownerWindow.innerHeight, rect.bottom);
       if (right <= left || bottom <= top || element.getClientRects().length === 0 ||
           style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0) return false;
       return [
         [(left + right) / 2, (top + bottom) / 2],
         [left + (right - left) / 4, top + (bottom - top) / 4],
         [right - (right - left) / 4, bottom - (bottom - top) / 4],
-      ].some(([x, y]) => document.elementsFromPoint(x!, y!).includes(element));
+      ].some(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(element));
     };
+    if (source.kind === 'web-video') {
+      const candidates: Array<{ media: HTMLVideoElement; mapping: FrameMapping }> = [];
+      const topOrigin = new URL(location.href).origin;
+      const collect = (ownerDocument: Document, ownerWindow: Window, mapping: FrameMapping) => {
+        for (const entry of ownerDocument.querySelectorAll('video')) {
+          if (!sourceFor(entry) || entry.readyState < 1 ||
+              entry.videoWidth <= 0 || entry.videoHeight <= 0 || !Number.isFinite(entry.duration) || entry.duration <= 0 ||
+              !safeGenericSource(sourceFor(entry), ownerWindow) ||
+              looksLikeAdvertisingVideo(entry) ||
+              entry.mediaKeys || (entry as HTMLVideoElement & { webkitKeys?: unknown }).webkitKeys || entry.srcObject ||
+              styleFor(ownerWindow, entry).transform !== 'none' || !videoExposed(entry, ownerDocument, ownerWindow) ||
+              entry.getBoundingClientRect().left < -1 || entry.getBoundingClientRect().top < -1 ||
+              entry.getBoundingClientRect().right > ownerWindow.innerWidth + 1 ||
+              entry.getBoundingClientRect().bottom > ownerWindow.innerHeight + 1) continue;
+          candidates.push({ media: entry, mapping }); if (candidates.length > 5) return;
+        }
+        const frames = [...ownerDocument.querySelectorAll('iframe, frame')];
+        for (const [index, frame] of frames.entries()) {
+          if (candidates.length > 5) return;
+          try {
+            const childWindow = (frame as HTMLIFrameElement).contentWindow; const childDocument = (frame as HTMLIFrameElement).contentDocument;
+            if (!childWindow || !childDocument || childWindow.location.origin !== topOrigin) continue;
+            const rect = (frame as HTMLElement).getBoundingClientRect(); const style = styleFor(ownerWindow, frame);
+            const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0; const borderRight = Number.parseFloat(style.borderRightWidth) || 0;
+            const borderTop = Number.parseFloat(style.borderTopWidth) || 0; const borderBottom = Number.parseFloat(style.borderBottomWidth) || 0;
+            const frameExposed = [
+              [rect.left + rect.width / 2, rect.top + rect.height / 2],
+              [rect.left + rect.width / 4, rect.top + rect.height / 4],
+              [rect.right - rect.width / 4, rect.bottom - rect.height / 4],
+            ].every(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(frame));
+            if (style.transform !== 'none' || style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0 ||
+                rect.left < -1 || rect.top < -1 || rect.right > ownerWindow.innerWidth + 1 || rect.bottom > ownerWindow.innerHeight + 1 ||
+                Math.abs(rect.width - childWindow.innerWidth - borderLeft - borderRight) > 1 ||
+                Math.abs(rect.height - childWindow.innerHeight - borderTop - borderBottom) > 1 || !frameExposed) continue;
+            collect(childDocument, childWindow, {
+              path: mapping.path === 'top' ? `${index + 1}` : `${mapping.path}.${index + 1}`,
+              origin: childWindow.location.origin, viewportWidth: childWindow.innerWidth, viewportHeight: childWindow.innerHeight,
+              borderLeft, borderRight, borderTop, borderBottom,
+              offsetX: mapping.offsetX + rect.left + borderLeft, offsetY: mapping.offsetY + rect.top + borderTop,
+            });
+          } catch { /* Inaccessible frames fail closed. */ }
+        }
+      };
+      collect(document, window, { path: 'top', origin: topOrigin, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+        borderLeft: 0, borderRight: 0, borderTop: 0, borderBottom: 0, offsetX: 0, offsetY: 0 });
+      if (candidates.length > 5) return null;
+      const pageKey = articleKey(location.href);
+      const matches = candidates.filter(({ media, mapping }, index) =>
+        `web-video:${mapping.path}:${index + 1}:${digest(`${pageKey}|${mapping.origin}|${mapping.path}|video|${sourceFor(media)}|${Math.round(media.duration * 1_000)}|${media.videoWidth}x${media.videoHeight}`)}` === source.playerIdentity);
+      return matches.length === 1 ? matches[0]! : null;
+    }
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
@@ -326,12 +602,16 @@ export function finishMediaCaptureOnPage(
         : source.kind === 'audio' ? 'audio-only-video' : 'video';
       return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` === source.playerIdentity;
     });
-    return matches.length === 1 ? matches[0]! : null;
+    return matches.length === 1 ? { media: matches[0]!, mapping: null } : null;
   };
-  const geometryFor = (media: HTMLMediaElement): CaptureGeometry => {
-    const video = media instanceof HTMLVideoElement ? media : null;
-    const rect = video?.getBoundingClientRect() ?? null;
-    const style = video ? getComputedStyle(video) : null;
+  const geometryFor = (media: HTMLMediaElement, mapping: FrameMapping | null): CaptureGeometry => {
+    const video = mapping ? media as HTMLVideoElement : media instanceof HTMLVideoElement ? media : null;
+    const localRect = video?.getBoundingClientRect() ?? null;
+    const rect = localRect && mapping ? { x: localRect.x + mapping.offsetX, y: localRect.y + mapping.offsetY,
+      width: localRect.width, height: localRect.height, top: localRect.top + mapping.offsetY,
+      right: localRect.right + mapping.offsetX, bottom: localRect.bottom + mapping.offsetY,
+      left: localRect.left + mapping.offsetX } : localRect;
+    const style = video ? (video.ownerDocument?.defaultView?.getComputedStyle(video) ?? getComputedStyle(video)) : null;
     const fullscreenElement = document.fullscreenElement;
     return {
       viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
@@ -344,14 +624,19 @@ export function finishMediaCaptureOnPage(
       fullscreenElement: fullscreenElement
         ? `${fullscreenElement.tagName.toLowerCase()}${fullscreenElement.id ? `#${fullscreenElement.id}` : ''}` : null,
       scrollX: window.scrollX, scrollY: window.scrollY,
+      frameMapping: mapping ? { path: mapping.path, origin: mapping.origin,
+        viewportWidth: mapping.viewportWidth, viewportHeight: mapping.viewportHeight,
+        borderLeft: mapping.borderLeft, borderRight: mapping.borderRight,
+        borderTop: mapping.borderTop, borderBottom: mapping.borderBottom } : null,
     };
   };
   if (!sourceStillMatches()) return { currentTimeMs: null, sourceMatches: false, geometry: null };
-  const media = selectMedia();
-  if (!media) return { currentTimeMs: null, sourceMatches: true, geometry: null };
+  const selected = selectMedia();
+  if (!selected) return { currentTimeMs: null, sourceMatches: true, geometry: null };
+  const { media, mapping } = selected;
   const currentTimeMs = Number.isFinite(media.currentTime) ? Math.round(media.currentTime * 1_000) : null;
   if (pausePlayer) media.pause();
-  return { currentTimeMs, sourceMatches: true, geometry: geometryFor(media) };
+  return { currentTimeMs, sourceMatches: true, geometry: geometryFor(media, mapping) };
 }
 
 const PREPARATION_CODES = new Set<PreparationDiagnosticCode>([

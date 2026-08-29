@@ -4,6 +4,7 @@ import {
   formatMediaTime,
   getNewMediaPublicationRangeError,
 } from '@annotated/shared/media-time';
+import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-time-display';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
@@ -88,6 +89,13 @@ import {
   type YouTubeClipDraft,
 } from '../../utils/youtube-draft';
 import {
+  WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY,
+  deserializeWebVideoClipDraft,
+  serializeWebVideoClipDraft,
+  webVideoClipDraftBelongsToSource,
+  type WebVideoClipDraft,
+} from '../../utils/web-video-draft';
+import {
   extractYouTubePageMetadata,
   normalizeYouTubeVideoTitle,
   validateYouTubePageMetadata,
@@ -95,6 +103,7 @@ import {
 import {
   actOnTopFramePlayer,
   readTopFramePlayerDiscovery,
+  playerDiscoveryMakesModeAvailable,
   reconcilePlayerSelection,
   validatePlayerDiscovery,
   type PlayerDiscovery,
@@ -154,6 +163,8 @@ type ArticlePageSource = {
   url: string;
   classification: 'Web page';
   audioDetectionResolved: boolean;
+  videoDetectionResolved: boolean;
+  videoAvailable: boolean;
 };
 
 type YouTubePageSource = {
@@ -168,7 +179,12 @@ type YouTubePageSource = {
   metadataResolved: boolean;
 };
 
-type PageSource = ArticlePageSource | YouTubePageSource | AudioPageSource;
+type AudioVideoPageSource = AudioPageSource & {
+  videoDetectionResolved: boolean;
+  videoAvailable: boolean;
+};
+
+type PageSource = ArticlePageSource | YouTubePageSource | AudioVideoPageSource;
 
 type SourceState =
   | { status: 'loading' }
@@ -252,6 +268,8 @@ function getSourceState(title: string, value: string): SourceState {
         url: tabUrl,
         classification: 'Web page',
         audioDetectionResolved: false,
+        videoDetectionResolved: false,
+        videoAvailable: false,
       },
     };
   } catch {
@@ -302,13 +320,21 @@ function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
   if (sourceState.source.classification === 'Podcast / web audio') {
     return {
       text: { status: 'available' },
-      video: { status: 'unavailable', reason: 'Video mode supports connected YouTube watch pages only.' },
+      video: sourceState.source.videoDetectionResolved
+        ? sourceState.source.videoAvailable
+          ? { status: 'available' }
+          : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
+        : { status: 'checking' },
       audio: { status: 'available' },
     };
   }
   return {
     text: { status: 'available' },
-    video: { status: 'unavailable', reason: 'Video mode supports connected YouTube watch pages only.' },
+    video: sourceState.source.videoDetectionResolved
+      ? sourceState.source.videoAvailable
+        ? { status: 'available' }
+        : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
+      : { status: 'checking' },
     audio: sourceState.source.audioDetectionResolved
       ? { status: 'unavailable', reason: 'No supported top-level page audio was found.' }
       : { status: 'checking' },
@@ -514,6 +540,7 @@ function App() {
   const draftRevisionRef = useRef(0);
   const draftRef = useRef<AnnotationDraft | null>(null);
   const youtubeDraftRef = useRef<YouTubeClipDraft | null>(null);
+  const webVideoDraftRef = useRef<WebVideoClipDraft | null>(null);
   const audioDraftRef = useRef<AudioClipDraft | null>(null);
   const createPageRef = useRef<CreatePageGeneration | null>(null);
   const createDraftStateRef = useRef<CreateDraftState>(createDraftState);
@@ -575,8 +602,10 @@ function App() {
     try {
       const draft = serializeYouTubeClipDraft(sourceUrl, startMs, endMs, text);
       youtubeDraftRef.current = draft;
+      webVideoDraftRef.current = null;
       void chrome.storage.session
         .set({ [YOUTUBE_CLIP_DRAFT_STORAGE_KEY]: draft })
+        .then(() => chrome.storage.session.remove(WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY))
         .catch(() => console.warn('Unable to save the YouTube clip draft.'));
     } catch {
       // Invalid transient input is never persisted.
@@ -593,6 +622,38 @@ function App() {
       console.warn('Unable to clear the YouTube clip draft.');
     }
   }, []);
+
+  const persistWebVideoDraft = useCallback((
+    sourceUrl: string,
+    startMs: number | null,
+    endMs: number | null,
+    text: string,
+  ) => {
+    try {
+      const draft = serializeWebVideoClipDraft(sourceUrl, startMs, endMs, text);
+      webVideoDraftRef.current = draft;
+      youtubeDraftRef.current = null;
+      void chrome.storage.session.set({ [WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY]: draft })
+        .then(() => chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY))
+        .catch(() => console.warn('Unable to save the webpage video draft.'));
+    } catch { /* Invalid transient input is never persisted. */ }
+  }, []);
+
+  const clearWebVideoDraft = useCallback(async () => {
+    webVideoDraftRef.current = null;
+    dispatchCreateDraft({ type: 'reset-mode', mode: 'video' });
+    setYoutubePublishState({ status: 'idle' });
+    try { await chrome.storage.session.remove(WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY); }
+    catch { console.warn('Unable to clear the webpage video draft.'); }
+  }, []);
+
+  const clearVideoDraft = useCallback(async () => {
+    const source = sourceState.status === 'connected' ? sourceState.source : null;
+    if (source?.classification === 'YouTube' && youtubeDraftRef.current) await clearYoutubeDraft();
+    else if (source?.classification !== 'YouTube' && webVideoDraftRef.current) await clearWebVideoDraft();
+    else if (youtubeDraftRef.current) await clearYoutubeDraft();
+    else await clearWebVideoDraft();
+  }, [clearWebVideoDraft, clearYoutubeDraft, sourceState]);
 
   const persistAudioDraft = useCallback((
     source: AudioPageSource,
@@ -737,6 +798,17 @@ function App() {
         startMs: youtubeDraft.startMs,
         endMs: youtubeDraft.endMs,
         commentary: youtubeDraft.commentary,
+      });
+    }
+    const webVideoDraft = webVideoDraftRef.current;
+    if (webVideoDraft && context && webVideoClipDraftBelongsToSource(webVideoDraft, context.url)) {
+      dispatchCreateDraft({
+        type: 'restore-media',
+        mode: 'video',
+        sourceKey: webVideoDraft.source.normalizedUrl,
+        startMs: webVideoDraft.startMs,
+        endMs: webVideoDraft.endMs,
+        commentary: webVideoDraft.commentary,
       });
     }
     const audioDraft = audioDraftRef.current;
@@ -924,21 +996,29 @@ function App() {
     if (sourceState.status !== 'connected') throw new Error('Choose a player first.');
     const context = connectedContextRef.current;
     if (!context) throw new Error(RECONNECT_MESSAGE);
-    const expectedClassification = mode === 'video' ? 'YouTube' : 'Podcast / web audio';
-    if (sourceState.source.classification !== expectedClassification) throw new Error(RECONNECT_MESSAGE);
+    const genericVideo = mode === 'video' && sourceState.source.classification !== 'YouTube';
+    if (mode === 'audio' && sourceState.source.classification !== 'Podcast / web audio') throw new Error(RECONNECT_MESSAGE);
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
     const execution = await chrome.scripting.executeScript({
       target: { tabId: context.tabId, frameIds: [0] },
+      // The page's own world is required to traverse readable same-origin frames.
+      // Only bounded generic-video identity/time data crosses this call boundary.
+      world: genericVideo ? 'MAIN' : 'ISOLATED',
       func: actOnTopFramePlayer,
       args: [
         mode,
         identity,
         sourceState.source.classification === 'YouTube'
           ? sourceState.source.videoId
-          : sourceState.source.normalizedUrl,
+          : mode === 'video'
+            ? normalizeArticleUrl(sourceState.source.url)
+            : sourceState.source.classification === 'Podcast / web audio'
+              ? sourceState.source.normalizedUrl
+              : '',
         action,
         startSeconds,
+        genericVideo,
       ],
     });
     const result = execution[0]?.result;
@@ -958,11 +1038,12 @@ function App() {
 
   const readConnectedPlayer = useCallback(async (action: 'start' | 'end' | 'refresh') => {
     if (
-      sourceState.status !== 'connected' ||
-      (sourceState.source.classification !== 'YouTube' &&
-        sourceState.source.classification !== 'Podcast / web audio')
+      sourceState.status !== 'connected'
     ) return;
-    const mode: PlayerMode = sourceState.source.classification === 'YouTube' ? 'video' : 'audio';
+    const mode: PlayerMode | null = modeSelection?.selectedMode === 'video'
+      ? 'video'
+      : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
+    if (!mode || (mode === 'audio' && sourceState.source.classification !== 'Podcast / web audio')) return;
     const draft = mode === 'video' ? videoDraftState : audioDraftState;
     let token: PlayerActionToken;
     try { token = getPlayerActionToken(mode, draft.playerIdentity); } catch { return; }
@@ -973,7 +1054,11 @@ function App() {
       const patch = {
         sourceKey: sourceState.source.classification === 'YouTube'
           ? sourceState.source.videoId
-          : sourceState.source.normalizedUrl,
+          : mode === 'video'
+            ? normalizeArticleUrl(sourceState.source.url)
+            : sourceState.source.classification === 'Podcast / web audio'
+              ? sourceState.source.normalizedUrl
+              : '',
         playerIdentity: draft.playerIdentity,
         playerTimeMs: player.currentTimeMs,
         durationMs: player.durationMs,
@@ -986,6 +1071,13 @@ function App() {
       });
       if (mode === 'video' && sourceState.source.classification === 'YouTube') {
         persistYoutubeDraft(
+          sourceState.source.url,
+          action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
+          action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
+          videoDraftState.commentary,
+        );
+      } else if (mode === 'video') {
+        persistWebVideoDraft(
           sourceState.source.url,
           action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
           action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
@@ -1004,15 +1096,19 @@ function App() {
         dispatchCreateDraft({ type: 'set-player-read-state', mode, state: 'error' });
       }
     }
-  }, [audioDraftState, getPlayerActionToken, persistAudioDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
+  }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, persistAudioDraft, persistWebVideoDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
 
   const changeYoutubeCommentary = (value: string) => {
-    const sourceKey = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
-      ? sourceState.source.videoId
+    const sourceKey = sourceState.status === 'connected'
+      ? sourceState.source.classification === 'YouTube'
+        ? sourceState.source.videoId
+        : normalizeArticleUrl(sourceState.source.url)
       : videoDraftState.sourceKey;
     dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { commentary: value, sourceKey } });
     if (sourceState.status === 'connected' && sourceState.source.classification === 'YouTube') {
       persistYoutubeDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
+    } else if (sourceState.status === 'connected') {
+      persistWebVideoDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
     }
   };
 
@@ -1481,8 +1577,7 @@ function App() {
 
   const previewYoutubeDraft = useCallback(async () => {
     if (
-      videoDraftState.startMs === null || sourceState.status !== 'connected' ||
-      sourceState.source.classification !== 'YouTube'
+      videoDraftState.startMs === null || sourceState.status !== 'connected'
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
@@ -1546,7 +1641,14 @@ function App() {
           state.source.url !== pageUrl
         ) return state;
         if (detection.status === 'supported') {
-          return { status: 'connected', source: detection.source };
+          return {
+            status: 'connected',
+            source: {
+              ...detection.source,
+              videoDetectionResolved: state.source.videoDetectionResolved,
+              videoAvailable: state.source.videoAvailable,
+            },
+          };
         }
         if (detection.status === 'no-audio') {
           return {
@@ -1693,6 +1795,7 @@ function App() {
         ACTIVE_TAB_CONTEXT_KEY,
         ANNOTATION_DRAFT_STORAGE_KEY,
         YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
+        WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY,
         AUDIO_CLIP_DRAFT_STORAGE_KEY,
         CREATE_MODE_SELECTION_STORAGE_KEY,
       ]),
@@ -1747,6 +1850,36 @@ function App() {
           storedYoutubeDraftValue !== undefined && youtubeDraft === null
         ) {
           void chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY);
+        }
+        const storedWebVideoDraftValue = stored[WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY];
+        let webVideoDraft = deserializeWebVideoClipDraft(storedWebVideoDraftValue);
+        if (youtubeDraft && webVideoDraft) {
+          if (youtubeDraft.updatedAt >= webVideoDraft.updatedAt) {
+            webVideoDraft = null;
+            void chrome.storage.session.remove(WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY);
+          } else {
+            youtubeDraftRef.current = null;
+            void chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY);
+          }
+        }
+        webVideoDraftRef.current = webVideoDraft;
+        if (
+          restorationRevision === draftRevisionRef.current && webVideoDraft && context &&
+          webVideoClipDraftBelongsToSource(webVideoDraft, context.url)
+        ) {
+          dispatchCreateDraft({
+            type: 'restore-media',
+            mode: 'video',
+            sourceKey: webVideoDraft.source.normalizedUrl,
+            startMs: webVideoDraft.startMs,
+            endMs: webVideoDraft.endMs,
+            commentary: webVideoDraft.commentary,
+          });
+        } else if (
+          restorationRevision === draftRevisionRef.current &&
+          storedWebVideoDraftValue !== undefined && webVideoDraft === null
+        ) {
+          void chrome.storage.session.remove(WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY);
         }
         const storedAudioDraftValue = stored[AUDIO_CLIP_DRAFT_STORAGE_KEY];
         const audioDraft = deserializeAudioClipDraft(storedAudioDraftValue);
@@ -1820,67 +1953,79 @@ function App() {
     const context = connectedContextRef.current;
     const page = modeSelection?.page;
     if (mediaEditorLocked) return;
-    const connectedMode: PlayerMode | null = sourceState.status === 'connected'
-      ? sourceState.source.classification === 'YouTube'
-        ? 'video'
-        : sourceState.source.classification === 'Podcast / web audio' ? 'audio' : null
-      : null;
-    if (!context || !page || !connectedMode || sourceState.status !== 'connected') {
+    if (!context || !page || sourceState.status !== 'connected') {
       setVideoPlayers(EMPTY_PLAYER_DISCOVERY);
       setAudioPlayers(EMPTY_PLAYER_DISCOVERY);
       return;
     }
-    const mode = connectedMode;
     const pageUrl = sourceState.source.url;
     const pageGeneration = page.generation;
-    const sourceKey = mode === 'video'
-      ? sourceState.source.classification === 'YouTube' ? sourceState.source.videoId : null
-      : sourceState.source.classification === 'Podcast / web audio' ? sourceState.source.normalizedUrl : null;
-    if (!sourceKey) return;
+    const genericVideo = sourceState.source.classification !== 'YouTube';
+    const videoSourceKey = sourceState.source.classification === 'YouTube'
+      ? sourceState.source.videoId
+      : normalizeArticleUrl(sourceState.source.url);
+    const probes: Array<{ mode: PlayerMode; genericVideo: boolean; sourceKey: string }> = [
+      { mode: 'video', genericVideo, sourceKey: videoSourceKey },
+    ];
+    if (sourceState.source.classification === 'Podcast / web audio') {
+      probes.push({ mode: 'audio', genericVideo: false, sourceKey: sourceState.source.normalizedUrl });
+    } else {
+      setAudioPlayers(EMPTY_PLAYER_DISCOVERY);
+    }
     let current = true;
-    void chrome.scripting.executeScript({
-      target: { tabId: context.tabId, frameIds: [0] },
-      func: readTopFramePlayerDiscovery,
-      args: [mode],
-    }).then((execution) => {
-      if (!current || createPageRef.current?.generation !== pageGeneration) return;
-      const discovery = validatePlayerDiscovery(pageUrl, mode, execution[0]?.result);
-      const state: PlayerDiscoveryState = { ...discovery, pageGeneration };
-      if (mode === 'video') setVideoPlayers(state); else setAudioPlayers(state);
-      const previousIdentity = playerIdentityRef.current[mode];
-      const playerIdentity = reconcilePlayerSelection(discovery, previousIdentity);
-      const selected = discovery.status === 'ready'
-        ? discovery.candidates.find((candidate) => candidate.identity === playerIdentity) ?? null
-        : null;
-      dispatchCreateDraft({
-        type: 'patch-media',
-        mode,
-        patch: {
-          sourceKey,
-          playerIdentity,
-          playerTimeMs: selected?.currentTimeMs ?? null,
-          durationMs: selected?.durationMs ?? null,
-          playerReadState: previousIdentity && !playerIdentity ? 'error' : 'idle',
-        },
+    for (const probe of probes) {
+      void chrome.scripting.executeScript({
+        target: { tabId: context.tabId, frameIds: [0] },
+        // Generic video needs the page origin to traverse readable same-origin frames.
+        world: probe.genericVideo ? 'MAIN' : 'ISOLATED',
+        func: readTopFramePlayerDiscovery,
+        args: [probe.mode, probe.genericVideo],
+      }).then((execution) => {
+        if (!current || createPageRef.current?.generation !== pageGeneration) return;
+        const discovery = validatePlayerDiscovery(pageUrl, probe.mode, execution[0]?.result, probe.genericVideo);
+        const state: PlayerDiscoveryState = { ...discovery, pageGeneration };
+        if (probe.mode === 'video') {
+          setVideoPlayers(state);
+          if (probe.genericVideo) setSourceState((currentState) =>
+            currentState.status === 'connected' && currentState.source.classification !== 'YouTube' &&
+            currentState.source.url === pageUrl &&
+            (currentState.source.videoDetectionResolved !== true ||
+              currentState.source.videoAvailable !== playerDiscoveryMakesModeAvailable(discovery))
+              ? { status: 'connected', source: { ...currentState.source,
+                videoDetectionResolved: true, videoAvailable: playerDiscoveryMakesModeAvailable(discovery) } }
+              : currentState);
+        } else setAudioPlayers(state);
+        const previousIdentity = playerIdentityRef.current[probe.mode];
+        const playerIdentity = reconcilePlayerSelection(discovery, previousIdentity);
+        const selected = discovery.status === 'ready'
+          ? discovery.candidates.find((candidate) => candidate.identity === playerIdentity) ?? null
+          : null;
+        dispatchCreateDraft({
+          type: 'patch-media', mode: probe.mode,
+          patch: { sourceKey: probe.sourceKey, playerIdentity,
+            playerTimeMs: selected?.currentTimeMs ?? null,
+            durationMs: selected?.durationMs ?? null,
+            playerReadState: previousIdentity && !playerIdentity ? 'error' : 'idle' },
+        });
+      }).catch(() => {
+        if (!current || createPageRef.current?.generation !== pageGeneration) return;
+        const state: PlayerDiscoveryState = { ...EMPTY_PLAYER_DISCOVERY, pageGeneration };
+        if (probe.mode === 'video') {
+          setVideoPlayers(state);
+          if (probe.genericVideo) setSourceState((currentState) =>
+            currentState.status === 'connected' && currentState.source.classification !== 'YouTube' && currentState.source.url === pageUrl
+              ? { status: 'connected', source: { ...currentState.source, videoDetectionResolved: true, videoAvailable: false } }
+              : currentState);
+        } else setAudioPlayers(state);
+        dispatchCreateDraft({ type: 'patch-media', mode: probe.mode,
+          patch: { playerIdentity: null, playerTimeMs: null, durationMs: null, playerReadState: 'error' } });
       });
-    }).catch(() => {
-      if (!current || createPageRef.current?.generation !== pageGeneration) return;
-      const state: PlayerDiscoveryState = { ...EMPTY_PLAYER_DISCOVERY, pageGeneration };
-      if (mode === 'video') setVideoPlayers(state); else setAudioPlayers(state);
-      dispatchCreateDraft({
-        type: 'patch-media', mode,
-        patch: { playerIdentity: null, playerTimeMs: null, durationMs: null, playerReadState: 'error' },
-      });
-    });
+    }
     return () => { current = false; };
   }, [mediaEditorLocked, modeSelection?.page.generation, playerDiscoveryRevision, sourceState]);
 
   useEffect(() => {
-    if (
-      mediaEditorLocked || sourceState.status !== 'connected' ||
-      (sourceState.source.classification !== 'YouTube' &&
-        sourceState.source.classification !== 'Podcast / web audio')
-    ) return;
+    if (mediaEditorLocked || sourceState.status !== 'connected') return;
     const timer = window.setInterval(() => {
       setPlayerDiscoveryRevision((revision) => revision + 1);
     }, 3_000);
@@ -2117,6 +2262,11 @@ function App() {
   const youtubeSource = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
     ? sourceState.source
     : null;
+  const webVideoSource = sourceState.status === 'connected' && sourceState.source.classification !== 'YouTube' &&
+    sourceState.source.videoDetectionResolved && sourceState.source.videoAvailable
+    ? sourceState.source
+    : null;
+  const videoSource = youtubeSource ?? webVideoSource;
   const audioSource = sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio'
     ? sourceState.source
     : null;
@@ -2125,22 +2275,21 @@ function App() {
   const textDraftAttached = Boolean(
     draftRef.current && connectedContext && annotationDraftBelongsToContext(draftRef.current, connectedContext),
   );
-  const videoDraftAttached = Boolean(
-    youtubeDraftRef.current && youtubeSource &&
-    youtubeClipDraftBelongsToSource(youtubeDraftRef.current, youtubeSource.url),
-  );
+  const videoDraftAttached = Boolean(youtubeSource
+    ? youtubeDraftRef.current && youtubeClipDraftBelongsToSource(youtubeDraftRef.current, youtubeSource.url)
+    : webVideoSource && webVideoDraftRef.current && webVideoClipDraftBelongsToSource(webVideoDraftRef.current, webVideoSource.url));
   const audioDraftAttached = Boolean(
     audioDraftRef.current && audioSource &&
     audioClipDraftBelongsToSource(audioDraftRef.current, audioSource.url, audioSource.canonicalUrl),
   );
   const detachedDraftModes: Record<CreateMode, boolean> = {
     text: draftRef.current !== null && !textDraftAttached,
-    video: youtubeDraftRef.current !== null && !videoDraftAttached,
+    video: (youtubeDraftRef.current !== null || webVideoDraftRef.current !== null) && !videoDraftAttached,
     audio: audioDraftRef.current !== null && !audioDraftAttached,
   };
   const savedDraftModes: Record<CreateMode, boolean> = {
     text: draftRef.current !== null || hasCreateModeDraft(createDraftState, 'text'),
-    video: youtubeDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'video'),
+    video: youtubeDraftRef.current !== null || webVideoDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'video'),
     audio: audioDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'audio'),
   };
   const modeStatusMessage = modeAnnouncement || getModeCapabilitySummary(modeSelection);
@@ -2148,7 +2297,7 @@ function App() {
     if (selectedCreateMode === 'text') {
       void clearDraft('explicit-clear');
     } else if (selectedCreateMode === 'video') {
-      void clearYoutubeDraft();
+      void clearVideoDraft();
     } else if (selectedCreateMode === 'audio') {
       void clearAudioDraft();
     }
@@ -2163,6 +2312,8 @@ function App() {
     audioDraftState.endMs,
     audioDraftState.durationMs,
   );
+  const videoRangeDisplay = getMediaRangeDisplay(videoDraftState.startMs, videoDraftState.endMs);
+  const audioRangeDisplay = getMediaRangeDisplay(audioDraftState.startMs, audioDraftState.endMs);
   const videoPlayerSelected = videoPlayers.status === 'ready' &&
     videoPlayers.pageGeneration === modeSelection?.page.generation &&
     videoPlayers.candidates.some((candidate) => candidate.identity === videoDraftState.playerIdentity);
@@ -2288,24 +2439,25 @@ function App() {
           <section className="context-source"><SourceSummary state={sourceState} /><div className="source-actions"><button className="button button-secondary button-small" type="button" onClick={() => void loadSource()} disabled={isRefreshing || isCapturing}>{isRefreshing ? 'Refreshing…' : 'Refresh source'}</button>{refreshSuccess && <span role="status">Source updated</span>}</div></section>
           {selectedCreateMode && detachedDraftModes[selectedCreateMode] ? (
             <div className="compact-state detached-draft" role="status"><strong>{CREATE_MODE_LABELS[selectedCreateMode]} draft saved</strong><span>This draft belongs to another connected source. Return to that source to continue, or discard it to start here.</span><button className="button button-secondary" type="button" onClick={discardSelectedDetachedDraft}>Discard {CREATE_MODE_LABELS[selectedCreateMode]} draft and start here</button></div>
-          ) : selectedCreateMode === 'video' && youtubeSource ? (
+          ) : selectedCreateMode === 'video' && videoSource ? (
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading">
-              <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>YouTube time range</span></div>
+              <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>{youtubeSource ? 'YouTube time range' : 'Webpage video range'}</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected video, set the start, continue watching, then set the end.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
                 <dl className="clip-time-grid">
-                  <div><dt>START</dt><dd>{videoDraftState.startMs === null ? '--:--' : formatMediaTime(videoDraftState.startMs)}</dd></div>
-                  <div><dt>END</dt><dd>{videoDraftState.endMs === null ? '--:--' : formatMediaTime(videoDraftState.endMs)}</dd></div>
-                  <div><dt>LENGTH</dt><dd>{videoDraftState.startMs === null || videoDraftState.endMs === null || videoDraftState.endMs <= videoDraftState.startMs ? '--:--' : formatMediaTime(videoDraftState.endMs - videoDraftState.startMs)}</dd></div>
+                  <div><dt>START</dt><dd>{videoRangeDisplay.start}</dd></div>
+                  <div><dt>END</dt><dd>{videoRangeDisplay.end}</dd></div>
+                  <div><dt>LENGTH</dt><dd>{videoRangeDisplay.length}</dd></div>
                 </dl>
-                {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTime(videoDraftState.durationMs)}</>}</p>}
+                {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTimeTenths(videoDraftState.durationMs)}</>}</p>}
                 <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>{videoDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
                 {videoDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview from start</button>}
                 {videoDraftState.startMs !== null && videoDraftState.endMs !== null && videoClipRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
-                {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current YouTube player time could not be read. Reconnect the video and try again.</p>}
+                {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
                 <div className="annotation-field"><label htmlFor="youtube-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="youtube-commentary" value={videoDraftState.commentary} maxLength={2_000} rows={6} required disabled={mediaEditorLocked} onChange={(event) => changeYoutubeCommentary(event.target.value)} /><span aria-live="polite">{videoDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
-                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearYoutubeDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginGoogleSignIn()}>Continue with Google</button> : <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
+                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginGoogleSignIn()}>Continue with Google</button> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" disabled>Publishing not enabled</button>}</div>
+                {webVideoSource && <p className="create-help" role="status">This readable webpage player can be selected and revalidated. Publishing remains closed until the separately authorized article-backed hosted-video server contract is available.</p>}
                 {youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
               </>}
             </section>
@@ -2316,11 +2468,11 @@ function App() {
                 <p className="create-help">Play the connected page audio, set the start, continue listening, then set the end.</p>
                 <PlayerSelector mode="audio" discovery={audioPlayers} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
                 <dl className="clip-time-grid">
-                  <div><dt>START</dt><dd>{audioDraftState.startMs === null ? '--:--' : formatMediaTime(audioDraftState.startMs)}</dd></div>
-                  <div><dt>END</dt><dd>{audioDraftState.endMs === null ? '--:--' : formatMediaTime(audioDraftState.endMs)}</dd></div>
-                  <div><dt>LENGTH</dt><dd>{audioDraftState.startMs === null || audioDraftState.endMs === null || audioDraftState.endMs <= audioDraftState.startMs ? '--:--' : formatMediaTime(audioDraftState.endMs - audioDraftState.startMs)}</dd></div>
+                  <div><dt>START</dt><dd>{audioRangeDisplay.start}</dd></div>
+                  <div><dt>END</dt><dd>{audioRangeDisplay.end}</dd></div>
+                  <div><dt>LENGTH</dt><dd>{audioRangeDisplay.length}</dd></div>
                 </dl>
-                {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTime(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTime(audioDraftState.durationMs)}</>}</p>}
+                {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTimeTenths(audioDraftState.durationMs)}</>}</p>}
                 <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>{audioDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
                 {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview / Jump to start</button>}
                 {audioDraftState.startMs !== null && audioDraftState.endMs !== null && audioClipRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
