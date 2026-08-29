@@ -5,6 +5,13 @@ export const AUTH_PROVIDER_METADATA = {
 
 export type AuthProvider = keyof typeof AUTH_PROVIDER_METADATA;
 
+export type WebAuthCapabilities = Readonly<Record<AuthProvider, boolean>>;
+
+export const DEFAULT_WEB_AUTH_CAPABILITIES = Object.freeze({
+  google: true,
+  x: false,
+}) satisfies WebAuthCapabilities;
+
 export const ENABLED_WEB_AUTH_PROVIDERS = ["google"] as const satisfies readonly AuthProvider[];
 
 export type WebAuthErrorKind =
@@ -37,6 +44,8 @@ type WebAuthStartClient = {
 type CallbackSession = {
   access_token: string;
   refresh_token: string;
+  provider_token?: string | null;
+  provider_refresh_token?: string | null;
 };
 
 type WebAuthCallbackClient = {
@@ -49,7 +58,7 @@ type WebAuthCallbackClient = {
       access_token: string;
       refresh_token: string;
     }): Promise<{
-      data: { user: AuthUser | null };
+      data: { session: CallbackSession | null; user: AuthUser | null };
       error: unknown;
     }>;
     signOut(options: { scope: "local" }): Promise<{ error: unknown }>;
@@ -64,11 +73,14 @@ export type WebAuthCallbackRequest = {
 
 const DEFAULT_NEXT_PATH = "/";
 const MAX_AUTH_CODE_LENGTH = 8_192;
+const MAX_NEXT_PATH_LENGTH = 2_048;
+const MAX_SESSION_TOKEN_LENGTH = 32_768;
 
 export function isEnabledWebAuthProvider(
   value: string | null | undefined,
-): value is (typeof ENABLED_WEB_AUTH_PROVIDERS)[number] {
-  return value === "google";
+  capabilities: WebAuthCapabilities = DEFAULT_WEB_AUTH_CAPABILITIES,
+): value is AuthProvider {
+  return (value === "google" || value === "x") && capabilities[value];
 }
 
 export function getAuthProviderLabel(provider: AuthProvider) {
@@ -85,6 +97,7 @@ export function getSafeNextPath(
 ) {
   if (
     !value ||
+    value.length > MAX_NEXT_PATH_LENGTH ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
     value.includes("\\") ||
@@ -210,6 +223,23 @@ async function purgeAttemptedSession(client: WebAuthCallbackClient) {
   }
 }
 
+function isBoundedSessionToken(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_SESSION_TOKEN_LENGTH &&
+    !/[\u0000-\u0020\u007f]/.test(value);
+}
+
+function isTokenSafeEstablishedSession(session: CallbackSession | null) {
+  return Boolean(
+    session &&
+    isBoundedSessionToken(session.access_token) &&
+    isBoundedSessionToken(session.refresh_token) &&
+    !session.provider_token &&
+    !session.provider_refresh_token,
+  );
+}
+
 export async function completeWebAuthCallback(
   client: WebAuthCallbackClient,
   request: WebAuthCallbackRequest,
@@ -220,7 +250,13 @@ export async function completeWebAuthCallback(
     const { data: exchangeData, error: exchangeError } =
       await client.auth.exchangeCodeForSession(request.code);
 
-    if (exchangeError || !exchangeData.session || !exchangeData.user) {
+    if (
+      exchangeError ||
+      !exchangeData.session ||
+      !exchangeData.user ||
+      !isBoundedSessionToken(exchangeData.session.access_token) ||
+      !isBoundedSessionToken(exchangeData.session.refresh_token)
+    ) {
       if (exchangeData.session) await purgeAttemptedSession(client);
       return false;
     }
@@ -243,6 +279,7 @@ export async function completeWebAuthCallback(
 
     if (
       sessionError ||
+      !isTokenSafeEstablishedSession(sessionData.session) ||
       !sessionData.user ||
       !userHasAuthProvider(sessionData.user, request.provider)
     ) {
