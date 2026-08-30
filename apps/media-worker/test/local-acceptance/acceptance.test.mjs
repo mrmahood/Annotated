@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   countDisposableSessions,
@@ -74,4 +75,10 @@ test('allows expired Local logout responses only before verified user deletion',
   for (const status of [0, 400, 500]) {
     assert.equal(isRecoverableDisposableLogoutStatus(status), false);
   }
+});
+
+test('the standalone audio fixture reports its ready URL to the owner', async () => {
+  const source = await readFile(new URL('./fixture-server.mjs', import.meta.url), 'utf8');
+  assert.match(source, /server\.listen\(port, '127\.0\.0\.1', \(\) => \{/u);
+  assert.match(source, /Annotated Local audio fixture ready: http:\/\/localhost:\$\{port\}\/audio/u);
 });

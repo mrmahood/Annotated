@@ -39,7 +39,9 @@
       "width": 480,
       "height": 272,
       "scaleX": 0.5,
-      "scaleY": 0.5
+      "scaleY": 0.5,
+      "offsetX": 0,
+      "offsetY": 0
     },
     "output": {
       "probe": {
@@ -118,7 +120,9 @@
       "width": 480,
       "height": 272,
       "scaleX": 0.5,
-      "scaleY": 0.5
+      "scaleY": 0.5,
+      "offsetX": 0,
+      "offsetY": 0
     },
     "output": {
       "probe": {
@@ -197,7 +201,9 @@
       "width": 360,
       "height": 600,
       "scaleX": 1,
-      "scaleY": 1
+      "scaleY": 1,
+      "offsetX": 0,
+      "offsetY": 0
     },
     "output": {
       "probe": {
@@ -276,7 +282,9 @@
       "width": 480,
       "height": 272,
       "scaleX": 0.5,
-      "scaleY": 0.5
+      "scaleY": 0.5,
+      "offsetX": 0,
+      "offsetY": 0
     },
     "output": {
       "probe": {
