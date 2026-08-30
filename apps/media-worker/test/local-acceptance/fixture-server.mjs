@@ -93,7 +93,9 @@ const server = http.createServer(async (request, response) => {
   createReadStream(audioPath, { start, end }).pipe(response);
 });
 
-server.listen(port, '127.0.0.1');
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Annotated Local audio fixture ready: http://localhost:${port}/audio`);
+});
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => server.close(() => process.exit(0)));

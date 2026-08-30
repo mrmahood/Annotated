@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -13,8 +14,13 @@ function errorCode(code) {
   return (error) => error?.code === code;
 }
 
-const probeRows = JSON.parse(await readFile(path.join(generatedFixtureRoot, 'probes.json'), 'utf8'));
+const probesContent = await readFile(path.join(generatedFixtureRoot, 'probes.json'));
+const probeRows = JSON.parse(probesContent.toString('utf8'));
 const probeByName = new Map(probeRows.map((row) => [row.file, row]));
+const fixtureChecksums = await readFile(path.join(generatedFixtureRoot, 'checksums.sha256'), 'ascii');
+const c2ResultsContent = await readFile(path.join(generatedFixtureRoot, 'c2', 'results.json'));
+const c2Results = JSON.parse(c2ResultsContent.toString('utf8'));
+const c2Checksums = await readFile(path.join(generatedFixtureRoot, 'c2', 'checksums.sha256'), 'ascii');
 
 test('capture metadata v1 always requires recapture', async () => {
   const metadata = await loadMetadata('version-1-recapture.json');
@@ -31,6 +37,29 @@ test('safe landscape, portrait, and letterboxed geometry produces bounded even c
 
   const letterboxed = calculateVideoCrop(await loadMetadata('safe-letterboxed.json'), 640, 360);
   assert.deepEqual(letterboxed, landscape);
+});
+
+test('committed fixture evidence retains complete crop mapping and matching checksums', () => {
+  const expectedVideoScenarios = new Set([
+    'landscape-video',
+    'vp8-landscape-video',
+    'portrait-video',
+    'letterboxed-video',
+  ]);
+  for (const result of c2Results) {
+    if (!expectedVideoScenarios.delete(result.scenario)) continue;
+    assert.deepEqual(Object.keys(result.crop).sort(), [
+      'height', 'offsetX', 'offsetY', 'scaleX', 'scaleY', 'width', 'x', 'y',
+    ]);
+    assert.equal(Number.isFinite(result.crop.offsetX), true);
+    assert.equal(Number.isFinite(result.crop.offsetY), true);
+  }
+  assert.equal(expectedVideoScenarios.size, 0);
+
+  const resultsHash = createHash('sha256').update(c2ResultsContent).digest('hex');
+  assert.match(c2Checksums, new RegExp(`^${resultsHash}  results[.]json$`, 'mu'));
+  const probesHash = createHash('sha256').update(probesContent).digest('hex');
+  assert.match(fixtureChecksums, new RegExp(`^${probesHash}  probes[.]json$`, 'mu'));
 });
 
 test('geometry accepts only the documented one-CSS-pixel edge and movement tolerance', async () => {
