@@ -92,6 +92,110 @@ test('tabCapture is never requested when top-frame preparation fails', async () 
   assert.equal(tabCaptureCalls, 0);
 });
 
+test('concurrent status reconciliation cannot clear a newly preparing shared media capture', async () => {
+  for (const captureSource of [
+    source,
+    {
+      kind: 'audio',
+      pageUrl: 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789',
+      sourceKey: 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789',
+      playerIdentity: 'audio:1:f8443fef',
+    },
+  ]) {
+    let onMessage;
+    let releasePersistence;
+    let persistenceStarted;
+    let tabCaptureCalls = 0;
+    const persistenceGate = new Promise((resolve) => { releasePersistence = resolve; });
+    const persistenceStartedGate = new Promise((resolve) => { persistenceStarted = resolve; });
+    const captureRequest = { ...request, source: captureSource };
+    const geometry = captureSource.kind === 'audio'
+      ? {
+          viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+          boundingClientRect: null, videoWidth: null, videoHeight: null,
+          objectFit: null, objectPosition: null, fullscreen: false,
+          fullscreenElement: null, scrollX: 0, scrollY: 0, frameMapping: null,
+        }
+      : {
+          viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+          boundingClientRect: {
+            x: 0, y: 0, width: 1280, height: 720,
+            top: 0, right: 1280, bottom: 720, left: 0,
+          },
+          videoWidth: 1920, videoHeight: 1080,
+          objectFit: 'contain', objectPosition: '50% 50%', fullscreen: false,
+          fullscreenElement: null, scrollX: 0, scrollY: 0, frameMapping: null,
+        };
+    const fakeChrome = {
+      runtime: {
+        getURL: (path) => `chrome-extension://test/${path}`,
+        getContexts: async () => [],
+        sendMessage: async (message) => {
+          if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+            return { status: 'capturing', captureId: message.captureId };
+          }
+          return { ok: true };
+        },
+        onMessage: { addListener(listener) { onMessage = listener; } },
+      },
+      storage: { session: {
+        async get(key) {
+          return key === 'annotatedActiveTabContext'
+            ? { [key]: { tabId: 42, windowId: 1, title: 'Media', url: captureSource.pageUrl, capturedAt: 1 } }
+            : {};
+        },
+        async set(value) {
+          if (value['annotated.mediaCapture.active.v1']) {
+            persistenceStarted();
+            await persistenceGate;
+          }
+        },
+        async remove() {},
+      } },
+      tabs: {
+        async get() { return { id: 42, url: captureSource.pageUrl }; },
+        onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+      },
+      scripting: { async executeScript({ func }) {
+        if (func.name.includes('prepare')) return [{ frameId: 0, result: {
+          ok: true,
+          prepared: {
+            sourceKind: captureSource.kind,
+            requestedStartMs: captureRequest.startMs,
+            requestedEndMs: captureRequest.endMs,
+            requestedDurationMs: captureRequest.endMs - captureRequest.startMs,
+            playerCurrentTimeBeforeRecordingMs: captureRequest.startMs,
+            mediaDurationMs: 120_000,
+            pageUrl: captureSource.pageUrl,
+            geometry,
+          },
+        } }];
+        return [{ frameId: 0, result: {
+          ok: true, acknowledgedAtMs: 1, currentTimeMs: captureRequest.startMs,
+        } }];
+      } },
+      tabCapture: { async getMediaStreamId() { tabCaptureCalls += 1; return 'stream'; } },
+      offscreen: { async createDocument() {} },
+    };
+    installMediaCapture(fakeChrome);
+    const started = new Promise((resolve) => {
+      assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request: captureRequest }, {}, resolve), true);
+    });
+    await persistenceStartedGate;
+    const status = new Promise((resolve) => {
+      assert.equal(onMessage({ target: 'background', type: 'annotated.mediaCapture.status.v1' }, {}, resolve), true);
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    releasePersistence();
+
+    const [startResponse, statusResponse] = await Promise.all([started, status]);
+    assert.equal(startResponse.ok, true, captureSource.kind);
+    assert.equal(startResponse.snapshot.status, 'capturing', captureSource.kind);
+    assert.notEqual(statusResponse.snapshot.status, 'error', captureSource.kind);
+    assert.equal(tabCaptureCalls, 1, captureSource.kind);
+  }
+});
+
 test('runtime request validation requires every explicit production field', () => {
   assert.equal(isCaptureStartRequest(request), true);
   assert.equal(isMediaCaptureStartMessage({

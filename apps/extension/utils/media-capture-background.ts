@@ -235,8 +235,11 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     if (active) return { ok: false, snapshot: failure('busy', 'Another media capture is already active.', active.captureId) };
     const captureId = request.captureId;
     const capture = { captureId, request };
+    const preparing: CaptureSnapshot = { status: 'preparing', captureId };
+    // Pair the in-memory identity and snapshot before persistence can yield to status reconciliation.
+    lastSnapshot = preparing;
     await persistActive(capture);
-    emit({ status: 'preparing', captureId });
+    emit(preparing);
     try {
       const prepared = await validateAndPrepare(captureId, request);
       if (!prepared.ok) {
