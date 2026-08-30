@@ -49,16 +49,16 @@ jobs:
 
       - name: Install checksum-verified FFmpeg 8.1 toolchain
         env:
-          FFMPEG_ASSET: ffmpeg-n8.1.2-44-g7c533d0f86-linux64-lgpl-8.1.tar.xz
-          FFMPEG_SHA256: 3a379bb6ce47ca7c175999ed44a8f386cc89a9b9e450774b69d98a2c45c5189b
-          FFMPEG_VERSION: n8.1.2-44-g7c533d0f86-20260816
+          FFMPEG_ASSET: ffmpeg-n8.1.2-50-g1a748fe2cd-linux64-lgpl-8.1.tar.xz
+          FFMPEG_SHA256: d9742147201276864cbe9f0dfdb347a56abe19a905eaf146a5022fe4a8bfa0dd
+          FFMPEG_VERSION: n8.1.2-50-g1a748fe2cd-20260830
         run: |
           set -euo pipefail
           tool_root="$RUNNER_TEMP/annotated-ffmpeg"
           archive="$tool_root/$FFMPEG_ASSET"
           mkdir -p "$tool_root/extracted"
           curl --fail --location --retry 3 --output "$archive" \
-            "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/$FFMPEG_ASSET"
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-30-13-12/$FFMPEG_ASSET"
           echo "$FFMPEG_SHA256  $archive" | sha256sum --check --strict
           tar -xJf "$archive" -C "$tool_root/extracted" --strip-components=1
           test "$("$tool_root/extracted/bin/ffmpeg" -hide_banner -version | sed -n '1s/^ffmpeg version //p' | awk '{print $1}')" = "$FFMPEG_VERSION"
