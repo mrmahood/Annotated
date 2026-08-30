@@ -1,6 +1,7 @@
 # Phase E Create and authentication plan
 
-Status: planning contract, updated 2026-08-29. Phase D is complete. E1a was
+Status: implementation and Local integration closeout, updated 2026-08-30.
+Phase D is complete. E1a was
 subsequently authorized; its implementation and deterministic Local validation
 are complete and merged, including focused and complete extension tests,
 TypeScript compilation, production build, and manifest inspection. PR #23 passed
@@ -25,8 +26,12 @@ Local web acceptance and merged through PR #35 as
 `33265858275`; post-merge `main` CI run `33267265075` passed. E2c passed Owner
 Chrome acceptance and merged through PR #37 as
 `e398b60b4a05ca98f9772dbab1d65b288e625a4f` after required PR CI run
-`33289446000`; post-merge `main` CI run `33289955529` passed. X remains disabled
-and unconfigured. Cross-origin player adapters, generic webpage-video
+`33289446000`; post-merge `main` CI run `33289955529` passed. E3 completed
+combined Local integration and handoff, including Owner audio-upload acceptance.
+PR #39 passed required CI run `33318786049` after checksum-pinned FFmpeg CI
+recovery, was squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`,
+and passed post-merge `main` CI run `33319090870`. X remains disabled and
+unconfigured. Cross-origin player adapters, generic webpage-video
 publication, later implementation, database work, provider configuration or
 enablement, Local services, Staging, Production, schedules, and deployment are
 not authorized by this document.
@@ -576,9 +581,11 @@ Every reproduced defect receives a regression.
 - Profile: provider metadata cannot change ownership/handle; X username cannot
   claim reserved roots; aliases/routes remain stable.
 
-After focused tests for each increment, E3 runs every `AGENTS.md` gate: Supabase
-lint/pgTAP, shared tests, extension tests/compile/build, web unit/lint/build,
-production-manifest inspection, and `git diff --check`.
+After focused tests for each increment, E3 ran the applicable `AGENTS.md` gates:
+Local database lint/pgTAP in required CI, shared tests, extension tests/compile/
+build, web unit/lint/build, production-manifest inspection, media-worker
+regressions, and `git diff --check`. Owner Local integration and audio-upload
+acceptance also passed.
 
 ## 20. Exact owner Chrome acceptance matrix
 
@@ -663,9 +670,16 @@ authorization with supplied evidence.
    `33289446000`, was squash-merged as
    `e398b60b4a05ca98f9772dbab1d65b288e625a4f`, and passed post-merge `main` CI run
    `33289955529`. X remains disabled and unconfigured.
-9. **E3 — combined validation/handoff.** Full Local, owner Chrome preparation,
-   required CI after separately authorized remote Git work, then separate live X
-   configuration/bounded Staging request. Production untouched.
+9. **E3 — combined validation/handoff (complete and merged).** The completed
+   Create, hosted-media, web-authentication, and extension-authentication
+   boundaries passed combined Local validation and Owner audio-upload acceptance.
+   Deterministic media evidence and fixture readiness were reconciled. PR #39
+   passed required CI run `33318786049` after checksum-pinned FFmpeg CI recovery,
+   was squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and passed
+   post-merge `main` CI run `33319090870`. X remained disabled and unconfigured;
+   live X configuration and bounded Staging remain separate requests. Proprietary
+   Brightcove and other inaccessible cross-origin player adapters remain deferred.
+   Production was untouched.
 
 Local callback tests use fake Supabase clients and deterministic fixtures without
 credentials/live authorization. CI follows Local. Dashboard/X/redirect config is
@@ -744,6 +758,27 @@ boundary.
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
 accessed.
+
+E3's combined Local integration and handoff were delivered through PR #39 after
+the complete shared, extension, web, and applicable media-worker regression
+gates, extension compilation and production build/manifest inspection, web
+lint/build, deterministic generated-evidence reconciliation, and Owner Local
+integration/audio-upload acceptance. The Owner verified HTTP 200 for the Local
+web runtime and audio fixture, successful retry or recapture upload,
+authoritative Processing, and no recurring `Failed to fetch`. Required PR CI
+initially stopped before repository tests because its checksum-pinned BtbN
+FFmpeg autobuild had expired with HTTP 404. A workflow-only recovery refreshed
+the exact release URL, Linux LGPL 8.1 asset, SHA-256, and matching FFmpeg/FFprobe
+version after independent bounded verification. Required PR CI run `33318786049`
+then passed. PR #39 was squash-merged into protected `main` as
+`ecee20531c8983c7bf97a80446e0fa66b0b21e78`, post-merge `main` CI run
+`33319090870` passed, and local `main` was fast-forwarded to the same commit. The
+feature branch remains preserved. A supplied proprietary Brightcove player
+remained outside the accepted readable top-frame/same-origin boundary; its
+adapter and other inaccessible cross-origin adapters remain separately
+authorized. X remains disabled and unconfigured. E3 did not access Staging or
+Production, configure providers, deploy, or enable schedules. This documentation
+closeout did not access any Supabase environment.
 
 E2c's accepted implementation was delivered as PR #37 after focused extension
 authentication and capture tests, the complete extension regression suite,

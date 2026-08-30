@@ -1,7 +1,7 @@
 # Product roadmap
 
-Status: Phase D complete and merged; Phase E increments E1a-E1e and E2a-E2c
-complete and merged, 2026-08-29. D1 and D2 completed their
+Status: Phase D complete and merged; Phase E increments E1a-E1e, E2a-E2c,
+and E3 complete and merged, 2026-08-30. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -33,7 +33,11 @@ and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`
 after PR CI `33265858275`; post-merge `main` CI `33267265075` passed. E2c passed
 Owner Chrome acceptance and merged through PR #37 as
 `e398b60b4a05ca98f9772dbab1d65b288e625a4f` after PR CI `33289446000`;
-post-merge `main` CI `33289955529` passed. X remains disabled and unconfigured;
+post-merge `main` CI `33289955529` passed. E3 completed combined Local
+integration and handoff, including Owner audio-upload acceptance. PR #39 passed
+required CI run `33318786049` after checksum-pinned FFmpeg CI recovery, was
+squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and passed
+post-merge `main` CI run `33319090870`. X remains disabled and unconfigured;
 later work remains separately authorized.
 
 The hosted-media architecture is defined in
@@ -347,7 +351,7 @@ prefix; it was not a complete or usable credential. Optional Staging-secret
 rotation remains an owner defense-in-depth decision. No full credential was
 printed or persisted.
 
-## Phase E — in progress
+## Phase E — implementation and Local handoff complete
 
 Create experience and authentication:
 
@@ -396,7 +400,18 @@ the correction atomically establishes the new capture's `preparing` state before
 status reconciliation, and the bounded Owner retest passed both workflows. PR #37
 passed required CI run `33289446000`, was squash-merged as
 `e398b60b4a05ca98f9772dbab1d65b288e625a4f`, and passed post-merge `main` CI run
-`33289955529`. X remains disabled and unconfigured.
+`33289955529`. E3 exercised the completed Create, media, web-authentication, and
+extension-authentication boundaries together, reconciled deterministic generated
+media evidence and checksum coverage, and made the standalone Local audio
+fixture report its ready URL. Owner Local integration and audio-upload acceptance
+passed with HTTP 200 from both runtimes, successful upload, authoritative
+Processing, and no recurring `Failed to fetch`. PR #39 passed required CI run
+`33318786049` after the unavailable pinned FFmpeg autobuild was replaced by an
+exact release URL, asset, SHA-256, and verified FFmpeg/FFprobe version. It was
+squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`; post-merge `main`
+CI run `33319090870` passed. X remains disabled and unconfigured. Proprietary
+Brightcove and other inaccessible cross-origin player adapters remain a
+separately authorized increment.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -483,11 +498,14 @@ and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`;
 E2b PR CI `33265858275` and post-merge `main` CI `33267265075` passed. E2c passed
 Owner Chrome acceptance and merged through PR #37 as
 `e398b60b4a05ca98f9772dbab1d65b288e625a4f`; E2c PR CI `33289446000` and
-post-merge `main` CI `33289955529` passed. X remains disabled and unconfigured.
+post-merge `main` CI `33289955529` passed. E3 passed Owner Local integration and
+audio-upload acceptance, required PR CI `33318786049`, and post-merge `main` CI
+`33319090870`; PR #39 was squash-merged as
+`ecee20531c8983c7bf97a80446e0fa66b0b21e78`. X remains disabled and unconfigured.
 Cross-origin player adapters, generic webpage-video publication, provider
 configuration or enablement, later implementation,
 schedule enablement, Production access, and deployment remain separately
 authorized.
-Production rollout remains blocked until Phase E
-passes its Local, required CI, and bounded Staging gates and later Production
-authorization is explicitly granted.
+Phase E has passed its Local and required CI gates. Production rollout remains
+blocked on separately authorized live-provider and bounded Staging gates and
+later explicit Production authorization.

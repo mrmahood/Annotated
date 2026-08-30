@@ -1,6 +1,6 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, updated 2026-08-29. Phases A-B and Phase C
+Status: accepted architecture, updated 2026-08-30. Phases A-B and Phase C
 increments C1-C6 are implemented and accepted. C6's least-privilege worker
 migrations, immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded
 lifecycle, crash, codec, geometry, exact-duration, transcript, retention, and
@@ -37,8 +37,12 @@ and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`
 after PR CI `33265858275`; post-merge `main` CI `33267265075` passed. E2c passed
 Owner Chrome acceptance and merged through PR #37 as
 `e398b60b4a05ca98f9772dbab1d65b288e625a4f` after PR CI `33289446000`;
-post-merge `main` CI `33289955529` passed. X remains disabled and unconfigured;
-later work remains separately authorized.
+post-merge `main` CI `33289955529` passed. E3 completed combined Local
+integration and Owner audio-upload acceptance, passed required PR CI run
+`33318786049` after checksum-pinned FFmpeg CI recovery, was squash-merged through
+PR #39 as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and passed post-merge
+`main` CI run `33319090870`. X remains disabled and unconfigured; later work
+remains separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -844,7 +848,8 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: planning contract current through E2c. E1a's local capability/data
+Status: implementation and Local integration contract complete through E3.
+E1a's local capability/data
 contract, page-generation/revision rules, independent draft state, and
 regressions pass the focused and complete extension test suites, TypeScript
 compilation, and production build/manifest inspection. PR #23 passed required
@@ -892,7 +897,19 @@ YouTube and Audio; the correction atomically establishes a new active capture's
 retest passed both capture/upload paths without `STALE_CAPTURE`. PR #37 passed
 required CI run `33289446000`, was squash-merged as
 `e398b60b4a05ca98f9772dbab1d65b288e625a4f`, and passed post-merge `main` CI run
-`33289955529`. X remains disabled and unconfigured.
+`33289955529`. E3 exercised the completed Create, hosted-media, web-authentication,
+and extension-authentication boundaries together. Deterministic generated media
+evidence and checksum coverage were reconciled, and the standalone Local audio
+fixture now reports its ready URL. Owner Local integration and audio-upload
+acceptance passed with both runtimes healthy, successful upload, authoritative
+Processing, and no `Failed to fetch`. PR #39 passed required CI run `33318786049`
+after the pinned BtbN FFmpeg 8.1 asset, SHA-256, and binary version were refreshed
+and independently verified; it was squash-merged as
+`ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and post-merge `main` CI run
+`33319090870` passed. X remains disabled and unconfigured. The supplied
+proprietary Brightcove player correctly remained unavailable under the accepted
+fail-closed boundary; proprietary and other inaccessible cross-origin player
+adapters remain separately authorized.
 The verified audit, design, security review,
 increment boundaries, and acceptance plan are in
 `docs/architecture/phase-e-create-auth-plan.md`.
