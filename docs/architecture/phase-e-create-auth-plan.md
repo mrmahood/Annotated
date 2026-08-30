@@ -22,10 +22,13 @@ passed. E2a passed Owner Chrome acceptance and merged through PR #33 as
 `33259588362`; post-merge `main` CI run `33260246341` passed. E2b passed Owner
 Local web acceptance and merged through PR #35 as
 `617cfdbeee4ebee6feacefa1abeb07775a250663` after required PR CI run
-`33265858275`; post-merge `main` CI run `33267265075` passed. X remains disabled
+`33265858275`; post-merge `main` CI run `33267265075` passed. E2c passed Owner
+Chrome acceptance and merged through PR #37 as
+`e398b60b4a05ca98f9772dbab1d65b288e625a4f` after required PR CI run
+`33289446000`; post-merge `main` CI run `33289955529` passed. X remains disabled
 and unconfigured. Cross-origin player adapters, generic webpage-video
-publication, E2c and later implementation, database work, provider configuration
-or enablement, Local services, Staging, Production, schedules, and deployment are
+publication, later implementation, database work, provider configuration or
+enablement, Local services, Staging, Production, schedules, and deployment are
 not authorized by this document.
 
 This plan is subordinate to the durable security and media rules in
@@ -375,9 +378,11 @@ enabling and exposing only **Continue with Google**. Shared code owns start,
 callback-state validation, session setup, expected-provider verification,
 cancellation, and provider-neutral safe errors. E2b implemented the web-only X
 start and callback path behind an explicit disabled-by-default capability; it
-did not expose or enable **Continue with X**. Any live web exposure requires a
-separate provider configuration and enablement authorization, and extension
-support remains the separate E2c increment.
+did not expose or enable **Continue with X**. E2c implemented the extension-only
+X boundary and expected-identity validation behind the same disabled-by-default
+capability without changing production permissions. Any live web or extension
+exposure still requires separate provider configuration and enablement
+authorization.
 
 Web start passes an allowlisted relative next path and integrity-protected
 expected-provider hint through server-controlled state. The callback exchanges
@@ -647,8 +652,17 @@ authorization with supplied evidence.
    passed required CI run `33265858275`, was squash-merged as
    `617cfdbeee4ebee6feacefa1abeb07775a250663`, and passed post-merge `main` CI run
    `33267265075`. X remains disabled and unconfigured.
-8. **E2c — X extension and identity policy.** Add `x` with no permission change;
-   enforce no-manual-linking policy.
+8. **E2c — X extension and identity policy (complete and merged).** Extension-only
+   X OAuth behavior, exact callback validation, expected identity-array checks,
+   one-attempt and stale-callback isolation, safe cleanup, refresh/session
+   recovery, and token-safe errors remain behind an explicit disabled-by-default
+   capability with no production permission change. Owner Chrome acceptance
+   completed. Its shared YouTube/Audio acceptance blocker was corrected by
+   atomically establishing `preparing` before status reconciliation; bounded
+   retesting passed both capture/upload paths. PR #37 passed required CI run
+   `33289446000`, was squash-merged as
+   `e398b60b4a05ca98f9772dbab1d65b288e625a4f`, and passed post-merge `main` CI run
+   `33289955529`. X remains disabled and unconfigured.
 9. **E3 — combined validation/handoff.** Full Local, owner Chrome preparation,
    required CI after separately authorized remote Git work, then separate live X
    configuration/bounded Staging request. Production untouched.
@@ -730,6 +744,25 @@ boundary.
 Completion requires cross-document contradiction review, `git diff --check`, only
 the three authorized docs changed, and confirmation no Supabase environment was
 accessed.
+
+E2c's accepted implementation was delivered as PR #37 after focused extension
+authentication and capture tests, the complete extension regression suite,
+TypeScript compilation, production extension build and manifest inspection, and
+Owner-completed Chrome acceptance. Acceptance verified X remained absent and
+non-executable, Google cancellation/retry, duplicate-attempt rejection, session
+restoration, sign-out/recovery, token-safe storage/console/network behavior,
+unchanged production permissions, and authenticated article publication. The
+initial YouTube and Audio smoke tests exposed a shared hosted-media start/status
+race that could reconcile away a newly active capture. The correction atomically
+establishes the new capture's `preparing` state before status reconciliation, and
+the bounded Owner retest passed YouTube and Audio capture/upload without
+`STALE_CAPTURE`, including cleanup between tests. Required PR CI run
+`33289446000` passed. PR #37 was squash-merged into protected `main` as
+`e398b60b4a05ca98f9772dbab1d65b288e625a4f`, post-merge `main` CI run
+`33289955529` passed, and local `main` was fast-forwarded to the same commit. The
+feature branch remains preserved. X remains disabled and unconfigured; no
+Supabase environment was accessed, and E2c did not deploy, enable schedules, or
+access Production.
 
 E2b's accepted implementation was delivered as PR #35 after focused X web-auth
 tests, the complete web unit suite, web lint/build, authentication regressions,
