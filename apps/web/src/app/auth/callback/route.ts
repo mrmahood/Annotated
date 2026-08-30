@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
-  DEFAULT_WEB_AUTH_CAPABILITIES,
   completeWebAuthCallback,
   readWebAuthCallbackRequest,
 } from "@/lib/auth/auth-boundary";
+import { WEB_AUTH_CAPABILITIES } from "@/lib/auth/auth-capabilities";
 import {
   X_WEB_AUTH_ATTEMPT_COOKIE,
   readXWebAuthCallback,
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       requestUrl.searchParams,
       xAttemptCookie,
       Date.now(),
-      DEFAULT_WEB_AUTH_CAPABILITIES,
+      WEB_AUTH_CAPABILITIES,
     );
     cookieStore.delete(X_WEB_AUTH_ATTEMPT_COOKIE);
 

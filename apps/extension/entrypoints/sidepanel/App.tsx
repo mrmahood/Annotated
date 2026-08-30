@@ -30,8 +30,10 @@ import {
 } from '../../utils/active-tab-context';
 import {
   clearLocalAuthSession,
+  EXTENSION_AUTH_CAPABILITIES,
   ExtensionAuthError,
   signInWithProvider,
+  type AuthProvider,
   userHasEnabledAuthProvider,
 } from '../../utils/auth-boundary';
 import {
@@ -699,7 +701,7 @@ function App() {
       if (authMountedRef.current) setAuthState({ status: 'error', message: 'Authentication is temporarily unavailable.' });
       return;
     }
-    if (!userHasEnabledAuthProvider(user)) {
+    if (!userHasEnabledAuthProvider(user, EXTENSION_AUTH_CAPABILITIES)) {
       await clearLocalAuthSession(supabase);
       if (authMountedRef.current && revision === authRevisionRef.current) {
         setAuthState({ status: 'error', message: 'The authenticated account did not match an available sign-in method.' });
@@ -710,14 +712,17 @@ function App() {
     if (authMountedRef.current && revision === authRevisionRef.current) setAuthState(next);
   }, [supabase]);
 
-  const beginSignIn = useCallback(async () => {
+  const lastAuthProviderRef = useRef<AuthProvider>('google');
+
+  const beginSignIn = useCallback(async (provider: AuthProvider = 'google') => {
     if (!supabase) {
       setAuthState({ status: 'error', message: import.meta.env.DEV ? 'Supabase is not configured. Check apps/extension/.env.local.' : 'Authentication is temporarily unavailable.' });
       return;
     }
+    lastAuthProviderRef.current = provider;
     setAuthState({ status: 'signing-in' });
     try {
-      await applyAuthenticatedUser(await signInWithProvider(supabase, 'google'));
+      await applyAuthenticatedUser(await signInWithProvider(supabase, provider));
     } catch (error) {
       const message = error instanceof ExtensionAuthError ? error.message : 'Sign-in could not be completed. Please try again.';
       if (authMountedRef.current) setAuthState({ status: 'error', message });
@@ -731,7 +736,7 @@ function App() {
       const { data, error } = await supabase.auth.getSession();
       if (error) throw error;
       if (data.session?.user) await applyAuthenticatedUser(data.session.user);
-      else await beginSignIn();
+      else await beginSignIn(lastAuthProviderRef.current);
     } catch {
       await clearLocalAuthSession(supabase);
       if (authMountedRef.current) setAuthState({ status: 'error', message: 'Authentication could not be restored. Please try again.' });
@@ -2411,7 +2416,7 @@ function App() {
       {currentScreen.kind === 'root' && currentScreen.view === 'account' && (
         <div className="root-view"><header className="view-intro"><span className="section-label">Private account</span><h1>Me</h1></header><section className="account-view">
           {authState.status === 'loading' && <div className="compact-state" role="status">Restoring session…</div>}
-          {authState.status === 'signed-out' && <div className="signed-out-account"><p>Sign in to publish, comment, and follow creators.</p><button className="button button-primary" type="button" onClick={() => void beginSignIn()}>Continue with Google</button></div>}
+          {authState.status === 'signed-out' && <div className="signed-out-account"><p>Sign in to publish, comment, and follow creators.</p><div className="account-sign-in-actions"><button className="button button-primary" type="button" onClick={() => void beginSignIn('google')}>Continue with Google</button>{EXTENSION_AUTH_CAPABILITIES.x ? <button className="button button-secondary" type="button" onClick={() => void beginSignIn('x')}>Continue with X</button> : null}</div></div>}
           {authState.status === 'signing-in' && <button className="button button-primary" type="button" disabled>Signing in…</button>}
           {authState.status === 'error' && <div className="compact-state compact-state-error" role="alert"><strong>Account unavailable</strong><span>{authState.message}</span><button className="button button-secondary" type="button" onClick={() => void retryAuthentication()}>Try again</button></div>}
           {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span></div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="button button-secondary danger-button" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button></>}

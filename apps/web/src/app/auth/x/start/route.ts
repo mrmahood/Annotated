@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { DEFAULT_WEB_AUTH_CAPABILITIES } from "@/lib/auth/auth-boundary";
+import { WEB_AUTH_CAPABILITIES } from "@/lib/auth/auth-capabilities";
 import {
   X_WEB_AUTH_ATTEMPT_COOKIE,
   X_WEB_AUTH_ATTEMPT_TTL_MS,
@@ -12,9 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function POST(request: Request) {
   const requestUrl = new URL(request.url);
 
-  // E2b deliberately ships this route fail-closed. A later, separate provider
-  // configuration increment must explicitly enable the capability.
-  if (!DEFAULT_WEB_AUTH_CAPABILITIES.x) {
+  if (!WEB_AUTH_CAPABILITIES.x) {
     return NextResponse.redirect(new URL("/auth/error", requestUrl.origin), 303);
   }
 
@@ -28,7 +26,7 @@ export async function POST(request: Request) {
         currentAttemptCookie: cookieStore.get(X_WEB_AUTH_ATTEMPT_COOKIE)?.value,
       },
       {
-        capabilities: DEFAULT_WEB_AUTH_CAPABILITIES,
+        capabilities: WEB_AUTH_CAPABILITIES,
         createAttemptId: randomUUID,
         now: Date.now,
       },

@@ -16,6 +16,49 @@ export const DEFAULT_EXTENSION_AUTH_CAPABILITIES = Object.freeze({
 
 export const ENABLED_EXTENSION_AUTH_PROVIDERS = ['google'] as const satisfies readonly AuthProvider[];
 
+export const LIVE_X_STAGING_PROJECT_REF = 'nkkunkwirvfwhmpwonqz';
+export const LIVE_X_STAGING_SUPABASE_URL =
+  `https://${LIVE_X_STAGING_PROJECT_REF}.supabase.co`;
+export const LIVE_X_EXTENSION_OPT_IN_VALUE = '1';
+
+type ExtensionAuthCapabilityEnvironment = {
+  xOptIn?: string;
+  supabaseUrl?: string;
+};
+
+function isExactStagingSupabaseUrl(value: string | undefined) {
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    return url.origin === LIVE_X_STAGING_SUPABASE_URL &&
+      url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
+      url.port === '' &&
+      (url.pathname === '' || url.pathname === '/') &&
+      url.search === '' &&
+      url.hash === '';
+  } catch {
+    return false;
+  }
+}
+
+export function resolveExtensionAuthCapabilities(
+  environment: ExtensionAuthCapabilityEnvironment,
+): ExtensionAuthCapabilities {
+  return Object.freeze({
+    google: DEFAULT_EXTENSION_AUTH_CAPABILITIES.google,
+    x: environment.xOptIn === LIVE_X_EXTENSION_OPT_IN_VALUE &&
+      isExactStagingSupabaseUrl(environment.supabaseUrl),
+  });
+}
+
+export const EXTENSION_AUTH_CAPABILITIES = resolveExtensionAuthCapabilities({
+  xOptIn: import.meta.env?.WXT_ANNOTATED_STAGING_X_EXTENSION_AUTH,
+  supabaseUrl: import.meta.env?.WXT_SUPABASE_URL,
+});
+
 export type CallbackTokens = {
   accessToken: string;
   refreshToken: string;
@@ -389,7 +432,7 @@ const extensionAuthController = createExtensionAuthController({
   launchWebAuthFlow(options) {
     return getChromeIdentity().launchWebAuthFlow(options);
   },
-});
+}, EXTENSION_AUTH_CAPABILITIES);
 
 export function signInWithProvider(
   supabase: SupabaseClient,

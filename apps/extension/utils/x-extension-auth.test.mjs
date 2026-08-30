@@ -4,9 +4,12 @@ import test from 'node:test';
 import {
   DEFAULT_EXTENSION_AUTH_CAPABILITIES,
   ENABLED_EXTENSION_AUTH_PROVIDERS,
+  LIVE_X_EXTENSION_OPT_IN_VALUE,
+  LIVE_X_STAGING_SUPABASE_URL,
   ExtensionAuthError,
   createExtensionAuthController,
   isEnabledExtensionAuthProvider,
+  resolveExtensionAuthCapabilities,
   userHasAuthProvider,
   userHasEnabledAuthProvider,
 } from './auth-boundary.ts';
@@ -15,7 +18,31 @@ const expectedRedirect =
   'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/auth/callback';
 const accessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4LXVzZXIifQ.signature';
 const refreshToken = 'refresh-token-value-for-x-1234';
-const X_ENABLED_FOR_TEST = Object.freeze({ google: true, x: true });
+const X_ENABLED_FOR_TEST = resolveExtensionAuthCapabilities({
+  xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
+  supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
+});
+
+test('extension X requires the exact opt-in and exact Staging Supabase project', () => {
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
+    supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
+  }), X_ENABLED_FOR_TEST);
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
+    supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/`,
+  }), X_ENABLED_FOR_TEST);
+
+  for (const environment of [
+    {},
+    { xOptIn: 'true', supabaseUrl: LIVE_X_STAGING_SUPABASE_URL },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'https://production-ref.supabase.co' },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'http://nkkunkwirvfwhmpwonqz.supabase.co' },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/auth/v1` },
+  ]) {
+    assert.deepEqual(resolveExtensionAuthCapabilities(environment), { google: true, x: false });
+  }
+});
 
 function callback(fragment = `access_token=${accessToken}&refresh_token=${refreshToken}`) {
   return `${expectedRedirect}#${fragment}`;
@@ -218,5 +245,6 @@ test('extension auth source contains no manual identity-linking or metadata-merg
   const appSource = readFileSync(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   const source = [authSource, appSource].join('\n');
   assert.doesNotMatch(source, /linkIdentity|unlinkIdentity|mergeIdentit/i);
-  assert.doesNotMatch(appSource, /Continue with X|beginProviderSignIn\(['"]x['"]\)/);
+  assert.match(appSource, /EXTENSION_AUTH_CAPABILITIES\.x\s*\?\s*<button/);
+  assert.match(appSource, /beginSignIn\('x'\)/);
 });

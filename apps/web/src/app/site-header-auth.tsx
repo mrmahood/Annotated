@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { webAuthStarter } from "@/lib/auth/auth-boundary";
 import { createClient } from "@/lib/supabase/client";
 import { getInitial } from "@/lib/public-content";
+import { ProviderSignInButton } from "./provider-sign-in-button";
 
 export type HeaderUser = {
   id: string;
@@ -21,26 +21,8 @@ export function SiteHeaderAuth({
   returnTo: string;
 }) {
   const router = useRouter();
-  const [pending, setPending] = useState<"sign-in" | "sign-out" | null>(null);
+  const [pending, setPending] = useState<"sign-out" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const signIn = async () => {
-    setPending("sign-in");
-    setErrorMessage(null);
-
-    try {
-      const supabase = createClient();
-      await webAuthStarter.start(
-        supabase,
-        "google",
-        returnTo,
-        window.location.origin,
-      );
-    } catch {
-      setPending(null);
-      setErrorMessage("Sign-in could not be started. Please try again.");
-    }
-  };
 
   const signOut = async () => {
     setPending("sign-out");
@@ -61,15 +43,8 @@ export function SiteHeaderAuth({
   if (!user) {
     return (
       <div className="site-auth">
-        <button
-          className="site-auth-button"
-          type="button"
-          onClick={signIn}
-          disabled={pending !== null}
-        >
-          {pending === "sign-in" ? "Continuing…" : "Continue with Google"}
-        </button>
-        {errorMessage && <p className="site-auth-error" role="alert">{errorMessage}</p>}
+        <ProviderSignInButton provider="google" returnTo={returnTo} className="site-auth-button" />
+        <ProviderSignInButton provider="x" returnTo={returnTo} className="site-auth-button" />
       </div>
     );
   }

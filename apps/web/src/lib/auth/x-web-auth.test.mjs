@@ -9,8 +9,16 @@ import {
   readXWebAuthCallback,
   startXWebAuth,
 } from './x-web-auth.ts';
+import {
+  LIVE_X_STAGING_SUPABASE_URL,
+  LIVE_X_WEB_OPT_IN_VALUE,
+  resolveWebAuthCapabilities,
+} from './auth-capabilities.ts';
 
-const ENABLED = { google: true, x: true };
+const ENABLED = resolveWebAuthCapabilities({
+  xOptIn: LIVE_X_WEB_OPT_IN_VALUE,
+  supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
+});
 const NOW = 1_800_000_000_000;
 const ATTEMPT_ID = '123e4567-e89b-42d3-a456-426614174000';
 

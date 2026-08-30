@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import './auth-capabilities.test.mjs';
 import './x-web-auth.test.mjs';
 import {
   AUTH_PROVIDER_METADATA,
