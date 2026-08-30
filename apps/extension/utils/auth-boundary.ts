@@ -7,6 +7,13 @@ export const AUTH_PROVIDER_METADATA = {
 
 export type AuthProvider = keyof typeof AUTH_PROVIDER_METADATA;
 
+export type ExtensionAuthCapabilities = Readonly<Record<AuthProvider, boolean>>;
+
+export const DEFAULT_EXTENSION_AUTH_CAPABILITIES = Object.freeze({
+  google: true,
+  x: false,
+}) satisfies ExtensionAuthCapabilities;
+
 export const ENABLED_EXTENSION_AUTH_PROVIDERS = ['google'] as const satisfies readonly AuthProvider[];
 
 export type CallbackTokens = {
@@ -45,10 +52,11 @@ export type ExtensionAuthRuntime = {
 const DEFAULT_AUTH_TIMEOUT_MS = 120_000;
 const MAX_AUTH_URL_LENGTH = 24_576;
 
-function isEnabledProvider(provider: AuthProvider) {
-  return ENABLED_EXTENSION_AUTH_PROVIDERS.includes(
-    provider as (typeof ENABLED_EXTENSION_AUTH_PROVIDERS)[number],
-  );
+export function isEnabledExtensionAuthProvider(
+  value: string | null | undefined,
+  capabilities: ExtensionAuthCapabilities = DEFAULT_EXTENSION_AUTH_CAPABILITIES,
+): value is AuthProvider {
+  return (value === 'google' || value === 'x') && capabilities[value];
 }
 
 function isWellFormedAccessToken(value: string) {
@@ -187,8 +195,12 @@ export function userHasAuthProvider(user: Pick<User, 'identities'>, provider: Au
   return user.identities?.some((identity) => identity.provider === provider) ?? false;
 }
 
-export function userHasEnabledAuthProvider(user: Pick<User, 'identities'>) {
-  return ENABLED_EXTENSION_AUTH_PROVIDERS.some((provider) =>
+export function userHasEnabledAuthProvider(
+  user: Pick<User, 'identities'>,
+  capabilities: ExtensionAuthCapabilities = DEFAULT_EXTENSION_AUTH_CAPABILITIES,
+) {
+  return (Object.keys(AUTH_PROVIDER_METADATA) as AuthProvider[]).some((provider) =>
+    isEnabledExtensionAuthProvider(provider, capabilities) &&
     userHasAuthProvider(user, provider));
 }
 
@@ -232,7 +244,10 @@ async function launchWithTimeout(runtime: ExtensionAuthRuntime, url: string) {
   });
 }
 
-export function createExtensionAuthController(runtime: ExtensionAuthRuntime) {
+export function createExtensionAuthController(
+  runtime: ExtensionAuthRuntime,
+  capabilities: ExtensionAuthCapabilities = DEFAULT_EXTENSION_AUTH_CAPABILITIES,
+) {
   let activeAttempt: symbol | null = null;
 
   return {
@@ -240,7 +255,7 @@ export function createExtensionAuthController(runtime: ExtensionAuthRuntime) {
       supabase: SupabaseClient,
       provider: AuthProvider,
     ): Promise<User> {
-      if (!isEnabledProvider(provider)) {
+      if (!isEnabledExtensionAuthProvider(provider, capabilities)) {
         throw new ExtensionAuthError(
           'unsupported-provider',
           'That sign-in method is not available.',

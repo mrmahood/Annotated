@@ -3,6 +3,20 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const AUTH_STORAGE_NAMESPACE = 'annotated:auth:';
 const AUTH_STORAGE_KEY = 'supabase-session';
 
+export function sanitizeAuthSessionStorageValue(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+
+    const session = { ...(parsed as Record<string, unknown>) };
+    delete session.provider_token;
+    delete session.provider_refresh_token;
+    return JSON.stringify(session);
+  } catch {
+    return null;
+  }
+}
+
 const chrome = (globalThis as typeof globalThis & {
   chrome: typeof browser;
 }).chrome;
@@ -15,8 +29,15 @@ const chromeLocalStorage = {
     return typeof value === 'string' ? value : null;
   },
   async setItem(key: string, value: string) {
+    const storedValue = key === AUTH_STORAGE_KEY
+      ? sanitizeAuthSessionStorageValue(value)
+      : value;
+    if (storedValue === null) {
+      await chrome.storage.local.remove(`${AUTH_STORAGE_NAMESPACE}${key}`);
+      return;
+    }
     await chrome.storage.local.set({
-      [`${AUTH_STORAGE_NAMESPACE}${key}`]: value,
+      [`${AUTH_STORAGE_NAMESPACE}${key}`]: storedValue,
     });
   },
   async removeItem(key: string) {
