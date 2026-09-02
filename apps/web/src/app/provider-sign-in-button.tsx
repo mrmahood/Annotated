@@ -7,6 +7,7 @@ import {
   type AuthProvider,
   webAuthStarter,
 } from "@/lib/auth/auth-boundary";
+import { WEB_AUTH_CAPABILITIES } from "@/lib/auth/auth-capabilities";
 import { createClient } from "@/lib/supabase/client";
 
 export function ProviderSignInButton({
@@ -23,7 +24,23 @@ export function ProviderSignInButton({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!isEnabledWebAuthProvider(provider)) return null;
+  if (!isEnabledWebAuthProvider(provider, WEB_AUTH_CAPABILITIES)) return null;
+
+  if (provider === "x") {
+    const startPath = `/auth/x/start?${new URLSearchParams({ next: returnTo })}`;
+    return (
+      <form
+        className="inline-auth-action"
+        action={startPath}
+        method="post"
+        onSubmit={() => setPending(true)}
+      >
+        <button className={className} type="submit" disabled={pending}>
+          {pending ? "Continuing…" : label ?? "Continue with X"}
+        </button>
+      </form>
+    );
+  }
 
   const signIn = async () => {
     setPending(true);

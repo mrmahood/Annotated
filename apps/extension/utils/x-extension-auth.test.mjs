@@ -4,9 +4,12 @@ import test from 'node:test';
 import {
   DEFAULT_EXTENSION_AUTH_CAPABILITIES,
   ENABLED_EXTENSION_AUTH_PROVIDERS,
+  LIVE_X_EXTENSION_OPT_IN_VALUE,
+  LIVE_X_STAGING_SUPABASE_URL,
   ExtensionAuthError,
   createExtensionAuthController,
   isEnabledExtensionAuthProvider,
+  resolveExtensionAuthCapabilities,
   userHasAuthProvider,
   userHasEnabledAuthProvider,
 } from './auth-boundary.ts';
@@ -15,10 +18,45 @@ const expectedRedirect =
   'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/auth/callback';
 const accessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4LXVzZXIifQ.signature';
 const refreshToken = 'refresh-token-value-for-x-1234';
-const X_ENABLED_FOR_TEST = Object.freeze({ google: true, x: true });
+const denialDescription = 'The user denied the authorization request';
+const X_ENABLED_FOR_TEST = resolveExtensionAuthCapabilities({
+  xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
+  supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
+});
+
+test('extension X requires the exact opt-in and exact Staging Supabase project', () => {
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
+    supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
+  }), X_ENABLED_FOR_TEST);
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
+    supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/`,
+  }), X_ENABLED_FOR_TEST);
+
+  for (const environment of [
+    {},
+    { xOptIn: 'true', supabaseUrl: LIVE_X_STAGING_SUPABASE_URL },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'https://production-ref.supabase.co' },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'http://nkkunkwirvfwhmpwonqz.supabase.co' },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/auth/v1` },
+  ]) {
+    assert.deepEqual(resolveExtensionAuthCapabilities(environment), { google: true, x: false });
+  }
+});
 
 function callback(fragment = `access_token=${accessToken}&refresh_token=${refreshToken}`) {
   return `${expectedRedirect}#${fragment}`;
+}
+
+function denialCallback({
+  redirect = expectedRedirect,
+  querySuffix = '',
+  fragmentSuffix = '',
+} = {}) {
+  const description = encodeURIComponent(denialDescription);
+  return `${redirect}?error=access_denied&error_description=${description}${querySuffix}` +
+    `#error=access_denied&error_description=${description}&sb=${fragmentSuffix}`;
 }
 
 function createFixture({
@@ -104,7 +142,7 @@ test('enabled test capability completes X without requesting scopes or persistin
 test('X denial and Chrome cancellation stay bounded and create no session', async () => {
   for (const fixture of [
     createFixture({
-      callbackUrl: callback('error=access_denied&error_description=sensitive-provider-detail'),
+      callbackUrl: denialCallback(),
     }),
     createFixture({
       launch: async () => { throw new Error('The user did not approve access.'); },
@@ -114,11 +152,33 @@ test('X denial and Chrome cancellation stay bounded and create no session', asyn
     await assert.rejects(
       controller.signInWithProvider(fixture.supabase, 'x'),
       (error) => error instanceof ExtensionAuthError &&
-        (error.kind === 'oauth' || error.kind === 'cancelled') &&
-        !error.message.includes('sensitive-provider-detail'),
+        error.kind === 'cancelled' &&
+        !error.message.includes(denialDescription),
     );
     assert.deepEqual(fixture.calls.session, []);
   }
+});
+
+test('X denial releases the active attempt for an immediate successful retry', async () => {
+  let launches = 0;
+  const { calls, runtime, supabase } = createFixture({
+    launch: async () => {
+      launches += 1;
+      return launches === 1 ? denialCallback() : callback();
+    },
+  });
+  const controller = createExtensionAuthController(runtime, X_ENABLED_FOR_TEST);
+
+  await assert.rejects(
+    controller.signInWithProvider(supabase, 'x'),
+    (error) => error instanceof ExtensionAuthError && error.kind === 'cancelled',
+  );
+  assert.deepEqual(calls.session, []);
+
+  const user = await controller.signInWithProvider(supabase, 'x');
+  assert.equal(user.id, 'x-user-1');
+  assert.equal(launches, 2);
+  assert.equal(calls.session.length, 1);
 });
 
 test('X rejects missing, duplicate, malformed, and wrong-origin callbacks before session setup', async () => {
@@ -127,6 +187,10 @@ test('X rejects missing, duplicate, malformed, and wrong-origin callbacks before
     callback(`access_token=${accessToken}&access_token=duplicate&refresh_token=${refreshToken}`),
     callback(`access_token=not-a-jwt&refresh_token=${refreshToken}`),
     `https://attacker.chromiumapp.org/auth/callback#access_token=${accessToken}&refresh_token=${refreshToken}`,
+    denialCallback({ redirect: 'https://attacker.chromiumapp.org/auth/callback' }),
+    denialCallback({ querySuffix: '&error=access_denied' }),
+    denialCallback({ querySuffix: '&unexpected=true' }),
+    denialCallback({ fragmentSuffix: `&access_token=${accessToken}` }),
   ];
 
   for (const callbackUrl of invalidCallbacks) {
@@ -182,7 +246,7 @@ test('invalid X session state is purged with a token-safe error', async () => {
   assert.deepEqual(calls.signOut, [{ scope: 'local' }]);
 });
 
-test('one X attempt blocks concurrency and a late callback cannot satisfy the next attempt', async () => {
+test('one X attempt blocks concurrency and a stale or replayed callback cannot satisfy the next attempt', async () => {
   let resolveFirst;
   let launches = 0;
   const firstCallback = new Promise((resolve) => { resolveFirst = resolve; });
@@ -218,5 +282,6 @@ test('extension auth source contains no manual identity-linking or metadata-merg
   const appSource = readFileSync(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   const source = [authSource, appSource].join('\n');
   assert.doesNotMatch(source, /linkIdentity|unlinkIdentity|mergeIdentit/i);
-  assert.doesNotMatch(appSource, /Continue with X|beginProviderSignIn\(['"]x['"]\)/);
+  assert.match(appSource, /EXTENSION_AUTH_CAPABILITIES\.x\s*\?\s*<button/);
+  assert.match(appSource, /beginSignIn\('x'\)/);
 });

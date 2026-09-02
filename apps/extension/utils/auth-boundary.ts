@@ -16,6 +16,49 @@ export const DEFAULT_EXTENSION_AUTH_CAPABILITIES = Object.freeze({
 
 export const ENABLED_EXTENSION_AUTH_PROVIDERS = ['google'] as const satisfies readonly AuthProvider[];
 
+export const LIVE_X_STAGING_PROJECT_REF = 'nkkunkwirvfwhmpwonqz';
+export const LIVE_X_STAGING_SUPABASE_URL =
+  `https://${LIVE_X_STAGING_PROJECT_REF}.supabase.co`;
+export const LIVE_X_EXTENSION_OPT_IN_VALUE = '1';
+
+type ExtensionAuthCapabilityEnvironment = {
+  xOptIn?: string;
+  supabaseUrl?: string;
+};
+
+function isExactStagingSupabaseUrl(value: string | undefined) {
+  if (!value) return false;
+
+  try {
+    const url = new URL(value);
+    return url.origin === LIVE_X_STAGING_SUPABASE_URL &&
+      url.protocol === 'https:' &&
+      url.username === '' &&
+      url.password === '' &&
+      url.port === '' &&
+      (url.pathname === '' || url.pathname === '/') &&
+      url.search === '' &&
+      url.hash === '';
+  } catch {
+    return false;
+  }
+}
+
+export function resolveExtensionAuthCapabilities(
+  environment: ExtensionAuthCapabilityEnvironment,
+): ExtensionAuthCapabilities {
+  return Object.freeze({
+    google: DEFAULT_EXTENSION_AUTH_CAPABILITIES.google,
+    x: environment.xOptIn === LIVE_X_EXTENSION_OPT_IN_VALUE &&
+      isExactStagingSupabaseUrl(environment.supabaseUrl),
+  });
+}
+
+export const EXTENSION_AUTH_CAPABILITIES = resolveExtensionAuthCapabilities({
+  xOptIn: import.meta.env?.WXT_ANNOTATED_STAGING_X_EXTENSION_AUTH,
+  supabaseUrl: import.meta.env?.WXT_SUPABASE_URL,
+});
+
 export type CallbackTokens = {
   accessToken: string;
   refreshToken: string;
@@ -51,6 +94,18 @@ export type ExtensionAuthRuntime = {
 
 const DEFAULT_AUTH_TIMEOUT_MS = 120_000;
 const MAX_AUTH_URL_LENGTH = 24_576;
+const MAX_AUTH_ERROR_DESCRIPTION_LENGTH = 1_024;
+const MAX_AUTH_ERROR_CODE_LENGTH = 128;
+
+const DENIAL_QUERY_PARAMETERS = new Set([
+  'error',
+  'error_description',
+  'error_code',
+]);
+const DENIAL_FRAGMENT_PARAMETERS = new Set([
+  ...DENIAL_QUERY_PARAMETERS,
+  'sb',
+]);
 
 export function isEnabledExtensionAuthProvider(
   value: string | null | undefined,
@@ -91,6 +146,60 @@ function isSafeOAuthStartUrl(value: string) {
   }
 }
 
+function hasOnlyBoundedParameters(
+  parameters: URLSearchParams,
+  allowed: ReadonlySet<string>,
+) {
+  return [...parameters.keys()].every((key) =>
+    allowed.has(key) && parameters.getAll(key).length === 1);
+}
+
+function optionalDenialParameterMatches(
+  query: URLSearchParams,
+  fragment: URLSearchParams,
+  key: 'error_description' | 'error_code',
+  maxLength: number,
+) {
+  const queryValues = query.getAll(key);
+  const fragmentValues = fragment.getAll(key);
+  if (queryValues.length > 1 || fragmentValues.length > 1) return false;
+
+  const queryValue = queryValues[0] ?? '';
+  const fragmentValue = fragmentValues[0] ?? '';
+  if (queryValue.length > maxLength || fragmentValue.length > maxLength) return false;
+
+  // Supabase mirrors only non-empty error details into the fragment.
+  return queryValue === '' ? fragmentValue === '' : fragmentValue === queryValue;
+}
+
+function isBoundedSupabaseAccessDenial(callback: URL) {
+  const query = callback.searchParams;
+  const fragment = new URLSearchParams(callback.hash.slice(1));
+
+  return (
+    hasOnlyBoundedParameters(query, DENIAL_QUERY_PARAMETERS) &&
+    hasOnlyBoundedParameters(fragment, DENIAL_FRAGMENT_PARAMETERS) &&
+    query.getAll('error').length === 1 &&
+    query.get('error') === 'access_denied' &&
+    fragment.getAll('error').length === 1 &&
+    fragment.get('error') === 'access_denied' &&
+    fragment.getAll('sb').length === 1 &&
+    fragment.get('sb') === '' &&
+    optionalDenialParameterMatches(
+      query,
+      fragment,
+      'error_description',
+      MAX_AUTH_ERROR_DESCRIPTION_LENGTH,
+    ) &&
+    optionalDenialParameterMatches(
+      query,
+      fragment,
+      'error_code',
+      MAX_AUTH_ERROR_CODE_LENGTH,
+    )
+  );
+}
+
 export function isExpectedAuthCallback(
   returnedUrl: string,
   expectedRedirectUrl: string,
@@ -117,7 +226,11 @@ export function isExpectedAuthCallback(
       returned.password === '' &&
       returned.origin === expected.origin &&
       returned.pathname === expected.pathname &&
-      returned.search === expected.search
+      expected.hash === '' &&
+      (
+        returned.search === expected.search ||
+        (expected.search === '' && isBoundedSupabaseAccessDenial(returned))
+      )
     );
   } catch {
     return false;
@@ -137,6 +250,20 @@ export function parseAuthCallbackTokens(callbackUrl: string): CallbackTokens {
   try {
     callback = new URL(callbackUrl);
   } catch {
+    throw new ExtensionAuthError(
+      'callback',
+      'The authentication callback was invalid. Please try again.',
+    );
+  }
+
+  if (isBoundedSupabaseAccessDenial(callback)) {
+    throw new ExtensionAuthError(
+      'cancelled',
+      'Sign-in was cancelled. You can try again.',
+    );
+  }
+
+  if (callback.search !== '') {
     throw new ExtensionAuthError(
       'callback',
       'The authentication callback was invalid. Please try again.',
@@ -389,7 +516,7 @@ const extensionAuthController = createExtensionAuthController({
   launchWebAuthFlow(options) {
     return getChromeIdentity().launchWebAuthFlow(options);
   },
-});
+}, EXTENSION_AUTH_CAPABILITIES);
 
 export function signInWithProvider(
   supabase: SupabaseClient,

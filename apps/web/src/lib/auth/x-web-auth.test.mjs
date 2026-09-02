@@ -1,16 +1,30 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { NextResponse } from 'next/server.js';
 import {
   WebAuthError,
   completeWebAuthCallback,
 } from './auth-boundary.ts';
 import {
+  X_WEB_AUTH_ATTEMPT_COOKIE,
+  X_WEB_AUTH_ATTEMPT_COOKIE_PATH,
   X_WEB_AUTH_ATTEMPT_TTL_MS,
+  clearXWebAuthAttemptCookie,
   readXWebAuthCallback,
+  setXWebAuthAttemptCookie,
   startXWebAuth,
 } from './x-web-auth.ts';
+import {
+  LIVE_X_STAGING_SUPABASE_URL,
+  LIVE_X_WEB_OPT_IN_VALUE,
+  resolveWebAuthCapabilities,
+} from './auth-capabilities.ts';
 
-const ENABLED = { google: true, x: true };
+const ENABLED = resolveWebAuthCapabilities({
+  xOptIn: LIVE_X_WEB_OPT_IN_VALUE,
+  supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
+});
 const NOW = 1_800_000_000_000;
 const ATTEMPT_ID = '123e4567-e89b-42d3-a456-426614174000';
 
@@ -127,6 +141,41 @@ test('an expired attempt does not block a fresh start', async () => {
   assert.equal(second.calls.length, 1);
 });
 
+test('route cookie lifecycle clears the exact scoped attempt before a fresh retry', async () => {
+  const first = await startAttempt();
+  const startResponse = NextResponse.redirect('https://project.example/auth/v1/authorize', 303);
+  setXWebAuthAttemptCookie(startResponse.cookies, first.result.attemptCookie, true);
+  const startHeader = startResponse.headers.get('set-cookie');
+  assert.match(startHeader, new RegExp(`^${X_WEB_AUTH_ATTEMPT_COOKIE}=`));
+  assert.match(startHeader, new RegExp(`Path=${X_WEB_AUTH_ATTEMPT_COOKIE_PATH}(?:;|$)`));
+  assert.match(startHeader, /Max-Age=600/);
+  assert.match(startHeader, /HttpOnly/);
+  assert.match(startHeader, /Secure/);
+  assert.match(startHeader, /SameSite=lax/i);
+
+  await assert.rejects(
+    startAttempt({ currentAttemptCookie: first.result.attemptCookie }),
+    (error) => error instanceof WebAuthError && error.kind === 'attempt-active',
+  );
+
+  const rejectedResponse = NextResponse.redirect('https://annotated.example/auth/error', 303);
+  clearXWebAuthAttemptCookie(rejectedResponse.cookies, true);
+  const clearHeader = rejectedResponse.headers.get('set-cookie');
+  assert.match(clearHeader, new RegExp(`^${X_WEB_AUTH_ATTEMPT_COOKIE}=`));
+  assert.match(clearHeader, new RegExp(`Path=${X_WEB_AUTH_ATTEMPT_COOKIE_PATH}(?:;|$)`));
+  assert.match(clearHeader, /Max-Age=0/);
+  assert.match(clearHeader, /Expires=Thu, 01 Jan 1970 00:00:00 GMT/);
+  assert.match(clearHeader, /HttpOnly/);
+  assert.match(clearHeader, /Secure/);
+  assert.match(clearHeader, /SameSite=lax/i);
+
+  const retry = await startAttempt({
+    currentAttemptCookie: undefined,
+    attemptId: '123e4567-e89b-42d3-a456-426614174001',
+  });
+  assert.equal(retry.calls.length, 1);
+});
+
 test('callback accepts exactly one matching current attempt and one bounded code', async () => {
   const { result } = await startAttempt();
   assert.deepEqual(
@@ -188,6 +237,13 @@ test('denial and cancellation are bounded and retain only the stored safe path',
     ),
     { kind: 'invalid' },
   );
+
+  const response = NextResponse.redirect('https://annotated.example/auth/error');
+  clearXWebAuthAttemptCookie(response.cookies, true);
+  assert.match(
+    response.headers.get('set-cookie'),
+    new RegExp(`Path=${X_WEB_AUTH_ATTEMPT_COOKIE_PATH}(?:;|$)`),
+  );
 });
 
 test('callback rejects disabled, missing, malformed, future, expired, and already-consumed attempts', async () => {
@@ -203,6 +259,21 @@ test('callback rejects disabled, missing, malformed, future, expired, and alread
   );
   // The route consumes the HttpOnly attempt cookie before exchange, so replay has no cookie.
   assert.deepEqual(readXWebAuthCallback(params, undefined, NOW, ENABLED), { kind: 'invalid' });
+});
+
+test('X start and callback routes use the shared exact-path cookie lifecycle', async () => {
+  const [startRoute, callbackRoute] = await Promise.all([
+    readFile(new URL('../../app/auth/x/start/route.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../../app/auth/callback/route.ts', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(startRoute, /setXWebAuthAttemptCookie\(/);
+  assert.match(startRoute, /clearXWebAuthAttemptCookie\(/);
+  assert.match(startRoute, /return redirectToAuthError\(\);/);
+  assert.doesNotMatch(startRoute, /response\.cookies\.delete\(/);
+  assert.match(callbackRoute, /redirectAfterXAttempt\(/);
+  assert.match(callbackRoute, /clearXWebAuthAttemptCookie\(/);
+  assert.doesNotMatch(callbackRoute, /cookieStore\.delete\(/);
 });
 
 function createCallbackFixture({

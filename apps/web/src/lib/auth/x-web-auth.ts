@@ -9,6 +9,57 @@ import {
 
 export const X_WEB_AUTH_ATTEMPT_COOKIE = "annotated-x-web-auth-attempt";
 export const X_WEB_AUTH_ATTEMPT_TTL_MS = 10 * 60 * 1_000;
+export const X_WEB_AUTH_ATTEMPT_COOKIE_PATH = "/auth";
+
+type XWebAuthAttemptCookieWriter = {
+  set(
+    name: string,
+    value: string,
+    options: {
+      expires?: Date;
+      httpOnly: boolean;
+      maxAge: number;
+      path: string;
+      sameSite: "lax";
+      secure: boolean;
+    },
+  ): unknown;
+};
+
+function getXWebAuthAttemptCookieOptions(secure: boolean, maxAge: number) {
+  return {
+    httpOnly: true,
+    maxAge,
+    path: X_WEB_AUTH_ATTEMPT_COOKIE_PATH,
+    sameSite: "lax" as const,
+    secure,
+  };
+}
+
+export function setXWebAuthAttemptCookie(
+  cookies: XWebAuthAttemptCookieWriter,
+  value: string,
+  secure: boolean,
+) {
+  cookies.set(
+    X_WEB_AUTH_ATTEMPT_COOKIE,
+    value,
+    getXWebAuthAttemptCookieOptions(
+      secure,
+      Math.floor(X_WEB_AUTH_ATTEMPT_TTL_MS / 1_000),
+    ),
+  );
+}
+
+export function clearXWebAuthAttemptCookie(
+  cookies: XWebAuthAttemptCookieWriter,
+  secure: boolean,
+) {
+  cookies.set(X_WEB_AUTH_ATTEMPT_COOKIE, "", {
+    ...getXWebAuthAttemptCookieOptions(secure, 0),
+    expires: new Date(0),
+  });
+}
 
 const MAX_ATTEMPT_COOKIE_LENGTH = 1_024;
 const MAX_CALLBACK_VALUE_LENGTH = 8_192;
