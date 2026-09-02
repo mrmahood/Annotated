@@ -1,6 +1,7 @@
 # Phase E Create and authentication plan
 
-Status: implementation and Local integration closeout, updated 2026-08-30.
+Status: implementation, live-X Staging acceptance, and reversible rollback
+closeout, updated 2026-09-02.
 Phase D is complete. E1a was
 subsequently authorized; its implementation and deterministic Local validation
 are complete and merged, including focused and complete extension tests,
@@ -30,11 +31,15 @@ Chrome acceptance and merged through PR #37 as
 combined Local integration and handoff, including Owner audio-upload acceptance.
 PR #39 passed required CI run `33318786049` after checksum-pinned FFmpeg CI
 recovery, was squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`,
-and passed post-merge `main` CI run `33319090870`. X remains disabled and
-unconfigured. Cross-origin player adapters, generic webpage-video
-publication, later implementation, database work, provider configuration or
-enablement, Local services, Staging, Production, schedules, and deployment are
-not authorized by this document.
+and passed post-merge `main` CI run `33319090870`. Gate 3 passed bounded live-X
+web and extension acceptance through PR #41 after required CI run `33578556343`,
+was squash-merged as `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and
+passed post-merge `main` CI run `33579104948`. Exact Staging cleanup and
+reversible rollback then removed the disposable identity and grant and disabled
+both capability opt-ins plus the Supabase Staging X provider. Cross-origin
+player adapters, generic webpage-video publication, later implementation,
+database work, Production, schedules, and further deployment are not authorized
+by this document.
 
 This plan is subordinate to the durable security and media rules in
 `docs/architecture/media-archive-pipeline.md`. Future-code descriptions define a
@@ -658,7 +663,7 @@ authorization with supplied evidence.
    disabled-by-default capability. Owner Local web acceptance completed. PR #35
    passed required CI run `33265858275`, was squash-merged as
    `617cfdbeee4ebee6feacefa1abeb07775a250663`, and passed post-merge `main` CI run
-   `33267265075`. X remains disabled and unconfigured.
+   `33267265075`. X remained disabled and unconfigured at E2b closeout.
 8. **E2c — X extension and identity policy (complete and merged).** Extension-only
    X OAuth behavior, exact callback validation, expected identity-array checks,
    one-attempt and stale-callback isolation, safe cleanup, refresh/session
@@ -669,7 +674,7 @@ authorization with supplied evidence.
    retesting passed both capture/upload paths. PR #37 passed required CI run
    `33289446000`, was squash-merged as
    `e398b60b4a05ca98f9772dbab1d65b288e625a4f`, and passed post-merge `main` CI run
-   `33289955529`. X remains disabled and unconfigured.
+   `33289955529`. X remained disabled and unconfigured at E2c closeout.
 9. **E3 — combined validation/handoff (complete and merged).** The completed
    Create, hosted-media, web-authentication, and extension-authentication
    boundaries passed combined Local validation and Owner audio-upload acceptance.
@@ -677,9 +682,28 @@ authorization with supplied evidence.
    passed required CI run `33318786049` after checksum-pinned FFmpeg CI recovery,
    was squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and passed
    post-merge `main` CI run `33319090870`. X remained disabled and unconfigured;
-   live X configuration and bounded Staging remain separate requests. Proprietary
-   Brightcove and other inaccessible cross-origin player adapters remain deferred.
+   live X configuration and bounded Staging were left for separate requests.
+   Proprietary Brightcove and other inaccessible cross-origin player adapters
+   remain deferred.
    Production was untouched.
+10. **Live-X Gate 3 — bounded Staging acceptance and rollback (complete and
+    merged).** Separate exact-project plus explicit opt-in gates exposed the
+    existing web and extension X flows only in Staging. Web attempt cookies now
+    clear consistently across start and callback outcomes; extension callbacks
+    classify only bounded provider denial on the exact expected origin/path as
+    cancellation while retaining strict malformed, mixed, stale, replay, token,
+    provider, and identity rejection. Owner acceptance passed cancellation and
+    immediate retry, successful sign-in through `Annotated Staging OAuth` App ID
+    `33378732`, existing-user reuse, identity isolation, session restoration,
+    provider-token absence, token-safe evidence, sign-out, and signed-out
+    recovery on both surfaces. PR #41 passed required CI run `33578556343`, was
+    squash-merged as `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and passed
+    post-merge `main` CI run `33579104948`. Cleanup verified zero application,
+    rate-limit, and Storage ownership before deleting the exact disposable X-only
+    Auth user; revoked only its X grant; disabled web and extension opt-ins; and
+    disabled the Supabase Staging X provider while preserving Google, Site URL,
+    redirects, masked credentials, and the X application. Production and
+    schedules were untouched.
 
 Local callback tests use fake Supabase clients and deterministic fixtures without
 credentials/live authorization. CI follows Local. Dashboard/X/redirect config is
@@ -742,8 +766,10 @@ Dashboard, X console, redirects, Staging, and Production are separate approvals.
    Supabase safely recognizes verified identity; otherwise no app merge and use
    disposable acceptance users.
 7. **First-publish handle confirmation:** defer; retain generated handles.
-8. **Live X config:** after E2 code/Local/review, before owner live acceptance and
-   separately authorized Staging; Production later.
+8. **Live X config (Staging resolved):** Gate 3 completed bounded Staging
+   configuration, acceptance, exact cleanup, and reversible rollback. X is again
+   disabled on both surfaces and at the Staging provider; Production remains a
+   later explicit authorization.
 9. **X scopes/data:** add none; reverify current `users.email`, `tweet.read`,
    `users.read`, `offline.access`; do not store provider tokens/assume email.
 10. **Local/vendor split:** fake clients and bounded callbacks in Local/CI; only
@@ -756,8 +782,31 @@ boundary.
 ## 25. Planning validation and implementation closeout records
 
 Completion requires cross-document contradiction review, `git diff --check`, only
-the three authorized docs changed, and confirmation no Supabase environment was
-accessed.
+the three authorized docs changed, and confirmation the documentation closeout
+changed no Supabase environment.
+
+Live-X Gate 3 was delivered through PR #41 after focused and complete web and
+extension authentication regressions, lint, compile/build, production-manifest
+inspection, required PR CI run `33578556343`, and Owner-completed web and
+extension Staging acceptance. The accepted flow used only Supabase Staging ref
+`nkkunkwirvfwhmpwonqz`, the dedicated logical-Staging Vercel project and origin
+`https://annotated-staging.cbandcoop.com`, and `Annotated Staging OAuth` App ID
+`33378732`. Acceptance covered correct cancellation, immediate retry, successful
+sign-in, existing-user reuse, exactly one X identity, no unintended linking,
+session restoration, no persisted X provider token/code/state, token-safe
+browser and extension evidence, sign-out, and signed-out recovery. PR #41 was
+squash-merged into protected `main` as
+`fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`; post-merge `main` CI run
+`33579104948` passed and local `main` was fast-forwarded to the same commit.
+Rollback verified zero owned application, private rate-limit, and Storage records
+before deleting the exact disposable X-only Auth user and its cascading identity,
+sessions, and profile; revoked only the `Annotated Staging OAuth` grant; disabled
+the Vercel web capability and Local extension opt-in; rebuilt/reloaded the same
+extension ID with unchanged production permissions; and disabled the Supabase
+Staging X provider while preserving Google, Site URL, every redirect, masked
+provider credentials, and the X application. X is absent from web and extension.
+Production was not accessed, no schedule was enabled, and no application content
+was created.
 
 E3's combined Local integration and handoff were delivered through PR #39 after
 the complete shared, extension, web, and applicable media-worker regression
@@ -776,9 +825,9 @@ then passed. PR #39 was squash-merged into protected `main` as
 feature branch remains preserved. A supplied proprietary Brightcove player
 remained outside the accepted readable top-frame/same-origin boundary; its
 adapter and other inaccessible cross-origin adapters remain separately
-authorized. X remains disabled and unconfigured. E3 did not access Staging or
-Production, configure providers, deploy, or enable schedules. This documentation
-closeout did not access any Supabase environment.
+authorized. At E3 closeout, X remained disabled and unconfigured. E3 did not
+access Staging or Production, configure providers, deploy, or enable schedules.
+That documentation closeout did not access any Supabase environment.
 
 E2c's accepted implementation was delivered as PR #37 after focused extension
 authentication and capture tests, the complete extension regression suite,
@@ -795,9 +844,9 @@ the bounded Owner retest passed YouTube and Audio capture/upload without
 `33289446000` passed. PR #37 was squash-merged into protected `main` as
 `e398b60b4a05ca98f9772dbab1d65b288e625a4f`, post-merge `main` CI run
 `33289955529` passed, and local `main` was fast-forwarded to the same commit. The
-feature branch remains preserved. X remains disabled and unconfigured; no
-Supabase environment was accessed, and E2c did not deploy, enable schedules, or
-access Production.
+feature branch remains preserved. At E2c closeout, X remained disabled and
+unconfigured; no Supabase environment was accessed, and E2c did not deploy,
+enable schedules, or access Production.
 
 E2b's accepted implementation was delivered as PR #35 after focused X web-auth
 tests, the complete web unit suite, web lint/build, authentication regressions,
@@ -809,9 +858,9 @@ cookie, and storage checks exposed no callback codes or provider tokens. Require
 PR CI run `33265858275` passed. PR #35 was squash-merged into protected `main` as
 `617cfdbeee4ebee6feacefa1abeb07775a250663`, post-merge `main` CI run
 `33267265075` passed, and local `main` was fast-forwarded to the same commit. The
-feature branch remains preserved. X remains disabled and unconfigured; no
-Supabase environment was accessed, and E2b did not change extension
-authentication or media behavior, deploy, enable schedules, or access
+feature branch remains preserved. At E2b closeout, X remained disabled and
+unconfigured; no Supabase environment was accessed, and E2b did not change
+extension authentication or media behavior, deploy, enable schedules, or access
 Production.
 
 E2a's accepted implementation was delivered as PR #33 after focused and complete
