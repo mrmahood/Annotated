@@ -1,6 +1,6 @@
 # Hosted media archive pipeline
 
-Status: accepted architecture, updated 2026-08-30. Phases A-B and Phase C
+Status: accepted architecture, updated 2026-09-02. Phases A-B and Phase C
 increments C1-C6 are implemented and accepted. C6's least-privilege worker
 migrations, immutable non-root Cloud Run jobs, `whisper-1` adapter, and bounded
 lifecycle, crash, codec, geometry, exact-duration, transcript, retention, and
@@ -41,8 +41,13 @@ post-merge `main` CI `33289955529` passed. E3 completed combined Local
 integration and Owner audio-upload acceptance, passed required PR CI run
 `33318786049` after checksum-pinned FFmpeg CI recovery, was squash-merged through
 PR #39 as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and passed post-merge
-`main` CI run `33319090870`. X remains disabled and unconfigured; later work
-remains separately authorized.
+`main` CI run `33319090870`. Live-X Gate 3 passed bounded web and extension
+Staging acceptance through PR #41, required CI run `33578556343`, squash commit
+`fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and post-merge `main` CI run
+`33579104948`. Exact disposable-user/grant cleanup and reversible capability and
+provider rollback passed; X is again disabled on both user surfaces and in
+Supabase Staging. Production was not accessed and later work remains separately
+authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -848,7 +853,8 @@ for `whisper-1`; D2 cost $0.
 
 ### E. Create experience and authentication
 
-Status: implementation and Local integration contract complete through E3.
+Status: implementation, bounded live-X Staging acceptance, and reversible
+rollback complete through Gate 3.
 E1a's local capability/data
 contract, page-generation/revision rules, independent draft state, and
 regressions pass the focused and complete extension test suites, TypeScript
@@ -906,7 +912,21 @@ Processing, and no `Failed to fetch`. PR #39 passed required CI run `33318786049
 after the pinned BtbN FFmpeg 8.1 asset, SHA-256, and binary version were refreshed
 and independently verified; it was squash-merged as
 `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and post-merge `main` CI run
-`33319090870` passed. X remains disabled and unconfigured. The supplied
+`33319090870` passed. Gate 3 exposed the existing web and extension X flows only
+when both their explicit opt-in and the exact Supabase Staging project matched.
+It corrected the web attempt-cookie lifecycle and bounded extension provider-
+denial classification while retaining Google behavior, strict callback/provider/
+identity validation, token-safe handling, production fail-closed defaults, and
+unchanged extension permissions. Owner web and extension acceptance passed
+cancellation/retry, correct-app sign-in, existing-user reuse, identity isolation,
+session restoration, provider-token absence, privacy checks, sign-out, and
+signed-out recovery. PR #41 passed required CI run `33578556343`, was
+squash-merged as `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and passed
+post-merge `main` CI run `33579104948`. Cleanup deleted only the zero-owned-data
+disposable X user, revoked only its X grant, disabled both capability opt-ins,
+and disabled the Supabase Staging X provider while retaining masked credentials
+and preserving Google, Site URL, redirects, and the X app. X is again absent
+from both user surfaces; Production and schedules were untouched. The supplied
 proprietary Brightcove player correctly remained unavailable under the accepted
 fail-closed boundary; proprietary and other inaccessible cross-origin player
 adapters remain separately authorized.
@@ -932,8 +952,9 @@ increment boundaries, and acceptance plan are in
 - E2b adds web-only X OAuth start and callback handling behind an explicit
   disabled-by-default capability. E2c adds the equivalent bounded extension
   handling and identity-array verification with no production permission change.
-  X stays invisible and non-executable, no provider is configured, and the
-  identity policy never merges users from display name alone.
+  Gate 3 exercised both only under exact Staging gates, then disabled their
+  opt-ins and the Staging provider. X is again invisible and non-executable, and
+  the identity policy never merges users from display name alone.
 - Preserve the accepted tabCapture/offscreen Blob ownership, exact permissions,
   private upload, authoritative status, restart, article, and no-secret
   boundaries. Rollback hides the reorganized Create entry without deleting or
@@ -976,10 +997,10 @@ increment boundaries, and acceptance plan are in
 - Launch design covers DNS, TLS, Supabase and OAuth callback URLs, extension
   callbacks, cookies, CSP, secret isolation, monitoring/alerts, rollback, and
   staged Production enablement.
-- Production remains blocked until Phase E passes Local, required CI,
-  and bounded Staging acceptance. Production access, DNS/OAuth/vendor changes,
-  deployment, schedule enablement, and traffic cutover remain separate explicit
-  authorization checkpoints.
+- Phase E passed Local, required CI, and bounded Staging acceptance, then passed
+  exact cleanup and reversible rollback. Production access, DNS/OAuth/vendor
+  changes, deployment, schedule enablement, and traffic cutover remain separate
+  explicit authorization checkpoints.
 - Rollback retains per-surface feature flags and stops new intake first; active
   jobs finish or fail safely, private raw objects follow retention policy, and
   DNS/runtime rollback never bypasses publication or signing checks.

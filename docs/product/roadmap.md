@@ -1,7 +1,8 @@
 # Product roadmap
 
 Status: Phase D complete and merged; Phase E increments E1a-E1e, E2a-E2c,
-and E3 complete and merged, 2026-08-30. D1 and D2 completed their
+E3, and the bounded live-X Gate 3 are complete, merged, accepted, and rolled
+back in Staging. Updated 2026-09-02. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -37,7 +38,12 @@ post-merge `main` CI `33289955529` passed. E3 completed combined Local
 integration and handoff, including Owner audio-upload acceptance. PR #39 passed
 required CI run `33318786049` after checksum-pinned FFmpeg CI recovery, was
 squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and passed
-post-merge `main` CI run `33319090870`. X remains disabled and unconfigured;
+post-merge `main` CI run `33319090870`. Gate 3 passed live web and extension X
+acceptance through PR #41 after required CI run `33578556343`, was squash-merged
+as `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and passed post-merge `main` CI run
+`33579104948`. The disposable Staging identity and grant were removed, both
+user-facing capability opt-ins were disabled, and the Supabase Staging X provider
+was disabled with its masked credentials retained. Production was not accessed;
 later work remains separately authorized.
 
 The hosted-media architecture is defined in
@@ -351,7 +357,7 @@ prefix; it was not a complete or usable credential. Optional Staging-secret
 rotation remains an owner defense-in-depth decision. No full credential was
 printed or persisted.
 
-## Phase E — implementation and Local handoff complete
+## Phase E — implementation, Staging acceptance, and rollback complete
 
 Create experience and authentication:
 
@@ -409,9 +415,24 @@ Processing, and no recurring `Failed to fetch`. PR #39 passed required CI run
 `33318786049` after the unavailable pinned FFmpeg autobuild was replaced by an
 exact release URL, asset, SHA-256, and verified FFmpeg/FFprobe version. It was
 squash-merged as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`; post-merge `main`
-CI run `33319090870` passed. X remains disabled and unconfigured. Proprietary
-Brightcove and other inaccessible cross-origin player adapters remain a
-separately authorized increment.
+CI run `33319090870` passed. Gate 3 then added exact Staging-project plus opt-in
+capability gates for the web and extension, corrected the web attempt-cookie
+lifecycle and exact extension cancellation callback classification, and retained
+Google behavior, provider-neutral checks, token-safe handling, production
+fail-closed defaults, and the unchanged extension manifest. Owner acceptance
+passed web and extension cancellation/retry, correct-app X sign-in, existing-user
+reuse, identity isolation, session restoration, provider-token absence, privacy
+checks, sign-out, and signed-out recovery. PR #41 passed required CI run
+`33578556343`, was squash-merged as
+`fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and passed post-merge `main` CI run
+`33579104948`. Cleanup deleted the exact disposable X-only Supabase user after
+zero-owned-data verification, revoked only its `Annotated Staging OAuth` grant,
+disabled both web and extension capability opt-ins, and disabled only the
+Supabase Staging X provider while preserving Google, Site URL, redirects, masked
+credentials, and the X application. X is again absent from both user surfaces.
+Production was not accessed or deployed. Proprietary Brightcove and other
+inaccessible cross-origin player adapters remain a separately authorized
+increment.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -435,8 +456,10 @@ separately authorized increment.
 - E2b added the web-only X OAuth start and callback path behind an explicit
   disabled-by-default capability. E2c added the equivalent bounded extension
   boundary and identity-array verification without changing production
-  permissions. X remains neither visible nor executable, no provider was
-  configured, and identities are never merged based only on display name.
+  permissions. Gate 3 exercised both capabilities only against the exact
+  Supabase Staging project, then removed their opt-ins and disabled the Staging
+  provider. X is again neither visible nor executable, and identities are never
+  merged based only on display name.
 - Retain the accepted capture, private upload, draft-first, processing-status,
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
@@ -467,10 +490,10 @@ Production launch and hardening:
   monitoring, alerting, rollback, retention operations, and staged Production
   enablement. Preserve the Chrome/browser/device, zoom/DPR/fullscreen/resize,
   auth/session, retry, privacy, security, and end-to-end regression matrices.
-- Production remains blocked until Phase E passes Local, required CI,
-  and bounded Staging acceptance. Production access, deployment, schedule
-  enablement, DNS/OAuth/vendor configuration, and traffic cutover each require
-  their own explicit authorization.
+- Phase E has passed Local, required CI, bounded Staging acceptance, exact
+  cleanup, and reversible rollback. Production access, deployment, schedule
+  enablement, DNS/OAuth/vendor configuration, and traffic cutover each still
+  require their own explicit authorization.
 
 Phase B's automated and owner-performed browser acceptance gates passed. C1-C6
 implementation and owner acceptance are complete, and Phase C is formally
@@ -501,11 +524,13 @@ Owner Chrome acceptance and merged through PR #37 as
 post-merge `main` CI `33289955529` passed. E3 passed Owner Local integration and
 audio-upload acceptance, required PR CI `33318786049`, and post-merge `main` CI
 `33319090870`; PR #39 was squash-merged as
-`ecee20531c8983c7bf97a80446e0fa66b0b21e78`. X remains disabled and unconfigured.
-Cross-origin player adapters, generic webpage-video publication, provider
-configuration or enablement, later implementation,
-schedule enablement, Production access, and deployment remain separately
-authorized.
-Phase E has passed its Local and required CI gates. Production rollout remains
-blocked on separately authorized live-provider and bounded Staging gates and
-later explicit Production authorization.
+`ecee20531c8983c7bf97a80446e0fa66b0b21e78`. Gate 3 passed Owner web and
+extension live-X Staging acceptance, PR CI `33578556343`, squash merge
+`fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and post-merge `main` CI
+`33579104948`; exact disposable-user/grant cleanup and reversible capability/
+provider rollback then passed. X is currently disabled on both user surfaces and
+in Supabase Staging. Cross-origin player adapters, generic webpage-video
+publication, later implementation, schedule enablement, Production access, and
+deployment remain separately authorized.
+Phase E has passed its Local, required CI, and bounded Staging gates. Production
+rollout still requires its own explicit authorization.
