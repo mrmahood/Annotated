@@ -16,9 +16,22 @@ const expectedRedirect =
   'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/auth/callback';
 const accessToken = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signature';
 const refreshToken = 'refresh-token-value-1234';
+const denialDescription = 'The user denied the authorization request';
+
+function supabaseDenialCallback({
+  redirect = expectedRedirect,
+  description = denialDescription,
+  querySuffix = '',
+  fragmentSuffix = '',
+} = {}) {
+  const encodedDescription = encodeURIComponent(description);
+  return `${redirect}?error=access_denied&error_description=${encodedDescription}${querySuffix}` +
+    `#error=access_denied&error_description=${encodedDescription}&sb=${fragmentSuffix}`;
+}
 
 test('accepts only the expected chromiumapp.org callback origin and path', () => {
   assert.equal(isExpectedAuthCallback(`${expectedRedirect}#access_token=x`, expectedRedirect), true);
+  assert.equal(isExpectedAuthCallback(supabaseDenialCallback(), expectedRedirect), true);
   assert.equal(
     isExpectedAuthCallback(
       'https://attacker.chromiumapp.org/auth/callback#access_token=x',
@@ -36,6 +49,24 @@ test('accepts only the expected chromiumapp.org callback origin and path', () =>
   assert.equal(
     isExpectedAuthCallback(
       `${expectedRedirect}?unexpected=true#access_token=x`,
+      expectedRedirect,
+    ),
+    false,
+  );
+  assert.equal(
+    isExpectedAuthCallback(
+      supabaseDenialCallback({
+        redirect: 'https://attacker.chromiumapp.org/auth/callback',
+      }),
+      expectedRedirect,
+    ),
+    false,
+  );
+  assert.equal(
+    isExpectedAuthCallback(
+      supabaseDenialCallback({
+        redirect: 'https://user@abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/auth/callback',
+      }),
       expectedRedirect,
     ),
     false,
@@ -86,6 +117,37 @@ test('maps provider denial to a provider-neutral bounded error', () => {
       return true;
     },
   );
+});
+
+test('maps the bounded Supabase query-and-fragment denial to cancellation', () => {
+  assert.throws(
+    () => parseAuthCallbackTokens(supabaseDenialCallback()),
+    (error) => {
+      assert.equal(error instanceof ExtensionAuthError, true);
+      assert.equal(error.kind, 'cancelled');
+      assert.match(error.message, /cancelled/i);
+      assert.equal(error.message.includes(denialDescription), false);
+      return true;
+    },
+  );
+});
+
+test('rejects duplicate, unknown, mismatched, and mixed denial responses', () => {
+  const invalidCallbacks = [
+    supabaseDenialCallback({ querySuffix: '&error=access_denied' }),
+    supabaseDenialCallback({ querySuffix: '&unexpected=true' }),
+    supabaseDenialCallback({ fragmentSuffix: `&access_token=${accessToken}` }),
+    `${expectedRedirect}?error=access_denied&error_description=one` +
+      '#error=access_denied&error_description=two&sb=',
+  ];
+
+  for (const callbackUrl of invalidCallbacks) {
+    assert.equal(isExpectedAuthCallback(callbackUrl, expectedRedirect), false);
+    assert.throws(
+      () => parseAuthCallbackTokens(callbackUrl),
+      (error) => error instanceof ExtensionAuthError && error.kind === 'callback',
+    );
+  }
 });
 
 test('redacts malformed token values from errors', () => {
