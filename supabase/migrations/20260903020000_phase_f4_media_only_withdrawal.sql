@@ -706,9 +706,12 @@ begin
       message = 'The moderation request is invalid.';
   end if;
 
-  select * into annotation_row
-  from public.annotations
-  where id = p_annotation_id
+  -- RETURNS TABLE columns become PL/pgSQL variables. Always alias tables and
+  -- qualify columns so names like annotation_id/media_id/removed_at cannot
+  -- collide with annotation_media, claims, or moderation_audit.
+  select annotations.* into annotation_row
+  from public.annotations as annotations
+  where annotations.id = p_annotation_id
   for update;
   if not found or annotation_row.status is distinct from 'published' then
     raise exception using
@@ -716,10 +719,10 @@ begin
       message = 'Media-only withdrawal is not available.';
   end if;
 
-  select * into media_row
-  from public.annotation_media
-  where id = p_media_id
-    and annotation_id = p_annotation_id
+  select media.* into media_row
+  from public.annotation_media as media
+  where media.id = p_media_id
+    and media.annotation_id = p_annotation_id
   for update;
   if not found then
     raise exception using
@@ -728,9 +731,9 @@ begin
   end if;
 
   if p_claim_id is not null then
-    select * into claim_row
-    from public.claims
-    where id = p_claim_id
+    select claims.* into claim_row
+    from public.claims as claims
+    where claims.id = p_claim_id
     for update;
     if not found or claim_row.annotation_id is distinct from p_annotation_id then
       raise exception using
@@ -740,8 +743,8 @@ begin
   end if;
 
   perform 1
-  from public.annotation_transcripts
-  where annotation_transcripts.annotation_id = p_annotation_id
+  from public.annotation_transcripts as transcripts
+  where transcripts.annotation_id = p_annotation_id
   for update;
 
   content_was_present := private.annotation_transcript_content_present(p_annotation_id);
@@ -761,11 +764,11 @@ begin
   end if;
 
   if result = 'already_withdrawn' then
-    select * into existing_audit
-    from private.moderation_audit
-    where private.moderation_audit.media_id = p_media_id
-      and private.moderation_audit.action = 'media_only_withdrawal'
-    order by private.moderation_audit.created_at desc
+    select audit.* into existing_audit
+    from private.moderation_audit as audit
+    where audit.media_id = p_media_id
+      and audit.action = 'media_only_withdrawal'
+    order by audit.created_at desc
     limit 1;
 
     annotation_id := annotation_row.id;
@@ -784,21 +787,21 @@ begin
 
   linked_claim_id := coalesce(media_row.removal_claim_id, p_claim_id);
 
-  update public.annotation_media
+  update public.annotation_media as media
   set
     processing_status = 'removed',
     processing_stage = null,
-    removed_at = coalesce(public.annotation_media.removed_at, pg_catalog.now()),
+    removed_at = coalesce(media.removed_at, pg_catalog.now()),
     removal_claim_id = linked_claim_id,
     next_attempt_at = null,
     lease_token = null,
     lease_expires_at = null
-  where id = p_media_id
-  returning * into media_row;
+  where media.id = p_media_id
+  returning media.* into media_row;
 
   perform private.clear_annotation_transcript_content(p_annotation_id);
 
-  insert into private.moderation_audit (
+  insert into private.moderation_audit as audit (
     actor_id, action, reason_code, annotation_id, media_id, claim_id, result_code
   ) values (
     p_actor_id,
@@ -809,7 +812,7 @@ begin
     linked_claim_id,
     'withdrawn'
   )
-  returning * into inserted_audit;
+  returning audit.* into inserted_audit;
 
   annotation_id := annotation_row.id;
   media_id := media_row.id;
