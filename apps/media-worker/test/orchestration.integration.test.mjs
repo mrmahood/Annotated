@@ -97,6 +97,7 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
         'transcript_present', exists (
           select 1 from public.annotation_transcripts transcript
           where transcript.annotation_id = media.annotation_id
+            and transcript.content_cleared_at is null
         )
       )
       from public.annotation_media media

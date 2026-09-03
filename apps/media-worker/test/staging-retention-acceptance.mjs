@@ -210,7 +210,7 @@ async function status() {
   const annotationIds = FIXTURES.map(({ annotationId }) => annotationId).join(',');
   const rows = await api(`/rest/v1/annotation_media?select=id,processing_status,raw_storage_path,processed_storage_path,removed_at&id=in.(${ids})`);
   const annotations = await api(`/rest/v1/annotations?select=id,status&id=in.(${annotationIds})`);
-  const transcripts = await api(`/rest/v1/annotation_transcripts?select=annotation_id&annotation_id=in.(${annotationIds})`);
+  const transcripts = await api(`/rest/v1/annotation_transcripts?select=annotation_id,content_cleared_at,transcript_text,segments&annotation_id=in.(${annotationIds})`);
   const objects = [];
   for (const fixture of FIXTURES) {
     const paths = objectPaths(owner, fixture);
@@ -222,13 +222,14 @@ async function status() {
   const passed = rows.length === 2 && rows.every((row) => row.processing_status === 'removed' &&
       row.raw_storage_path === null && row.processed_storage_path === null && row.removed_at !== null) &&
     annotations.length === 2 && annotations.every(({ status: annotationStatus }) => annotationStatus === 'draft') &&
-    transcripts.length === 0 && objects.every((present) => !present);
+    transcripts.length === 2 && transcripts.every((row) => row.content_cleared_at != null &&
+      row.transcript_text == null && row.segments == null) && objects.every((present) => !present);
   process.stdout.write(`${JSON.stringify({
     gate: 'c6_retention_status', outcome: passed ? 'passed' : 'failed',
     removed_row_count: rows.filter(({ processing_status: value }) => value === 'removed').length,
     cleared_reference_count: rows.filter((row) => row.raw_storage_path === null && row.processed_storage_path === null).length,
     annotation_draft_count: annotations.filter(({ status: value }) => value === 'draft').length,
-    transcript_count: transcripts.length, private_object_count: objects.filter(Boolean).length,
+    transcript_content_remaining: transcripts.filter((row) => !row.content_cleared_at).length, private_object_count: objects.filter(Boolean).length,
   })}\n`);
   if (!passed) throw new Error('The Staging retention lifecycle result is incomplete.');
 }

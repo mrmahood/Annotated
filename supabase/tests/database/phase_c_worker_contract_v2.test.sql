@@ -346,13 +346,18 @@ select lives_ok(
 select ok(
   (select media.processing_status = 'removed'
       and media.processed_storage_path is null
-      and not exists (
-        select 1 from public.annotation_transcripts as transcript
-        where transcript.annotation_id = media.annotation_id
-      )
+      and media.duration_ms = 4000
+      and media.checksum_sha256 = pg_catalog.repeat('c', 64)
+      and transcript.content_cleared_at is not null
+      and transcript.transcript_text is null
+      and transcript.segments is null
+      and transcript.provider = 'deterministic-fake'
+      and transcript.model = 'fixture-v1'
     from public.annotation_media as media
+    join public.annotation_transcripts as transcript
+      on transcript.annotation_id = media.annotation_id
     where media.id = (select media_id from c4_processed_only_cleanup)),
-  'processed-only terminal confirmation clears derivative facts and transcript'
+  'processed-only terminal confirmation clears Storage references and transcript content while retaining audit metadata'
 );
 
 -- Cancellation suppresses access before Storage work. If the request crashes at
@@ -409,13 +414,15 @@ select ok(
       and media.raw_storage_path is null
       and media.processed_storage_path is null
       and media.removed_at is not null
-      and not exists (
-        select 1 from public.annotation_transcripts as transcript
-        where transcript.annotation_id = media.annotation_id
-      )
+      and transcript.content_cleared_at is not null
+      and transcript.transcript_text is null
+      and transcript.segments is null
+      and transcript.provider = 'deterministic-fake'
     from public.annotation_media as media
+    join public.annotation_transcripts as transcript
+      on transcript.annotation_id = media.annotation_id
     where media.id = (select media_id from c4_removed_cleanup)),
-  'removed-state confirmation clears every private reference and transcript'
+  'removed-state confirmation clears private object references and transcript content while retaining the transcript row'
 );
 
 select ok(
