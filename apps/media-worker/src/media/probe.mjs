@@ -12,6 +12,8 @@ const PROBE_DURATION_TOLERANCE_MS = 20;
 // land a few milliseconds past the selected range. Symmetric slack of one AAC
 // frame is enough for that rounding; it is not a multi-second overshoot allowance.
 export const DERIVATIVE_DURATION_TOLERANCE_MS = 22;
+// Seconds-to-milliseconds conversion can leave IEEE-754 dust far below 1 µs.
+const DURATION_COMPARE_EPSILON_MS = 0.001;
 
 export function ffprobeArguments(inputPath) {
   return [
@@ -187,13 +189,13 @@ export function validateDerivativeProbe({ mediaType, probe, expectedByteSize, re
   const probedDurationMs = durationMs(probe);
   const minDerivativeDurationMs = Math.max(1_000, requestedDurationMs - DERIVATIVE_DURATION_TOLERANCE_MS);
   const maxDerivativeDurationMs = Math.min(MAX_FINAL_DURATION_MS, requestedDurationMs + DERIVATIVE_DURATION_TOLERANCE_MS);
-  if (probedDurationMs > MAX_FINAL_DURATION_MS) {
+  if (probedDurationMs > MAX_FINAL_DURATION_MS + DURATION_COMPARE_EPSILON_MS) {
     outputInvalid('duration_exceeds_max', 'Derivative duration is outside the selected range.');
   }
-  if (probedDurationMs > maxDerivativeDurationMs) {
+  if (probedDurationMs > maxDerivativeDurationMs + DURATION_COMPARE_EPSILON_MS) {
     outputInvalid('duration_overshoot', 'Derivative duration is outside the selected range.');
   }
-  if (probedDurationMs < minDerivativeDurationMs) {
+  if (probedDurationMs < minDerivativeDurationMs - DURATION_COMPARE_EPSILON_MS) {
     outputInvalid('duration_undershoot', 'Derivative duration is outside the selected range.');
   }
   return { ...found, durationMs: probedDurationMs, byteSize: size, formatNames: names };
