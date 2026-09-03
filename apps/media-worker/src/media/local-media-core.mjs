@@ -1,3 +1,4 @@
+import { persistDerivativeDurationMs } from '../runtime/validation.mjs';
 import { validateCaptureMetadataV2 } from './capture-metadata.mjs';
 import { fileByteSize, hashFileSha256 } from './checksum.mjs';
 import { calculateVideoCrop } from './geometry.mjs';
@@ -52,7 +53,7 @@ export async function inspectLocalDerivative({
     probe: outputProbe,
     byteSize: outputByteSize,
     checksumSha256: await hashFileSha256(outputPath),
-    durationMs: derivative.durationMs,
+    durationMs: persistDerivativeDurationMs(derivative.durationMs),
     width: derivative.video?.width ?? null,
     height: derivative.video?.height ?? null,
     mimeType: mediaType === 'video' ? 'video/mp4' : 'audio/mp4',

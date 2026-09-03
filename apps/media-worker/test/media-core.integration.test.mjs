@@ -177,6 +177,7 @@ integration('transcodes a ~9.3s VP9/Opus excerpt whose AAC/video rounding exceed
   assert.ok(result.output.durationMs >= requestedDurationMs - DERIVATIVE_DURATION_TOLERANCE_MS);
   assert.ok(result.output.durationMs <= requestedDurationMs + DERIVATIVE_DURATION_TOLERANCE_MS);
   assert.ok(result.output.durationMs <= 90_000);
+  assert.equal(Number.isSafeInteger(result.output.durationMs), true);
   assert.ok(result.output.width <= 426 && result.output.height <= 240);
   assert.equal(result.output.width % 2, 0);
   assert.equal(result.output.height % 2, 0);

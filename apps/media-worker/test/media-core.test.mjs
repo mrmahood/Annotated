@@ -11,6 +11,7 @@ import {
   validateDerivativeProbe,
   validateRawProbe,
 } from '../src/media/probe.mjs';
+import { persistDerivativeDurationMs, requireBoundedInteger } from '../src/runtime/validation.mjs';
 import { buildAudioTranscodeArguments, buildVideoTranscodeArguments } from '../src/media/transcode.mjs';
 import { runExecutable } from '../src/media/process.mjs';
 import { generatedFixtureRoot, loadMetadata } from './helpers/fixtures.mjs';
@@ -230,6 +231,29 @@ test('derivative validation rejects a probe above 90 seconds', () => {
   assert.throws(() => validateDerivativeProbe({
     mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 90_000,
   }), errorCode('output_invalid', 'duration_exceeds_max'));
+});
+
+test('inspect-stage boundary persists a precise probe duration as a whole millisecond', () => {
+  const probe = derivativeAudioProbe('9.299675');
+  const facts = validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 9_295,
+  });
+  assert.equal(facts.durationMs, Number('9.299675') * 1_000);
+  assert.equal(Number.isSafeInteger(facts.durationMs), false);
+  assert.throws(
+    () => requireBoundedInteger(facts.durationMs, 'Derivative duration', 1_000, 90_000),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+  assert.equal(persistDerivativeDurationMs(facts.durationMs), 9_300);
+  assert.equal(Number.isSafeInteger(persistDerivativeDurationMs(facts.durationMs)), true);
+  assert.throws(
+    () => requireBoundedInteger(9_300.7, 'Derivative duration', 1_000, 90_000),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+  assert.throws(
+    () => persistDerivativeDurationMs(90_001),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
 });
 
 test('derivative validation admits one AAC-frame of duration rounding past the selected range', () => {

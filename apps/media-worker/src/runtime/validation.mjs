@@ -15,6 +15,13 @@ export function requireBoundedInteger(value, label, minimum, maximum) {
   return value;
 }
 
+export function persistDerivativeDurationMs(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new TypeError('Derivative duration must be an integer between 1000 and 90000.');
+  }
+  return requireBoundedInteger(Math.round(value), 'Derivative duration', 1_000, 90_000);
+}
+
 export function requireLocalUrl(value, label, protocols) {
   let parsed;
   try { parsed = new URL(value); }
