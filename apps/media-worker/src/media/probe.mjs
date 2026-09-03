@@ -7,6 +7,13 @@ export const VIDEO_FINAL_MAX_BYTES = 16 * 1024 * 1024;
 export const AUDIO_FINAL_MAX_BYTES = 8 * 1024 * 1024;
 export const MAX_FINAL_DURATION_MS = 90_000;
 const PROBE_DURATION_TOLERANCE_MS = 20;
+// AAC-LC at 48 kHz uses 1024 samples per frame ≈ 21.333 ms. ffmpeg `-ss` after `-i`
+// plus `-t` commonly emits one extra audio or video frame, so a correct encode can
+// land a few milliseconds past the selected range. Symmetric slack of one AAC
+// frame is enough for that rounding; it is not a multi-second overshoot allowance.
+export const DERIVATIVE_DURATION_TOLERANCE_MS = 22;
+// Seconds-to-milliseconds conversion can leave IEEE-754 dust far below 1 µs.
+const DURATION_COMPARE_EPSILON_MS = 0.001;
 
 export function ffprobeArguments(inputPath) {
   return [
@@ -146,40 +153,50 @@ export function validateRawProbe({ mediaType, probe, expectedByteSize, requested
   return { ...found, durationMs: probedDurationMs, byteSize: size, formatNames: formatNames(probe) };
 }
 
+function outputInvalid(reason, message) {
+  mediaCoreFailure('transcoding', 'output_invalid', message, reason);
+}
+
 export function validateDerivativeProbe({ mediaType, probe, expectedByteSize, requestedDurationMs, crop }) {
   const names = formatNames(probe);
-  if (!names.includes('mp4') && !names.includes('mov')) mediaCoreFailure('transcoding', 'output_invalid', 'Derivative container is not MP4/M4A.');
+  if (!names.includes('mp4') && !names.includes('mov')) outputInvalid('invalid_container', 'Derivative container is not MP4/M4A.');
   const size = fileSize(probe);
-  if (size !== expectedByteSize) mediaCoreFailure('transcoding', 'output_invalid', 'Derivative size and probe facts differ.');
+  if (size !== expectedByteSize) outputInvalid('size_mismatch', 'Derivative size and probe facts differ.');
   const maxBytes = mediaType === 'video' ? VIDEO_FINAL_MAX_BYTES : AUDIO_FINAL_MAX_BYTES;
   if (size > maxBytes) mediaCoreFailure('transcoding', 'output_too_large', 'Derivative exceeds the byte limit.');
   const found = streams(probe);
   if (found.audioCount !== 1 || found.videoCount > 1 || found.otherCount !== 0) {
-    mediaCoreFailure('transcoding', 'output_invalid', 'Derivative has an unsupported stream layout.');
+    outputInvalid('unsupported_stream_layout', 'Derivative has an unsupported stream layout.');
   }
-  if (!found.audio || found.audio.codec_name !== 'aac') mediaCoreFailure('transcoding', 'output_invalid', 'Derivative must contain AAC audio.');
+  if (!found.audio || found.audio.codec_name !== 'aac') outputInvalid('invalid_audio_codec', 'Derivative must contain AAC audio.');
   if (found.audio.profile !== 'LC' || found.audio.sample_rate !== '48000' || !Number.isInteger(found.audio.channels) || found.audio.channels < 1 || found.audio.channels > 2) {
-    mediaCoreFailure('transcoding', 'output_invalid', 'Derivative AAC profile or channel format is invalid.');
+    outputInvalid('invalid_aac_format', 'Derivative AAC profile or channel format is invalid.');
   }
   if (mediaType === 'video') {
     if (!found.video || found.video.codec_name !== 'h264' || found.video.profile !== 'Main' || found.video.pix_fmt !== 'yuv420p') {
-      mediaCoreFailure('transcoding', 'output_invalid', 'Video derivative must contain H.264 yuv420p video.');
+      outputInvalid('invalid_video_codec', 'Video derivative must contain H.264 yuv420p video.');
     }
     if (found.video.width % 2 || found.video.height % 2 || found.video.width > 426 || found.video.height > 240) {
-      mediaCoreFailure('transcoding', 'output_invalid', 'Video derivative dimensions are invalid.');
+      outputInvalid('invalid_dimensions', 'Video derivative dimensions are invalid.');
     }
     if (crop && (found.video.width > crop.width || found.video.height > crop.height)) {
-      mediaCoreFailure('transcoding', 'output_invalid', 'Video derivative was upscaled.');
+      outputInvalid('upscaled', 'Video derivative was upscaled.');
     }
   } else if (found.video) {
-    mediaCoreFailure('transcoding', 'output_invalid', 'Audio derivative unexpectedly contains video.');
+    outputInvalid('unexpected_video', 'Audio derivative unexpectedly contains video.');
   }
 
   const probedDurationMs = durationMs(probe);
-  const minDerivativeDurationMs = Math.max(1_000, requestedDurationMs - PROBE_DURATION_TOLERANCE_MS);
-  if (probedDurationMs < minDerivativeDurationMs || probedDurationMs > MAX_FINAL_DURATION_MS ||
-      probedDurationMs > requestedDurationMs) {
-    mediaCoreFailure('transcoding', 'output_invalid', 'Derivative duration is outside the selected range.');
+  const minDerivativeDurationMs = Math.max(1_000, requestedDurationMs - DERIVATIVE_DURATION_TOLERANCE_MS);
+  const maxDerivativeDurationMs = Math.min(MAX_FINAL_DURATION_MS, requestedDurationMs + DERIVATIVE_DURATION_TOLERANCE_MS);
+  if (probedDurationMs > MAX_FINAL_DURATION_MS + DURATION_COMPARE_EPSILON_MS) {
+    outputInvalid('duration_exceeds_max', 'Derivative duration is outside the selected range.');
+  }
+  if (probedDurationMs > maxDerivativeDurationMs + DURATION_COMPARE_EPSILON_MS) {
+    outputInvalid('duration_overshoot', 'Derivative duration is outside the selected range.');
+  }
+  if (probedDurationMs < minDerivativeDurationMs - DURATION_COMPARE_EPSILON_MS) {
+    outputInvalid('duration_undershoot', 'Derivative duration is outside the selected range.');
   }
   return { ...found, durationMs: probedDurationMs, byteSize: size, formatNames: names };
 }

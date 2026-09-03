@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createLocalDerivative } from '../src/media/local-media-core.mjs';
 import { validateCaptureMetadataV2 } from '../src/media/capture-metadata.mjs';
-import { probeFile, validateRawProbe } from '../src/media/probe.mjs';
+import { probeFile, validateRawProbe, DERIVATIVE_DURATION_TOLERANCE_MS } from '../src/media/probe.mjs';
 import { runExecutable } from '../src/media/process.mjs';
 import { ffmpegExecutables, generatedFixtureRoot, loadMetadata } from './helpers/fixtures.mjs';
 
@@ -147,3 +147,37 @@ integration('rejects a 90001ms authoritative range before transcode', async () =
   const metadata = await audioMetadataForDuration(90_001);
   assert.throws(() => validateCaptureMetadataV2(metadata, 'audio', 90_001), (error) => error.code === 'invalid_capture_metadata');
 });
+
+integration('transcodes a ~9.3s VP9/Opus excerpt whose AAC/video rounding exceeds the selected range by less than one frame', async () => withTempDirectory(async (directory) => {
+  const requestedDurationMs = 9_295;
+  const inputPath = path.join(directory, 'raw.webm');
+  const captureMetadata = await loadMetadata('safe-landscape.json');
+  captureMetadata.timing.requested_end_ms = captureMetadata.timing.requested_start_ms + requestedDurationMs;
+  captureMetadata.timing.requested_duration_ms = requestedDurationMs;
+  captureMetadata.timing.player_end_ms = captureMetadata.timing.requested_end_ms;
+  captureMetadata.timing.recorder_elapsed_ms = requestedDurationMs + captureMetadata.timing.lead_in_ms + 8;
+  const rawSeconds = ((requestedDurationMs + captureMetadata.timing.lead_in_ms + 8) / 1_000).toFixed(3);
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', `color=c=blue:s=640x360:r=30:d=${rawSeconds}`,
+    '-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=48000:duration=${rawSeconds}`,
+    '-t', rawSeconds, '-map', '0:v:0', '-map', '1:a:0',
+    '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8',
+    '-c:a', 'libopus', '-f', 'webm', inputPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+
+  const result = await createLocalDerivative({
+    ...tools,
+    mediaType: 'video',
+    inputPath,
+    outputPath: path.join(directory, 'excerpt.mp4'),
+    captureMetadata,
+    requestedDurationMs,
+  });
+  assert.ok(result.output.durationMs >= requestedDurationMs - DERIVATIVE_DURATION_TOLERANCE_MS);
+  assert.ok(result.output.durationMs <= requestedDurationMs + DERIVATIVE_DURATION_TOLERANCE_MS);
+  assert.ok(result.output.durationMs <= 90_000);
+  assert.ok(result.output.width <= 426 && result.output.height <= 240);
+  assert.equal(result.output.width % 2, 0);
+  assert.equal(result.output.height % 2, 0);
+}));

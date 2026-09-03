@@ -15,6 +15,7 @@ const ALLOWED_FACTS = Object.freeze({
   failed_count: boundedCount,
   duration_ms: boundedMeasurement,
   byte_size: boundedMeasurement,
+  reason: boundedIdentifier,
 });
 
 function boundedIdentifier(value) {

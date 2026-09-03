@@ -100,6 +100,31 @@ test('sanitized logger drops paths, tokens, URLs, transcript text, and errors', 
   assert.doesNotMatch(lines[0], /secret|token-value|private\.invalid|transcript|provider response/u);
 });
 
+test('sanitized logger keeps a bounded output_invalid reason and still drops secrets', () => {
+  const { logger, lines } = captureLogger();
+  logger.emit('worker_failed', {
+    media_id: mediaId,
+    stage: 'transcoding',
+    code: 'output_invalid',
+    reason: 'duration_overshoot',
+    outcome: 'retry_scheduled',
+    raw_storage_path: 'secret/raw/path.webm',
+    signed_url: 'https://private.invalid/signed',
+    transcript_text: 'private transcript',
+    error: new Error('sensitive ffmpeg path /tmp/raw.webm'),
+  });
+  assert.deepEqual(JSON.parse(lines[0]), {
+    timestamp: '2026-08-18T12:00:00.000Z',
+    event: 'worker_failed',
+    media_id: mediaId,
+    stage: 'transcoding',
+    code: 'output_invalid',
+    reason: 'duration_overshoot',
+    outcome: 'retry_scheduled',
+  });
+  assert.doesNotMatch(lines[0], /secret|private\.invalid|transcript|ffmpeg path|raw\.webm|signed/u);
+});
+
 test('runtime configuration is Local-only and bounded without exposing secrets', () => {
   const environment = {
     ANNOTATED_SUPABASE_URL: 'http://127.0.0.1:54321',
@@ -316,6 +341,39 @@ test('one-ID worker persists a retry schedule through the lease-fenced store', a
   });
   assert.deepEqual(released, { stage: 'raw_cleanup', code: 'raw_delete_failed' });
   assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'raw_cleanup', code: 'raw_delete_failed' });
+});
+
+test('one-ID worker logs a bounded output_invalid reason without secrets', async () => {
+  const { logger, lines } = captureLogger();
+  const store = {
+    claim: async () => claim('probing'),
+    releaseAttempt: async (_id, _lease, stage, code) => ({ result_status: 'processing', retry_at: '2026-08-18T12:01:00Z' }),
+  };
+  const storage = {
+    download: async () => {
+      throw new MediaCoreError(
+        'transcoding',
+        'output_invalid',
+        'Derivative duration is outside the selected range.',
+        'duration_overshoot',
+      );
+    },
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage,
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger,
+    temporaryRoot: os.tmpdir(),
+  });
+  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'transcoding', code: 'output_invalid' });
+  const failed = lines.map((line) => JSON.parse(line)).find((entry) => entry.event === 'worker_failed');
+  assert.equal(failed.reason, 'duration_overshoot');
+  assert.equal(failed.code, 'output_invalid');
+  assert.doesNotMatch(lines.join('\n'), /Derivative duration|selected range|raw\.webm|secret/u);
 });
 
 test('one-ID worker resumes finalization without media or transcription access', async () => {
