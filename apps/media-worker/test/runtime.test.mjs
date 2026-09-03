@@ -4,12 +4,14 @@ import os from 'node:os';
 import test from 'node:test';
 import { MediaCoreError } from '../src/domain/media-core-error.mjs';
 import { preparePsqlConnection } from '../src/infrastructure/psql-database.mjs';
+import { PostgresWorkerStore } from '../src/infrastructure/postgres-worker-store.mjs';
 import { createCloudRunDispatch, cloudRunDispatchContract } from '../src/runtime/cloud-run-dispatch.mjs';
 import { loadRuntimeConfig, stagingRuntimeContract } from '../src/runtime/config.mjs';
 import { createAuthenticatedLocalDispatch, createDispatchToken, verifyDispatchToken } from '../src/runtime/dispatch-auth.mjs';
 import { runDispatchCycle } from '../src/runtime/dispatcher.mjs';
 import { runReconciliationCycle } from '../src/runtime/reconciler.mjs';
 import { createSanitizedLogger } from '../src/runtime/sanitized-logger.mjs';
+import { persistDerivativeDurationMs, requireBoundedInteger } from '../src/runtime/validation.mjs';
 import { runOneMediaJob } from '../src/runtime/worker-job.mjs';
 
 const mediaId = '11111111-1111-4111-8111-111111111111';
@@ -313,6 +315,90 @@ test('reconciler completes durable cleanup for an already-removed row', async ()
   assert.deepEqual(summary, {
     candidateCount: 1, reconciledCount: 0, cleanedCount: 1, skippedCount: 0, failedCount: 0,
   });
+});
+
+function derivativeStageFacts(durationMs) {
+  return {
+    rawChecksumSha256: 'a'.repeat(64),
+    processedStoragePath: 'owner/annotation/media/excerpt.m4a',
+    mimeType: 'audio/mp4',
+    durationMs,
+    width: null,
+    height: null,
+    byteSize: 1_024,
+    checksumSha256: 'b'.repeat(64),
+  };
+}
+
+test('persisted derivative duration is a whole millisecond and still rejects leftover floats', () => {
+  const probedDurationMs = Number('9.299675') * 1_000;
+  assert.equal(Number.isSafeInteger(probedDurationMs), false);
+  assert.throws(
+    () => requireBoundedInteger(probedDurationMs, 'Derivative duration', 1_000, 90_000),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+  assert.equal(persistDerivativeDurationMs(probedDurationMs), 9_300);
+  assert.throws(
+    () => requireBoundedInteger(9_300.7, 'Derivative duration', 1_000, 90_000),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+  assert.throws(
+    () => persistDerivativeDurationMs(90_001),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+  assert.throws(
+    () => requireBoundedInteger(90_001, 'Derivative duration', 1_000, 90_000),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+});
+
+test('stageDerivative persists a rounded inspect duration and rejects leftover non-integers', () => {
+  const statements = [];
+  const store = new PostgresWorkerStore({
+    json() { return null; },
+    execute(sql) { statements.push(sql); },
+  });
+  store.stageDerivative(mediaId, leaseToken, derivativeStageFacts(persistDerivativeDurationMs(Number('9.299675') * 1_000)));
+  assert.match(statements[0], /,\s*9300,\s*null,\s*null,\s*1024,/u);
+  assert.throws(
+    () => store.stageDerivative(mediaId, leaseToken, derivativeStageFacts(9_300.7)),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+  assert.throws(
+    () => store.stageDerivative(mediaId, leaseToken, derivativeStageFacts(90_001)),
+    (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
+  );
+});
+
+test('one-ID worker maps a TypeError from a non-integer derivative duration to unexpected_failure', async () => {
+  const { logger } = captureLogger();
+  let released;
+  const store = {
+    claim: async () => claim('probing'),
+    releaseAttempt: async (_id, _lease, stage, code) => {
+      released = { stage, code };
+      return { result_status: 'processing', retry_at: '2026-08-18T12:01:00Z' };
+    },
+  };
+  const storage = {
+    download: async () => {
+      requireBoundedInteger(Number('9.299675') * 1_000, 'Derivative duration', 1_000, 90_000);
+    },
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage,
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger,
+    temporaryRoot: os.tmpdir(),
+  });
+  assert.deepEqual(released, { stage: 'probing', code: 'unexpected_failure' });
+  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'probing', code: 'unexpected_failure' });
+  assert.equal(persistDerivativeDurationMs(Number('9.299675') * 1_000), 9_300);
+  assert.doesNotThrow(() => requireBoundedInteger(9_300, 'Derivative duration', 1_000, 90_000));
 });
 
 test('one-ID worker persists a retry schedule through the lease-fenced store', async () => {
