@@ -1,4 +1,4 @@
-import { isUuid } from "@/lib/public-content";
+import { isUuid } from "./public-content.ts";
 
 export const MODERATION_CONFIRMATION = "MEDIA_ONLY_WITHDRAW";
 export const MODERATION_REQUEST_BYTE_LIMIT = 2048;
@@ -67,6 +67,15 @@ function isUuidValue(value: unknown): value is string {
   return typeof value === "string" && isUuid(value);
 }
 
+function isReasonCode(value: unknown): value is MediaOnlyReasonCode {
+  return typeof value === "string"
+    && (MEDIA_ONLY_REASON_CODES as readonly string[]).includes(value);
+}
+
+function isResultCode(value: unknown): value is MediaOnlyWithdrawalResult["resultCode"] {
+  return value === "withdrawn" || value === "already_withdrawn";
+}
+
 function parseAllowlist(value: string | undefined, kind: "id" | "email"): string[] {
   if (!value) return [];
   return value
@@ -119,7 +128,7 @@ export function parseMediaOnlyWithdrawalRequest(body: unknown): MediaOnlyWithdra
   }
   if (
     typeof body.reasonCode !== "string"
-    || !MEDIA_ONLY_REASON_CODES.includes(body.reasonCode as MediaOnlyReasonCode)
+    || !isReasonCode(body.reasonCode)
   ) {
     throw new ModerationApiError("INVALID_REQUEST", 400);
   }
@@ -132,7 +141,7 @@ export function parseMediaOnlyWithdrawalRequest(body: unknown): MediaOnlyWithdra
   return {
     annotationId: body.annotationId,
     mediaId: body.mediaId,
-    reasonCode: body.reasonCode as MediaOnlyReasonCode,
+    reasonCode: body.reasonCode,
     claimId,
   };
 }
@@ -142,31 +151,36 @@ export function parseMediaOnlyWithdrawalResult(
 ): MediaOnlyWithdrawalResult {
   const row = Array.isArray(value) ? value[0] : value;
   if (!isRecord(row)) throw new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
-  const resultCode = row.result_code;
-  const reasonCode = row.reason_code;
   if (
     !isUuidValue(row.annotation_id)
     || !isUuidValue(row.media_id)
-    || (row.claim_id !== null && !isUuidValue(row.claim_id))
-    || (resultCode !== "withdrawn" && resultCode !== "already_withdrawn")
-    || typeof reasonCode !== "string"
-    || !MEDIA_ONLY_REASON_CODES.includes(reasonCode as MediaOnlyReasonCode)
+    || !isResultCode(row.result_code)
+    || !isReasonCode(row.reason_code)
     || typeof row.removed_at !== "string"
-    || (row.audit_id !== null && !isUuidValue(row.audit_id))
     || typeof row.annotation_status !== "string"
     || typeof row.processing_status !== "string"
     || typeof row.transcript_content_cleared !== "boolean"
   ) {
     throw new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
   }
+  let claimId: string | null = null;
+  if (row.claim_id !== null) {
+    if (!isUuidValue(row.claim_id)) throw new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
+    claimId = row.claim_id;
+  }
+  let auditId: string | null = null;
+  if (row.audit_id !== null) {
+    if (!isUuidValue(row.audit_id)) throw new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
+    auditId = row.audit_id;
+  }
   return {
     annotationId: row.annotation_id,
     mediaId: row.media_id,
-    claimId: row.claim_id,
-    reasonCode,
-    resultCode,
+    claimId,
+    reasonCode: row.reason_code,
+    resultCode: row.result_code,
     removedAt: row.removed_at,
-    auditId: row.audit_id,
+    auditId,
     annotationStatus: row.annotation_status,
     processingStatus: row.processing_status,
     transcriptContentCleared: row.transcript_content_cleared,
