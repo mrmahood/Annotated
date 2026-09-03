@@ -1,6 +1,15 @@
 import { spawnSync } from 'node:child_process';
 import { requireBoundedInteger, requireLocalUrl } from '../runtime/validation.mjs';
 
+export const PROCESSED_DURATION_INVALID_MESSAGE = 'Processed duration is invalid for the requested hosted range.';
+
+export function boundedPostgresFailureReason(stderr) {
+  if (typeof stderr !== 'string' || !stderr.includes(PROCESSED_DURATION_INVALID_MESSAGE)) {
+    return null;
+  }
+  return 'duration_overshoot';
+}
+
 export function preparePsqlConnection(databaseUrl) {
   let parsed;
   try { parsed = new URL(databaseUrl); }
@@ -36,7 +45,12 @@ export class PsqlDatabase {
       maxBuffer: 2 * 1024 * 1024,
       env: { ...process.env, PGPASSWORD: this.#password },
     });
-    if (result.error || result.status !== 0) throw new Error('PostgreSQL worker command failed.');
+    if (result.error || result.status !== 0) {
+      const error = new Error('PostgreSQL worker command failed.');
+      const reason = boundedPostgresFailureReason(result.stderr);
+      if (reason) error.boundedReason = reason;
+      throw error;
+    }
     return result.stdout.trim();
   }
 

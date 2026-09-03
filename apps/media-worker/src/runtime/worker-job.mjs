@@ -38,6 +38,9 @@ function failureFacts(error, stage) {
     return facts;
   }
   const boundedStage = /^[a-z0-9_]{1,50}$/u.test(stage) ? stage : 'worker';
+  if (error?.boundedReason === 'duration_overshoot') {
+    return { stage: boundedStage, code: 'output_invalid', reason: 'duration_overshoot' };
+  }
   return { stage: boundedStage, code: 'unexpected_failure' };
 }
 

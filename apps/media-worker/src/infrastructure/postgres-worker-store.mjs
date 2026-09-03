@@ -1,4 +1,18 @@
+import { MediaCoreError } from '../domain/media-core-error.mjs';
+import { PROCESSED_DURATION_INVALID_MESSAGE } from './psql-database.mjs';
 import { requireBoundedInteger, requireMediaId } from '../runtime/validation.mjs';
+
+function rethrowWorkerStoreError(error) {
+  if (error?.boundedReason === 'duration_overshoot') {
+    throw new MediaCoreError(
+      'probing',
+      'output_invalid',
+      PROCESSED_DURATION_INVALID_MESSAGE,
+      'duration_overshoot',
+    );
+  }
+  throw error;
+}
 
 function sqlText(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
@@ -52,20 +66,24 @@ export class PostgresWorkerStore {
   stageDerivative(mediaId, leaseToken, facts) {
     const id = requireMediaId(mediaId);
     const lease = requireLeaseToken(leaseToken);
-    this.database.execute(`
-      select private.stage_annotation_media_derivative(
-        ${sqlText(id)}::uuid,
-        ${sqlText(lease)}::uuid,
-        ${sqlText(facts.rawChecksumSha256)},
-        ${sqlText(facts.processedStoragePath)},
-        ${sqlText(facts.mimeType)},
-        ${requireBoundedInteger(facts.durationMs, 'Derivative duration', 1_000, 90_000)},
-        ${sqlNullableInteger(facts.width)},
-        ${sqlNullableInteger(facts.height)},
-        ${requireBoundedInteger(facts.byteSize, 'Derivative byte size', 1, 16 * 1024 * 1024)},
-        ${sqlText(facts.checksumSha256)}
-      );
-    `);
+    try {
+      this.database.execute(`
+        select private.stage_annotation_media_derivative(
+          ${sqlText(id)}::uuid,
+          ${sqlText(lease)}::uuid,
+          ${sqlText(facts.rawChecksumSha256)},
+          ${sqlText(facts.processedStoragePath)},
+          ${sqlText(facts.mimeType)},
+          ${requireBoundedInteger(facts.durationMs, 'Derivative duration', 1_000, 90_000)},
+          ${sqlNullableInteger(facts.width)},
+          ${sqlNullableInteger(facts.height)},
+          ${requireBoundedInteger(facts.byteSize, 'Derivative byte size', 1, 16 * 1024 * 1024)},
+          ${sqlText(facts.checksumSha256)}
+        );
+      `);
+    } catch (error) {
+      rethrowWorkerStoreError(error);
+    }
   }
 
   stageTranscript(mediaId, leaseToken, transcript) {
