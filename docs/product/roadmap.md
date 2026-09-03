@@ -468,8 +468,9 @@ increment.
 
 Claims, takedown, and removal. The bounded plan is
 `docs/architecture/phase-f-claims-removal-plan.md`. F0 was merged through PR #43.
-F1a (published-target claim intake) may land separately via PR #44 and is not
-required for this increment. F4 implements Matt-only media-only withdrawal of
+F1a published-target claim intake is on `main` as
+`7ccd615f51a5359d5ef002a175063854a94ca787` (PR #44). F4 implements Matt-only
+media-only withdrawal of
 published hosted excerpts: append-only `private.moderation_audit`, a
 service-only `moderate_media_only_withdrawal` RPC, transcript content-clear with
 metadata retention, fail-closed signing, and a Bearer + allowlist trusted route
