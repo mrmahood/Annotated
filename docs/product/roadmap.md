@@ -464,9 +464,20 @@ increment.
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
 
-## Phase F — future
+## Phase F — in progress (F4)
 
-Claims, takedown, and removal:
+Claims, takedown, and removal. The bounded plan is
+`docs/architecture/phase-f-claims-removal-plan.md`. F0 was merged through PR #43.
+F1a (published-target claim intake) may land separately via PR #44 and is not
+required for this increment. F4 implements Matt-only media-only withdrawal of
+published hosted excerpts: append-only `private.moderation_audit`, a
+service-only `moderate_media_only_withdrawal` RPC, transcript content-clear with
+metadata retention, fail-closed signing, and a Bearer + allowlist trusted route
+at `/api/moderation/media-only-withdrawal`.
+
+Local automated evidence: pending this PR's CI and Local `supabase test db` /
+web unit gates. Owner Chrome/Staging acceptance is not claimed. Production was
+not accessed; worker schedules remain paused.
 
 - Preserve the existing confidential claims, takedown, media-only removal, and
   full-record hiding/removal scope and its forward-only audit/cleanup behavior.

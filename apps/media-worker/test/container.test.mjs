@@ -358,7 +358,8 @@ test('C6 retention gate is exact-Staging, paused-schedule, fixture-bounded, and 
   assert.match(acceptance, /raw_storage_path: null, raw_deleted_at:/u);
   assert.match(acceptance, /updated_at: failedUpdatedAt/u);
   assert.match(acceptance, /annotationStatus \}\) => annotationStatus === 'draft'/u);
-  assert.match(acceptance, /transcripts\.length === 0/u);
+  assert.match(acceptance, /content_cleared_at != null/u);
+  assert.match(acceptance, /transcript_text == null/u);
   assert.match(acceptance, /objects\.every\(\(present\) => !present\)/u);
   assert.match(runner, /nkkunkwirvfwhmpwonqz/u);
   assert.match(runner, /vnxjktpdzmykmqrqwvks/u);

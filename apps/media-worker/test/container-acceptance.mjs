@@ -74,7 +74,9 @@ function state(database, mediaId) {
       'raw_present', media.raw_storage_path is not null,
       'processed_present', media.processed_storage_path is not null,
       'transcript_present', exists (
-        select 1 from public.annotation_transcripts transcript where transcript.annotation_id = media.annotation_id
+        select 1 from public.annotation_transcripts transcript
+        where transcript.annotation_id = media.annotation_id
+          and transcript.content_cleared_at is null
       )
     )
     from public.annotation_media media
