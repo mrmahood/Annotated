@@ -33,7 +33,9 @@ function derivativeFileExtension(mediaType) {
 
 function failureFacts(error, stage) {
   if (error instanceof MediaCoreError && /^[a-z0-9_]{1,50}$/u.test(error.stage) && /^[a-z0-9_]{1,100}$/u.test(error.code)) {
-    return { stage: error.stage, code: error.code };
+    const facts = { stage: error.stage, code: error.code };
+    if (typeof error.reason === 'string' && /^[a-z0-9_]{1,100}$/u.test(error.reason)) facts.reason = error.reason;
+    return facts;
   }
   const boundedStage = /^[a-z0-9_]{1,50}$/u.test(stage) ? stage : 'worker';
   return { stage: boundedStage, code: 'unexpected_failure' };
@@ -209,6 +211,7 @@ export async function runOneMediaJob({
         code: failure.code,
         outcome,
         attempt_count: Number(claim.attempt_count),
+        reason: failure.reason,
       });
       return Object.freeze({ outcome, stage: failure.stage, code: failure.code });
     } catch {

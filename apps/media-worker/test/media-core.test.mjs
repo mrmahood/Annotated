@@ -5,13 +5,38 @@ import path from 'node:path';
 import test from 'node:test';
 import { validateCaptureMetadataV2 } from '../src/media/capture-metadata.mjs';
 import { calculateVideoCrop } from '../src/media/geometry.mjs';
-import { packetDurationMs, validateDerivativeProbe, validateRawProbe } from '../src/media/probe.mjs';
+import {
+  DERIVATIVE_DURATION_TOLERANCE_MS,
+  packetDurationMs,
+  validateDerivativeProbe,
+  validateRawProbe,
+} from '../src/media/probe.mjs';
 import { buildAudioTranscodeArguments, buildVideoTranscodeArguments } from '../src/media/transcode.mjs';
 import { runExecutable } from '../src/media/process.mjs';
 import { generatedFixtureRoot, loadMetadata } from './helpers/fixtures.mjs';
 
-function errorCode(code) {
-  return (error) => error?.code === code;
+function errorCode(code, reason) {
+  return (error) => error?.code === code && (reason === undefined || error?.reason === reason);
+}
+
+function derivativeAudioProbe(durationSeconds) {
+  const probe = structuredClone(probeByName.get('wrong-container.webm').probe);
+  probe.streams = [{ codec_type: 'audio', codec_name: 'aac', profile: 'LC', sample_rate: '48000', channels: 2 }];
+  probe.format.duration = durationSeconds;
+  return probe;
+}
+
+function derivativeVideoProbe(durationSeconds, overrides = {}) {
+  const probe = structuredClone(probeByName.get('wrong-container.webm').probe);
+  probe.streams = [
+    {
+      codec_type: 'video', codec_name: 'h264', profile: 'Main', pix_fmt: 'yuv420p',
+      width: 426, height: 240, ...overrides.video,
+    },
+    { codec_type: 'audio', codec_name: 'aac', profile: 'LC', sample_rate: '48000', channels: 2, ...overrides.audio },
+  ];
+  probe.format.duration = durationSeconds;
+  return probe;
 }
 
 const probesContent = await readFile(path.join(generatedFixtureRoot, 'probes.json'));
@@ -201,21 +226,26 @@ test('packet timestamps provide a bounded MediaRecorder WebM duration fallback',
 });
 
 test('derivative validation rejects a probe above 90 seconds', () => {
-  const probe = structuredClone(probeByName.get('wrong-container.webm').probe);
-  probe.streams = [{ codec_type: 'audio', codec_name: 'aac', profile: 'LC', sample_rate: '48000', channels: 2 }];
-  probe.format.duration = '90.001000';
+  const probe = derivativeAudioProbe('90.001000');
   assert.throws(() => validateDerivativeProbe({
     mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 90_000,
-  }), errorCode('output_invalid'));
+  }), errorCode('output_invalid', 'duration_exceeds_max'));
 });
 
-test('derivative validation rejects any duration above the authoritative selected range', () => {
-  const probe = structuredClone(probeByName.get('wrong-container.webm').probe);
-  probe.streams = [{ codec_type: 'audio', codec_name: 'aac', profile: 'LC', sample_rate: '48000', channels: 2 }];
-  probe.format.duration = '4.010000';
-  assert.throws(() => validateDerivativeProbe({
-    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 4_000,
-  }), errorCode('output_invalid'));
+test('derivative validation admits one AAC-frame of duration rounding past the selected range', () => {
+  assert.equal(DERIVATIVE_DURATION_TOLERANCE_MS, 22);
+  const probe = derivativeAudioProbe('4.000000');
+  for (const [duration, overshootMs] of [
+    ['4.001000', 1],
+    ['4.010000', 10],
+    ['4.021000', 21],
+    ['4.022000', DERIVATIVE_DURATION_TOLERANCE_MS],
+  ]) {
+    probe.format.duration = duration;
+    assert.equal(validateDerivativeProbe({
+      mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 4_000,
+    }).durationMs, 4_000 + overshootMs);
+  }
 
   probe.format.duration = '4.000000';
   assert.equal(validateDerivativeProbe({
@@ -223,18 +253,55 @@ test('derivative validation rejects any duration above the authoritative selecte
   }).durationMs, 4_000);
 });
 
+test('derivative validation rejects duration clearly beyond one AAC-frame of slack', () => {
+  const probe = derivativeAudioProbe('4.023000');
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 4_000,
+  }), errorCode('output_invalid', 'duration_overshoot'));
+});
+
 test('derivative validation rejects a one-second result for a 90-second selection', () => {
-  const probe = structuredClone(probeByName.get('wrong-container.webm').probe);
-  probe.streams = [{ codec_type: 'audio', codec_name: 'aac', profile: 'LC', sample_rate: '48000', channels: 2 }];
-  probe.format.duration = '1.000000';
+  const probe = derivativeAudioProbe('1.000000');
   assert.throws(() => validateDerivativeProbe({
     mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 90_000,
-  }), errorCode('output_invalid'));
+  }), errorCode('output_invalid', 'duration_undershoot'));
 
   probe.format.duration = '89.980000';
   assert.equal(validateDerivativeProbe({
     mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 90_000,
   }).durationMs, 89_980);
+});
+
+test('derivative validation keeps codec and geometry fail-closed', () => {
+  const baseline = derivativeVideoProbe('4.000000', { video: { profile: 'Constrained Baseline' } });
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'video', probe: baseline, expectedByteSize: Number(baseline.format.size), requestedDurationMs: 4_000,
+  }), errorCode('output_invalid', 'invalid_video_codec'));
+
+  const oddWidth = derivativeVideoProbe('4.000000', { video: { width: 425 } });
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'video', probe: oddWidth, expectedByteSize: Number(oddWidth.format.size), requestedDurationMs: 4_000,
+  }), errorCode('output_invalid', 'invalid_dimensions'));
+
+  const tooTall = derivativeVideoProbe('4.000000', { video: { height: 242 } });
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'video', probe: tooTall, expectedByteSize: Number(tooTall.format.size), requestedDurationMs: 4_000,
+  }), errorCode('output_invalid', 'invalid_dimensions'));
+
+  const upscaled = derivativeVideoProbe('4.000000', { video: { width: 426, height: 240 } });
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'video',
+    probe: upscaled,
+    expectedByteSize: Number(upscaled.format.size),
+    requestedDurationMs: 4_000,
+    crop: { width: 400, height: 240 },
+  }), errorCode('output_invalid', 'upscaled'));
+
+  const vorbis = derivativeAudioProbe('4.000000');
+  vorbis.streams[0].codec_name = 'vorbis';
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'audio', probe: vorbis, expectedByteSize: Number(vorbis.format.size), requestedDurationMs: 4_000,
+  }), errorCode('output_invalid', 'invalid_audio_codec'));
 });
 
 test('transcode argument builders fix codecs, maps, bounds, and output paths', () => {
