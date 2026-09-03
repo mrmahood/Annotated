@@ -194,13 +194,16 @@ select throws_ok( -- 13
 reset role;
 
 insert into public.sources (
-  id, normalized_url, canonical_url, source_type, title
+  id, normalized_url, canonical_url, source_type, title, author, publisher, metadata
 ) values (
   'f4200000-0000-4000-8000-000000000001',
-  'https://example.test/f4/hosted',
-  'https://example.test/f4/hosted',
-  'youtube_video',
-  'F4 hosted source'
+  'https://www.youtube.com/watch?v=F4Hosted001',
+  'https://www.youtube.com/watch?v=F4Hosted001',
+  'youtube',
+  'F4 hosted source',
+  'F4 Author',
+  'YouTube',
+  '{"video_id":"F4Hosted001"}'::jsonb
 );
 
 insert into public.annotations (
