@@ -36,7 +36,7 @@ export type HostedExcerpt =
   | {
       status: 'ready';
       media: HostedExcerptMedia;
-      transcript: HostedExcerptTranscript;
+      transcript: HostedExcerptTranscript | null;
     }
   | { status: 'removed' };
 
@@ -176,11 +176,17 @@ export function parsePublicHostedExcerpt(
   const media = parseReadyMedia(mediaStateValue, annotationId, expectedType, targetDurationMs);
   if (!media) return null;
   const transcript = parsePublicTranscript(transcriptValue, annotationId, media.durationMs);
-  return transcript ? { status: 'ready', media, transcript } : null;
+  return { status: 'ready', media, transcript };
 }
 
 export function isHostedExcerptReady(
   hosted: HostedExcerpt | null,
 ): hosted is Extract<HostedExcerpt, { status: 'ready' }> {
   return hosted?.status === 'ready';
+}
+
+export function hasHostedExcerptTranscript(
+  transcript: HostedExcerptTranscript | null | undefined,
+): transcript is HostedExcerptTranscript {
+  return typeof transcript?.text === 'string' && transcript.text.length > 0;
 }

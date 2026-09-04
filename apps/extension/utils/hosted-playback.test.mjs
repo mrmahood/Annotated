@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   DURATION_SLACK_MS,
   getMediaPlaybackPath,
+  hasHostedExcerptTranscript,
   isHostedExcerptReady,
   parsePublicHostedExcerpt,
   parsePublicTranscript,
@@ -83,6 +84,10 @@ test('accepts ready video and audio public media with a matching excerpt transcr
     },
   });
   assert.equal(isHostedExcerptReady(video), true);
+  assert.equal(
+    hasHostedExcerptTranscript(video && video.status === 'ready' ? video.transcript : null),
+    true,
+  );
 
   const audio = parsePublicHostedExcerpt(
     READY_AUDIO,
@@ -102,7 +107,7 @@ test('maps removed public media without a player payload', () => {
   assert.equal(isHostedExcerptReady(removed), false);
 });
 
-test('fails closed for legacy, processing, mismatched, and transcript-less ready rows', () => {
+test('fails closed for legacy, processing, and mismatched media rows', () => {
   const closed = [
     parsePublicHostedExcerpt(null, null, ANNOTATION, 'video', TARGET_MS),
     parsePublicHostedExcerpt(
@@ -112,13 +117,49 @@ test('fails closed for legacy, processing, mismatched, and transcript-less ready
       'video',
       TARGET_MS,
     ),
-    parsePublicHostedExcerpt(READY_VIDEO, null, ANNOTATION, 'video', TARGET_MS),
     parsePublicHostedExcerpt(READY_VIDEO, TRANSCRIPT, ANNOTATION, 'audio', TARGET_MS),
     parsePublicHostedExcerpt({ ...READY_VIDEO, mime_type: 'text/html' }, TRANSCRIPT, ANNOTATION, 'video', TARGET_MS),
     parsePublicHostedExcerpt(REMOVED_VIDEO, TRANSCRIPT, ANNOTATION, 'video', TARGET_MS),
-    parsePublicHostedExcerpt(READY_VIDEO, { ...TRANSCRIPT, annotation_id: MEDIA }, ANNOTATION, 'video', TARGET_MS),
   ];
   for (const value of closed) assert.equal(value, null);
+});
+
+test('ready media still yields a playable excerpt when transcript is missing or unparsable', () => {
+  const missing = parsePublicHostedExcerpt(READY_VIDEO, null, ANNOTATION, 'video', TARGET_MS);
+  assert.equal(missing?.status, 'ready');
+  assert.equal(missing && missing.status === 'ready' ? missing.media.id : null, MEDIA);
+  assert.equal(missing && missing.status === 'ready' ? missing.transcript : 'absent', null);
+  assert.equal(isHostedExcerptReady(missing), true);
+  assert.equal(
+    hasHostedExcerptTranscript(missing && missing.status === 'ready' ? missing.transcript : null),
+    false,
+  );
+
+  const mismatched = parsePublicHostedExcerpt(
+    READY_VIDEO,
+    { ...TRANSCRIPT, annotation_id: MEDIA },
+    ANNOTATION,
+    'video',
+    TARGET_MS,
+  );
+  assert.equal(mismatched?.status, 'ready');
+  assert.equal(mismatched && mismatched.status === 'ready' ? mismatched.transcript : 'absent', null);
+});
+
+test('admits the owner Kiffin clip +27 ms duration within 100 ms slack', () => {
+  const targetMs = 17_806;
+  const durationMs = 17_833;
+  const hosted = parsePublicHostedExcerpt(
+    { ...READY_VIDEO, duration_ms: durationMs },
+    null,
+    ANNOTATION,
+    'video',
+    targetMs,
+  );
+  assert.equal(DURATION_SLACK_MS, 100);
+  assert.equal(hosted?.status, 'ready', `${durationMs} must be accepted for a ${targetMs} ms range`);
+  assert.equal(hosted && hosted.status === 'ready' ? hosted.media.durationMs : null, durationMs);
+  assert.equal(hosted && hosted.status === 'ready' ? hosted.transcript : 'absent', null);
 });
 
 test('admits 100 ms of symmetric tab-capture slack around the selected range', () => {

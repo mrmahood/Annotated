@@ -22,6 +22,7 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /HostedExcerptPlayer/);
   assert.match(card, /compact/);
   assert.match(card, /transcript-peek/);
+  assert.match(card, /hostedTranscript &&/);
   assert.match(card, /View annotation/);
   assert.doesNotMatch(card, /className="annotation-card-main"/);
   assert.doesNotMatch(card, /Commentary/);

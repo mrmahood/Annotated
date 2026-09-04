@@ -330,8 +330,9 @@ async function loadHostedExcerpt(
       const { data: transcriptData, error: transcriptError } = await supabase
         .rpc('get_public_annotation_transcript', { p_annotation_id: annotation.id })
         .maybeSingle();
-      if (transcriptError || !transcriptData) return null;
-      transcript = transcriptData;
+      if (!transcriptError && transcriptData) {
+        transcript = transcriptData;
+      }
     }
 
     return parsePublicHostedExcerpt(

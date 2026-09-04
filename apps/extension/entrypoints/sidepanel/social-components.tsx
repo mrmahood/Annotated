@@ -8,7 +8,12 @@ import {
   formatAudioDuration,
 } from '../../utils/audio-commentary';
 import {
+  hostedExcerptExpandSessionKey,
+  hostedExcerptStatusAfterLoad,
+} from '../../utils/hosted-excerpt-expand';
+import {
   getMediaPlaybackPath,
+  hasHostedExcerptTranscript,
   isHostedExcerptReady,
   type HostedExcerpt,
   type HostedExcerptMedia,
@@ -214,8 +219,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
   const [hosted, setHosted] = useState<HostedExcerpt | null>(
     annotation.kind === 'article' ? null : annotation.hosted,
   );
-  const [hostedStatus, setHostedStatus] = useState<'idle' | 'loading' | 'ready'>(
-    annotation.kind !== 'article' && annotation.hosted ? 'ready' : 'idle',
+  const [hostedStatus, setHostedStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>(
+    annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted) ? 'ready' : 'idle',
   );
   const sourceUrl = annotation.kind === 'youtube'
     ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
@@ -224,27 +229,47 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
   const hasPassage = annotation.kind === 'article';
   const hasArticleAudio = annotation.kind === 'article' && Boolean(annotation.audio);
   const hostedReady = isHostedExcerptReady(hosted) ? hosted : null;
+  const hostedTranscript = hostedReady && hasHostedExcerptTranscript(hostedReady.transcript)
+    ? hostedReady.transcript
+    : null;
   const audioUrl = hasArticleAudio && annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;
+  const annotationRef = useRef(annotation);
+  annotationRef.current = annotation;
+  const hostedReadyRef = useRef(hostedReady);
+  hostedReadyRef.current = hostedReady;
+  const expandSessionKey = hostedExcerptExpandSessionKey({
+    expanded,
+    annotationId: annotation.id,
+    kind: annotation.kind,
+  });
 
   useEffect(() => {
-    if (!expanded || annotation.kind === 'article' || hostedStatus !== 'idle') return;
+    if (!expandSessionKey) return;
+    if (hostedReadyRef.current) {
+      setHostedStatus('ready');
+      return;
+    }
+
+    const current = annotationRef.current;
+    if (current.kind === 'article') return;
+
     let cancelled = false;
     setHostedStatus('loading');
-    void queryPublicHostedExcerpt(supabase, annotation)
+    void queryPublicHostedExcerpt(supabase, current)
       .then((result) => {
         if (cancelled) return;
         setHosted(result);
-        setHostedStatus('ready');
+        setHostedStatus(hostedExcerptStatusAfterLoad(result));
       })
       .catch(() => {
         if (cancelled) return;
         setHosted(null);
-        setHostedStatus('ready');
+        setHostedStatus('unavailable');
       });
     return () => { cancelled = true; };
-  }, [annotation, expanded, hostedStatus, supabase]);
+  }, [expandSessionKey, supabase]);
 
   const nestedPreview = hasPassage ? (
     <span className={`passage-excerpt${expanded ? ' expanded' : ''}`}>“{annotation.selectedText}”</span>
@@ -281,6 +306,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
             {nestedPreview}
           </button>
           {expanded && hostedStatus === 'loading' && <span className="nested-source-host">Loading excerpt…</span>}
+          {expanded && hostedStatus === 'unavailable' && <span className="nested-source-host">Excerpt unavailable</span>}
           {expanded && hostedReady && (
             <HostedExcerptPlayer
               annotationId={annotation.id}
@@ -289,8 +315,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
               compact
             />
           )}
-          {expanded && hostedReady && (
-            <p className="transcript-peek">{hostedReady.transcript.text}</p>
+          {expanded && hostedTranscript && (
+            <p className="transcript-peek">{hostedTranscript.text}</p>
           )}
           {expanded && hasArticleAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
@@ -683,6 +709,9 @@ export function AnnotationDetailView({
   const hostedReady = annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted)
     ? annotation.hosted
     : null;
+  const hostedTranscript = hostedReady && hasHostedExcerptTranscript(hostedReady.transcript)
+    ? hostedReady.transcript
+    : null;
   const hostedRemoved = annotation.kind !== 'article' && annotation.hosted?.status === 'removed';
   const canPlayConnectedClip = !hostedReady && annotation.kind === 'youtube' &&
     connectedVideoId === annotation.source.videoId;
@@ -719,7 +748,7 @@ export function AnnotationDetailView({
         <section className="detail-clip-range"><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </>}
       {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} />}
-      {hostedReady && <ExcerptTranscript transcript={hostedReady.transcript} />}
+      {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} />}
       {hostedRemoved && (
         <section className="detail-media-removed" aria-labelledby="detail-media-removed-heading">
           <span className="section-label" id="detail-media-removed-heading">Archived excerpt</span>
