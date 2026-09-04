@@ -391,6 +391,24 @@ curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/remove" \
   required and re-paused. Production untouched.
 - Record evidence in `docs/product/roadmap.md` before closing Phase F.
 
+**Landed (2026-09-04):** Owner-authorized F6 Staging acceptance is recorded in
+`docs/product/roadmap.md`. F0–F5 are on protected `main` (PRs #43, #44, #45,
+#50, #51, #52). F5 post-merge `main` CI run `33871653061` passed. Staging
+project `nkkunkwirvfwhmpwonqz` applied `align_derivative_duration_slack`,
+`phase_f4_media_only_withdrawal`, `phase_f1a_claim_publish_target`,
+`phase_f2_claim_review`, `phase_f3_hide_unhide`, and
+`phase_f5_full_record_remove`. Production Supabase was not touched; GCP media
+schedules remain paused. The bounded `geaux tigers` fixture (annotation
+`0f993576-9bae-44f0-a098-2532b448ca18`, media
+`9c8db8d9-7b53-4e35-99c2-b301cd9e49b9`) completed published clip → F4
+media-only withdraw → F2 claim list and `submitted→reviewing` → F3 hide/unhide
+→ F5 remove (`annotation_remove` / `removed` at 2026-09-04 ~14:48 UTC).
+Playback of the withdrawn clip returned `{"error":"MEDIA_UNAVAILABLE"}`. Exact
+Storage cleanup-to-zero is deferred while dispatcher/reconciler schedules stay
+paused. Vote isolation relies on existing pgTAP. Automated evidence is required
+GitHub CI on `main` rather than a re-run of the full local `AGENTS.md` release
+gate on an agent machine.
+
 ## 7. First implementation increment (after plan approval)
 
 **Authorized next code step:** F1a only, on a feature branch, unless the owner

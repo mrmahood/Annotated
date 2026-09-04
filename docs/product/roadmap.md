@@ -2,7 +2,10 @@
 
 Status: Phase D complete and merged; Phase E increments E1a-E1e, E2a-E2c,
 E3, and the bounded live-X Gate 3 are complete, merged, accepted, and rolled
-back in Staging. Updated 2026-09-02. D1 and D2 completed their
+back in Staging. Phase F F0–F5 implementation is merged on protected `main`;
+F6 owner-authorized Staging acceptance is recorded 2026-09-04. Production was
+not accessed; GCP media dispatcher and reconciler schedules remain paused.
+Updated 2026-09-04. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -464,34 +467,86 @@ increment.
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
 
-## Phase F — in progress (F5)
+## Phase F — F6 Staging acceptance recorded; implementation accepted
 
 Claims, takedown, and removal. The bounded plan is
-`docs/architecture/phase-f-claims-removal-plan.md`. F0 was merged through PR #43.
-F1a published-target claim intake is on `main` as
+`docs/architecture/phase-f-claims-removal-plan.md`. F0–F5 implementation is
+merged on protected `main`. F6 owner-authorized Staging acceptance is recorded
+below. Production was not accessed; GCP media dispatcher and reconciler
+schedules remain paused.
+
+F0 was merged through PR #43. F1a published-target claim intake is on `main` as
 `7ccd615f51a5359d5ef002a175063854a94ca787` (PR #44). F4 media-only withdrawal is
 on `main` (PR #45): append-only `private.moderation_audit`, a service-only
 `moderate_media_only_withdrawal` RPC, transcript content-clear with metadata
 retention, fail-closed signing, and a Bearer + allowlist trusted route at
-`/api/moderation/media-only-withdrawal`. F2 is Matt-only claim review: service-only
+`/api/moderation/media-only-withdrawal`. F2 is Matt-only claim review on `main`
+as `e4a96f293daf9b10a35b47e9966e87f25da61bcc` (PR #50): service-only
 list/get/update RPCs, locked routes at `/api/moderation/claims`, confirmation
 phrase `CLAIM_REVIEW_UPDATE`, default PII suppression, and no admin UI. F3 is
-Matt-only hide/unhide: service-only `moderate_annotation_hide` /
-`moderate_annotation_unhide`, additive `private.moderation_audit` actions, and
-locked routes at `/api/moderation/annotations/{id}/hide` and `.../unhide`
-(confirmation phrases `ANNOTATION_HIDE` / `ANNOTATION_UNHIDE`). F5 is
-Matt-only full-record remove: service-only `moderate_annotation_remove`,
-`annotations.status → removed` from `published` or `hidden`, F4 media-revoke
-when still playable, transcript content-clear, optional F2 claim resolve
-(`reviewing → resolved`), and a locked route at
+Matt-only hide/unhide on `main` as
+`f8c1b9ad6325842002d119da19895343cd544251` (PR #51): service-only
+`moderate_annotation_hide` / `moderate_annotation_unhide`, additive
+`private.moderation_audit` actions, and locked routes at
+`/api/moderation/annotations/{id}/hide` and `.../unhide` (confirmation phrases
+`ANNOTATION_HIDE` / `ANNOTATION_UNHIDE`). F5 is Matt-only full-record remove on
+`main` as `892bab9e00c230f1cc7c81bef1dd426785101088` (PR #52): service-only
+`moderate_annotation_remove`, `annotations.status → removed` from `published`
+or `hidden`, F4 media-revoke when still playable, transcript content-clear,
+optional F2 claim resolve (`reviewing → resolved`), and a locked route at
 `/api/moderation/annotations/{id}/remove` (confirmation phrase
 `ANNOTATION_REMOVE`). Public projections continue to require `published`.
 Removed records cannot be unhidden. F5 does not reimplement F3 hide/unhide or
-F4 media-only withdrawal. F6 Staging acceptance remains separately authorized.
+F4 media-only withdrawal. Post-merge `main` CI for F5 passed as run
+`33871653061`.
 
-Local automated evidence: pending this PR's CI and Local `supabase test db` /
-web unit gates. Owner Chrome/Staging acceptance is not claimed. Production was
-not accessed; worker schedules remain paused.
+Staging Supabase `nkkunkwirvfwhmpwonqz` applied
+`align_derivative_duration_slack`, `phase_f4_media_only_withdrawal`,
+`phase_f1a_claim_publish_target`, `phase_f2_claim_review`,
+`phase_f3_hide_unhide`, and `phase_f5_full_record_remove`. Production Supabase
+was not touched.
+
+Staging env ops on the annotated-staging Vercel Production project added
+`SUPABASE_SERVICE_ROLE_KEY` (this fixed playback `SERVER_MISCONFIGURED`),
+`ANNOTATED_MODERATION_OPERATOR_IDS=3e3882b6-7c94-46aa-9a6d-583b734536e2`, and
+`ANNOTATED_MODERATION_OPERATOR_EMAILS=cbandcoop@gmail.com`. Owner verified that
+playback for a withdrawn clip returns `{"error":"MEDIA_UNAVAILABLE"}`, not
+`SERVER_MISCONFIGURED`.
+
+Bounded Staging acceptance used the owner-published `geaux tigers` fixture:
+annotation `0f993576-9bae-44f0-a098-2532b448ca18`, media
+`9c8db8d9-7b53-4e35-99c2-b301cd9e49b9`, owner Google profile
+`3e3882b6-7c94-46aa-9a6d-583b734536e2` (`cbandcoop@gmail.com`). Proven sequence
+(owner Chrome / Staging HTTP + earlier RPC):
+
+1. Published hosted clip with player and transcript (owner verified).
+2. F4 media-only withdraw (RPC): web and extension showed Excerpt unavailable;
+   the annotation stayed published; transcript content cleared; audit
+   `media_only_withdrawal` / `withdrawn`.
+3. F2 HTTP `GET /api/moderation/claims` returned 200 with 3 claims (PII omitted
+   by default).
+4. F2 HTTP: claim `1363c5ba-56d6-4f23-9278-22fe15c2c3b5`
+   `submitted→reviewing` with `CLAIM_REVIEW_UPDATE` returned 200; audit id
+   recorded.
+5. F3 HTTP: hide then unhide the same annotation with `ANNOTATION_HIDE` /
+   `ANNOTATION_UNHIDE` returned 200 `hidden` then `unhidden`.
+6. F5 HTTP: remove the same annotation with `ANNOTATION_REMOVE` returned 200
+   `resultCode: removed`; audit `annotation_remove` / `removed` at 2026-09-04
+   ~14:48 UTC.
+
+Explicitly deferred and out of F6 close criteria for now:
+
+- Exact Storage cleanup-to-zero for derivative objects is deferred because
+  media dispatcher/reconciler schedules stay paused (owner choice). The media
+  row remains `processing_status=removed` with its path still present pending
+  the reconciler.
+- Votes isolation is covered by existing pgTAP (`phase_d2c_voting_isolation`
+  and Phase F tests on `main`); no Staging vote-driven moderation was observed.
+- The full `AGENTS.md` local release gate was not re-run on an agent machine.
+  Required GitHub CI green on `main` (pgTAP + web unit), including F5
+  post-merge run `33871653061`, is the recorded automated evidence.
+
+Durable Phase F product rules remain:
 
 - Preserve the existing confidential claims, takedown, media-only removal, and
   full-record hiding/removal scope and its forward-only audit/cleanup behavior.
@@ -558,4 +613,7 @@ in Supabase Staging. Cross-origin player adapters, generic webpage-video
 publication, later implementation, schedule enablement, Production access, and
 deployment remain separately authorized.
 Phase E has passed its Local, required CI, and bounded Staging gates. Production
-rollout still requires its own explicit authorization.
+rollout still requires its own explicit authorization. Phase F F0–F5 are merged
+on `main`; F6 owner-authorized Staging acceptance is recorded in the Phase F
+section. Production was not accessed; worker schedules remain paused. Exact
+Storage cleanup-to-zero remains deferred while those schedules stay paused.
