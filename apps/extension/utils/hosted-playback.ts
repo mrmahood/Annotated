@@ -1,4 +1,4 @@
-import { getOptionalText, isUuid } from './social-helpers';
+import { getOptionalText, isUuid } from './social-helpers.ts';
 
 const VIDEO_MAX_BYTES = 16 * 1024 * 1024;
 const AUDIO_MAX_BYTES = 8 * 1024 * 1024;

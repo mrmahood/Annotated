@@ -120,7 +120,7 @@ test('fails closed for legacy, processing, mismatched, and transcript-less ready
   for (const value of closed) assert.equal(value, null);
 });
 
-test('rejects transcript segments that leave the excerpt or skip backward', () => {
+test('rejects transcript segments that leave the excerpt or overlap backward', () => {
   assert.equal(
     parsePublicTranscript(
       { ...TRANSCRIPT, segments: [{ start_ms: 0, end_ms: 9_001, text: 'too long' }] },
@@ -131,7 +131,13 @@ test('rejects transcript segments that leave the excerpt or skip backward', () =
   );
   assert.equal(
     parsePublicTranscript(
-      { ...TRANSCRIPT, segments: [{ start_ms: 1_000, end_ms: 2_000, text: 'gap' }] },
+      {
+        ...TRANSCRIPT,
+        segments: [
+          { start_ms: 0, end_ms: 4_000, text: 'first' },
+          { start_ms: 3_000, end_ms: 6_000, text: 'overlap' },
+        ],
+      },
       ANNOTATION,
       TARGET_MS,
     ),

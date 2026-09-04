@@ -9,7 +9,7 @@ import {
 import {
   parsePublicHostedExcerpt,
   type HostedExcerpt,
-} from './hosted-playback';
+} from './hosted-playback.ts';
 import {
   ANNOTATION_PAGE_SIZE,
   buildAnnotationQueryPlan,
