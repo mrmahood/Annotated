@@ -240,6 +240,48 @@ unless `includeClaimantPii` is explicitly requested on an allowlisted session.
   uniformly non-public (canonical + UUID + SEO + feed + profile + comments +
   transcripts + media).
 
+**Landed:** additive migration `20260904023220_phase_f3_hide_unhide.sql`.
+Extends `private.moderation_audit` (no second table) with `annotation_hide` /
+`annotation_unhide` actions and reason code `commentary`. Service-only
+`moderate_annotation_hide` and `moderate_annotation_unhide` (private
+implementations + public wrappers granted only to `service_role`). Locked
+routes, no admin UI:
+
+- `POST /api/moderation/annotations/{annotationId}/hide` — confirmation
+  phrase `ANNOTATION_HIDE`
+- `POST /api/moderation/annotations/{annotationId}/unhide` — confirmation
+  phrase `ANNOTATION_UNHIDE`
+
+Reason codes: `operator_request`, `copyright`, `excerpt_claim`, `commentary`.
+Hide is `published → hidden` (`already_hidden` is idempotent). Unhide is
+`hidden → published` with a **new** audit row (`already_published` is
+idempotent). Unhide does not restore F4-cleared transcript content or
+derivatives; removed media stays removed. Optional `claimId` is a confidential
+audit link only and does not resolve the claim. Operator uses curl/script with
+a Bearer session; allowlist is `ANNOTATED_MODERATION_OPERATOR_IDS` /
+`ANNOTATED_MODERATION_OPERATOR_EMAILS`. Clients cannot hide/unhide through
+table UPDATE.
+
+```bash
+# Hide (Matt session JWT). Extra fields such as operatorId are rejected.
+curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/hide" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reasonCode":"operator_request","confirm":"ANNOTATION_HIDE"}'
+
+# Hide with an optional confidential claim link
+curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/hide" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reasonCode":"commentary","confirm":"ANNOTATION_HIDE","claimId":"'"$CLAIM_ID"'"}'
+
+# Unhide (always writes a new audit row on a real hidden → published write)
+curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/unhide" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reasonCode":"operator_request","confirm":"ANNOTATION_UNHIDE"}'
+```
+
 ### F4 — Published media-only removal + cleanup/transcript policy
 
 - Service-only moderation RPC that, in one transaction where possible:
