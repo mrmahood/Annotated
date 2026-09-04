@@ -222,9 +222,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
     : annotation.source.canonicalUrl;
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
-  const hasClip = annotation.kind === 'youtube' || annotation.kind === 'audio';
   const hasArticleAudio = annotation.kind === 'article' && Boolean(annotation.audio);
-  const canExpand = hasPassage || hasClip || hasArticleAudio;
   const hostedReady = isHostedExcerptReady(hosted) ? hosted : null;
   const audioUrl = hasArticleAudio && annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
@@ -250,12 +248,12 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
 
   const nestedPreview = hasPassage ? (
     <span className={`passage-excerpt${expanded ? ' expanded' : ''}`}>“{annotation.selectedText}”</span>
-  ) : hasClip ? (
+  ) : (
     <span className={`clip-range${expanded ? ' expanded' : ''}`}>
       {formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}
       {expanded && <> · {formatMediaTime(annotation.endMs - annotation.startMs)}</>}
     </span>
-  ) : null;
+  );
 
   return (
     <article className="social-card">
@@ -269,29 +267,19 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
       <div className="annotation-card-body">
         <p className="commentary-lead">{annotation.commentaryText}</p>
         <div className="nested-source">
-          {canExpand ? (
-            <button
-              className="nested-source-body"
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => setExpanded((current) => !current)}
-            >
-              <span className="source-chip-row">
-                <span className="source-chip">{sourceChipLabel(annotation)}</span>
-                <span className="nested-source-title">{sourceTitle}</span>
-              </span>
-              <span className="nested-source-host">{annotation.source.hostname}</span>
-              {nestedPreview}
-            </button>
-          ) : (
-            <div className="nested-source-body nested-source-static">
-              <span className="source-chip-row">
-                <span className="source-chip">{sourceChipLabel(annotation)}</span>
-                <span className="nested-source-title">{sourceTitle}</span>
-              </span>
-              <span className="nested-source-host">{annotation.source.hostname}</span>
-            </div>
-          )}
+          <button
+            className="nested-source-body"
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <span className="source-chip-row">
+              <span className="source-chip">{sourceChipLabel(annotation)}</span>
+              <span className="nested-source-title">{sourceTitle}</span>
+            </span>
+            <span className="nested-source-host">{annotation.source.hostname}</span>
+            {nestedPreview}
+          </button>
           {expanded && hostedStatus === 'loading' && <span className="nested-source-host">Loading excerpt…</span>}
           {expanded && hostedReady && (
             <HostedExcerptPlayer

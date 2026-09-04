@@ -39,7 +39,6 @@ export function AnnotationCard({
   const detailPath = getPublicAnnotationPath(annotation.route, annotation.id);
   const hasPassage = annotation.kind === "article";
   const hasClip = annotation.kind === "youtube" || annotation.kind === "audio";
-  const canExpand = hasPassage || hasClip;
   const passageText = hasPassage
     ? expanded
       ? annotation.selectedText
@@ -81,39 +80,29 @@ export function AnnotationCard({
         </p>
 
         <div className="card-nested-source">
-          {canExpand ? (
-            <button
-              className="card-nested-source-body"
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => setExpanded((current) => !current)}
-            >
-              <span className="source-chip-row">
-                <span className="source-chip">{sourceChipLabel(annotation.kind)}</span>
-                <span className="card-nested-title">{sourceTitle}</span>
+          <button
+            className="card-nested-source-body"
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <span className="source-chip-row">
+              <span className="source-chip">{sourceChipLabel(annotation.kind)}</span>
+              <span className="card-nested-title">{sourceTitle}</span>
+            </span>
+            <span className="card-hostname">{annotation.source.hostname}</span>
+            {hasPassage && passageText && (
+              <span className={`card-passage-excerpt${expanded ? " expanded" : ""}`}>
+                {passageText}
               </span>
-              <span className="card-hostname">{annotation.source.hostname}</span>
-              {hasPassage && passageText && (
-                <span className={`card-passage-excerpt${expanded ? " expanded" : ""}`}>
-                  {passageText}
-                </span>
-              )}
-              {hasClip && (
-                <span className={`card-clip-range${expanded ? " expanded" : ""}`}>
-                  {formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}
-                  {expanded && <> · {formatMediaTime(annotation.endMs - annotation.startMs)}</>}
-                </span>
-              )}
-            </button>
-          ) : (
-            <div className="card-nested-source-body card-nested-source-static">
-              <span className="source-chip-row">
-                <span className="source-chip">{sourceChipLabel(annotation.kind)}</span>
-                <span className="card-nested-title">{sourceTitle}</span>
+            )}
+            {hasClip && (
+              <span className={`card-clip-range${expanded ? " expanded" : ""}`}>
+                {formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}
+                {expanded && <> · {formatMediaTime(annotation.endMs - annotation.startMs)}</>}
               </span>
-              <span className="card-hostname">{annotation.source.hostname}</span>
-            </div>
-          )}
+            )}
+          </button>
           <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
             Open source <span aria-hidden="true">↗</span>
           </a>
