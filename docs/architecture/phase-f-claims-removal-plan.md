@@ -166,7 +166,7 @@ in implementation:
 | Media-only withdraw | Matt operator; published annotation; media ready (or already needing revoke) | Set media `removed` + `removed_at` (+ optional `removal_claim_id`); clear transcript content; keep audit metadata; annotation may stay `published` | Forward-only audit with reason/actor |
 | Hide annotation | Matt operator | `annotations.status=hidden`; non-public everywhere | Audit |
 | Unhide | Matt operator; currently `hidden`; media policy still satisfied | `published` | **New** audit entry |
-| Full remove | Matt operator | `annotations.status=removed`; media revoke if needed; non-public | Forward-only audit |
+| Full remove | Matt operator; `published` or `hidden` | `annotations.status=removed`; media revoke if needed (F4 semantics); transcript content cleared; non-public everywhere; optional F2 `reviewing→resolved` | Forward-only `annotation_remove` audit |
 | Cleanup retry | Reconciler/service | Delete exact known objects; confirm absence | Cleanup result fields |
 
 Votes, follows, and comments never appear as inputs to these transitions.
@@ -299,13 +299,84 @@ curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/unhide" \
 - Public page remains the accepted removed-media presentation when annotation
   stays `published`.
 
-### F5 — Full-record hide/remove and claim resolution linkage
+### F5 — Full-record remove and claim resolution linkage
 
-- Full hide and final remove actions with discovery isolation.
+- Full hide remains F3. F5 is **final remove** (`annotations.status=removed`)
+  with discovery isolation, not a second hide/unhide implementation.
 - Operator decision tree defaults to media-only for excerpt/copyright claims;
-  escalate per locked policy.
+  escalate per locked policy (documented below).
 - Claim status transitions linked to actions without exposing claimant data
   publicly.
+
+**Landed:** additive migration `20260904120000_phase_f5_full_record_remove.sql`.
+Extends `private.moderation_audit` with `annotation_remove` / `removed` /
+`already_removed`. Service-only `moderate_annotation_remove` (private
+implementation + public wrapper granted only to `service_role`). Locked route,
+no admin UI:
+
+- `POST /api/moderation/annotations/{annotationId}/remove` — confirmation
+  phrase `ANNOTATION_REMOVE`
+
+**Allowed from-states:** `published → removed` and `hidden → removed`.
+`already_removed` is idempotent (no second audit, no claim resolve on retry).
+`draft` and `claim_pending` raise `55000`. Plan §5 Full remove has no
+prior-hide precondition; hide remains the reversible isolation tool (F3
+unhide). Remove is forward-only and cannot be unhidden.
+
+**Operator decision tree** (locked §2 decision 6; not a forced two-RPC hop):
+
+1. Default when a claim is valid: **media-only withdrawal (F4)** for
+   excerpt/copyright — annotation stays `published`; player and transcript
+   go away.
+2. Escalate to **full hide (F3)** when commentary itself is the problem, or
+   the annotation must leave discovery, but a mistaken hide may need unhide.
+3. Escalate to **full remove (F5)** when the annotation must leave discovery
+   permanently. May be called from `published` or `hidden`.
+
+**Media / transcript:** if hosted media is still playable (or not fully
+`removed`), F5 applies F4 media-removed semantics in the same transaction
+(`processing_status=removed`, `removed_at`, optional `removal_claim_id`,
+clear excerpt text/segments via `private.clear_annotation_transcript_content`,
+leave Storage paths for reconciler `removed_cleanup`). It does not write a
+separate `media_only_withdrawal` audit. After F4 then F5, media stays
+removed and the public removed-media presentation is gone because the
+annotation is no longer `published`. Content is non-public everywhere.
+
+**Claim linkage:** optional `claimId` must belong to the annotation
+(confidential audit link). Optional `resolveClaim: true` (requires `claimId`)
+calls F2 `private.update_claim_review` for `reviewing → resolved` in the same
+transaction. `submitted` claims must be moved to `reviewing` first; illegal
+resolve fails closed without removing. `already_removed` retries do not
+resolve. Remove responses and logs never include claimant name, email, or
+details.
+
+Reason codes: `operator_request`, `copyright`, `excerpt_claim`, `commentary`.
+Operator uses curl/script with a Bearer session; allowlist is
+`ANNOTATED_MODERATION_OPERATOR_IDS` /
+`ANNOTATED_MODERATION_OPERATOR_EMAILS`. Clients cannot remove through table
+UPDATE.
+
+```bash
+# Full remove from published or hidden (Matt session JWT). Extra fields such
+# as operatorId are rejected.
+curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/remove" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reasonCode":"commentary","confirm":"ANNOTATION_REMOVE"}'
+
+# Remove with a confidential claim link (does not resolve the claim)
+curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/remove" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reasonCode":"commentary","confirm":"ANNOTATION_REMOVE","claimId":"'"$CLAIM_ID"'"}'
+
+# Remove and resolve a reviewing claim in the same transaction.
+# submitted → resolved is rejected; use F2 CLAIM_REVIEW_UPDATE to reviewing first.
+curl -X POST "$SITE/api/moderation/annotations/$ANNOTATION_ID/remove" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reasonCode":"commentary","confirm":"ANNOTATION_REMOVE","claimId":"'"$CLAIM_ID"'","resolveClaim":true}'
+```
 
 ### F6 — Local automated acceptance + bounded Staging acceptance
 
@@ -356,7 +427,7 @@ Prefer a small server-only command or authenticated endpoint that:
 - never prints secrets, signed URLs, raw paths, transcript text, or provider
   payloads.
 
-No full moderation console in F1–F4.
+No full moderation console in F1–F5.
 
 ## 9. Rollback and forward-only rules
 

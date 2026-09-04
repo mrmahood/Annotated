@@ -464,7 +464,7 @@ increment.
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
 
-## Phase F — in progress (F3)
+## Phase F — in progress (F5)
 
 Claims, takedown, and removal. The bounded plan is
 `docs/architecture/phase-f-claims-removal-plan.md`. F0 was merged through PR #43.
@@ -479,9 +479,15 @@ phrase `CLAIM_REVIEW_UPDATE`, default PII suppression, and no admin UI. F3 is
 Matt-only hide/unhide: service-only `moderate_annotation_hide` /
 `moderate_annotation_unhide`, additive `private.moderation_audit` actions, and
 locked routes at `/api/moderation/annotations/{id}/hide` and `.../unhide`
-(confirmation phrases `ANNOTATION_HIDE` / `ANNOTATION_UNHIDE`). Public
-projections continue to require `published`. F3 does not implement F5
-full-record remove and does not reimplement F4 media-only withdrawal.
+(confirmation phrases `ANNOTATION_HIDE` / `ANNOTATION_UNHIDE`). F5 is
+Matt-only full-record remove: service-only `moderate_annotation_remove`,
+`annotations.status → removed` from `published` or `hidden`, F4 media-revoke
+when still playable, transcript content-clear, optional F2 claim resolve
+(`reviewing → resolved`), and a locked route at
+`/api/moderation/annotations/{id}/remove` (confirmation phrase
+`ANNOTATION_REMOVE`). Public projections continue to require `published`.
+Removed records cannot be unhidden. F5 does not reimplement F3 hide/unhide or
+F4 media-only withdrawal. F6 Staging acceptance remains separately authorized.
 
 Local automated evidence: pending this PR's CI and Local `supabase test db` /
 web unit gates. Owner Chrome/Staging acceptance is not claimed. Production was

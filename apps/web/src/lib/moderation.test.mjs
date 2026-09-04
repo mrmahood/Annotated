@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   ANNOTATION_HIDE_CONFIRMATION,
   ANNOTATION_MODERATION_REASON_CODES,
+  ANNOTATION_REMOVE_CONFIRMATION,
   ANNOTATION_UNHIDE_CONFIRMATION,
   CLAIM_REVIEW_CONFIRMATION,
   MEDIA_ONLY_REASON_CODES,
@@ -19,6 +20,8 @@ import {
   mapModerationRpcError,
   parseAnnotationHideRequest,
   parseAnnotationHideResult,
+  parseAnnotationRemoveRequest,
+  parseAnnotationRemoveResult,
   parseAnnotationUnhideRequest,
   parseAnnotationUnhideResult,
   parseClaimReviewGetInput,
@@ -367,6 +370,45 @@ test("hide and unhide require confirmation and reject client-supplied operator i
     (error) => error instanceof ModerationApiError && error.code === "INVALID_REQUEST",
   );
   assert.deepEqual(
+    parseAnnotationRemoveRequest({
+      reasonCode: "commentary",
+      confirm: ANNOTATION_REMOVE_CONFIRMATION,
+    }, hideAnnotationId),
+    { annotationId: hideAnnotationId, reasonCode: "commentary", claimId: null, resolveClaim: false },
+  );
+  assert.deepEqual(
+    parseAnnotationRemoveRequest({
+      reasonCode: "commentary",
+      confirm: ANNOTATION_REMOVE_CONFIRMATION,
+      claimId: hideClaimId,
+      resolveClaim: true,
+    }, hideAnnotationId),
+    {
+      annotationId: hideAnnotationId,
+      reasonCode: "commentary",
+      claimId: hideClaimId,
+      resolveClaim: true,
+    },
+  );
+  for (const invalid of [
+    [{ reasonCode: "commentary" }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: "yes" }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_REMOVE_CONFIRMATION, operatorId }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_REMOVE_CONFIRMATION, actorId: operatorId }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_REMOVE_CONFIRMATION, email: "matt@example.test" }, hideAnnotationId],
+    [{ reasonCode: "vote_score", confirm: ANNOTATION_REMOVE_CONFIRMATION }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_HIDE_CONFIRMATION }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_REMOVE_CONFIRMATION, resolveClaim: true }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_REMOVE_CONFIRMATION, claimId: null, resolveClaim: true }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_REMOVE_CONFIRMATION, resolveClaim: false }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_REMOVE_CONFIRMATION, annotationId: hideAnnotationId }, hideAnnotationId],
+  ]) {
+    assert.throws(
+      () => parseAnnotationRemoveRequest(invalid[0], invalid[1]),
+      (error) => error instanceof ModerationApiError && error.code === "INVALID_REQUEST",
+    );
+  }
+  assert.deepEqual(
     ANNOTATION_MODERATION_REASON_CODES,
     ["copyright", "excerpt_claim", "operator_request", "commentary"],
   );
@@ -421,4 +463,62 @@ test("hide and unhide results stay on the allow-listed field set", () => {
     }]),
     (error) => error instanceof ModerationApiError && error.code === "ANNOTATION_MODERATION_UNAVAILABLE",
   );
+});
+
+test("remove requires confirmation, optional resolveClaim, and never leaks claimant PII", () => {
+  const removed = parseAnnotationRemoveResult([{
+    annotation_id: hideAnnotationId,
+    media_id: mediaId,
+    claim_id: hideClaimId,
+    reason_code: "commentary",
+    result_code: "removed",
+    audit_id: "f5500000-0000-4000-8000-000000000001",
+    annotation_status: "removed",
+    previous_status: "published",
+    processing_status: "removed",
+    transcript_content_cleared: true,
+    claim_status: "resolved",
+    claim_resolved: true,
+    transcript_text: "secret excerpt",
+    claimant_email: "f5-claimant@example.test",
+    claimant_name: "F5 Claimant",
+    details: "Private details",
+  }]);
+  const removeLog = boundedAnnotationModerationLog(removed);
+  assert.equal(removed.resultCode, "removed");
+  assert.equal(removed.claimResolved, true);
+  assert.equal(removed.claimStatus, "resolved");
+  assert.equal(JSON.stringify(removeLog).includes("secret excerpt"), false);
+  assert.equal(JSON.stringify(removeLog).includes("@"), false);
+  assert.equal(JSON.stringify(removeLog).includes("Private details"), false);
+  assert.deepEqual(Object.keys(removeLog).sort(), [
+    "annotationId",
+    "annotationStatus",
+    "auditId",
+    "claimId",
+    "claimResolved",
+    "claimStatus",
+    "mediaId",
+    "previousStatus",
+    "processingStatus",
+    "reasonCode",
+    "resultCode",
+    "transcriptContentCleared",
+  ]);
+  const already = parseAnnotationRemoveResult([{
+    annotation_id: hideAnnotationId,
+    media_id: mediaId,
+    claim_id: hideClaimId,
+    reason_code: "commentary",
+    result_code: "already_removed",
+    audit_id: "f5500000-0000-4000-8000-000000000001",
+    annotation_status: "removed",
+    previous_status: "removed",
+    processing_status: "removed",
+    transcript_content_cleared: true,
+    claim_status: "submitted",
+    claim_resolved: false,
+  }]);
+  assert.equal(already.resultCode, "already_removed");
+  assert.equal(already.claimResolved, false);
 });
