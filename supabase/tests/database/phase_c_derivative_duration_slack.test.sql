@@ -447,14 +447,14 @@ select lives_ok(
     select private.stage_annotation_media_derivative(
       media_id,
       lease_token,
-      pg_catalog.repeat('g', 64),
+      pg_catalog.repeat('1', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
       17856,
       null,
       null,
       1000,
-      pg_catalog.repeat('h', 64)
+      pg_catalog.repeat('2', 64)
     )
     from slack_audio_18s
   $$,
@@ -466,14 +466,14 @@ select lives_ok(
     select private.stage_annotation_media_derivative(
       media_id,
       lease_token,
-      pg_catalog.repeat('g', 64),
+      pg_catalog.repeat('1', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
       17906,
       null,
       null,
       1000,
-      pg_catalog.repeat('h', 64)
+      pg_catalog.repeat('2', 64)
     )
     from slack_audio_18s
   $$,
@@ -485,14 +485,14 @@ select throws_ok(
     select private.stage_annotation_media_derivative(
       media_id,
       lease_token,
-      pg_catalog.repeat('g', 64),
+      pg_catalog.repeat('1', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
       17907,
       null,
       null,
       1000,
-      pg_catalog.repeat('h', 64)
+      pg_catalog.repeat('2', 64)
     )
     from slack_audio_18s
   $$,
@@ -506,14 +506,14 @@ select throws_ok(
     select private.stage_annotation_media_derivative(
       media_id,
       lease_token,
-      pg_catalog.repeat('g', 64),
+      pg_catalog.repeat('1', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
       19806,
       null,
       null,
       1000,
-      pg_catalog.repeat('h', 64)
+      pg_catalog.repeat('2', 64)
     )
     from slack_audio_18s
   $$,
@@ -527,14 +527,14 @@ select lives_ok(
     select private.stage_annotation_media_derivative(
       media_id,
       lease_token,
-      pg_catalog.repeat('i', 64),
+      pg_catalog.repeat('3', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
       89970,
       null,
       null,
       1000,
-      pg_catalog.repeat('j', 64)
+      pg_catalog.repeat('4', 64)
     )
     from slack_audio_near_90s
   $$,
@@ -546,14 +546,14 @@ select lives_ok(
     select private.stage_annotation_media_derivative(
       media_id,
       lease_token,
-      pg_catalog.repeat('i', 64),
+      pg_catalog.repeat('3', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
       90000,
       null,
       null,
       1000,
-      pg_catalog.repeat('j', 64)
+      pg_catalog.repeat('4', 64)
     )
     from slack_audio_near_90s
   $$,
@@ -565,14 +565,14 @@ select throws_ok(
     select private.stage_annotation_media_derivative(
       media_id,
       lease_token,
-      pg_catalog.repeat('i', 64),
+      pg_catalog.repeat('3', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
       90001,
       null,
       null,
       1000,
-      pg_catalog.repeat('j', 64)
+      pg_catalog.repeat('4', 64)
     )
     from slack_audio_near_90s
   $$,
