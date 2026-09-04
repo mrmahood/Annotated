@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { formatMediaTime } from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
@@ -8,6 +11,12 @@ import { getPublicAnnotationPath } from "@/lib/public-routes";
 const PASSAGE_EXCERPT_LENGTH = 360;
 const COMMENTARY_EXCERPT_LENGTH = 280;
 
+function sourceChipLabel(kind: PublicAnnotationCardData["kind"]): string {
+  if (kind === "youtube") return "Video";
+  if (kind === "audio") return "Audio";
+  return "Text";
+}
+
 export function AnnotationCard({
   annotation,
   showCreator = true,
@@ -15,21 +24,11 @@ export function AnnotationCard({
   annotation: PublicAnnotationCardData;
   showCreator?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const sourceUrl = annotation.kind === "youtube"
     ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
     : annotation.source.canonicalUrl;
-  const sourceLabel = annotation.kind === "youtube"
-    ? "YouTube video"
-    : annotation.kind === "audio"
-      ? "Podcast / web audio"
-      : "Source";
-  const sourceAttribution = annotation.kind === "audio"
-    ? [annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(" · ")
-    : [
-        annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`,
-        annotation.source.publisher,
-      ].filter(Boolean).join(" · ");
   const headingId = `annotation-${annotation.id}`;
   const publicationDate = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -38,6 +37,14 @@ export function AnnotationCard({
     timeZone: "UTC",
   }).format(new Date(annotation.publishedAt));
   const detailPath = getPublicAnnotationPath(annotation.route, annotation.id);
+  const hasPassage = annotation.kind === "article";
+  const hasClip = annotation.kind === "youtube" || annotation.kind === "audio";
+  const canExpand = hasPassage || hasClip;
+  const passageText = hasPassage
+    ? expanded
+      ? annotation.selectedText
+      : truncateExcerpt(annotation.selectedText, PASSAGE_EXCERPT_LENGTH)
+    : null;
 
   return (
     <article className="annotation-card" aria-labelledby={headingId}>
@@ -64,34 +71,54 @@ export function AnnotationCard({
           </Link>
         )}
         <p className="card-date">
-          Published <time dateTime={annotation.publishedAt}>{publicationDate}</time>
+          <time dateTime={annotation.publishedAt}>{publicationDate}</time>
         </p>
       </header>
 
-      <div className="card-source">
-        <p className="section-label">{sourceLabel}</p>
-        <h2 id={headingId}>
-          <Link href={detailPath}>{sourceTitle}</Link>
-        </h2>
-        {sourceAttribution && <p className="card-byline">{sourceAttribution}</p>}
-        <p className="card-hostname">{annotation.source.hostname}</p>
+      <div className="card-body">
+        <p className="card-commentary-lead" id={headingId}>
+          {truncateExcerpt(annotation.commentaryText, COMMENTARY_EXCERPT_LENGTH)}
+        </p>
+
+        <div className="card-nested-source">
+          {canExpand ? (
+            <button
+              className="card-nested-source-body"
+              type="button"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((current) => !current)}
+            >
+              <span className="source-chip-row">
+                <span className="source-chip">{sourceChipLabel(annotation.kind)}</span>
+                <span className="card-nested-title">{sourceTitle}</span>
+              </span>
+              <span className="card-hostname">{annotation.source.hostname}</span>
+              {hasPassage && passageText && (
+                <span className={`card-passage-excerpt${expanded ? " expanded" : ""}`}>
+                  {passageText}
+                </span>
+              )}
+              {hasClip && (
+                <span className={`card-clip-range${expanded ? " expanded" : ""}`}>
+                  {formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}
+                  {expanded && <> · {formatMediaTime(annotation.endMs - annotation.startMs)}</>}
+                </span>
+              )}
+            </button>
+          ) : (
+            <div className="card-nested-source-body card-nested-source-static">
+              <span className="source-chip-row">
+                <span className="source-chip">{sourceChipLabel(annotation.kind)}</span>
+                <span className="card-nested-title">{sourceTitle}</span>
+              </span>
+              <span className="card-hostname">{annotation.source.hostname}</span>
+            </div>
+          )}
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
+            Open source <span aria-hidden="true">↗</span>
+          </a>
+        </div>
       </div>
-
-      {annotation.kind === "article" ? (
-        <section className="card-passage" aria-label="Captured passage excerpt">
-          <blockquote>{truncateExcerpt(annotation.selectedText, PASSAGE_EXCERPT_LENGTH)}</blockquote>
-        </section>
-      ) : (
-        <section className="card-clip-range" aria-label={`${sourceLabel} clip time range`}>
-          <p className="section-label">Clip</p>
-          <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
-        </section>
-      )}
-
-      <section className="card-commentary" aria-label="Commentary excerpt">
-        <p className="section-label">Commentary</p>
-        <p>{truncateExcerpt(annotation.commentaryText, COMMENTARY_EXCERPT_LENGTH)}</p>
-      </section>
 
       <footer className="card-actions">
         <div className="card-internal-actions">
@@ -102,9 +129,6 @@ export function AnnotationCard({
             {annotation.commentCount.toLocaleString()} {annotation.commentCount === 1 ? "comment" : "comments"}
           </Link>
         </div>
-        <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
-          {annotation.kind === "youtube" ? "Open clip on YouTube" : annotation.kind === "audio" ? "Open episode" : "View original source"} <span aria-hidden="true">↗</span>
-        </a>
       </footer>
     </article>
   );

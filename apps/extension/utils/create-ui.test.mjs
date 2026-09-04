@@ -5,7 +5,7 @@ import test from 'node:test';
 const APP_URL = new URL('../entrypoints/sidepanel/App.tsx', import.meta.url);
 const STYLE_URL = new URL('../entrypoints/sidepanel/style.css', import.meta.url);
 
-test('Create is the visible compatibility label and the switcher uses native fixed-order radios', async () => {
+test('Create is the visible compatibility label and the switcher uses a segmented radiogroup', async () => {
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /currentScreen\.view === 'context' \? 'Create'/);
   assert.match(source, /view === 'context' \? 'Create'/);
@@ -13,19 +13,28 @@ test('Create is the visible compatibility label and the switcher uses native fix
   assert.match(source, /<h1>Create<\/h1>/);
   assert.match(source, /<fieldset className="create-mode-switcher">/);
   assert.match(source, /<legend>Create mode<\/legend>/);
+  assert.match(source, /className="create-mode-segmented"/);
+  assert.match(source, /role="radiogroup"/);
   assert.match(source, /CREATE_MODES\.map\(\(mode\) =>/);
   assert.match(source, /type="radio" name="create-mode"/);
   assert.match(source, /disabled=\{unavailable\}/);
+  assert.match(source, /CreateModeIcon/);
+  assert.match(source, /className="create-mode-thumb"/);
   assert.match(source, /role="status" aria-live="polite"/);
+  assert.doesNotMatch(source, /create-mode-option/);
+  assert.doesNotMatch(source, /create-mode-state/);
 });
 
-test('inactive and detached drafts are indicated without exposing another source details', async () => {
+test('unavailable, recommended, checking, and draft copy live in one status line', async () => {
   const source = await readFile(APP_URL, 'utf8');
-  assert.match(source, /!selected && savedDraftModes\[mode\]/);
-  assert.match(source, /'Draft saved'/);
+  assert.match(source, /savedDraftModes\[mode\]/);
+  assert.match(source, /Draft saved:/);
+  assert.match(source, /getModeCapabilitySummary\(modeSelection\)/);
   assert.match(source, /detachedDraftModes\[selectedCreateMode\]/);
   assert.match(source, /This draft belongs to another connected source\./);
   assert.match(source, /Discard \{CREATE_MODE_LABELS\[selectedCreateMode\]\} draft and start here/);
+  assert.doesNotMatch(source, /'Available'/);
+  assert.doesNotMatch(source, /'Unavailable'/);
   assert.doesNotMatch(source, /if \(detection\.status === 'not-audio-page'\) void clearAudioDraft/);
 });
 
@@ -33,10 +42,13 @@ test('the switcher and editor actions have explicit 390 and 340 pixel contracts'
   const style = await readFile(STYLE_URL, 'utf8');
   assert.match(style, /@media \(max-width: 390px\)/);
   assert.match(style, /@media \(max-width: 340px\)/);
-  assert.match(style, /\.create-mode-option \{ min-height: 48px;/);
-  assert.match(style, /\.create-mode-options \{ grid-template-columns: 1fr; \}/);
+  assert.match(style, /\.create-mode-segment \{ min-height: 32px;/);
+  assert.match(style, /\.create-mode-segmented \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
   assert.match(style, /\.clip-control-row \{ grid-template-columns: 1fr; \}/);
   assert.match(style, /\.create-actions \{ grid-template-columns: 1fr; \}/);
+  assert.match(style, /--accent:/);
+  assert.match(style, /--motion-duration: 180ms/);
+  assert.match(style, /--motion-easing:/);
 });
 
 test('player selection is a bounded native radio group and gates every clip action', async () => {
