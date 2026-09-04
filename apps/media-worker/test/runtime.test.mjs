@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import test from 'node:test';
 import { MediaCoreError } from '../src/domain/media-core-error.mjs';
-import { preparePsqlConnection } from '../src/infrastructure/psql-database.mjs';
+import { boundedPostgresFailureReason, preparePsqlConnection, PROCESSED_DURATION_INVALID_MESSAGE } from '../src/infrastructure/psql-database.mjs';
 import { PostgresWorkerStore } from '../src/infrastructure/postgres-worker-store.mjs';
 import { createCloudRunDispatch, cloudRunDispatchContract } from '../src/runtime/cloud-run-dispatch.mjs';
 import { loadRuntimeConfig, stagingRuntimeContract } from '../src/runtime/config.mjs';
@@ -352,6 +352,41 @@ test('persisted derivative duration is a whole millisecond and still rejects lef
   );
 });
 
+test('PostgreSQL duration-gate stderr maps to duration_overshoot without leaking SQL', () => {
+  assert.equal(PROCESSED_DURATION_INVALID_MESSAGE, 'Processed duration is invalid for the requested hosted range.');
+  assert.equal(
+    boundedPostgresFailureReason(`ERROR:  ${PROCESSED_DURATION_INVALID_MESSAGE}\nCONTEXT:  PL/pgSQL function private.stage_annotation_media_derivative(...) line 64`),
+    'duration_overshoot',
+  );
+  assert.equal(boundedPostgresFailureReason('ERROR:  Media checksums must be lowercase SHA-256 values.'), null);
+  assert.equal(boundedPostgresFailureReason('ERROR:  Processed media metadata does not match the hosted media type.'), null);
+  assert.equal(boundedPostgresFailureReason(''), null);
+  assert.equal(boundedPostgresFailureReason(undefined), null);
+});
+
+test('stageDerivative maps a tagged SQL duration failure to MediaCoreError without SQL text', () => {
+  const store = new PostgresWorkerStore({
+    json() { return null; },
+    execute() {
+      const error = new Error('PostgreSQL worker command failed.');
+      error.boundedReason = 'duration_overshoot';
+      throw error;
+    },
+  });
+  assert.throws(
+    () => store.stageDerivative(mediaId, leaseToken, derivativeStageFacts(9_300)),
+    (error) => {
+      assert.ok(error instanceof MediaCoreError);
+      assert.equal(error.stage, 'probing');
+      assert.equal(error.code, 'output_invalid');
+      assert.equal(error.reason, 'duration_overshoot');
+      assert.equal(error.message, PROCESSED_DURATION_INVALID_MESSAGE);
+      assert.doesNotMatch(error.message, /select |private\.|excerpt\.m4a|secret|PGPASSWORD/iu);
+      return true;
+    },
+  );
+});
+
 test('stageDerivative persists a rounded inspect duration and rejects leftover non-integers', () => {
   const statements = [];
   const store = new PostgresWorkerStore({
@@ -368,6 +403,41 @@ test('stageDerivative persists a rounded inspect duration and rejects leftover n
     () => store.stageDerivative(mediaId, leaseToken, derivativeStageFacts(90_001)),
     (error) => error instanceof TypeError && /integer between 1000 and 90000/u.test(error.message),
   );
+});
+
+test('one-ID worker maps a tagged SQL duration failure to output_invalid instead of unexpected_failure', async () => {
+  const { logger, lines } = captureLogger();
+  let released;
+  const store = {
+    claim: async () => claim('probing'),
+    releaseAttempt: async (_id, _lease, stage, code) => {
+      released = { stage, code };
+      return { result_status: 'processing', retry_at: '2026-08-18T12:01:00Z' };
+    },
+  };
+  const storage = {
+    download: async () => {
+      const error = new Error('PostgreSQL worker command failed.');
+      error.boundedReason = 'duration_overshoot';
+      throw error;
+    },
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage,
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger,
+    temporaryRoot: os.tmpdir(),
+  });
+  assert.deepEqual(released, { stage: 'probing', code: 'output_invalid' });
+  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'probing', code: 'output_invalid' });
+  const failed = lines.map((line) => JSON.parse(line)).find((entry) => entry.event === 'worker_failed');
+  assert.equal(failed.reason, 'duration_overshoot');
+  assert.equal(failed.code, 'output_invalid');
+  assert.doesNotMatch(lines.join('\n'), /Processed duration|SELECT|excerpt\.m4a|secret|PGPASSWORD/iu);
 });
 
 test('one-ID worker maps a TypeError from a non-integer derivative duration to unexpected_failure', async () => {
