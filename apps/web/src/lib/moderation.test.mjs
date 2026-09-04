@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CLAIM_REVIEW_CONFIRMATION,
   MEDIA_ONLY_REASON_CODES,
   MODERATION_CONFIRMATION,
   ModerationApiError,
+  assertModerationOperatorAllowlist,
+  boundedClaimReviewLog,
   boundedModerationLog,
+  claimReviewPublicJson,
   getModerationOperatorAllowlist,
   isAllowlistedModerationOperator,
   isModerationAllowlistConfigured,
   mapModerationRpcError,
+  parseClaimReviewGetInput,
+  parseClaimReviewListQuery,
+  parseClaimReviewListResult,
+  parseClaimReviewUpdateRequest,
+  parseClaimReviewUpdateResult,
   parseMediaOnlyWithdrawalRequest,
   parseMediaOnlyWithdrawalResult,
 } from "./moderation.ts";
@@ -132,4 +141,165 @@ test("RPC errors stay bounded and never surface claimant or transcript payloads"
   assert.equal(mapModerationRpcError({ code: "22023" }).code, "INVALID_REQUEST");
   assert.equal(mapModerationRpcError({ code: "55000", message: "f4-claimant@example.test" }).code, "WITHDRAWAL_UNAVAILABLE");
   assert.equal(mapModerationRpcError({ code: "55000", message: "f4-claimant@example.test" }).message, "WITHDRAWAL_UNAVAILABLE");
+  assert.equal(
+    mapModerationRpcError({ code: "55000", message: "f2-claimant-a@example.test" }, "CLAIM_REVIEW_UNAVAILABLE").code,
+    "CLAIM_REVIEW_UNAVAILABLE",
+  );
+});
+
+const reviewClaimId = "f2400000-0000-4000-8000-000000000001";
+const reviewAnnotationId = "f2100000-0000-4000-8000-000000000001";
+
+test("claim review list query is exact, paginated, and rejects client-supplied operator identity", () => {
+  assert.deepEqual(parseClaimReviewListQuery(new URLSearchParams()), {
+    status: null,
+    includeClaimantPii: false,
+    limit: 50,
+    afterCreatedAt: null,
+    afterId: null,
+  });
+  assert.deepEqual(parseClaimReviewListQuery(new URLSearchParams({
+    status: "submitted",
+    limit: "2",
+    afterCreatedAt: "2026-09-04T02:02:00.000Z",
+    afterId: reviewClaimId,
+    includeClaimantPii: "true",
+  })), {
+    status: "submitted",
+    includeClaimantPii: true,
+    limit: 2,
+    afterCreatedAt: "2026-09-04T02:02:00.000Z",
+    afterId: reviewClaimId,
+  });
+  for (const invalid of [
+    new URLSearchParams({ operatorId: operatorId }),
+    new URLSearchParams({ actorId: operatorId }),
+    new URLSearchParams({ email: "matt@example.test" }),
+    new URLSearchParams({ status: "vote_score" }),
+    new URLSearchParams({ includeClaimantPii: "false" }),
+    new URLSearchParams({ afterId: reviewClaimId }),
+    new URLSearchParams({ afterCreatedAt: "2026-09-04T02:02:00.000Z" }),
+    new URLSearchParams({ limit: "0" }),
+    new URLSearchParams({ limit: "101" }),
+  ]) {
+    assert.throws(
+      () => parseClaimReviewListQuery(invalid),
+      (error) => error instanceof ModerationApiError && error.code === "INVALID_REQUEST",
+    );
+  }
+});
+
+test("claim get and update require confirmation and never accept operator identity from the client", () => {
+  assert.deepEqual(
+    parseClaimReviewGetInput(reviewClaimId, new URLSearchParams()),
+    { claimId: reviewClaimId, includeClaimantPii: false },
+  );
+  assert.deepEqual(
+    parseClaimReviewGetInput(reviewClaimId, new URLSearchParams({ includeClaimantPii: "true" })),
+    { claimId: reviewClaimId, includeClaimantPii: true },
+  );
+  assert.throws(
+    () => parseClaimReviewGetInput(reviewClaimId, new URLSearchParams({ operatorId })),
+    (error) => error instanceof ModerationApiError && error.code === "INVALID_REQUEST",
+  );
+  assert.deepEqual(
+    parseClaimReviewUpdateRequest({
+      toStatus: "reviewing",
+      confirm: CLAIM_REVIEW_CONFIRMATION,
+    }),
+    { toStatus: "reviewing", operatorNotes: null, clearOperatorNotes: false, includeClaimantPii: false },
+  );
+  assert.deepEqual(
+    parseClaimReviewUpdateRequest({
+      toStatus: "rejected",
+      confirm: CLAIM_REVIEW_CONFIRMATION,
+      operatorNotes: "  spam  ",
+    }),
+    { toStatus: "rejected", operatorNotes: "spam", clearOperatorNotes: false, includeClaimantPii: false },
+  );
+  for (const invalid of [
+    { toStatus: "reviewing" },
+    { toStatus: "reviewing", confirm: "yes" },
+    { toStatus: "submitted", confirm: CLAIM_REVIEW_CONFIRMATION },
+    { toStatus: "reviewing", confirm: CLAIM_REVIEW_CONFIRMATION, operatorId },
+    { toStatus: "reviewing", confirm: CLAIM_REVIEW_CONFIRMATION, actorId: operatorId },
+    { toStatus: "reviewing", confirm: CLAIM_REVIEW_CONFIRMATION, email: "matt@example.test" },
+    {
+      toStatus: "reviewing",
+      confirm: CLAIM_REVIEW_CONFIRMATION,
+      operatorNotes: "note",
+      clearOperatorNotes: true,
+    },
+  ]) {
+    assert.throws(
+      () => parseClaimReviewUpdateRequest(invalid),
+      (error) => error instanceof ModerationApiError && error.code === "INVALID_REQUEST",
+    );
+  }
+});
+
+test("claim review responses omit claimant PII unless explicitly requested", () => {
+  const listed = parseClaimReviewListResult([{
+    claim_id: reviewClaimId,
+    annotation_id: reviewAnnotationId,
+    status: "submitted",
+    relationship_to_content: "rights holder",
+    reason: "Please review excerpt A.",
+    operator_notes: null,
+    created_at: "2026-09-04T02:01:00.000Z",
+    updated_at: "2026-09-04T02:01:00.000Z",
+    claimant_name: null,
+    claimant_email: null,
+    details: null,
+    claimant_email_extra: "f2-claimant-a@example.test",
+  }]);
+  const publicJson = claimReviewPublicJson(listed[0], false);
+  assert.equal(Object.hasOwn(publicJson, "claimantEmail"), false);
+  assert.equal(Object.hasOwn(publicJson, "claimantName"), false);
+  assert.equal(Object.hasOwn(publicJson, "details"), false);
+  assert.equal(JSON.stringify(publicJson).includes("@"), false);
+  const withPii = claimReviewPublicJson({
+    ...listed[0],
+    claimantName: "F2 Claimant A",
+    claimantEmail: "f2-claimant-a@example.test",
+    details: "Private details",
+  }, true);
+  assert.equal(withPii.claimantEmail, "f2-claimant-a@example.test");
+  const updated = parseClaimReviewUpdateResult([{
+    claim_id: reviewClaimId,
+    annotation_id: reviewAnnotationId,
+    status: "reviewing",
+    previous_status: "submitted",
+    relationship_to_content: "rights holder",
+    reason: "Please review excerpt A.",
+    operator_notes: "Moving A into review.",
+    created_at: "2026-09-04T02:01:00.000Z",
+    updated_at: "2026-09-04T02:05:00.000Z",
+    claimant_name: null,
+    claimant_email: "f2-claimant-a@example.test",
+    details: null,
+    audit_id: "f2500000-0000-4000-8000-000000000001",
+    result_code: "reviewing",
+  }]);
+  const log = boundedClaimReviewLog(updated);
+  assert.equal(JSON.stringify(log).includes("f2-claimant-a@example.test"), false);
+  assert.equal(JSON.stringify(log).includes("Private"), false);
+  assert.equal(JSON.stringify(claimReviewPublicJson(updated, false)).includes("@"), false);
+});
+
+test("claim review allowlist gating matches F4 fail-closed behavior", () => {
+  assert.throws(
+    () => assertModerationOperatorAllowlist({ id: operatorId, email: "matt@example.test" }, {}),
+    (error) => error instanceof ModerationApiError && error.code === "SERVER_MISCONFIGURED" && error.status === 500,
+  );
+  assert.throws(
+    () => assertModerationOperatorAllowlist({ id: annotationId, email: "other@example.test" }, {
+      ANNOTATED_MODERATION_OPERATOR_IDS: operatorId,
+    }),
+    (error) => error instanceof ModerationApiError && error.code === "FORBIDDEN" && error.status === 403,
+  );
+  assert.doesNotThrow(() => assertModerationOperatorAllowlist(
+    { id: operatorId, email: "matt@example.test" },
+    { ANNOTATED_MODERATION_OPERATOR_IDS: operatorId },
+  ));
 });
