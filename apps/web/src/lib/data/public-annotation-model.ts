@@ -11,6 +11,10 @@ import {
 
 const VIDEO_MAX_BYTES = 16 * 1024 * 1024;
 const AUDIO_MAX_BYTES = 8 * 1024 * 1024;
+const MIN_DURATION_MS = 1_000;
+const MAX_DURATION_MS = 90_000;
+// Matches worker/SQL DERIVATIVE_DURATION_TOLERANCE_MS (100 ms).
+const DURATION_SLACK_MS = 100;
 const TRANSCRIPT_MAX_LENGTH = 20_000;
 const TRANSCRIPT_SEGMENT_MAX_LENGTH = 2_000;
 const TRANSCRIPT_SEGMENT_LIMIT = 500;
@@ -188,7 +192,11 @@ function parseReadyMedia(
     !isUuid(String(value.media_id ?? "")) ||
     value.media_type !== expectedType ||
     value.availability !== "ready" ||
-    !safeIntegerIn(value.duration_ms, Math.max(1_000, targetDurationMs - 20), targetDurationMs)
+    !safeIntegerIn(
+      value.duration_ms,
+      Math.max(MIN_DURATION_MS, targetDurationMs - DURATION_SLACK_MS),
+      Math.min(MAX_DURATION_MS, targetDurationMs + DURATION_SLACK_MS),
+    )
   ) return null;
 
   if (expectedType === "video") {

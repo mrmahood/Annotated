@@ -7,8 +7,8 @@ const TRANSCRIPT_SEGMENT_MAX_LENGTH = 2_000;
 const TRANSCRIPT_SEGMENT_LIMIT = 500;
 const MIN_DURATION_MS = 1_000;
 const MAX_DURATION_MS = 90_000;
-// One AAC-LC frame at 48 kHz ≈ 21.333 ms. Matches worker/SQL slack (#46/#48).
-export const DURATION_SLACK_MS = 22;
+// Matches worker/SQL DERIVATIVE_DURATION_TOLERANCE_MS (100 ms, ~4.7 AAC-LC frames).
+export const DURATION_SLACK_MS = 100;
 
 type UnknownRecord = Record<string, unknown>;
 
