@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  DURATION_SLACK_MS,
   getMediaPlaybackPath,
   isHostedExcerptReady,
   parsePublicHostedExcerpt,
@@ -118,6 +119,65 @@ test('fails closed for legacy, processing, mismatched, and transcript-less ready
     parsePublicHostedExcerpt(READY_VIDEO, { ...TRANSCRIPT, annotation_id: MEDIA }, ANNOTATION, 'video', TARGET_MS),
   ];
   for (const value of closed) assert.equal(value, null);
+});
+
+test('admits 22 ms of symmetric AAC-frame slack around the selected range', () => {
+  assert.equal(DURATION_SLACK_MS, 22);
+  const target = 9_295;
+  const transcript = {
+    annotation_id: ANNOTATION,
+    transcript_text: 'Hello from the excerpt.',
+    language: 'en',
+    segments: null,
+  };
+
+  for (const durationMs of [9_273, 9_295, 9_300, 9_317]) {
+    const hosted = parsePublicHostedExcerpt(
+      { ...READY_VIDEO, duration_ms: durationMs },
+      transcript,
+      ANNOTATION,
+      'video',
+      target,
+    );
+    assert.equal(hosted?.status, 'ready', `${durationMs} must be accepted for a ${target} ms range`);
+    assert.equal(hosted && hosted.status === 'ready' ? hosted.media.durationMs : null, durationMs);
+  }
+
+  for (const durationMs of [9_272, 9_318, 9_295.5, 90_001]) {
+    assert.equal(
+      parsePublicHostedExcerpt(
+        { ...READY_VIDEO, duration_ms: durationMs },
+        transcript,
+        ANNOTATION,
+        'video',
+        target,
+      ),
+      null,
+      `${durationMs} must fail closed for a ${target} ms range`,
+    );
+  }
+
+  assert.equal(
+    parsePublicHostedExcerpt(
+      { ...READY_VIDEO, duration_ms: 90_000 },
+      transcript,
+      ANNOTATION,
+      'video',
+      90_000,
+    )?.status,
+    'ready',
+  );
+  assert.equal(
+    parsePublicHostedExcerpt(
+      { ...READY_VIDEO, duration_ms: 90_022 },
+      transcript,
+      ANNOTATION,
+      'video',
+      90_000,
+    ),
+    null,
+    '90s plus one AAC frame must stay clamped to 90000',
+  );
 });
 
 test('rejects transcript segments that leave the excerpt or overlap backward', () => {

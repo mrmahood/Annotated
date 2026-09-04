@@ -5,7 +5,10 @@ const AUDIO_MAX_BYTES = 8 * 1024 * 1024;
 const TRANSCRIPT_MAX_LENGTH = 20_000;
 const TRANSCRIPT_SEGMENT_MAX_LENGTH = 2_000;
 const TRANSCRIPT_SEGMENT_LIMIT = 500;
-const DURATION_SLACK_MS = 20;
+const MIN_DURATION_MS = 1_000;
+const MAX_DURATION_MS = 90_000;
+// One AAC-LC frame at 48 kHz ≈ 21.333 ms. Matches worker/SQL slack (#46/#48).
+export const DURATION_SLACK_MS = 22;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -105,7 +108,11 @@ function parseReadyMedia(
     !isUuid(String(value.media_id ?? '')) ||
     value.media_type !== expectedType ||
     value.availability !== 'ready' ||
-    !safeIntegerIn(value.duration_ms, Math.max(1_000, targetDurationMs - DURATION_SLACK_MS), targetDurationMs)
+    !safeIntegerIn(
+      value.duration_ms,
+      Math.max(MIN_DURATION_MS, targetDurationMs - DURATION_SLACK_MS),
+      Math.min(MAX_DURATION_MS, targetDurationMs + DURATION_SLACK_MS),
+    )
   ) return null;
 
   if (expectedType === 'video') {
