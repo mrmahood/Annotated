@@ -54,6 +54,9 @@ test("public cards select only detail-independent attribution and excerpt fields
 });
 
 test("public feed query plan explicitly requires published status", () => {
+  assert.equal(PUBLIC_ANNOTATION_STATUS, "published");
+  assert.notEqual(PUBLIC_ANNOTATION_STATUS, "hidden");
+  assert.notEqual(PUBLIC_ANNOTATION_STATUS, "removed");
   const plan = buildPublicFeedQueryPlan();
   assertPublishedOnly(plan);
   assert.deepEqual(plan.orders, [

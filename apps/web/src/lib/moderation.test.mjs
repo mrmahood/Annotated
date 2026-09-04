@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ANNOTATION_HIDE_CONFIRMATION,
+  ANNOTATION_MODERATION_REASON_CODES,
+  ANNOTATION_UNHIDE_CONFIRMATION,
   CLAIM_REVIEW_CONFIRMATION,
   MEDIA_ONLY_REASON_CODES,
   MODERATION_CONFIRMATION,
   ModerationApiError,
   assertModerationOperatorAllowlist,
+  boundedAnnotationModerationLog,
   boundedClaimReviewLog,
   boundedModerationLog,
   claimReviewPublicJson,
@@ -13,6 +17,10 @@ import {
   isAllowlistedModerationOperator,
   isModerationAllowlistConfigured,
   mapModerationRpcError,
+  parseAnnotationHideRequest,
+  parseAnnotationHideResult,
+  parseAnnotationUnhideRequest,
+  parseAnnotationUnhideResult,
   parseClaimReviewGetInput,
   parseClaimReviewListQuery,
   parseClaimReviewListResult,
@@ -144,6 +152,10 @@ test("RPC errors stay bounded and never surface claimant or transcript payloads"
   assert.equal(
     mapModerationRpcError({ code: "55000", message: "f2-claimant-a@example.test" }, "CLAIM_REVIEW_UNAVAILABLE").code,
     "CLAIM_REVIEW_UNAVAILABLE",
+  );
+  assert.equal(
+    mapModerationRpcError({ code: "55000", message: "f3-claimant@example.test" }, "ANNOTATION_MODERATION_UNAVAILABLE").code,
+    "ANNOTATION_MODERATION_UNAVAILABLE",
   );
 });
 
@@ -302,4 +314,111 @@ test("claim review allowlist gating matches F4 fail-closed behavior", () => {
     { id: operatorId, email: "matt@example.test" },
     { ANNOTATED_MODERATION_OPERATOR_IDS: operatorId },
   ));
+});
+
+const hideAnnotationId = "f3100000-0000-4000-8000-000000000001";
+const hideClaimId = "f3400000-0000-4000-8000-000000000001";
+
+test("hide and unhide require confirmation and reject client-supplied operator identity", () => {
+  assert.deepEqual(
+    parseAnnotationHideRequest({
+      reasonCode: "commentary",
+      confirm: ANNOTATION_HIDE_CONFIRMATION,
+    }, hideAnnotationId),
+    { annotationId: hideAnnotationId, reasonCode: "commentary", claimId: null },
+  );
+  assert.deepEqual(
+    parseAnnotationHideRequest({
+      reasonCode: "excerpt_claim",
+      confirm: ANNOTATION_HIDE_CONFIRMATION,
+      claimId: hideClaimId,
+    }, hideAnnotationId),
+    { annotationId: hideAnnotationId, reasonCode: "excerpt_claim", claimId: hideClaimId },
+  );
+  assert.deepEqual(
+    parseAnnotationUnhideRequest({
+      reasonCode: "operator_request",
+      confirm: ANNOTATION_UNHIDE_CONFIRMATION,
+    }, hideAnnotationId),
+    { annotationId: hideAnnotationId, reasonCode: "operator_request", claimId: null },
+  );
+  for (const invalid of [
+    [{ reasonCode: "commentary" }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: "yes" }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_HIDE_CONFIRMATION, operatorId }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_HIDE_CONFIRMATION, actorId: operatorId }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_HIDE_CONFIRMATION, email: "matt@example.test" }, hideAnnotationId],
+    [{ reasonCode: "vote_score", confirm: ANNOTATION_HIDE_CONFIRMATION }, hideAnnotationId],
+    [{ reasonCode: "operator_request", confirm: ANNOTATION_UNHIDE_CONFIRMATION }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_HIDE_CONFIRMATION, annotationId: hideAnnotationId }, hideAnnotationId],
+    [{ reasonCode: "commentary", confirm: ANNOTATION_HIDE_CONFIRMATION }, "not-a-uuid"],
+  ]) {
+    assert.throws(
+      () => parseAnnotationHideRequest(invalid[0], invalid[1]),
+      (error) => error instanceof ModerationApiError && error.code === "INVALID_REQUEST",
+    );
+  }
+  assert.throws(
+    () => parseAnnotationUnhideRequest({
+      reasonCode: "operator_request",
+      confirm: ANNOTATION_UNHIDE_CONFIRMATION,
+      operatorId,
+    }, hideAnnotationId),
+    (error) => error instanceof ModerationApiError && error.code === "INVALID_REQUEST",
+  );
+  assert.deepEqual(
+    ANNOTATION_MODERATION_REASON_CODES,
+    ["copyright", "excerpt_claim", "operator_request", "commentary"],
+  );
+});
+
+test("hide and unhide results stay on the allow-listed field set", () => {
+  const hidden = parseAnnotationHideResult([{
+    annotation_id: hideAnnotationId,
+    media_id: mediaId,
+    claim_id: hideClaimId,
+    reason_code: "commentary",
+    result_code: "hidden",
+    audit_id: "f3500000-0000-4000-8000-000000000001",
+    annotation_status: "hidden",
+    previous_status: "published",
+    processing_status: "ready",
+    transcript_text: "secret excerpt",
+    claimant_email: "f3-claimant@example.test",
+  }]);
+  const hideLog = boundedAnnotationModerationLog(hidden);
+  assert.equal(hideLog.resultCode, "hidden");
+  assert.equal(JSON.stringify(hideLog).includes("secret excerpt"), false);
+  assert.equal(JSON.stringify(hideLog).includes("@"), false);
+  const unhidden = parseAnnotationUnhideResult([{
+    annotation_id: hideAnnotationId,
+    media_id: mediaId,
+    claim_id: null,
+    reason_code: "operator_request",
+    result_code: "unhidden",
+    audit_id: "f3500000-0000-4000-8000-000000000002",
+    annotation_status: "published",
+    previous_status: "hidden",
+    processing_status: "removed",
+    transcript_content_restored: false,
+    transcript_text: "secret excerpt",
+    claimant_email: "f3-claimant@example.test",
+  }]);
+  assert.equal(unhidden.transcriptContentRestored, false);
+  assert.equal(JSON.stringify(boundedAnnotationModerationLog(unhidden)).includes("secret excerpt"), false);
+  assert.throws(
+    () => parseAnnotationUnhideResult([{
+      annotation_id: hideAnnotationId,
+      media_id: mediaId,
+      claim_id: null,
+      reason_code: "operator_request",
+      result_code: "unhidden",
+      audit_id: "f3500000-0000-4000-8000-000000000002",
+      annotation_status: "published",
+      previous_status: "hidden",
+      processing_status: "removed",
+      transcript_content_restored: true,
+    }]),
+    (error) => error instanceof ModerationApiError && error.code === "ANNOTATION_MODERATION_UNAVAILABLE",
+  );
 });

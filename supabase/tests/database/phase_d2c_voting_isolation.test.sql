@@ -349,6 +349,7 @@ select ok( -- 16
         'publish_youtube_annotation', 'publish_audio_clip_annotation',
         'finalize_annotation_media_ready', 'claim_annotation_media_cleanup_v2',
         'moderate_media_only_withdrawal',
+        'moderate_annotation_hide', 'moderate_annotation_unhide',
         'get_public_annotation_comment_counts', 'get_profile_social_counts'
       )
       and pg_catalog.pg_get_functiondef(pg_proc.oid)

@@ -464,7 +464,7 @@ increment.
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
 
-## Phase F — in progress (F2)
+## Phase F — in progress (F3)
 
 Claims, takedown, and removal. The bounded plan is
 `docs/architecture/phase-f-claims-removal-plan.md`. F0 was merged through PR #43.
@@ -475,8 +475,13 @@ on `main` (PR #45): append-only `private.moderation_audit`, a service-only
 retention, fail-closed signing, and a Bearer + allowlist trusted route at
 `/api/moderation/media-only-withdrawal`. F2 is Matt-only claim review: service-only
 list/get/update RPCs, locked routes at `/api/moderation/claims`, confirmation
-phrase `CLAIM_REVIEW_UPDATE`, default PII suppression, and no admin UI. F2 does
-not hide, unhide, fully remove, or withdraw media.
+phrase `CLAIM_REVIEW_UPDATE`, default PII suppression, and no admin UI. F3 is
+Matt-only hide/unhide: service-only `moderate_annotation_hide` /
+`moderate_annotation_unhide`, additive `private.moderation_audit` actions, and
+locked routes at `/api/moderation/annotations/{id}/hide` and `.../unhide`
+(confirmation phrases `ANNOTATION_HIDE` / `ANNOTATION_UNHIDE`). Public
+projections continue to require `published`. F3 does not implement F5
+full-record remove and does not reimplement F4 media-only withdrawal.
 
 Local automated evidence: pending this PR's CI and Local `supabase test db` /
 web unit gates. Owner Chrome/Staging acceptance is not claimed. Production was

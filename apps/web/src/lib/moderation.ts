@@ -2,6 +2,8 @@ import { isUuid } from "./public-content.ts";
 
 export const MODERATION_CONFIRMATION = "MEDIA_ONLY_WITHDRAW";
 export const CLAIM_REVIEW_CONFIRMATION = "CLAIM_REVIEW_UPDATE";
+export const ANNOTATION_HIDE_CONFIRMATION = "ANNOTATION_HIDE";
+export const ANNOTATION_UNHIDE_CONFIRMATION = "ANNOTATION_UNHIDE";
 export const MODERATION_REQUEST_BYTE_LIMIT = 2048;
 export const MODERATION_CACHE_CONTROL = "private, no-store";
 export const CLAIM_REVIEW_LIST_LIMIT_DEFAULT = 50;
@@ -25,6 +27,13 @@ export const MEDIA_ONLY_REASON_CODES = [
   "copyright",
   "excerpt_claim",
   "operator_request",
+] as const;
+
+export const ANNOTATION_MODERATION_REASON_CODES = [
+  "copyright",
+  "excerpt_claim",
+  "operator_request",
+  "commentary",
 ] as const;
 
 export type MediaOnlyReasonCode = (typeof MEDIA_ONLY_REASON_CODES)[number];
@@ -92,13 +101,50 @@ export type ClaimReviewUpdateResult = ClaimReviewRecord & {
   resultCode: ClaimReviewToStatus;
 };
 
+export type AnnotationModerationReasonCode =
+  (typeof ANNOTATION_MODERATION_REASON_CODES)[number];
+
+export type AnnotationHideInput = {
+  annotationId: string;
+  reasonCode: AnnotationModerationReasonCode;
+  claimId: string | null;
+};
+
+export type AnnotationUnhideInput = AnnotationHideInput;
+
+export type AnnotationHideResult = {
+  annotationId: string;
+  mediaId: string | null;
+  claimId: string | null;
+  reasonCode: AnnotationModerationReasonCode;
+  resultCode: "hidden" | "already_hidden";
+  auditId: string | null;
+  annotationStatus: string;
+  previousStatus: string;
+  processingStatus: string | null;
+};
+
+export type AnnotationUnhideResult = {
+  annotationId: string;
+  mediaId: string | null;
+  claimId: string | null;
+  reasonCode: AnnotationModerationReasonCode;
+  resultCode: "unhidden" | "already_published";
+  auditId: string | null;
+  annotationStatus: string;
+  previousStatus: string;
+  processingStatus: string | null;
+  transcriptContentRestored: false;
+};
+
 export type ModerationErrorCode =
   | "INVALID_REQUEST"
   | "AUTH_REQUIRED"
   | "FORBIDDEN"
   | "SERVER_MISCONFIGURED"
   | "WITHDRAWAL_UNAVAILABLE"
-  | "CLAIM_REVIEW_UNAVAILABLE";
+  | "CLAIM_REVIEW_UNAVAILABLE"
+  | "ANNOTATION_MODERATION_UNAVAILABLE";
 
 export class ModerationApiError extends Error {
   readonly code: ModerationErrorCode;
@@ -131,6 +177,53 @@ function isUuidValue(value: unknown): value is string {
 function isReasonCode(value: unknown): value is MediaOnlyReasonCode {
   return typeof value === "string"
     && (MEDIA_ONLY_REASON_CODES as readonly string[]).includes(value);
+}
+
+function isAnnotationModerationReasonCode(
+  value: unknown,
+): value is AnnotationModerationReasonCode {
+  return typeof value === "string"
+    && (ANNOTATION_MODERATION_REASON_CODES as readonly string[]).includes(value);
+}
+
+function isHideResultCode(
+  value: unknown,
+): value is AnnotationHideResult["resultCode"] {
+  return value === "hidden" || value === "already_hidden";
+}
+
+function isUnhideResultCode(
+  value: unknown,
+): value is AnnotationUnhideResult["resultCode"] {
+  return value === "unhidden" || value === "already_published";
+}
+
+function parseOptionalUuid(value: unknown): string | null {
+  if (value === null) return null;
+  if (isUuidValue(value)) return value;
+  throw new ModerationApiError("INVALID_REQUEST", 400);
+}
+
+function parseAnnotationModerationRequest(
+  body: unknown,
+  confirm: typeof ANNOTATION_HIDE_CONFIRMATION | typeof ANNOTATION_UNHIDE_CONFIRMATION,
+  annotationId: string,
+): AnnotationHideInput {
+  if (!isUuid(annotationId)) throw new ModerationApiError("INVALID_REQUEST", 400);
+  if (!isRecord(body)) throw new ModerationApiError("INVALID_REQUEST", 400);
+  const requiredKeys = ["reasonCode", "confirm"] as const;
+  const optionalClaim = Object.hasOwn(body, "claimId");
+  const allowedKeys = optionalClaim ? [...requiredKeys, "claimId"] : requiredKeys;
+  if (!hasExactKeys(body, allowedKeys)) throw new ModerationApiError("INVALID_REQUEST", 400);
+  if (body.confirm !== confirm) throw new ModerationApiError("INVALID_REQUEST", 400);
+  if (!isAnnotationModerationReasonCode(body.reasonCode)) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  return {
+    annotationId,
+    reasonCode: body.reasonCode,
+    claimId: optionalClaim ? parseOptionalUuid(body.claimId) : null,
+  };
 }
 
 function isResultCode(value: unknown): value is MediaOnlyWithdrawalResult["resultCode"] {
@@ -276,9 +369,123 @@ export function boundedModerationLog(
   };
 }
 
+export function parseAnnotationHideRequest(
+  body: unknown,
+  annotationId: string,
+): AnnotationHideInput {
+  return parseAnnotationModerationRequest(body, ANNOTATION_HIDE_CONFIRMATION, annotationId);
+}
+
+export function parseAnnotationUnhideRequest(
+  body: unknown,
+  annotationId: string,
+): AnnotationUnhideInput {
+  return parseAnnotationModerationRequest(body, ANNOTATION_UNHIDE_CONFIRMATION, annotationId);
+}
+
+function parseAnnotationModerationRow(row: UnknownRecord): {
+  annotationId: string;
+  mediaId: string | null;
+  claimId: string | null;
+  reasonCode: AnnotationModerationReasonCode;
+  auditId: string | null;
+  annotationStatus: string;
+  previousStatus: string;
+  processingStatus: string | null;
+} {
+  if (
+    !isUuidValue(row.annotation_id)
+    || !isAnnotationModerationReasonCode(row.reason_code)
+    || typeof row.annotation_status !== "string"
+    || typeof row.previous_status !== "string"
+  ) {
+    throw new ModerationApiError("ANNOTATION_MODERATION_UNAVAILABLE", 503);
+  }
+  let mediaId: string | null = null;
+  if (row.media_id !== null) {
+    if (!isUuidValue(row.media_id)) {
+      throw new ModerationApiError("ANNOTATION_MODERATION_UNAVAILABLE", 503);
+    }
+    mediaId = row.media_id;
+  }
+  let claimId: string | null = null;
+  if (row.claim_id !== null) {
+    if (!isUuidValue(row.claim_id)) {
+      throw new ModerationApiError("ANNOTATION_MODERATION_UNAVAILABLE", 503);
+    }
+    claimId = row.claim_id;
+  }
+  let auditId: string | null = null;
+  if (row.audit_id !== null) {
+    if (!isUuidValue(row.audit_id)) {
+      throw new ModerationApiError("ANNOTATION_MODERATION_UNAVAILABLE", 503);
+    }
+    auditId = row.audit_id;
+  }
+  if (row.processing_status !== null && typeof row.processing_status !== "string") {
+    throw new ModerationApiError("ANNOTATION_MODERATION_UNAVAILABLE", 503);
+  }
+  return {
+    annotationId: row.annotation_id,
+    mediaId,
+    claimId,
+    reasonCode: row.reason_code,
+    auditId,
+    annotationStatus: row.annotation_status,
+    previousStatus: row.previous_status,
+    processingStatus: row.processing_status,
+  };
+}
+
+export function parseAnnotationHideResult(value: unknown): AnnotationHideResult {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!isRecord(row) || !isHideResultCode(row.result_code)) {
+    throw new ModerationApiError("ANNOTATION_MODERATION_UNAVAILABLE", 503);
+  }
+  return { ...parseAnnotationModerationRow(row), resultCode: row.result_code };
+}
+
+export function parseAnnotationUnhideResult(value: unknown): AnnotationUnhideResult {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (
+    !isRecord(row)
+    || !isUnhideResultCode(row.result_code)
+    || row.transcript_content_restored !== false
+  ) {
+    throw new ModerationApiError("ANNOTATION_MODERATION_UNAVAILABLE", 503);
+  }
+  return {
+    ...parseAnnotationModerationRow(row),
+    resultCode: row.result_code,
+    transcriptContentRestored: false,
+  };
+}
+
+export function boundedAnnotationModerationLog(
+  result: AnnotationHideResult | AnnotationUnhideResult,
+): Record<string, string | boolean | null> {
+  return {
+    annotationId: result.annotationId,
+    mediaId: result.mediaId,
+    claimId: result.claimId,
+    reasonCode: result.reasonCode,
+    resultCode: result.resultCode,
+    auditId: result.auditId,
+    annotationStatus: result.annotationStatus,
+    previousStatus: result.previousStatus,
+    processingStatus: result.processingStatus,
+    ...("transcriptContentRestored" in result
+      ? { transcriptContentRestored: result.transcriptContentRestored }
+      : {}),
+  };
+}
+
 export function mapModerationRpcError(
   error: unknown,
-  unavailable: "WITHDRAWAL_UNAVAILABLE" | "CLAIM_REVIEW_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
+  unavailable:
+    | "WITHDRAWAL_UNAVAILABLE"
+    | "CLAIM_REVIEW_UNAVAILABLE"
+    | "ANNOTATION_MODERATION_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
 ): ModerationApiError {
   if (!isRecord(error)) return new ModerationApiError(unavailable, 503);
   const code = typeof error.code === "string" ? error.code : "";
@@ -297,7 +504,10 @@ export function moderationJsonResponse(body: unknown, status = 200): Response {
 
 export function moderationErrorResponse(
   error: unknown,
-  fallback: "WITHDRAWAL_UNAVAILABLE" | "CLAIM_REVIEW_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
+  fallback:
+    | "WITHDRAWAL_UNAVAILABLE"
+    | "CLAIM_REVIEW_UNAVAILABLE"
+    | "ANNOTATION_MODERATION_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
 ): Response {
   const bounded = error instanceof ModerationApiError
     ? error
