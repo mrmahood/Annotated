@@ -210,6 +210,26 @@ plus pgTAP. Form/email fields can remain for storage; no notification work.
   explicitly requested by the authorized operator session).
 - Do **not** build a broad admin UI.
 
+**Landed:** additive migration `20260904020635_phase_f2_claim_review.sql`.
+Service-only `list_claims_for_review`, `get_claim_for_review`, and
+`update_claim_review` (private implementations + public wrappers granted only to
+`service_role`). Locked routes, no admin UI:
+
+- `GET /api/moderation/claims` — list open claims by default (`submitted` and
+  `reviewing`); optional `status`, `limit`, `afterCreatedAt`, `afterId`,
+  `includeClaimantPii=true`
+- `GET /api/moderation/claims/{claimId}` — get one claim
+- `POST /api/moderation/claims/{claimId}` — transition; confirmation phrase
+  `CLAIM_REVIEW_UPDATE`
+
+Allowed transitions: `submitted→reviewing`, `submitted→rejected` (plan §5 spam /
+invalid path without a reviewing hop), `reviewing→resolved`,
+`reviewing→rejected`. Review does not hide, remove, or withdraw media. Operator
+uses curl/script with a Bearer session; allowlist is
+`ANNOTATED_MODERATION_OPERATOR_IDS` /
+`ANNOTATED_MODERATION_OPERATOR_EMAILS`. Claimant name/email/details are omitted
+unless `includeClaimantPii` is explicitly requested on an allowlisted session.
+
 ### F3 — Hide / unhide + append-only audit schema
 
 - Additive immutable migrations for append-only moderation audit

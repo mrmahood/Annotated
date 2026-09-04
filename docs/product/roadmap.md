@@ -464,17 +464,19 @@ increment.
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
 
-## Phase F — in progress (F4)
+## Phase F — in progress (F2)
 
 Claims, takedown, and removal. The bounded plan is
 `docs/architecture/phase-f-claims-removal-plan.md`. F0 was merged through PR #43.
 F1a published-target claim intake is on `main` as
-`7ccd615f51a5359d5ef002a175063854a94ca787` (PR #44). F4 implements Matt-only
-media-only withdrawal of
-published hosted excerpts: append-only `private.moderation_audit`, a
-service-only `moderate_media_only_withdrawal` RPC, transcript content-clear with
-metadata retention, fail-closed signing, and a Bearer + allowlist trusted route
-at `/api/moderation/media-only-withdrawal`.
+`7ccd615f51a5359d5ef002a175063854a94ca787` (PR #44). F4 media-only withdrawal is
+on `main` (PR #45): append-only `private.moderation_audit`, a service-only
+`moderate_media_only_withdrawal` RPC, transcript content-clear with metadata
+retention, fail-closed signing, and a Bearer + allowlist trusted route at
+`/api/moderation/media-only-withdrawal`. F2 is Matt-only claim review: service-only
+list/get/update RPCs, locked routes at `/api/moderation/claims`, confirmation
+phrase `CLAIM_REVIEW_UPDATE`, default PII suppression, and no admin UI. F2 does
+not hide, unhide, fully remove, or withdraw media.
 
 Local automated evidence: pending this PR's CI and Local `supabase test db` /
 web unit gates. Owner Chrome/Staging acceptance is not claimed. Production was

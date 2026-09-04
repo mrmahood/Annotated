@@ -1,8 +1,25 @@
 import { isUuid } from "./public-content.ts";
 
 export const MODERATION_CONFIRMATION = "MEDIA_ONLY_WITHDRAW";
+export const CLAIM_REVIEW_CONFIRMATION = "CLAIM_REVIEW_UPDATE";
 export const MODERATION_REQUEST_BYTE_LIMIT = 2048;
 export const MODERATION_CACHE_CONTROL = "private, no-store";
+export const CLAIM_REVIEW_LIST_LIMIT_DEFAULT = 50;
+export const CLAIM_REVIEW_LIST_LIMIT_MAX = 100;
+export const CLAIM_REVIEW_NOTES_MAX = 4000;
+
+export const CLAIM_REVIEW_STATUSES = [
+  "submitted",
+  "reviewing",
+  "resolved",
+  "rejected",
+] as const;
+
+export const CLAIM_REVIEW_TO_STATUSES = [
+  "reviewing",
+  "resolved",
+  "rejected",
+] as const;
 
 export const MEDIA_ONLY_REASON_CODES = [
   "copyright",
@@ -32,12 +49,56 @@ export type MediaOnlyWithdrawalResult = {
   transcriptContentCleared: boolean;
 };
 
+export type ClaimReviewStatus = (typeof CLAIM_REVIEW_STATUSES)[number];
+export type ClaimReviewToStatus = (typeof CLAIM_REVIEW_TO_STATUSES)[number];
+
+export type ClaimReviewListInput = {
+  status: ClaimReviewStatus | null;
+  includeClaimantPii: boolean;
+  limit: number;
+  afterCreatedAt: string | null;
+  afterId: string | null;
+};
+
+export type ClaimReviewGetInput = {
+  claimId: string;
+  includeClaimantPii: boolean;
+};
+
+export type ClaimReviewUpdateInput = {
+  toStatus: ClaimReviewToStatus;
+  operatorNotes: string | null;
+  clearOperatorNotes: boolean;
+  includeClaimantPii: boolean;
+};
+
+export type ClaimReviewRecord = {
+  claimId: string;
+  annotationId: string;
+  status: ClaimReviewStatus;
+  relationshipToContent: string;
+  reason: string;
+  operatorNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  claimantName: string | null;
+  claimantEmail: string | null;
+  details: string | null;
+};
+
+export type ClaimReviewUpdateResult = ClaimReviewRecord & {
+  previousStatus: ClaimReviewStatus;
+  auditId: string;
+  resultCode: ClaimReviewToStatus;
+};
+
 export type ModerationErrorCode =
   | "INVALID_REQUEST"
   | "AUTH_REQUIRED"
   | "FORBIDDEN"
   | "SERVER_MISCONFIGURED"
-  | "WITHDRAWAL_UNAVAILABLE";
+  | "WITHDRAWAL_UNAVAILABLE"
+  | "CLAIM_REVIEW_UNAVAILABLE";
 
 export class ModerationApiError extends Error {
   readonly code: ModerationErrorCode;
@@ -112,6 +173,18 @@ export function isModerationAllowlistConfigured(
 ): boolean {
   const allowlist = getModerationOperatorAllowlist(env);
   return allowlist.ids.size > 0 || allowlist.emails.size > 0;
+}
+
+export function assertModerationOperatorAllowlist(
+  user: { id: string; email?: string | null },
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (!isModerationAllowlistConfigured(env)) {
+    throw new ModerationApiError("SERVER_MISCONFIGURED", 500);
+  }
+  if (!isAllowlistedModerationOperator(user, env)) {
+    throw new ModerationApiError("FORBIDDEN", 403);
+  }
 }
 
 export function parseMediaOnlyWithdrawalRequest(body: unknown): MediaOnlyWithdrawalInput {
@@ -203,13 +276,16 @@ export function boundedModerationLog(
   };
 }
 
-export function mapModerationRpcError(error: unknown): ModerationApiError {
-  if (!isRecord(error)) return new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
+export function mapModerationRpcError(
+  error: unknown,
+  unavailable: "WITHDRAWAL_UNAVAILABLE" | "CLAIM_REVIEW_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
+): ModerationApiError {
+  if (!isRecord(error)) return new ModerationApiError(unavailable, 503);
   const code = typeof error.code === "string" ? error.code : "";
   if (code === "42501") return new ModerationApiError("FORBIDDEN", 403);
   if (code === "22023") return new ModerationApiError("INVALID_REQUEST", 400);
-  if (code === "55000") return new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
-  return new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
+  if (code === "55000") return new ModerationApiError(unavailable, 503);
+  return new ModerationApiError(unavailable, 503);
 }
 
 export function moderationJsonResponse(body: unknown, status = 200): Response {
@@ -219,9 +295,270 @@ export function moderationJsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-export function moderationErrorResponse(error: unknown): Response {
+export function moderationErrorResponse(
+  error: unknown,
+  fallback: "WITHDRAWAL_UNAVAILABLE" | "CLAIM_REVIEW_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
+): Response {
   const bounded = error instanceof ModerationApiError
     ? error
-    : new ModerationApiError("WITHDRAWAL_UNAVAILABLE", 503);
+    : new ModerationApiError(fallback, 503);
   return moderationJsonResponse({ error: bounded.code }, bounded.status);
+}
+
+function isClaimReviewStatus(value: unknown): value is ClaimReviewStatus {
+  return typeof value === "string"
+    && (CLAIM_REVIEW_STATUSES as readonly string[]).includes(value);
+}
+
+function isClaimReviewToStatus(value: unknown): value is ClaimReviewToStatus {
+  return typeof value === "string"
+    && (CLAIM_REVIEW_TO_STATUSES as readonly string[]).includes(value);
+}
+
+function hasOnlyAllowedKeys(value: UnknownRecord, allowed: readonly string[]) {
+  const allowedSet = new Set(allowed);
+  return Object.keys(value).every((key) => allowedSet.has(key));
+}
+
+function parseIncludeClaimantPiiFlag(value: unknown): boolean {
+  if (value === undefined) return false;
+  if (value === true) return true;
+  throw new ModerationApiError("INVALID_REQUEST", 400);
+}
+
+function parseOperatorNotes(value: unknown): string {
+  if (typeof value !== "string") throw new ModerationApiError("INVALID_REQUEST", 400);
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > CLAIM_REVIEW_NOTES_MAX) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  return trimmed;
+}
+
+const CLAIM_REVIEW_LIST_QUERY_KEYS = [
+  "status",
+  "limit",
+  "afterCreatedAt",
+  "afterId",
+  "includeClaimantPii",
+] as const;
+
+export function parseClaimReviewListQuery(searchParams: URLSearchParams): ClaimReviewListInput {
+  const keys = [...searchParams.keys()];
+  if (keys.some((key) => !(CLAIM_REVIEW_LIST_QUERY_KEYS as readonly string[]).includes(key))) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  for (const key of new Set(keys)) {
+    if (searchParams.getAll(key).length !== 1) {
+      throw new ModerationApiError("INVALID_REQUEST", 400);
+    }
+  }
+
+  let status: ClaimReviewStatus | null = null;
+  if (searchParams.has("status")) {
+    const raw = searchParams.get("status");
+    if (!isClaimReviewStatus(raw)) throw new ModerationApiError("INVALID_REQUEST", 400);
+    status = raw;
+  }
+
+  let limit = CLAIM_REVIEW_LIST_LIMIT_DEFAULT;
+  if (searchParams.has("limit")) {
+    const raw = searchParams.get("limit") ?? "";
+    if (!/^[1-9]\d*$/.test(raw)) throw new ModerationApiError("INVALID_REQUEST", 400);
+    limit = Number(raw);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > CLAIM_REVIEW_LIST_LIMIT_MAX) {
+      throw new ModerationApiError("INVALID_REQUEST", 400);
+    }
+  }
+
+  const hasAfterCreatedAt = searchParams.has("afterCreatedAt");
+  const hasAfterId = searchParams.has("afterId");
+  if (hasAfterCreatedAt !== hasAfterId) throw new ModerationApiError("INVALID_REQUEST", 400);
+  let afterCreatedAt: string | null = null;
+  let afterId: string | null = null;
+  if (hasAfterCreatedAt && hasAfterId) {
+    afterCreatedAt = searchParams.get("afterCreatedAt");
+    afterId = searchParams.get("afterId");
+    if (
+      !afterCreatedAt
+      || Number.isNaN(Date.parse(afterCreatedAt))
+      || !isUuidValue(afterId)
+    ) {
+      throw new ModerationApiError("INVALID_REQUEST", 400);
+    }
+  }
+
+  let includeClaimantPii = false;
+  if (searchParams.has("includeClaimantPii")) {
+    if (searchParams.get("includeClaimantPii") !== "true") {
+      throw new ModerationApiError("INVALID_REQUEST", 400);
+    }
+    includeClaimantPii = true;
+  }
+
+  return { status, includeClaimantPii, limit, afterCreatedAt, afterId };
+}
+
+export function parseClaimReviewGetInput(
+  claimId: string,
+  searchParams: URLSearchParams,
+): ClaimReviewGetInput {
+  if (!isUuid(claimId)) throw new ModerationApiError("INVALID_REQUEST", 400);
+  const keys = [...searchParams.keys()];
+  if (keys.some((key) => key !== "includeClaimantPii")) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  for (const key of new Set(keys)) {
+    if (searchParams.getAll(key).length !== 1) {
+      throw new ModerationApiError("INVALID_REQUEST", 400);
+    }
+  }
+  let includeClaimantPii = false;
+  if (searchParams.has("includeClaimantPii")) {
+    if (searchParams.get("includeClaimantPii") !== "true") {
+      throw new ModerationApiError("INVALID_REQUEST", 400);
+    }
+    includeClaimantPii = true;
+  }
+  return { claimId, includeClaimantPii };
+}
+
+export function parseClaimReviewUpdateRequest(body: unknown): ClaimReviewUpdateInput {
+  if (!isRecord(body)) throw new ModerationApiError("INVALID_REQUEST", 400);
+  const requiredKeys = ["toStatus", "confirm"] as const;
+  const optionalKeys = ["operatorNotes", "clearOperatorNotes", "includeClaimantPii"] as const;
+  if (!requiredKeys.every((key) => Object.hasOwn(body, key))) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  if (!hasOnlyAllowedKeys(body, [...requiredKeys, ...optionalKeys])) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  if (body.confirm !== CLAIM_REVIEW_CONFIRMATION) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  if (!isClaimReviewToStatus(body.toStatus)) {
+    throw new ModerationApiError("INVALID_REQUEST", 400);
+  }
+  const hasNotes = Object.hasOwn(body, "operatorNotes");
+  const hasClear = Object.hasOwn(body, "clearOperatorNotes");
+  if (hasNotes && hasClear) throw new ModerationApiError("INVALID_REQUEST", 400);
+  let operatorNotes: string | null = null;
+  let clearOperatorNotes = false;
+  if (hasNotes) operatorNotes = parseOperatorNotes(body.operatorNotes);
+  if (hasClear) {
+    if (body.clearOperatorNotes !== true) throw new ModerationApiError("INVALID_REQUEST", 400);
+    clearOperatorNotes = true;
+  }
+  const includeClaimantPii = parseIncludeClaimantPiiFlag(
+    Object.hasOwn(body, "includeClaimantPii") ? body.includeClaimantPii : undefined,
+  );
+  return { toStatus: body.toStatus, operatorNotes, clearOperatorNotes, includeClaimantPii };
+}
+
+function parseClaimReviewRecord(row: UnknownRecord): ClaimReviewRecord {
+  if (
+    !isUuidValue(row.claim_id)
+    || !isUuidValue(row.annotation_id)
+    || !isClaimReviewStatus(row.status)
+    || typeof row.relationship_to_content !== "string"
+    || typeof row.reason !== "string"
+    || typeof row.created_at !== "string"
+    || typeof row.updated_at !== "string"
+    || (row.operator_notes !== null && typeof row.operator_notes !== "string")
+    || (row.claimant_name !== null && typeof row.claimant_name !== "string")
+    || (row.claimant_email !== null && typeof row.claimant_email !== "string")
+    || (row.details !== null && typeof row.details !== "string")
+  ) {
+    throw new ModerationApiError("CLAIM_REVIEW_UNAVAILABLE", 503);
+  }
+  return {
+    claimId: row.claim_id,
+    annotationId: row.annotation_id,
+    status: row.status,
+    relationshipToContent: row.relationship_to_content,
+    reason: row.reason,
+    operatorNotes: row.operator_notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    claimantName: row.claimant_name,
+    claimantEmail: row.claimant_email,
+    details: row.details,
+  };
+}
+
+export function parseClaimReviewListResult(value: unknown): ClaimReviewRecord[] {
+  if (!Array.isArray(value)) throw new ModerationApiError("CLAIM_REVIEW_UNAVAILABLE", 503);
+  return value.map((item) => {
+    if (!isRecord(item)) throw new ModerationApiError("CLAIM_REVIEW_UNAVAILABLE", 503);
+    return parseClaimReviewRecord(item);
+  });
+}
+
+export function parseClaimReviewGetResult(value: unknown): ClaimReviewRecord {
+  const rows = parseClaimReviewListResult(value);
+  const row = rows[0];
+  if (rows.length !== 1 || !row) throw new ModerationApiError("CLAIM_REVIEW_UNAVAILABLE", 503);
+  return row;
+}
+
+export function parseClaimReviewUpdateResult(value: unknown): ClaimReviewUpdateResult {
+  const row = Array.isArray(value) ? value[0] : value;
+  if (!isRecord(row)) throw new ModerationApiError("CLAIM_REVIEW_UNAVAILABLE", 503);
+  const claim = parseClaimReviewRecord(row);
+  if (
+    !isClaimReviewStatus(row.previous_status)
+    || !isClaimReviewToStatus(row.result_code)
+    || !isUuidValue(row.audit_id)
+  ) {
+    throw new ModerationApiError("CLAIM_REVIEW_UNAVAILABLE", 503);
+  }
+  return {
+    ...claim,
+    previousStatus: row.previous_status,
+    auditId: row.audit_id,
+    resultCode: row.result_code,
+  };
+}
+
+export function claimReviewPublicJson(
+  record: ClaimReviewRecord,
+  includeClaimantPii: boolean,
+): Record<string, string | null> {
+  const body: Record<string, string | null> = {
+    claimId: record.claimId,
+    annotationId: record.annotationId,
+    status: record.status,
+    relationshipToContent: record.relationshipToContent,
+    reason: record.reason,
+    operatorNotes: record.operatorNotes,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+  if (includeClaimantPii) {
+    body.claimantName = record.claimantName;
+    body.claimantEmail = record.claimantEmail;
+    body.details = record.details;
+  }
+  return body;
+}
+
+export function boundedClaimReviewLog(
+  record: Pick<ClaimReviewRecord, "claimId" | "annotationId" | "status"> & {
+    auditId?: string;
+    resultCode?: string;
+    previousStatus?: string;
+    includeClaimantPii?: boolean;
+    claimCount?: number;
+  },
+): Record<string, string | number | boolean | undefined> {
+  return {
+    claimId: record.claimId,
+    annotationId: record.annotationId,
+    status: record.status,
+    auditId: record.auditId,
+    resultCode: record.resultCode,
+    previousStatus: record.previousStatus,
+    includeClaimantPii: record.includeClaimantPii,
+    claimCount: record.claimCount,
+  };
 }
