@@ -19,6 +19,7 @@ import {
   type HostedExcerptMedia,
   type HostedExcerptTranscript,
 } from '../../utils/hosted-playback';
+import { resolveHostedPlaybackSrc } from '../../utils/hosted-playback-src';
 import {
   createComment,
   deleteComment,
@@ -90,53 +91,90 @@ function HostedExcerptPlayer({
 }) {
   const [attempt, setAttempt] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
+  const [mediaSrc, setMediaSrc] = useState<string | null>(null);
   let playbackUrl: string | null = null;
   try {
     playbackUrl = getPublicUrl(getMediaPlaybackPath(annotationId, attempt));
   } catch {
     playbackUrl = null;
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    setMediaSrc(null);
+
+    if (!playbackUrl) {
+      setUnavailable(true);
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }
+
+    const supabaseUrl = import.meta.env.WXT_SUPABASE_URL;
+    void resolveHostedPlaybackSrc({
+      playbackUrl,
+      supabaseUrl: typeof supabaseUrl === 'string' ? supabaseUrl : '',
+      signal: controller.signal,
+    }).then((resolved) => {
+      if (cancelled) return;
+      if (resolved) {
+        setMediaSrc(resolved);
+        setUnavailable(false);
+        return;
+      }
+      if (attempt === 0) setAttempt(1);
+      else setUnavailable(true);
+    });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [playbackUrl, attempt]);
+
   const onError = () => {
     if (attempt === 0) setAttempt(1);
     else setUnavailable(true);
   };
-  const player = playbackUrl && media.mimeType === 'video/mp4' ? (
+  const player = mediaSrc && media.mimeType === 'video/mp4' ? (
     <video
-      key={playbackUrl}
+      key={`${annotationId}:${attempt}`}
       controls
       controlsList="nodownload"
       preload="metadata"
-      src={playbackUrl}
+      src={mediaSrc}
       onError={onError}
       onLoadedMetadata={() => setUnavailable(false)}
       aria-label="Archived source video excerpt"
     >
       Your browser cannot play this video excerpt.
     </video>
-  ) : playbackUrl ? (
+  ) : mediaSrc ? (
     <audio
-      key={playbackUrl}
+      key={`${annotationId}:${attempt}`}
       controls
       controlsList="nodownload"
       preload="metadata"
-      src={playbackUrl}
+      src={mediaSrc}
       onError={onError}
       onLoadedMetadata={() => setUnavailable(false)}
       aria-label="Archived source audio excerpt"
     >
       Your browser cannot play this audio excerpt.
     </audio>
-  ) : (
+  ) : unavailable ? (
     <p className="inline-error" role="status">
       The archived excerpt is temporarily unavailable. The original source remains linked above.
     </p>
-  );
+  ) : null;
 
   if (compact) {
     return (
       <div className="card-hosted-media">
         {player}
-        {playbackUrl && unavailable && (
+        {mediaSrc && unavailable && (
           <p className="inline-error" role="status">
             The archived excerpt is temporarily unavailable. The original source remains linked above.
           </p>
@@ -154,7 +192,7 @@ function HostedExcerptPlayer({
         <span>{formatMediaTime(media.durationMs)}</span>
       </div>
       {player}
-      {playbackUrl && unavailable && (
+      {mediaSrc && unavailable && (
         <p className="inline-error" role="status">
           The archived excerpt is temporarily unavailable. The original source remains linked above.
         </p>

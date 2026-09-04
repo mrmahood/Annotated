@@ -29,6 +29,8 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /function HostedExcerptPlayer/);
   assert.match(detail, /getMediaPlaybackPath\(annotationId, attempt\)/);
   assert.match(detail, /getPublicUrl\(getMediaPlaybackPath/);
+  assert.match(detail, /resolveHostedPlaybackSrc/);
+  assert.match(detail, /src=\{mediaSrc\}/);
   assert.match(detail, /controlsList="nodownload"/);
   assert.match(detail, /<video/);
   assert.match(detail, /<audio/);
@@ -42,7 +44,8 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /canPlayConnectedAudioClip = !hostedReady && annotation\.kind === 'audio'/);
   assert.match(detail, /canPlayConnectedClip \|\| hostedReady \? 'button button-secondary'/);
   assert.doesNotMatch(detail, /download=/);
-  assert.doesNotMatch(detail, /createSignedUrl|processed_storage_path|console\.(?:log|info|debug|warn)/);
+  assert.doesNotMatch(detail, /src=\{playbackUrl\}/);
+  assert.doesNotMatch(detail, /createObjectURL|createSignedUrl|processed_storage_path|console\.(?:log|info|debug|warn)/);
   assert.doesNotMatch(styles, /annotation-media-raw|signedUrl/);
 
   assert.match(app, /Uploaded and queued\. Processing is in progress\./);
