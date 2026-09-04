@@ -720,7 +720,11 @@ select ok( -- 32
       and audit.action = 'annotation_remove'
   )
   and (
-    select pg_catalog.count(*) = 2
+    select pg_catalog.count(*) = 3
+      and pg_catalog.count(*) filter (where audit.action = 'annotation_remove') = 1
+      and pg_catalog.count(*) filter (
+        where audit.action = 'claim_review' and audit.result_code = 'resolved'
+      ) = 1
       and bool_and(pg_catalog.row_to_json(audit)::text !~ 'f5-claimant-hosted@example.test')
     from private.moderation_audit as audit
     where audit.annotation_id = 'f5100000-0000-4000-8000-000000000001'
