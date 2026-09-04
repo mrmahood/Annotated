@@ -36,7 +36,8 @@ controlled removal:
 
 ### 1.2 Non-goals (this phase)
 
-- Full admin/moderation console or multi-operator RBAC.
+- Full admin/moderation console or multi-operator RBAC. A minimal Matt-only
+  `/ops` API-wrapper UI is a post-F backlog item; still no broad admin UI.
 - Claimant or creator email notifications.
 - Public appeal portal or automatic derivative restore after media withdrawal.
 - Extension UI polish / minimalist redesign (sequenced after Phase F).
@@ -445,7 +446,8 @@ Prefer a small server-only command or authenticated endpoint that:
 - never prints secrets, signed URLs, raw paths, transcript text, or provider
   payloads.
 
-No full moderation console in F1–F5.
+No full moderation console in F1–F5. A minimal Matt-only `/ops` console
+(API wrapper UI) is deferred post-F; still no broad admin UI.
 
 ## 9. Rollback and forward-only rules
 
@@ -484,6 +486,8 @@ Must cover:
 - CAPTCHA provider choice.
 - Long-term restricted legal hold storage (explicitly out of Phase F per owner
   transcript decision).
+- Minimal Matt-only `/ops` console (API wrapper UI) deferred post-F; still no
+  broad admin UI. See `docs/product/roadmap.md` near-term after Phase F.
 
 ## 12. Success criteria for closing Phase F
 
