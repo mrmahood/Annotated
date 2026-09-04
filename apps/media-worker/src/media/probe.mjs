@@ -7,11 +7,14 @@ export const VIDEO_FINAL_MAX_BYTES = 16 * 1024 * 1024;
 export const AUDIO_FINAL_MAX_BYTES = 8 * 1024 * 1024;
 export const MAX_FINAL_DURATION_MS = 90_000;
 const PROBE_DURATION_TOLERANCE_MS = 20;
-// AAC-LC at 48 kHz uses 1024 samples per frame ≈ 21.333 ms. ffmpeg `-ss` after `-i`
-// plus `-t` commonly emits one extra audio or video frame, so a correct encode can
-// land a few milliseconds past the selected range. Symmetric slack of one AAC
-// frame is enough for that rounding; it is not a multi-second overshoot allowance.
-export const DERIVATIVE_DURATION_TOLERANCE_MS = 22;
+// AAC-LC at 48 kHz uses 1024 samples per frame ≈ 21.333 ms. Chrome MV3 tabCapture
+// + MediaRecorder + ffmpeg `-ss` after `-i` plus `-t` can emit a few extra frames
+// and container-duration rounding on real ≤90 s clips. PRs #46–#48 admitted one
+// frame (22 ms); Staging still rejected an ~18 s tab-capture derivative as
+// duration_overshoot. 100 ms is ~4.7 AAC frames: enough for that production
+// jitter, not a multi-second overshoot allowance. Absolute product max remains
+// MAX_FINAL_DURATION_MS (90_000).
+export const DERIVATIVE_DURATION_TOLERANCE_MS = 100;
 // Seconds-to-milliseconds conversion can leave IEEE-754 dust far below 1 µs.
 const DURATION_COMPARE_EPSILON_MS = 0.001;
 

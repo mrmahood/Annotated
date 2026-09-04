@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(15);
+select plan(22);
 
 select is(
   (
@@ -11,8 +11,8 @@ select is(
     where pg_namespace.nspname = 'private'
       and pg_proc.proname = 'stage_annotation_media_derivative'
   ),
-  'Worker-only idempotent staging of a final derivative whose duration matches the authoritative hosted range within the JS+SQL 22 ms slack of one AAC-LC frame, still clamped to 1000..90000 ms.',
-  'function comment records the shared 22 ms AAC-LC-frame slack'
+  'Worker-only idempotent staging of a final derivative whose duration matches the authoritative hosted range within the JS+SQL 100 ms slack of a few AAC-LC frames, still clamped to 1000..90000 ms.',
+  'function comment records the shared 100 ms tab-capture slack'
 );
 
 select ok(
@@ -79,6 +79,18 @@ select * from public.begin_hosted_youtube_annotation(
   'dQw4w9WgXcQ', 'C duration slack video', 'Channel',
   10000, 19295, 'C duration slack video 9295'
 );
+select * from public.begin_hosted_audio_annotation(
+  'https://example.test/c-duration-slack-18s',
+  'https://example.test/c-duration-slack-18s',
+  'C duration slack 18s', 'Host', 'Publisher', 'Series',
+  413471, 431277, 'C duration slack audio 17806'
+);
+select * from public.begin_hosted_audio_annotation(
+  'https://example.test/c-duration-slack-near-90s',
+  'https://example.test/c-duration-slack-near-90s',
+  'C duration slack near 90s', 'Host', 'Publisher', 'Series',
+  0, 89920, 'C duration slack audio 89920'
+);
 reset role;
 
 select private.mark_annotation_media_uploading(
@@ -114,13 +126,37 @@ from public.annotation_media as media
 join public.annotations on annotations.id = media.annotation_id
 where annotations.commentary_text = 'C duration slack video 9295';
 
+select private.mark_annotation_media_uploading(
+  media.id,
+  annotations.user_id::text || '/' || media.annotation_id::text || '/' || media.id::text ||
+    '/88888888-8888-4888-8888-888888888888.webm',
+  'audio/webm', 1000,
+  '{"version":2,"capture_track":{"mime_type":"audio/webm;codecs=opus","audio_track_count":1,"video_track_count":0,"tracks":[{"kind":"audio","label":"","enabled":true,"muted":false,"readyState":"live","settings":{"sampleRate":48000}}],"loopback_enabled":true},"timing":{"requested_start_ms":413471,"requested_end_ms":431277,"requested_duration_ms":17806,"lead_in_ms":91,"recorder_elapsed_ms":17906,"player_start_ms":413471,"player_end_ms":431277,"lead_in_clock":"offscreen_monotonic"}}'::jsonb
+)
+from public.annotation_media as media
+join public.annotations on annotations.id = media.annotation_id
+where annotations.commentary_text = 'C duration slack audio 17806';
+
+select private.mark_annotation_media_uploading(
+  media.id,
+  annotations.user_id::text || '/' || media.annotation_id::text || '/' || media.id::text ||
+    '/99999999-9999-4999-8999-999999999999.webm',
+  'audio/webm', 1000,
+  '{"version":2,"capture_track":{"mime_type":"audio/webm;codecs=opus","audio_track_count":1,"video_track_count":0,"tracks":[{"kind":"audio","label":"","enabled":true,"muted":false,"readyState":"live","settings":{"sampleRate":48000}}],"loopback_enabled":true},"timing":{"requested_start_ms":0,"requested_end_ms":89920,"requested_duration_ms":89920,"lead_in_ms":35,"recorder_elapsed_ms":89955,"player_start_ms":0,"player_end_ms":89920,"lead_in_clock":"offscreen_monotonic"}}'::jsonb
+)
+from public.annotation_media as media
+join public.annotations on annotations.id = media.annotation_id
+where annotations.commentary_text = 'C duration slack audio 89920';
+
 select private.accept_annotation_media_upload(media.id)
 from public.annotation_media as media
 join public.annotations on annotations.id = media.annotation_id
 where annotations.commentary_text in (
   'C duration slack audio 9295',
   'C duration slack audio 90s',
-  'C duration slack video 9295'
+  'C duration slack video 9295',
+  'C duration slack audio 17806',
+  'C duration slack audio 89920'
 );
 
 create temporary table slack_audio as
@@ -147,6 +183,24 @@ from private.claim_annotation_media_processing(
   (select media.id from public.annotation_media as media
     join public.annotations on annotations.id = media.annotation_id
     where annotations.commentary_text = 'C duration slack video 9295'),
+  900
+) as claimed;
+
+create temporary table slack_audio_18s as
+select claimed.*
+from private.claim_annotation_media_processing(
+  (select media.id from public.annotation_media as media
+    join public.annotations on annotations.id = media.annotation_id
+    where annotations.commentary_text = 'C duration slack audio 17806'),
+  900
+) as claimed;
+
+create temporary table slack_audio_near_90s as
+select claimed.*
+from private.claim_annotation_media_processing(
+  (select media.id from public.annotation_media as media
+    join public.annotations on annotations.id = media.annotation_id
+    where annotations.commentary_text = 'C duration slack audio 89920'),
   900
 ) as claimed;
 
@@ -177,7 +231,7 @@ select lives_ok(
       pg_catalog.repeat('a', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
-      9317,
+      9395,
       null,
       null,
       1000,
@@ -185,7 +239,7 @@ select lives_ok(
     )
     from slack_audio
   $$,
-  'a derivative exactly 22 ms past the 9295 ms hosted range is accepted'
+  'a derivative exactly 100 ms past the 9295 ms hosted range is accepted'
 );
 
 select throws_ok(
@@ -196,7 +250,7 @@ select throws_ok(
       pg_catalog.repeat('a', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
-      9318,
+      9396,
       null,
       null,
       1000,
@@ -206,7 +260,7 @@ select throws_ok(
   $$,
   '22023',
   'Processed duration is invalid for the requested hosted range.',
-  'a derivative 23 ms past the 9295 ms hosted range is rejected'
+  'a derivative 101 ms past the 9295 ms hosted range is rejected'
 );
 
 select throws_ok(
@@ -238,7 +292,7 @@ select throws_ok(
       pg_catalog.repeat('a', 64),
       'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
-      9272,
+      9194,
       null,
       null,
       1000,
@@ -248,7 +302,7 @@ select throws_ok(
   $$,
   '22023',
   'Processed duration is invalid for the requested hosted range.',
-  'a derivative 23 ms short of the 9295 ms hosted range is rejected'
+  'a derivative 101 ms short of the 9295 ms hosted range is rejected'
 );
 
 select throws_ok(
@@ -386,6 +440,145 @@ select ok(
     where media.id = (select media_id from slack_video)
   ),
   'accepted 240p staging persists processed facts without publishing the draft'
+);
+
+select lives_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('g', 64),
+      'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      17856,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('h', 64)
+    )
+    from slack_audio_18s
+  $$,
+  'an ~18s derivative 50 ms past the hosted range (beyond the old 22 ms slack) is accepted'
+);
+
+select lives_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('g', 64),
+      'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      17906,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('h', 64)
+    )
+    from slack_audio_18s
+  $$,
+  'an ~18s derivative exactly 100 ms past the hosted range is accepted'
+);
+
+select throws_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('g', 64),
+      'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      17907,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('h', 64)
+    )
+    from slack_audio_18s
+  $$,
+  '22023',
+  'Processed duration is invalid for the requested hosted range.',
+  'an ~18s derivative 101 ms past the hosted range is rejected'
+);
+
+select throws_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('g', 64),
+      'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      19806,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('h', 64)
+    )
+    from slack_audio_18s
+  $$,
+  '22023',
+  'Processed duration is invalid for the requested hosted range.',
+  'an ~18s derivative with a multi-second overshoot is rejected'
+);
+
+select lives_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('i', 64),
+      'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      89970,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('j', 64)
+    )
+    from slack_audio_near_90s
+  $$,
+  'a near-90s derivative 50 ms past the hosted range (beyond the old 22 ms slack) is accepted'
+);
+
+select lives_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('i', 64),
+      'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      90000,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('j', 64)
+    )
+    from slack_audio_near_90s
+  $$,
+  'a near-90s derivative is accepted at the 90,000 ms product ceiling'
+);
+
+select throws_ok(
+  $$
+    select private.stage_annotation_media_derivative(
+      media_id,
+      lease_token,
+      pg_catalog.repeat('i', 64),
+      'c5000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
+      'audio/mp4',
+      90001,
+      null,
+      null,
+      1000,
+      pg_catalog.repeat('j', 64)
+    )
+    from slack_audio_near_90s
+  $$,
+  '22023',
+  'Processed duration is invalid for the requested hosted range.',
+  'a near-90s derivative still cannot exceed the 90-second product ceiling'
 );
 
 select * from finish();

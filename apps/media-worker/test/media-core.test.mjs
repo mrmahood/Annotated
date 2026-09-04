@@ -256,10 +256,10 @@ test('inspect-stage boundary persists a precise probe duration as a whole millis
   );
 });
 
-test('derivative validation admits one AAC-frame of duration rounding past the selected range', () => {
-  assert.equal(DERIVATIVE_DURATION_TOLERANCE_MS, 22);
+test('derivative validation admits 100 ms of tab-capture duration slack past the selected range', () => {
+  assert.equal(DERIVATIVE_DURATION_TOLERANCE_MS, 100);
   const probe = derivativeAudioProbe('4.000000');
-  for (const duration of ['4.001000', '4.010000', '4.021000', '4.022000']) {
+  for (const duration of ['4.001000', '4.022000', '4.050000', '4.100000']) {
     probe.format.duration = duration;
     const facts = validateDerivativeProbe({
       mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 4_000,
@@ -274,11 +274,43 @@ test('derivative validation admits one AAC-frame of duration rounding past the s
   }).durationMs, 4_000);
 });
 
-test('derivative validation rejects duration clearly beyond one AAC-frame of slack', () => {
-  const probe = derivativeAudioProbe('4.023000');
+test('derivative validation rejects duration clearly beyond 100 ms of slack', () => {
+  const probe = derivativeAudioProbe('4.101000');
   assert.throws(() => validateDerivativeProbe({
     mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 4_000,
   }), errorCode('output_invalid', 'duration_overshoot'));
+});
+
+test('derivative validation admits 100 ms slack on ~18s and near-90s selections', () => {
+  const probe = derivativeAudioProbe('17.856000');
+  assert.equal(validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 17_806,
+  }).durationMs, 17_856);
+  probe.format.duration = '17.906000';
+  assert.equal(validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 17_806,
+  }).durationMs, 17_906);
+  probe.format.duration = '17.907000';
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 17_806,
+  }), errorCode('output_invalid', 'duration_overshoot'));
+  probe.format.duration = '19.806000';
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 17_806,
+  }), errorCode('output_invalid', 'duration_overshoot'));
+
+  probe.format.duration = '89.970000';
+  assert.equal(validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 89_920,
+  }).durationMs, 89_970);
+  probe.format.duration = '90.000000';
+  assert.equal(validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 89_920,
+  }).durationMs, 90_000);
+  probe.format.duration = '90.001000';
+  assert.throws(() => validateDerivativeProbe({
+    mediaType: 'audio', probe, expectedByteSize: Number(probe.format.size), requestedDurationMs: 89_920,
+  }), errorCode('output_invalid', 'duration_exceeds_max'));
 });
 
 test('derivative validation rejects a one-second result for a 90-second selection', () => {

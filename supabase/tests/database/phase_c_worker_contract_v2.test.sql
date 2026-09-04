@@ -189,7 +189,7 @@ select throws_ok(
       pg_catalog.repeat('a', 64),
       'c4000000-0000-4000-8000-000000000001/' || annotation_id::text || '/' || media_id::text || '/excerpt.m4a',
       'audio/mp4',
-      4023,
+      4101,
       null,
       null,
       1000,
@@ -199,7 +199,7 @@ select throws_ok(
   $$,
   '22023',
   'Processed duration is invalid for the requested hosted range.',
-  'a derivative 23 ms past the four-second hosted range exceeds one AAC-LC frame of slack'
+  'a derivative 101 ms past the four-second hosted range exceeds 100 ms of slack'
 );
 
 update public.annotation_media as media
