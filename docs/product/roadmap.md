@@ -556,6 +556,47 @@ Durable Phase F product rules remain:
   processed-media revocation, transcript suppression, comments, and retained
   attribution behavior inside the accepted removal design.
 
+## Near-term after Phase F
+
+Phase F implementation and owner-authorized Staging acceptance are recorded
+above. The next product work is not Phase G. Default recommendation, unless the
+owner pulls an item forward: **extension UI polish and X OAuth re-enable for
+the mid-September bounty submit**, then remaining near-term items. Phase G
+Production launch and hardening remain separately authorized.
+
+- **Extension UI polish / minimalist redesign.** Sequenced after Phase F per
+  the locked September sequence in
+  `docs/architecture/phase-f-claims-removal-plan.md`.
+- **Re-enable X OAuth** on the user-facing web and extension surfaces before
+  the mid-September bounty submit (after F; ideally with UI polish). This is
+  outside Phase F code and remains separately authorized.
+- **Exact Storage cleanup-to-zero** for F6-deferred derivative objects when
+  dispatcher/reconciler schedules are temporarily authorized, then re-paused.
+  Production remains untouched.
+- **Minimal Matt-only operator console** (not a broad admin UI). Single
+  allowlisted operator; reuse existing `/api/moderation/*` routes; no new
+  privileges beyond `ANNOTATED_MODERATION_OPERATOR_*`. Default sequence: after
+  extension polish and X re-enable for bounty, unless the owner pulls it
+  forward. Owner-approved sketch to implement later, not in this docs change:
+  - Route in `apps/web` at `/ops` or `/moderation` with no public nav link.
+    Server Component gate: if the session user is not on the allowlist,
+    `notFound()` (do not 403 with a useful probe).
+  - Claim queue tab: table of open claims via `GET /api/moderation/claims`;
+    row click opens detail; optional “Show claimant PII” toggle with
+    `includeClaimantPii=true`; Reviewing / Resolve / Reject with typed
+    confirm `CLAIM_REVIEW_UPDATE` and optional operator notes.
+  - Annotation tools tab: annotation UUID (optional media/claim ids). Buttons
+    wired to existing routes only: media-only withdraw
+    (`POST /api/moderation/media-only-withdrawal`, `MEDIA_ONLY_WITHDRAW`);
+    hide / unhide (`.../hide` / `.../unhide`, `ANNOTATION_HIDE` /
+    `ANNOTATION_UNHIDE`); full remove (`.../remove`, `ANNOTATION_REMOVE`).
+    Each action requires typing the confirmation phrase in the UI before
+    enable.
+  - Out of scope: multi-operator RBAC, public appeals, email, analytics
+    dashboards, editing claims content, Production-only features.
+- **Phase G Production launch and hardening** remains a separate phase with
+  its own authorization; it is not the next increment after F.
+
 ## Phase G — future
 
 Production launch and hardening:
