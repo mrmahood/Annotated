@@ -12,6 +12,8 @@ test('detail mapping keeps youtube/audio kinds and loads hosted media only throu
   assert.match(source, /get_public_annotation_transcript/);
   assert.match(source, /parsePublicHostedExcerpt/);
   assert.match(source, /annotation\.hosted = await loadHostedExcerpt/);
+  assert.match(source, /if \(!transcriptError && transcriptData\)/);
+  assert.doesNotMatch(source, /if \(transcriptError \|\| !transcriptData\) return null/);
   assert.doesNotMatch(source, /\.from\(['"]annotation_(?:media|transcripts)['"]\)/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
   assert.doesNotMatch(source, /console\.(?:log|info|debug|warn)/);
@@ -33,7 +35,8 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /Excerpt transcript/);
   assert.match(detail, /function ExcerptTranscript/);
   assert.match(detail, /hostedReady && <HostedExcerptPlayer/);
-  assert.match(detail, /hostedReady && <ExcerptTranscript/);
+  assert.match(detail, /hostedTranscript && <ExcerptTranscript/);
+  assert.match(detail, /hasHostedExcerptTranscript/);
   assert.match(detail, /This archived excerpt is no longer available/);
   assert.match(detail, /canPlayConnectedClip = !hostedReady && annotation\.kind === 'youtube'/);
   assert.match(detail, /canPlayConnectedAudioClip = !hostedReady && annotation\.kind === 'audio'/);

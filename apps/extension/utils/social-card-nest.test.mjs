@@ -22,6 +22,7 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /HostedExcerptPlayer/);
   assert.match(card, /compact/);
   assert.match(card, /transcript-peek/);
+  assert.match(card, /hostedTranscript &&/);
   assert.match(card, /View annotation/);
   assert.doesNotMatch(card, /className="annotation-card-main"/);
   assert.doesNotMatch(card, /Commentary/);
@@ -45,7 +46,7 @@ test('in-feed expand loads hosted media only through the public excerpt helper',
 
   assert.match(data, /export async function queryPublicHostedExcerpt/);
   assert.match(data, /return loadHostedExcerpt\(supabase, annotation\)/);
-  assert.match(card, /queryPublicHostedExcerpt\(supabase, annotation\)/);
+  assert.match(card, /queryPublicHostedExcerpt\(supabase, current\)/);
   assert.match(card, /hostedReady && \(/);
   assert.doesNotMatch(card, /\.from\(['"]annotation_(?:media|transcripts)['"]\)/);
 });
