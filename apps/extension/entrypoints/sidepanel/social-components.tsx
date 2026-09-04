@@ -8,6 +8,12 @@ import {
   formatAudioDuration,
 } from '../../utils/audio-commentary';
 import {
+  getMediaPlaybackPath,
+  isHostedExcerptReady,
+  type HostedExcerptMedia,
+  type HostedExcerptTranscript,
+} from '../../utils/hosted-playback';
+import {
   createComment,
   deleteComment,
   followProfile,
@@ -58,6 +64,103 @@ function getAudioPublicUrl(supabase: SupabaseClient, storagePath: string) {
   } catch {
     return null;
   }
+}
+
+function getDurationDateTime(durationMs: number): string {
+  return `PT${durationMs / 1_000}S`;
+}
+
+function HostedExcerptPlayer({
+  annotationId,
+  media,
+  getPublicUrl,
+}: {
+  annotationId: string;
+  media: HostedExcerptMedia;
+  getPublicUrl: (path: string) => string | null;
+}) {
+  const [attempt, setAttempt] = useState(0);
+  const [unavailable, setUnavailable] = useState(false);
+  let playbackUrl: string | null = null;
+  try {
+    playbackUrl = getPublicUrl(getMediaPlaybackPath(annotationId, attempt));
+  } catch {
+    playbackUrl = null;
+  }
+  const onError = () => {
+    if (attempt === 0) setAttempt(1);
+    else setUnavailable(true);
+  };
+
+  return (
+    <section className="detail-hosted-media" aria-labelledby="detail-hosted-media-heading">
+      <div className="detail-hosted-heading">
+        <span className="section-label" id="detail-hosted-media-heading">
+          {media.mimeType === 'video/mp4' ? 'Video excerpt' : 'Audio excerpt'}
+        </span>
+        <span>{formatMediaTime(media.durationMs)}</span>
+      </div>
+      {playbackUrl && media.mimeType === 'video/mp4' ? (
+        <video
+          key={playbackUrl}
+          controls
+          controlsList="nodownload"
+          preload="metadata"
+          src={playbackUrl}
+          onError={onError}
+          onLoadedMetadata={() => setUnavailable(false)}
+          aria-label="Archived source video excerpt"
+        >
+          Your browser cannot play this video excerpt.
+        </video>
+      ) : playbackUrl ? (
+        <audio
+          key={playbackUrl}
+          controls
+          controlsList="nodownload"
+          preload="metadata"
+          src={playbackUrl}
+          onError={onError}
+          onLoadedMetadata={() => setUnavailable(false)}
+          aria-label="Archived source audio excerpt"
+        >
+          Your browser cannot play this audio excerpt.
+        </audio>
+      ) : (
+        <p className="inline-error" role="status">
+          The archived excerpt is temporarily unavailable. The original source remains linked above.
+        </p>
+      )}
+      {playbackUrl && unavailable && (
+        <p className="inline-error" role="status">
+          The archived excerpt is temporarily unavailable. The original source remains linked above.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ExcerptTranscript({ transcript }: { transcript: HostedExcerptTranscript }) {
+  return (
+    <section className="detail-transcript" aria-labelledby="detail-transcript-heading">
+      <span className="section-label" id="detail-transcript-heading">Excerpt transcript</span>
+      <p className="transcript-text">{transcript.text}</p>
+      {transcript.segments && transcript.segments.length > 0 && (
+        <ol className="transcript-segments" aria-label="Timestamped excerpt transcript">
+          {transcript.segments.map((segment) => (
+            <li key={`${segment.startMs}:${segment.endMs}`}>
+              <span>
+                <time dateTime={getDurationDateTime(segment.startMs)}>{formatMediaTime(segment.startMs)}</time>
+                –
+                <time dateTime={getDurationDateTime(segment.endMs)}>{formatMediaTime(segment.endMs)}</time>
+              </span>
+              <p>{segment.text}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
 }
 
 function Avatar({ name, url, size = 30 }: { name: string; url: string | null; size?: number }) {
@@ -483,11 +586,16 @@ export function AnnotationDetailView({
   const youtubeUrl = annotation.kind === 'youtube'
     ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
     : null;
-  const canPlayConnectedClip = annotation.kind === 'youtube' && connectedVideoId === annotation.source.videoId;
-  const canPlayConnectedAudioClip = annotation.kind === 'audio' &&
+  const hostedReady = annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted)
+    ? annotation.hosted
+    : null;
+  const hostedRemoved = annotation.kind !== 'article' && annotation.hosted?.status === 'removed';
+  const canPlayConnectedClip = !hostedReady && annotation.kind === 'youtube' &&
+    connectedVideoId === annotation.source.videoId;
+  const canPlayConnectedAudioClip = !hostedReady && annotation.kind === 'audio' &&
     connectedAudioNormalizedUrl === annotation.source.normalizedUrl;
   const playConnected = async () => {
-    if (annotation.kind === 'article') return;
+    if (annotation.kind === 'article' || hostedReady) return;
     if (annotation.kind === 'youtube' && !onPlayConnectedClip) return;
     if (annotation.kind === 'audio' && !onPlayConnectedAudioClip) return;
     setPlayState('playing');
@@ -510,12 +618,20 @@ export function AnnotationDetailView({
         <section className="detail-source"><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">View original source ↗</a></section>
         <section className="detail-passage"><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
       </> : annotation.kind === 'youtube' ? <>
-        <section className="detail-source"><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip ? 'button button-secondary' : 'button button-primary'} href={youtubeUrl!} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
+        <section className="detail-source"><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={youtubeUrl!} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
         <section className="detail-clip-range"><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </> : <>
-        <section className="detail-source"><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip ? 'button button-secondary' : 'button button-primary'} href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">Open original source ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
+        <section className="detail-source"><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">Open original source ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
         <section className="detail-clip-range"><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </>}
+      {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} />}
+      {hostedReady && <ExcerptTranscript transcript={hostedReady.transcript} />}
+      {hostedRemoved && (
+        <section className="detail-media-removed" aria-labelledby="detail-media-removed-heading">
+          <span className="section-label" id="detail-media-removed-heading">Archived excerpt</span>
+          <p>This archived excerpt is no longer available. The annotation and original source remain accessible.</p>
+        </section>
+      )}
       <section className="detail-commentary"><span className="section-label">Commentary</span><p>{annotation.commentaryText}</p></section>
       {annotation.kind === 'article' && annotation.audio && audioUrl && <section className="detail-audio" aria-labelledby="detail-audio-heading"><span className="section-label" id="detail-audio-heading">Audio commentary</span><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</section>}
       <div className="detail-secondary-actions"><span>{annotation.commentCount.toLocaleString()} comments</span>{publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Share / public page ↗</a>}</div>

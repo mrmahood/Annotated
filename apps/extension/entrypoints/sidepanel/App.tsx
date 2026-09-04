@@ -2371,7 +2371,7 @@ function App() {
       </strong>
       {mediaCaptureState.status === 'waiting-to-upload' && <span>{mediaCaptureState.message}</span>}
       {mediaCaptureState.status === 'verifying-upload' && <span>Checking the owner-visible server state before showing Processing.</span>}
-      {mediaCaptureState.status === 'processing' && <span>Uploaded and queued. Processing is not available until the media worker ships.</span>}
+      {mediaCaptureState.status === 'processing' && <span>Uploaded and queued. Processing is in progress.</span>}
       {mediaCaptureState.status === 'error' && <span>{mediaCaptureState.message}</span>}
       {mediaCaptureState.status === 'waiting-to-upload' && !isCancellingHostedMedia && (
         <button className="button button-secondary" type="button" onClick={() => void retryHostedUpload()}>Retry upload</button>

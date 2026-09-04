@@ -7,6 +7,10 @@ import {
   type AnnotationAudio,
 } from './audio-commentary';
 import {
+  parsePublicHostedExcerpt,
+  type HostedExcerpt,
+} from './hosted-playback';
+import {
   ANNOTATION_PAGE_SIZE,
   buildAnnotationQueryPlan,
   COMMENT_BODY_LIMIT,
@@ -54,6 +58,7 @@ export type PublicAnnotation = PublicAnnotationBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationBase['source'] & { type: 'youtube'; videoId: string };
+      hosted: HostedExcerpt | null;
     }
   | {
       kind: 'audio';
@@ -61,6 +66,7 @@ export type PublicAnnotation = PublicAnnotationBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationBase['source'] & { type: 'podcast'; videoId: null };
+      hosted: HostedExcerpt | null;
     }
 );
 
@@ -200,6 +206,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
         startMs: startMs as number,
         endMs: endMs as number,
         source: { ...common.source, type: 'youtube', videoId: identity.videoId },
+        hosted: null,
       };
     } catch {
       return null;
@@ -222,6 +229,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
         startMs: startMs as number,
         endMs: endMs as number,
         source: { ...common.source, type: 'podcast', videoId: null },
+        hosted: null,
       };
     } catch { return null; }
   }
@@ -306,6 +314,38 @@ export async function queryAnnotations(
   };
 }
 
+async function loadHostedExcerpt(
+  supabase: SupabaseClient,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' }>,
+): Promise<HostedExcerpt | null> {
+  try {
+    const { data: mediaState, error: mediaError } = await supabase
+      .rpc('get_public_annotation_media_state', { p_annotation_id: annotation.id })
+      .maybeSingle();
+    if (mediaError) return null;
+
+    let transcript: unknown = null;
+    const availability = isRecord(mediaState) ? mediaState.availability : null;
+    if (availability === 'ready') {
+      const { data: transcriptData, error: transcriptError } = await supabase
+        .rpc('get_public_annotation_transcript', { p_annotation_id: annotation.id })
+        .maybeSingle();
+      if (transcriptError || !transcriptData) return null;
+      transcript = transcriptData;
+    }
+
+    return parsePublicHostedExcerpt(
+      mediaState,
+      transcript,
+      annotation.id,
+      annotation.kind === 'youtube' ? 'video' : 'audio',
+      annotation.endMs - annotation.startMs,
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function queryAnnotation(
   supabase: SupabaseClient,
   annotationId: string,
@@ -323,6 +363,9 @@ export async function queryAnnotation(
   if (!annotation) throw new Error('The annotation response was malformed.');
   const counts = await queryCommentCounts(supabase, [annotation.id]);
   annotation.commentCount = counts.get(annotation.id) ?? 0;
+  if (annotation.kind === 'youtube' || annotation.kind === 'audio') {
+    annotation.hosted = await loadHostedExcerpt(supabase, annotation);
+  }
   return annotation;
 }
 
