@@ -566,7 +566,11 @@ Production launch and hardening remain separately authorized.
 
 - **Extension UI polish / minimalist redesign.** Sequenced after Phase F per
   the locked September sequence in
-  `docs/architecture/phase-f-claims-removal-plan.md`.
+  `docs/architecture/phase-f-claims-removal-plan.md`. The owner-approved
+  brief is `docs/design/ui-polish-brief.md`. Sprint 1 is dark-first tokens,
+  the Create-mode segmented switch, and nested annotation cards (extension
+  Feed + public web). Sprint 2 is extension ↔ page hover linking (YouTube
+  first). Hover linking is not in Sprint 1.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.
