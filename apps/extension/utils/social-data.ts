@@ -346,6 +346,13 @@ async function loadHostedExcerpt(
   }
 }
 
+export async function queryPublicHostedExcerpt(
+  supabase: SupabaseClient,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' }>,
+): Promise<HostedExcerpt | null> {
+  return loadHostedExcerpt(supabase, annotation);
+}
+
 export async function queryAnnotation(
   supabase: SupabaseClient,
   annotationId: string,

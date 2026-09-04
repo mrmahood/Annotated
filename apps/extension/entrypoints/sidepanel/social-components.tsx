@@ -10,6 +10,7 @@ import {
 import {
   getMediaPlaybackPath,
   isHostedExcerptReady,
+  type HostedExcerpt,
   type HostedExcerptMedia,
   type HostedExcerptTranscript,
 } from '../../utils/hosted-playback';
@@ -22,6 +23,7 @@ import {
   queryComments,
   queryFollowState,
   queryProfile,
+  queryPublicHostedExcerpt,
   unfollowProfile,
   type AnnotationPage,
   type CommentPage,
@@ -74,10 +76,12 @@ function HostedExcerptPlayer({
   annotationId,
   media,
   getPublicUrl,
+  compact = false,
 }: {
   annotationId: string;
   media: HostedExcerptMedia;
   getPublicUrl: (path: string) => string | null;
+  compact?: boolean;
 }) {
   const [attempt, setAttempt] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
@@ -91,6 +95,50 @@ function HostedExcerptPlayer({
     if (attempt === 0) setAttempt(1);
     else setUnavailable(true);
   };
+  const player = playbackUrl && media.mimeType === 'video/mp4' ? (
+    <video
+      key={playbackUrl}
+      controls
+      controlsList="nodownload"
+      preload="metadata"
+      src={playbackUrl}
+      onError={onError}
+      onLoadedMetadata={() => setUnavailable(false)}
+      aria-label="Archived source video excerpt"
+    >
+      Your browser cannot play this video excerpt.
+    </video>
+  ) : playbackUrl ? (
+    <audio
+      key={playbackUrl}
+      controls
+      controlsList="nodownload"
+      preload="metadata"
+      src={playbackUrl}
+      onError={onError}
+      onLoadedMetadata={() => setUnavailable(false)}
+      aria-label="Archived source audio excerpt"
+    >
+      Your browser cannot play this audio excerpt.
+    </audio>
+  ) : (
+    <p className="inline-error" role="status">
+      The archived excerpt is temporarily unavailable. The original source remains linked above.
+    </p>
+  );
+
+  if (compact) {
+    return (
+      <div className="card-hosted-media">
+        {player}
+        {playbackUrl && unavailable && (
+          <p className="inline-error" role="status">
+            The archived excerpt is temporarily unavailable. The original source remains linked above.
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <section className="detail-hosted-media" aria-labelledby="detail-hosted-media-heading">
@@ -100,37 +148,7 @@ function HostedExcerptPlayer({
         </span>
         <span>{formatMediaTime(media.durationMs)}</span>
       </div>
-      {playbackUrl && media.mimeType === 'video/mp4' ? (
-        <video
-          key={playbackUrl}
-          controls
-          controlsList="nodownload"
-          preload="metadata"
-          src={playbackUrl}
-          onError={onError}
-          onLoadedMetadata={() => setUnavailable(false)}
-          aria-label="Archived source video excerpt"
-        >
-          Your browser cannot play this video excerpt.
-        </video>
-      ) : playbackUrl ? (
-        <audio
-          key={playbackUrl}
-          controls
-          controlsList="nodownload"
-          preload="metadata"
-          src={playbackUrl}
-          onError={onError}
-          onLoadedMetadata={() => setUnavailable(false)}
-          aria-label="Archived source audio excerpt"
-        >
-          Your browser cannot play this audio excerpt.
-        </audio>
-      ) : (
-        <p className="inline-error" role="status">
-          The archived excerpt is temporarily unavailable. The original source remains linked above.
-        </p>
-      )}
+      {player}
       {playbackUrl && unavailable && (
         <p className="inline-error" role="status">
           The archived excerpt is temporarily unavailable. The original source remains linked above.
@@ -180,18 +198,63 @@ function Avatar({ name, url, size = 30 }: { name: string; url: string | null; si
   );
 }
 
-function AnnotationCard({ annotation, navigation }: {
+function sourceChipLabel(annotation: PublicAnnotation): string {
+  if (annotation.kind === 'youtube') return 'Video';
+  if (annotation.kind === 'audio') return 'Audio';
+  return 'Text';
+}
+
+function AnnotationCard({ annotation, navigation, supabase, getPublicUrl }: {
   annotation: PublicAnnotation;
   navigation: NavigationCallbacks;
+  supabase: SupabaseClient;
+  getPublicUrl: (path: string) => string | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [hosted, setHosted] = useState<HostedExcerpt | null>(
+    annotation.kind === 'article' ? null : annotation.hosted,
+  );
+  const [hostedStatus, setHostedStatus] = useState<'idle' | 'loading' | 'ready'>(
+    annotation.kind !== 'article' && annotation.hosted ? 'ready' : 'idle',
+  );
   const sourceUrl = annotation.kind === 'youtube'
     ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
     : annotation.source.canonicalUrl;
-  const sourceLabel = annotation.kind === 'youtube'
-    ? 'YouTube video'
-    : annotation.kind === 'audio'
-      ? annotation.source.showName ?? 'Podcast / web audio'
-      : annotation.source.hostname;
+  const sourceTitle = annotation.source.title ?? annotation.source.hostname;
+  const hasPassage = annotation.kind === 'article';
+  const hasArticleAudio = annotation.kind === 'article' && Boolean(annotation.audio);
+  const hostedReady = isHostedExcerptReady(hosted) ? hosted : null;
+  const audioUrl = hasArticleAudio && annotation.audio
+    ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
+    : null;
+
+  useEffect(() => {
+    if (!expanded || annotation.kind === 'article' || hostedStatus !== 'idle') return;
+    let cancelled = false;
+    setHostedStatus('loading');
+    void queryPublicHostedExcerpt(supabase, annotation)
+      .then((result) => {
+        if (cancelled) return;
+        setHosted(result);
+        setHostedStatus('ready');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHosted(null);
+        setHostedStatus('ready');
+      });
+    return () => { cancelled = true; };
+  }, [annotation, expanded, hostedStatus, supabase]);
+
+  const nestedPreview = hasPassage ? (
+    <span className={`passage-excerpt${expanded ? ' expanded' : ''}`}>“{annotation.selectedText}”</span>
+  ) : (
+    <span className={`clip-range${expanded ? ' expanded' : ''}`}>
+      {formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}
+      {expanded && <> · {formatMediaTime(annotation.endMs - annotation.startMs)}</>}
+    </span>
+  );
+
   return (
     <article className="social-card">
       <header className="social-card-header">
@@ -201,18 +264,47 @@ function AnnotationCard({ annotation, navigation }: {
         </button>
         <time dateTime={annotation.publishedAt}>{formatTimestamp(annotation.publishedAt)}</time>
       </header>
-      <button className="annotation-card-main" type="button" onClick={() => navigation.openAnnotation(annotation.id)}>
-        <span className="source-kicker">{sourceLabel}</span>
-        <strong>{annotation.source.title ?? annotation.source.hostname}</strong>
-        {annotation.kind === 'article' ? <span className="passage-excerpt">“{annotation.selectedText}”</span> : <span className="clip-range">CLIP&nbsp; {formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</span>}
-        <span className="commentary-excerpt">{annotation.commentaryText}</span>
-        {annotation.kind === 'article' && annotation.audio && <span className="audio-indicator">Audio · {formatAudioDuration(annotation.audio.durationMs)}</span>}
-      </button>
+      <div className="annotation-card-body">
+        <p className="commentary-lead">{annotation.commentaryText}</p>
+        <div className="nested-source">
+          <button
+            className="nested-source-body"
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((current) => !current)}
+          >
+            <span className="source-chip-row">
+              <span className="source-chip">{sourceChipLabel(annotation)}</span>
+              <span className="nested-source-title">{sourceTitle}</span>
+            </span>
+            <span className="nested-source-host">{annotation.source.hostname}</span>
+            {nestedPreview}
+          </button>
+          {expanded && hostedStatus === 'loading' && <span className="nested-source-host">Loading excerpt…</span>}
+          {expanded && hostedReady && (
+            <HostedExcerptPlayer
+              annotationId={annotation.id}
+              media={hostedReady.media}
+              getPublicUrl={getPublicUrl}
+              compact
+            />
+          )}
+          {expanded && hostedReady && (
+            <p className="transcript-peek">{hostedReady.transcript.text}</p>
+          )}
+          {expanded && hasArticleAudio && audioUrl && (
+            <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
+          )}
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">Open source ↗</a>
+        </div>
+      </div>
       <footer className="social-card-actions">
         <button className="text-button" type="button" onClick={() => navigation.openComments(annotation.id)}>
           {annotation.commentCount.toLocaleString()} {annotation.commentCount === 1 ? 'comment' : 'comments'}
         </button>
-        <a href={sourceUrl} target="_blank" rel="noopener noreferrer">{annotation.kind === 'youtube' ? 'Open clip on YouTube' : annotation.kind === 'audio' ? 'Open episode' : 'Original source'} ↗</a>
+        <button className="text-button" type="button" onClick={() => navigation.openAnnotation(annotation.id)}>
+          View annotation
+        </button>
       </footer>
     </article>
   );
@@ -223,6 +315,7 @@ export function AnnotationCollection({
   cache,
   cacheKey,
   navigation,
+  getPublicUrl,
   sourceUrl,
   profileId,
   emptyTitle,
@@ -233,6 +326,7 @@ export function AnnotationCollection({
   cache: SessionSocialCache;
   cacheKey: string;
   navigation: NavigationCallbacks;
+  getPublicUrl: (path: string) => string | null;
   sourceUrl?: string;
   profileId?: string;
   emptyTitle: string;
@@ -311,7 +405,7 @@ export function AnnotationCollection({
     <section className="social-list-section" aria-label={compactHeading ?? 'Annotations'}>
       {compactHeading && <div className="section-heading"><h2>{compactHeading}</h2><span>{page.total ?? page.annotations.length}</span></div>}
       <div className="social-list">
-        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} />)}
+        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} />)}
       </div>
       {page.hasMore && (
         <button className="button button-secondary load-more" type="button" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -679,7 +773,7 @@ export function ProfileView({
         <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} onCountChange={(followerCount) => setProfile((current) => current ? { ...current, followerCount } : current)} />
         {publicUrl && <a className="secondary-link" href={publicUrl} target="_blank" rel="noopener noreferrer">Open public profile ↗</a>}
       </header>
-      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
+      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
     </div>
   );
 }

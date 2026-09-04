@@ -289,6 +289,28 @@ const CREATE_MODE_LABELS: Record<CreateMode, string> = {
   audio: 'Audio',
 };
 
+function CreateModeIcon({ mode }: { mode: CreateMode }) {
+  if (mode === 'video') {
+    return (
+      <svg className="create-mode-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <path fill="currentColor" d="M2.4 3.6h7.4a1 1 0 0 1 1 1v1.9l2.8-1.6v6.2l-2.8-1.6v1.9a1 1 0 0 1-1 1H2.4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z" />
+      </svg>
+    );
+  }
+  if (mode === 'audio') {
+    return (
+      <svg className="create-mode-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <path fill="currentColor" d="M8 2.6a3.4 3.4 0 0 1 3.4 3.4v1.8a3.4 3.4 0 1 1-6.8 0V6A3.4 3.4 0 0 1 8 2.6zm-5 5.2h1.3a3.7 3.7 0 0 0 7.4 0H13a5 5 0 0 1-4.2 4.85V14h-1.6v-1.35A5 5 0 0 1 3 7.8z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="create-mode-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path fill="currentColor" d="M3 3.5h10v1.2H3zm0 2.6h10v1.2H3zm0 2.6h7.2v1.2H3z" />
+    </svg>
+  );
+}
+
 function createUnavailableCapabilities(reason: string): ModeCapabilities {
   return {
     text: { status: 'unavailable', reason },
@@ -2197,6 +2219,7 @@ function App() {
       .set({ [CREATE_MODE_SELECTION_STORAGE_KEY]: stored })
       .catch(() => console.warn('Unable to save the selected Create mode.'));
     setModeAnnouncement(announcement);
+    try { navigator.vibrate?.(12); } catch { /* Desktop Chrome ignores vibration. */ }
     return true;
   };
 
@@ -2309,7 +2332,12 @@ function App() {
     video: youtubeDraftRef.current !== null || webVideoDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'video'),
     audio: audioDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'audio'),
   };
-  const modeStatusMessage = modeAnnouncement || getModeCapabilitySummary(modeSelection);
+  const savedDraftLabels = CREATE_MODES
+    .filter((mode) => savedDraftModes[mode])
+    .map((mode) => CREATE_MODE_LABELS[mode]);
+  const draftStatusMessage = savedDraftLabels.length > 0 ? ` Draft saved: ${savedDraftLabels.join(', ')}.` : '';
+  const modeStatusMessage = modeAnnouncement || `${getModeCapabilitySummary(modeSelection)}${draftStatusMessage}`;
+  const selectedModeIndex = selectedCreateMode ? CREATE_MODES.indexOf(selectedCreateMode) : -1;
   const discardSelectedDetachedDraft = () => {
     if (selectedCreateMode === 'text') {
       void clearDraft('explicit-clear');
@@ -2410,7 +2438,7 @@ function App() {
       {supabase && currentScreen.kind === 'profile' && <ProfileView key={`profile:${currentScreen.profileId}`} supabase={supabase} profileId={currentScreen.profileId} currentUserId={currentUserId} onSignIn={() => void beginSignIn()} navigation={navigationCallbacks} cache={socialCacheRef.current} getPublicUrl={getPublicUrl} />}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'feed' && (
-        <div className="root-view"><header className="view-intro"><span className="section-label">Public activity</span><h1>Recent annotations</h1><p>Published notes from across Annotated.</p></header>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
+        <div className="root-view"><header className="view-intro"><span className="section-label">Public activity</span><h1>Recent annotations</h1><p>Published notes from across Annotated.</p></header>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} getPublicUrl={getPublicUrl} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
       )}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'account' && (
@@ -2428,25 +2456,26 @@ function App() {
           <header className="view-intro create-intro"><span className="section-label">New annotation</span><h1>Create</h1><p>Choose Text, Video, or Audio without losing work in another mode.</p></header>
           <fieldset className="create-mode-switcher">
             <legend>Create mode</legend>
-            <div className="create-mode-options">
+            <div
+              className="create-mode-segmented"
+              role="radiogroup"
+              aria-label="Create mode"
+              data-index={selectedModeIndex >= 0 ? String(selectedModeIndex) : undefined}
+            >
+              <span className="create-mode-thumb" hidden={selectedModeIndex < 0} />
               {CREATE_MODES.map((mode) => {
                 const capability = modeSelection?.capabilities[mode] ?? modeCapabilities[mode];
                 const selected = selectedCreateMode === mode;
                 const unavailable = capability.status !== 'available';
-                const stateLabel = capability.status === 'checking'
-                  ? 'Checking…'
-                  : capability.status === 'unavailable'
-                    ? 'Unavailable'
-                    : !selected && savedDraftModes[mode]
-                      ? 'Draft saved'
-                      : modeSelection?.recommendedMode === mode
-                        ? 'Recommended'
-                        : 'Available';
+                const checking = capability.status === 'checking';
                 return (
-                  <label className={`create-mode-option${selected ? ' selected' : ''}${unavailable ? ' unavailable' : ''}`} key={mode}>
+                  <label
+                    className={`create-mode-segment${selected ? ' selected' : ''}${unavailable ? ' unavailable' : ''}${checking ? ' checking' : ''}`}
+                    key={mode}
+                  >
                     <input type="radio" name="create-mode" value={mode} checked={selected} disabled={unavailable} onChange={() => chooseCreateMode(mode)} />
+                    <CreateModeIcon mode={mode} />
                     <span className="create-mode-label">{CREATE_MODE_LABELS[mode]}</span>
-                    <span className="create-mode-state">{stateLabel}</span>
                   </label>
                 );
               })}
@@ -2457,7 +2486,7 @@ function App() {
           {selectedCreateMode && detachedDraftModes[selectedCreateMode] ? (
             <div className="compact-state detached-draft" role="status"><strong>{CREATE_MODE_LABELS[selectedCreateMode]} draft saved</strong><span>This draft belongs to another connected source. Return to that source to continue, or discard it to start here.</span><button className="button button-secondary" type="button" onClick={discardSelectedDetachedDraft}>Discard {CREATE_MODE_LABELS[selectedCreateMode]} draft and start here</button></div>
           ) : selectedCreateMode === 'video' && videoSource ? (
-            <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading">
+            <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading" key="create-video">
               <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>{youtubeSource ? 'YouTube time range' : 'Webpage video range'}</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected video, set the start, continue watching, then set the end.</p>
@@ -2479,7 +2508,7 @@ function App() {
               </>}
             </section>
           ) : selectedCreateMode === 'audio' && audioSource ? (
-            <section className="create-panel audio-clip-panel" aria-labelledby="create-heading">
+            <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
               <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>Podcast / web audio</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected page audio, set the start, continue listening, then set the end.</p>
@@ -2500,14 +2529,14 @@ function App() {
               </>}
             </section>
           ) : selectedCreateMode === 'text' ? (
-            <section className="create-panel" aria-labelledby="create-heading"><div className="section-heading"><h2 id="create-heading">Create annotation</h2><span>Article text</span></div>
+            <section className="create-panel" aria-labelledby="create-heading" key="create-text"><div className="section-heading"><h2 id="create-heading">Create annotation</h2><span>Article text</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><div className="annotation-field"><label htmlFor="annotation-commentary">Your commentary</label><textarea id="annotation-commentary" value={commentary} maxLength={2_000} rows={6} disabled={publishState.status === 'publishing'} onChange={(event) => changeCommentary(event.target.value)} /><span aria-live="polite">{commentary.length.toLocaleString()} / 2,000</span></div><AudioRecorder controller={audioRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginSignIn()}>Continue with Google</button> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here. Selections and commentary may contain up to 2,000 characters each.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
             </section>
           ) : (
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
           )}
           {hostedMediaPanel}
-          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={audioSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} emptyTitle={youtubeSource ? 'No clips on this video yet' : audioSource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : audioSource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : audioSource ? 'Clips on this episode' : 'On this source'} />}
+          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={audioSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} emptyTitle={youtubeSource ? 'No clips on this video yet' : audioSource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : audioSource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : audioSource ? 'Clips on this episode' : 'On this source'} />}
         </div>
       )}
       {pendingModeSwitch && (
