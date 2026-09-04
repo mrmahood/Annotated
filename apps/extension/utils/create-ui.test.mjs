@@ -62,6 +62,12 @@ test('player selection is a bounded native radio group and gates every clip acti
   assert.match(style, /\.player-option-label[^}]*overflow-wrap: anywhere/);
 });
 
+test('processing copy describes queued work instead of a missing worker', async () => {
+  const source = await readFile(APP_URL, 'utf8');
+  assert.match(source, /mediaCaptureState\.status === 'processing' && <span>Uploaded and queued\. Processing is in progress\.<\/span>/);
+  assert.doesNotMatch(source, /until the media worker ships/);
+});
+
 test('generic webpage video is discovered independently and cannot cross the unimplemented server boundary', async () => {
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /const genericVideo = sourceState\.source\.classification !== 'YouTube'/);
