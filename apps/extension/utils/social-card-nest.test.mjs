@@ -46,7 +46,7 @@ test('in-feed expand loads hosted media only through the public excerpt helper',
 
   assert.match(data, /export async function queryPublicHostedExcerpt/);
   assert.match(data, /return loadHostedExcerpt\(supabase, annotation\)/);
-  assert.match(card, /queryPublicHostedExcerpt\(supabase, annotation\)/);
+  assert.match(card, /queryPublicHostedExcerpt\(supabase, current\)/);
   assert.match(card, /hostedReady && \(/);
   assert.doesNotMatch(card, /\.from\(['"]annotation_(?:media|transcripts)['"]\)/);
 });
