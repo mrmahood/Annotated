@@ -416,7 +416,6 @@ function ExcerptTranscript({
                 strength: 'strong',
                 startMs: segment.startMs,
                 endMs: segment.endMs,
-                seekMs: segment.startMs,
               } : null)}
             >
               <span>
@@ -589,7 +588,13 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                       strength: 'strong',
                       startMs: segment.startMs,
                       endMs: segment.endMs,
-                      seekMs: segment.startMs,
+                    });
+                  }}
+                  onPointerLeave={() => {
+                    if (!youtubeHover || !clipTarget) return;
+                    enterYouTubeHoverLink(youtubeHover, {
+                      ...clipTarget,
+                      strength: 'soft',
                     });
                   }}
                 >

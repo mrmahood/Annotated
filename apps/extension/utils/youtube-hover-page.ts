@@ -236,6 +236,7 @@ export function applyYouTubeHoverHighlightOnPage(
     };
 
     if (
+      request.strength !== 'soft' &&
       typeof request.seekMs === 'number' &&
       Number.isFinite(request.seekMs) &&
       request.seekMs >= 0

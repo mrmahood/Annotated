@@ -275,6 +275,20 @@ test('page injector seeks only when currentTime is outside the clip and far from
   });
 });
 
+test('soft hover never seeks even when seekMs is present', () => {
+  withPage(({ video }) => {
+    video.currentTime = 12;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'soft',
+      startMs: 1_000,
+      endMs: 4_000,
+      seekMs: 2_500,
+    }).ok, true);
+    assert.equal(video.currentTime, 12);
+  });
+});
+
 test('page injector collapses a rapid same-seek re-apply and never calls play', () => {
   assert.doesNotMatch(applyYouTubeHoverHighlightOnPage.toString(), /\.play\s*\(/);
   withPage(({ video, documentElement }) => {

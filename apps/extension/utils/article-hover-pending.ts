@@ -3,6 +3,7 @@ import {
   articleHoverApplyResultFromPage,
   annotationMatchesConnectedArticle,
   openArticleSourceOnConnectedTab,
+  scheduleArticleHoverOpenIdleClear,
   type ArticleHoverApplyResult,
   type ArticleHoverChrome,
   type ArticleHoverConnection,
@@ -280,6 +281,9 @@ export async function applyPendingArticleHoverOnTab(
     });
     const result = articleHoverApplyResultFromPage(injection);
     await clearPendingAfterApply(result, pending, chrome);
+    if (result.status === 'matched' || result.status === 'unmatched') {
+      scheduleArticleHoverOpenIdleClear({ tabId: tab.tabId, tabUrl: tab.tabUrl }, chrome);
+    }
     return result;
   } catch {
     return { status: 'unavailable' };
@@ -335,6 +339,9 @@ export async function applyPendingArticleHoverOnConnection(
     chrome,
   );
   await clearPendingAfterApply(result, pending, chrome);
+  if (result.status === 'matched' || result.status === 'unmatched') {
+    scheduleArticleHoverOpenIdleClear(connection, chrome);
+  }
   return result;
 }
 

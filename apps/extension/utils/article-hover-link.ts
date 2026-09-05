@@ -9,6 +9,7 @@ import {
 import { classifySourceUrl, normalizeSourceUrl } from './social-helpers.ts';
 
 export const ARTICLE_HOVER_LEAVE_MS = 120;
+export const ARTICLE_HOVER_OPEN_IDLE_MS = 12_000;
 
 export const ARTICLE_PASSAGE_MISS_STATUS =
   'This passage isn’t on the live page anymore (it may have been edited).';
@@ -104,6 +105,26 @@ export function articleHoverApplyResultFromPage(
   if (page.reason === 'text-unmatched') return { status: 'unmatched' };
   if (page.reason === 'source-mismatch') return { status: 'source-mismatch' };
   return { status: 'unavailable' };
+}
+
+export function articleHoverConnectionForTab(
+  classification: string | null | undefined,
+  tabId: number | null | undefined,
+  tabUrl: string | null | undefined,
+): ArticleHoverConnection | null {
+  if (classification === 'YouTube') return null;
+  if (classification !== 'Web page' && classification !== 'Podcast / web audio') {
+    return null;
+  }
+  if (!Number.isInteger(tabId) || (tabId ?? -1) < 0) return null;
+  if (typeof tabUrl !== 'string' || !tabUrl.trim()) return null;
+  try {
+    const url = new URL(tabUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  } catch {
+    return null;
+  }
+  return { tabId: tabId as number, tabUrl };
 }
 
 export function annotationMatchesConnectedArticle(
@@ -256,6 +277,7 @@ export async function openArticleSourceOnConnectedTab(
   } catch {
     // Focus is best-effort; matched highlight or unmatched honesty already ran.
   }
+  scheduleArticleHoverOpenIdleClear(connection, chromeApi);
   return applied;
 }
 
@@ -281,10 +303,22 @@ export async function clearArticleHoverOnConnectedTab(
 
 export function createArticleHoverSession(options: {
   leaveMs?: number;
+  idleMs?: number;
   setTimeoutFn?: typeof setTimeout;
   clearTimeoutFn?: typeof clearTimeout;
 } = {}) {
-  const leave = createArticleHoverLeaveController(options);
+  const timers = {
+    setTimeoutFn: options.setTimeoutFn,
+    clearTimeoutFn: options.clearTimeoutFn,
+  };
+  const leave = createArticleHoverLeaveController({
+    leaveMs: options.leaveMs ?? ARTICLE_HOVER_LEAVE_MS,
+    ...timers,
+  });
+  const idle = createArticleHoverLeaveController({
+    leaveMs: options.idleMs ?? ARTICLE_HOVER_OPEN_IDLE_MS,
+    ...timers,
+  });
   return {
     enter(
       connection: ArticleHoverConnection | null,
@@ -292,6 +326,7 @@ export function createArticleHoverSession(options: {
       chromeApi?: ArticleHoverChrome,
       onResult?: ArticleHoverResultListener,
     ) {
+      idle.cancel();
       leave.enter(() => {
         if (!connection) return;
         void applyArticleHoverOnConnectedTab(connection, target, chromeApi).then((result) => {
@@ -300,13 +335,22 @@ export function createArticleHoverSession(options: {
       });
     },
     leave(connection: ArticleHoverConnection | null, chromeApi?: ArticleHoverChrome) {
+      idle.cancel();
       leave.leave(() => {
+        if (!connection) return;
+        void clearArticleHoverOnConnectedTab(connection, chromeApi);
+      });
+    },
+    scheduleIdle(connection: ArticleHoverConnection | null, chromeApi?: ArticleHoverChrome) {
+      leave.cancel();
+      idle.leave(() => {
         if (!connection) return;
         void clearArticleHoverOnConnectedTab(connection, chromeApi);
       });
     },
     cancel() {
       leave.cancel();
+      idle.cancel();
     },
   };
 }
@@ -331,6 +375,13 @@ export function leaveArticleHoverLink(
 
 export function cancelArticleHoverLink() {
   sharedHover.cancel();
+}
+
+export function scheduleArticleHoverOpenIdleClear(
+  connection: ArticleHoverConnection | null,
+  chromeApi?: ArticleHoverChrome,
+) {
+  sharedHover.scheduleIdle(connection, chromeApi);
 }
 
 export function articleHoverRegionHandlers(

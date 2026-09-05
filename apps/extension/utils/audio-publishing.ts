@@ -70,6 +70,9 @@ export async function beginHostedAudioClipAnnotation(
     p_end_ms: input.endMs,
     p_commentary_text: input.commentaryText,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    const raw = typeof error.message === 'string' ? error.message.trim() : '';
+    throw new Error(raw || 'The audio clip could not be published.');
+  }
   return parseHostedAudioBeginResponse(data);
 }

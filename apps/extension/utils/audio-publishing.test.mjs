@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { beginHostedAudioClipAnnotation, parseHostedAudioBeginResponse } from './audio-publishing.ts';
+import {
+  beginHostedAudioClipAnnotation,
+  parseHostedAudioBeginResponse,
+} from './audio-publishing.ts';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const ANNOTATION_ID = '33333333-3333-4333-8333-333333333333';
@@ -55,4 +58,16 @@ test('rejects ranges outside the known player duration before RPC', async () => 
 
 test('rejects malformed hosted audio begin responses', () => {
   assert.throws(() => parseHostedAudioBeginResponse([]), /invalid draft/);
+});
+
+test('does not remap begin errors into a same-URL article conflict', async () => {
+  const fake = fakeClient();
+  fake.client.rpc = async () => ({
+    data: null,
+    error: { message: 'The audio source could not be created or reused.', code: 'P0001' },
+  });
+  await assert.rejects(
+    beginHostedAudioClipAnnotation(fake.client, input),
+    (error) => error instanceof Error && error.message === 'The audio source could not be created or reused.',
+  );
 });

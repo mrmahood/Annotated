@@ -281,7 +281,11 @@ export async function queryAnnotations(
     .from('annotations')
     .select(ANNOTATION_SELECT, { count: 'exact' })
     .eq('status', plan.status);
-  if (plan.normalizedUrl) query = query.eq('source.normalized_url', plan.normalizedUrl);
+  if (plan.normalizedUrls && plan.normalizedUrls.length > 1) {
+    query = query.in('source.normalized_url', plan.normalizedUrls);
+  } else if (plan.normalizedUrl) {
+    query = query.eq('source.normalized_url', plan.normalizedUrl);
+  }
   if (plan.profileId) query = query.eq('user_id', plan.profileId);
   for (const order of plan.orders) {
     query = query.order(order.column, { ascending: order.ascending });

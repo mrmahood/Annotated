@@ -20,8 +20,20 @@ test('context annotation plan normalizes its source and remains published-only',
     sourceUrl: 'HTTPS://Example.com/story/?utm_source=x&b=2&a=1#passage',
   });
   assert.equal(plan.normalizedUrl, 'https://example.com/story?a=1&b=2');
+  assert.deepEqual(plan.normalizedUrls, ['https://example.com/story?a=1&b=2']);
   assert.equal(plan.status, PUBLIC_ANNOTATION_STATUS);
   assert.deepEqual(plan.orders.map(({ column }) => column), ['published_at', 'id']);
+});
+
+test('page listings include both article and audio identities for the same URL', () => {
+  const plan = buildAnnotationQueryPlan({
+    sourceUrl: 'https://example.com/story?t=20',
+  });
+  assert.equal(plan.normalizedUrl, 'https://example.com/story?t=20');
+  assert.deepEqual(plan.normalizedUrls, [
+    'https://example.com/story?t=20',
+    'https://example.com/story',
+  ]);
 });
 
 test('global feed plan explicitly remains published-only', () => {
@@ -36,6 +48,7 @@ test('context source discrimination normalizes supported YouTube videos by video
     sourceUrl: 'https://youtu.be/dQw4w9WgXcQ?t=90&si=tracking',
   });
   assert.equal(plan.normalizedUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.deepEqual(plan.normalizedUrls, ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']);
   assert.equal(plan.status, PUBLIC_ANNOTATION_STATUS);
   assert.equal(classifySourceUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), 'youtube');
   assert.equal(classifySourceUrl('https://example.com/watch?v=dQw4w9WgXcQ'), 'article');
