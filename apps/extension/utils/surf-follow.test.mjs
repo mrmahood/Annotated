@@ -111,10 +111,11 @@ test('surf-follow helpers keep context updates on activate/complete and skip idl
   assert.equal(tabIsActiveInFollowedWindow({ active: true, windowId: 2 }, 1), false);
   assert.equal(tabIsActiveInFollowedWindow({ active: false, windowId: 1 }, 1), false);
 
-  assert.equal(tabIsReadyForPendingApply({ status: 'complete' }, { url: ARTICLE, status: 'complete' }), true);
-  assert.equal(tabIsReadyForPendingApply({}, { url: ARTICLE, status: 'complete' }), true);
-  assert.equal(tabIsReadyForPendingApply({ status: 'loading' }, { url: ARTICLE, status: 'loading' }), false);
-  assert.equal(tabIsReadyForPendingApply({ status: 'complete' }, { url: '', status: 'complete' }), false);
+  assert.equal(tabIsReadyForPendingApply({ status: 'complete' }, { id: 17, url: ARTICLE, status: 'complete' }), true);
+  assert.equal(tabIsReadyForPendingApply({}, { id: 17, url: ARTICLE, status: 'complete' }), true);
+  assert.equal(tabIsReadyForPendingApply({ status: 'loading' }, { id: 17, url: ARTICLE, status: 'loading' }), false);
+  assert.equal(tabIsReadyForPendingApply({ status: 'complete' }, { id: 17, url: '', status: 'complete' }), false);
+  assert.equal(tabIsReadyForPendingApply({ status: 'complete' }, { url: ARTICLE, status: 'complete' }), false);
 
   assert.equal(activeCaptureHoldsContext({ request: { tabId: 9 } }, 17), true);
   assert.equal(activeCaptureHoldsContext({ request: { tabId: 17 } }, 17), false);

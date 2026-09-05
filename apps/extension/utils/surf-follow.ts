@@ -67,10 +67,11 @@ export function tabIsActiveInFollowedWindow(
   return tab.windowId === followWindowId;
 }
 
-export function tabIsReadyForPendingApply(
+export function tabIsReadyForPendingApply<T extends Pick<SurfFollowTab, 'url' | 'status' | 'id'>>(
   changeInfo: SurfFollowChangeInfo,
-  tab: Pick<SurfFollowTab, 'url' | 'status'>,
-): tab is Pick<SurfFollowTab, 'status'> & { url: string } {
+  tab: T,
+): tab is T & { url: string; id: number } {
+  if (tab.id == null || !Number.isInteger(tab.id) || tab.id < 0) return false;
   if (typeof tab.url !== 'string' || !tab.url) return false;
   return changeInfo.status === 'complete' || tab.status === 'complete';
 }
