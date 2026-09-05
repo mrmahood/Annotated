@@ -6,6 +6,7 @@ test('detail mapping keeps youtube/audio kinds and loads hosted media only throu
   const source = await readFile(new URL('./social-data.ts', import.meta.url), 'utf8');
 
   assert.match(source, /kind: 'youtube'/);
+  assert.match(source, /kind: 'video'/);
   assert.match(source, /kind: 'audio'/);
   assert.match(source, /hosted: null/);
   assert.match(source, /sources!annotations_source_id_fkey/);
@@ -52,13 +53,17 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /onArticleHoverResult/);
   assert.match(detail, /handleArticleSourceOpenClick\(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection\)/);
   assert.match(detail, /handleAudioSourceOpenClick\(event, annotation, audioHover, sourceOpenUrl, onAudioAwaitingConnection\)/);
+  assert.match(detail, /handlePageVideoSourceOpenClick\(event, annotation, pageVideoHover, sourceOpenUrl, onPageVideoAwaitingConnection\)/);
   assert.match(detail, /ArticlePendingConnectHint/);
   assert.match(detail, /AudioPendingConnectHint/);
+  assert.match(detail, /PageVideoPendingConnectHint/);
   assert.match(detail, /ARTICLE_PENDING_CONNECT_HINT/);
   assert.match(detail, /openArticleSourceFromPanel/);
   assert.match(detail, /openAudioSourceFromPanel/);
+  assert.match(detail, /openPageVideoSourceFromPanel/);
   assert.match(detail, /articleHoverRegionHandlers\(articleHover, \{ \.\.\.articleTarget, strength: 'soft' \}, onArticleHoverResult\)/);
   assert.match(detail, /audioHoverRegionHandlers\(audioHover, \{ \.\.\.audioTarget, strength: 'soft' \}\)/);
+  assert.match(detail, /pageVideoHoverRegionHandlers\(pageVideoHover, \{ \.\.\.pageVideoTarget, strength: 'soft' \}\)/);
   assert.match(styles, /\.article-passage-miss/);
   assert.doesNotMatch(detail, /download=/);
   assert.doesNotMatch(detail, /src=\{playbackUrl\}/);
@@ -66,8 +71,9 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.doesNotMatch(styles, /annotation-media-raw|signedUrl/);
 
   assert.match(app, /Uploaded and queued\. Processing is in progress\./);
-  assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\} audioHover=\{audioHover\}/);
+  assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\} audioHover=\{audioHover\} pageVideoHover=\{pageVideoHover\}/);
   assert.match(app, /articleHoverConnectionForTab/);
   assert.match(app, /audioHoverConnectionForTab/);
+  assert.match(app, /pageVideoHoverConnectionForTab/);
   assert.doesNotMatch(app, /until the media worker ships/);
 });

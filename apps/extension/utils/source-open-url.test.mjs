@@ -139,7 +139,7 @@ test('article Open source uses the bare canonical URL, not a text fragment', () 
   );
 });
 
-test('YouTube Open source keeps the existing timestamp URL; audio stays a bare canonical', () => {
+test('YouTube Open source keeps the existing timestamp URL; audio and page-video stay a bare canonical', () => {
   assert.equal(
     getSourceOpenUrl({ kind: 'youtube', canonicalUrl: YOUTUBE, startMs: 42_000 }),
     getYouTubeTimestampUrl(YOUTUBE, 42_000),
@@ -147,6 +147,10 @@ test('YouTube Open source keeps the existing timestamp URL; audio stays a bare c
   assert.equal(
     getSourceOpenUrl({ kind: 'audio', canonicalUrl: AUDIO, startMs: 12_000 }),
     AUDIO,
+  );
+  assert.equal(
+    getSourceOpenUrl({ kind: 'video', canonicalUrl: ENES_URL, startMs: 8_000 }),
+    ENES_URL,
   );
 });
 

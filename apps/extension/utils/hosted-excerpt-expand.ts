@@ -9,9 +9,9 @@ export type HostedExcerptCardStatus = 'idle' | 'loading' | 'ready' | 'unavailabl
 export function hostedExcerptExpandSessionKey(input: {
   expanded: boolean;
   annotationId: string;
-  kind: 'article' | 'youtube' | 'audio';
+  kind: 'article' | 'youtube' | 'audio' | 'video';
 }): string | null {
-  if (!input.expanded || input.kind === 'article') return null;
+  if (!input.expanded || input.kind === 'article' || input.kind === 'video') return null;
   return `${input.annotationId}:${input.kind}`;
 }
 

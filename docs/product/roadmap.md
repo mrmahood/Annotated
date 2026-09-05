@@ -8,7 +8,9 @@ not accessed; GCP media dispatcher and reconciler schedules remain paused.
 Updated 2026-09-05. Sprint 1 UI polish and Sprint 2 YouTube hover
 linking are merged and owner-accepted on `main`; Sprint 3 (article/text)
 hover is implemented on `main`. Sprint 4 (audio/podcast) hover is
-implemented pending owner Chrome acceptance. D1 and D2 completed their
+implemented pending owner Chrome acceptance. Sprint 5 (generic
+page-video hover; not YouTube `/watch`) is implemented pending owner
+Chrome acceptance. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -572,13 +574,14 @@ Production launch and hardening remain separately authorized.
   `docs/architecture/phase-f-claims-removal-plan.md`. The owner-approved
   brief is `docs/design/ui-polish-brief.md`. Sprint 1 and Sprint 2 are
   **done** (implemented, merged, and owner-accepted on `main`). All media
-  hover highlights (YouTube, article/text, and audio/podcast) live on this
-  roadmap. Sprint 3 is implemented on `main`. Sprint 4 is implemented
-  pending owner Chrome acceptance. Visual grammar reuses Sprint 2
-  (outline + light page dim, ~120 ms leave debounce). The YouTube
-  shadow-DOM / fullscreen limitation does not apply the same way to
-  article ranges or audio players; those slices still fail closed and
-  must not chase brittle host-specific piercing.
+  hover highlights (YouTube `/watch`, article/text, audio/podcast, and
+  generic page-video) live on this roadmap. Sprint 3 is implemented on
+  `main`. Sprint 4 and Sprint 5 are implemented pending owner Chrome
+  acceptance. Visual grammar reuses Sprint 2 (outline + light page dim,
+  ~120 ms leave debounce). Sprint 2 remains YouTube `/watch` only;
+  generic page-video is Sprint 5 and does not replace that path. Those
+  later slices still fail closed and must not chase brittle host-specific
+  piercing.
   - **Sprint 1 (done).** Dark-first tokens, the Create-mode segmented
     switch, and nested annotation cards (extension Feed + public web).
     Merged as PR #56.
@@ -614,6 +617,21 @@ Production launch and hardening remain separately authorized.
     highlight applied on tab complete / surf-follow. Fail closed
     off-source, on identity mismatch, or when no safe player target
     exists. Same permissions; no persistent content scripts.
+  - **Sprint 5 — generic page-video hover linking** (extension;
+    implemented; owner Chrome acceptance still required). When the
+    connected tab is the annotation’s non-YouTube video source page
+    (news/HTML5/embed chrome; article-page source identity), hovering
+    a Video card scrolls to and paints the active player / chrome with
+    outline + light page dim. Prefer a time-range overlay when clip
+    bounds and a visible scrubber are known; otherwise highlight the
+    player chrome. Soft hover does not seek or play. YouTube `/watch`
+    stays on the Sprint 2 path. Article and audio hover on the same
+    URL are not stolen. Open source writes a pending highlight applied
+    on tab complete / surf-follow. Fail closed off-source, on identity
+    mismatch, or when no safe player target exists. Generic
+    webpage-video hosted publish remains a separate gap. Same
+    permissions; no persistent content scripts; no host-specific
+    selectors.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.

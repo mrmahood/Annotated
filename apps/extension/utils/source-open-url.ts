@@ -6,7 +6,7 @@ import {
   takeTrailingNormalizedWindow,
 } from './article-hover-page.ts';
 
-export type SourceOpenKind = 'article' | 'youtube' | 'audio';
+export type SourceOpenKind = 'article' | 'youtube' | 'audio' | 'video';
 
 export type SourceOpenInput = {
   kind: SourceOpenKind;
@@ -72,6 +72,11 @@ export function getSourceOpenUrl(input: SourceOpenInput): string {
     // Sprint 4 hover/pending apply owns in-page player highlight. Open source
     // still loads the episode URL only — it does not seek or mutate playback.
     return input.canonicalUrl;
+  }
+  if (input.kind === 'video') {
+    // Sprint 5 hover/pending apply owns in-page player highlight. Open source
+    // still loads the page URL only — it does not seek or mutate playback.
+    return articleUrlWithoutHash(input.canonicalUrl) ?? input.canonicalUrl;
   }
   // Amber host-access highlight is the Open source path. A `#:~:text=`
   // fragment would also paint Chrome's purple ::target-text, which stays

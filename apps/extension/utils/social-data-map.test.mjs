@@ -100,3 +100,61 @@ test('does not project audio_clip rows that still point at an article source', (
     null,
   );
 });
+
+test('projects webpage video_clip rows that use the article page as source identity', () => {
+  const mapped = mapPublicAnnotation(baseRow({
+    commentary_text: 'this clip on the news player is the claim',
+    annotation_type: 'video_clip',
+    source: {
+      ...baseRow().source,
+      source_type: 'article',
+    },
+    target: {
+      target_type: 'time_range',
+      selected_text: null,
+      start_ms: 1_000,
+      end_ms: 8_000,
+    },
+  }));
+  assert.equal(mapped?.kind, 'video');
+  assert.equal(mapped?.source.type, 'article');
+  assert.equal(mapped?.startMs, 1_000);
+  assert.equal(mapped?.endMs, 8_000);
+  assert.equal(mapped?.hosted, null);
+  assert.equal(mapped?.source.canonicalUrl, NYT_URL);
+});
+
+test('the same URL can project article text, webpage video, and podcast audio as separate cards', () => {
+  const article = mapPublicAnnotation(baseRow({
+    annotation_type: 'article_text',
+    source: {
+      ...baseRow().source,
+      source_type: 'article',
+    },
+    target: {
+      target_type: 'text',
+      selected_text: 'Judge Davis’s order, issued in Federal District Court.',
+      start_ms: null,
+      end_ms: null,
+    },
+  }));
+  const video = mapPublicAnnotation(baseRow({
+    annotation_type: 'video_clip',
+    source: {
+      ...baseRow().source,
+      source_type: 'article',
+    },
+    target: {
+      target_type: 'time_range',
+      selected_text: null,
+      start_ms: 2_000,
+      end_ms: 9_000,
+    },
+  }));
+  const audio = mapPublicAnnotation(baseRow());
+  assert.equal(article?.kind, 'article');
+  assert.equal(video?.kind, 'video');
+  assert.equal(audio?.kind, 'audio');
+  assert.equal(article?.source.canonicalUrl, video?.source.canonicalUrl);
+  assert.equal(video?.source.canonicalUrl, audio?.source.canonicalUrl);
+});
