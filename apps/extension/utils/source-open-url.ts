@@ -41,8 +41,9 @@ export function buildArticleTextFragmentUrl(
 ): string {
   const base = articleUrlWithoutHash(canonicalUrl);
   if (!base) return canonicalUrl;
-  // Clean crumbs and drop a mid-word tail (`commerci`) before encoding.
-  // Never emit a fragment that ends inside a cut-off token.
+  // Clean crumbs and drop mid-word head (`dom`) / tail (`commerci`)
+  // before encoding. Never emit a fragment that starts or ends inside a
+  // cut-off token.
   const normalized = prepareArticlePassageQuery(selectedText);
   if (normalized.length < SOURCE_OPEN_TEXT_FRAGMENT_MIN_CHARS) return base;
 
