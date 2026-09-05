@@ -243,5 +243,16 @@ select is(
   'TikTok source metadata stores the video id'
 );
 
+select is(
+  (
+    select metadata ->> 'handle'
+    from public.sources
+    where source_type = 'tiktok'
+      and normalized_url = 'https://www.tiktok.com/@bbcnews/video/7550123456789012345'
+  ),
+  'bbcnews',
+  'TikTok source metadata stores the handle extracted from the watch URL'
+);
+
 select * from finish();
 rollback;
