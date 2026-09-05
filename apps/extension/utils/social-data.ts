@@ -62,6 +62,14 @@ export type PublicAnnotation = PublicAnnotationBase & (
       hosted: HostedExcerpt | null;
     }
   | {
+      kind: 'video';
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationBase['source'] & { type: 'article'; videoId: null };
+      hosted: HostedExcerpt | null;
+    }
+  | {
       kind: 'audio';
       selectedText: null;
       startMs: number;
@@ -224,6 +232,23 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
     } catch {
       return null;
     }
+  }
+
+  if (
+    annotationType === 'video_clip' && sourceType === 'article' &&
+    targetType === 'time_range' && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
+  ) {
+    return {
+      ...common,
+      kind: 'video',
+      selectedText: null,
+      startMs: startMs as number,
+      endMs: endMs as number,
+      source: { ...common.source, type: 'article', videoId: null },
+      hosted: null,
+    };
   }
 
   if (

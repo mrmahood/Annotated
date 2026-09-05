@@ -4,6 +4,7 @@ import {
 } from '../utils/active-tab-context';
 import { applyPendingArticleHoverOnTab } from '../utils/article-hover-pending';
 import { applyPendingAudioHoverOnTab } from '../utils/audio-hover-pending';
+import { applyPendingPageVideoHoverOnTab } from '../utils/page-video-hover-pending';
 import { installMediaCapture } from '../utils/media-capture-background';
 import {
   followBrowsingTab,
@@ -22,6 +23,7 @@ export default defineBackground(() => {
     applyPending: async (tab) => {
       await applyPendingArticleHoverOnTab(tab);
       await applyPendingAudioHoverOnTab(tab);
+      await applyPendingPageVideoHoverOnTab(tab);
     },
   });
 
@@ -50,6 +52,7 @@ export default defineBackground(() => {
           };
           await applyPendingArticleHoverOnTab(pendingTab);
           await applyPendingAudioHoverOnTab(pendingTab);
+          await applyPendingPageVideoHoverOnTab(pendingTab);
         }
       })
       .catch((error: unknown) => {

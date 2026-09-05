@@ -4,9 +4,10 @@ Status: **owner-approved design brief**. Sprint 1 (tokens, switch, cards)
 and Sprint 2 (YouTube `/watch` hover linking) are implemented and
 owner-accepted on `main`. Sprint 3 (article/text selection hover) is
 implemented on `main`. Sprint 4 (audio/podcast hover linking) is
-implemented pending owner Chrome acceptance. Approving those sections
-does not authorize migrations, Staging, Production, X OAuth re-enable,
-or Phase G.
+implemented pending owner Chrome acceptance. Sprint 5 (generic
+page-video hover linking) is implemented pending owner Chrome
+acceptance. Approving those sections does not authorize migrations,
+Staging, Production, X OAuth re-enable, or Phase G.
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
 Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
@@ -36,7 +37,9 @@ remaining hover-link follow-ons:
 - YouTube `/watch` hover linking (Sprint 2, **done**);
 - article / text selection hover linking (Sprint 3, **done**);
 - audio / podcast hover linking (Sprint 4, **implemented**; owner Chrome
-  acceptance still required).
+  acceptance still required);
+- generic page-video hover linking (Sprint 5, **implemented**; owner
+  Chrome acceptance still required). YouTube `/watch` remains Sprint 2.
 
 The annotation is the product; chrome gets out of the way.
 
@@ -67,9 +70,11 @@ reinterpreted in implementation:
    segmented switch, and nested annotation cards (extension Feed + web).
    Sprint 2 is extension ↔ page hover linking (YouTube `/watch` only).
    Sprint 3 is article / text selection hover linking. Sprint 4 is
-   audio / podcast hover linking. Hover linking was **not** in Sprint 1.
-   Sprint 1, Sprint 2, and Sprint 3 are **done**; Sprint 4 is
-   implemented and waits on owner Chrome acceptance.
+   audio / podcast hover linking. Sprint 5 is generic page-video hover
+   linking (non-YouTube news/HTML5/embed chrome). Hover linking was
+   **not** in Sprint 1. Sprint 1, Sprint 2, and Sprint 3 are **done**;
+   Sprint 4 and Sprint 5 are implemented and wait on owner Chrome
+   acceptance. Sprint 2 remains YouTube `/watch` only.
 3. **Demo path.** Primary judge demo path is **YouTube video annotations in
    the extension**.
 4. **Copy and marks.** No existing fonts, logo mark, or copy is sacred.
@@ -185,7 +190,7 @@ later hover-link fades. No spring/bounce presets.
 - Detail routes remain for share and deep link; this brief does not replace
   them with in-feed expand.
 
-### 5.3 Permissions relevant to hover linking (Sprint 2–4)
+### 5.3 Permissions relevant to hover linking (Sprint 2–5)
 
 Owner override, 2026-09-05 (Matt): production permissions now include
 `tabs` plus `host_permissions` for `http://*/*` and `https://*/*`, in
@@ -386,6 +391,50 @@ is not that annotation’s audio source, identity cannot be confirmed, no
 safe player target exists, or scripting fails. No persistent content
 scripts, no diagnostic UI, no host-specific piercing.
 
+### 8.4 Sprint 5 — generic page-video hover linking (implemented)
+
+Owner authorization (2026-09-05), after Sprint 4 audio hover
+scroll+highlight was verified: hover/scroll is **not** locked across all
+video players. Sprint 2 remains YouTube `/watch` only. Matt then
+authorized generic page-video hover for non-YouTube source pages (news
+players, HTML5 `<video>`, common embed chrome — e.g. Fox News
+article/video pages).
+
+When the connected / surf-followed tab is the annotation’s non-YouTube
+video source page, hovering the Video card, nested chip, or commentary:
+
+- scrolls the page so the active / primary video player (or visible
+  player chrome / scrubber) is in view;
+- paints that player with the shared outline + light page dim;
+- prefers one time-range overlay on a visible scrubber when clip
+  start/end and a safe duration are known. Otherwise still scroll + ring
+  the player chrome.
+
+YouTube `/watch` annotations stay on the dedicated Sprint 2
+`youtubeHover` path. Sprint 5 never replaces that path. Identity uses
+`(normalized_url, source_type)` plus Feed `kind` so a page that also has
+article and/or podcast annotations does not steal or lose those hovers.
+Soft hover never seeks or plays the host player. Nested chip uses the
+stronger ring. Leave debounce is ~120 ms; Open source / idle clear uses
+the same long TTL pattern as article/audio hover so leave cannot
+flash-clear a just-applied highlight.
+
+Open source from a webpage Video card writes
+`annotatedPageVideoHoverPending` and applies scroll + highlight when the
+opened or already-connected tab is ready. Player targeting is generic
+(`<video>` with a visual frame, visible player chrome / play / scrubber,
+common embed iframe chrome). Fail closed when the tab is not that
+annotation’s video source, identity cannot be confirmed, no safe player
+target exists, or scripting fails. No persistent content scripts, no
+diagnostic UI, no Fox-only or host-specific selectors.
+
+Feed projection: webpage video cards are `video_clip` rows whose source
+identity is the article page (`source_type = article`), distinct from
+YouTube `video_clip` + `youtube`. Generic webpage-video **hosted
+publish** remains a separately authorized gap; Sprint 5 ships hover for
+whatever Video cards the Feed can already project and does not implement
+that publish path.
+
 ## 9. Acceptance criteria (Sprint 1)
 
 - Dark tokens applied consistently in the extension sidepanel and the web
@@ -401,13 +450,16 @@ scripts, no diagnostic UI, no host-specific piercing.
   reasonably (`aria-expanded` / live region as appropriate).
 - Sprint 1 owner Chrome acceptance is recorded. Sprint 3 is implemented
   on `main`. Sprint 4 waits on owner Chrome verification of scroll +
-  highlight on the source-page audio player.
+  highlight on the source-page audio player. Sprint 5 waits on owner
+  Chrome verification of generic page-video hover/scroll on a
+  non-YouTube source page, plus YouTube `/watch` and article/audio
+  regression.
 
 Sprint 1 and Sprint 2 owner Chrome acceptance are recorded. Automated
 tests should cover Create-mode guards, card expand/collapse, and hover
 wiring where behavior is deterministic; they do not replace owner review
-of YouTube-in-extension as the primary demo path, or article/audio hover
-on live source pages.
+of YouTube-in-extension as the primary demo path, or article/audio/page-
+video hover on live source pages.
 
 ## 10. Out of scope and later options
 
@@ -430,6 +482,7 @@ Later options (not Sprint 1 unless noted):
 
 Approving this document authorizes the polish slices described here.
 Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
-Sprint 4 is implemented pending owner Chrome acceptance. Do not treat
-this brief as permission to change capture, hosted-media publication,
-claims, or extension permissions.
+Sprint 4 and Sprint 5 are implemented pending owner Chrome acceptance.
+Do not treat this brief as permission to change capture, hosted-media
+publication, claims, or extension permissions. Generic webpage-video
+hosted publish remains out of Sprint 5.
