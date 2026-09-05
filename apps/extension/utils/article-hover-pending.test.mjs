@@ -26,7 +26,7 @@ const ARTICLE_TRACKED = 'https://Example.com/story/?utm_source=feed#:~:text=quot
 const OTHER = 'https://example.com/other';
 const YOUTUBE = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 const SELECTED = 'The unique passage on this page.';
-const HREF = `${ARTICLE}#:~:text=The%20unique%20passage%20on%20this%20page.`;
+const HREF = ARTICLE;
 const NOW = 1_700_000_000_000;
 
 function pendingTarget(overrides = {}) {
@@ -283,7 +283,7 @@ test('Open source always sets pending and applies amber when already connected',
   assert.equal(chrome.store[ARTICLE_HOVER_PENDING_KEY], undefined);
 });
 
-test('Open source keeps pending and creates a text-fragment tab when not connected', async () => {
+test('Open source keeps pending and creates a bare-canonical tab when not connected', async () => {
   const chrome = fakeChrome({ pending: null, context: null });
   const opened = [];
   assert.deepEqual(await openArticleSourceFromPanel({

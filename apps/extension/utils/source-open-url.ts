@@ -33,8 +33,9 @@ function articleUrlWithoutHash(canonicalUrl: string): string | null {
   }
 }
 
-// Scroll-To-Text Fragment for articles. A normal user-initiated navigation
-// highlights and scrolls; no extra extension permissions are required.
+// Scroll-To-Text Fragment helper. Open source no longer uses this (amber
+// host-access highlight is the primary path). Kept for tests and any
+// caller that still wants a fragment URL.
 export function buildArticleTextFragmentUrl(
   canonicalUrl: string,
   selectedText: string,
@@ -72,5 +73,8 @@ export function getSourceOpenUrl(input: SourceOpenInput): string {
     // source can only load the episode URL — it cannot seek the quoted range.
     return input.canonicalUrl;
   }
-  return buildArticleTextFragmentUrl(input.canonicalUrl, input.selectedText ?? '');
+  // Amber host-access highlight is the Open source path. A `#:~:text=`
+  // fragment would also paint Chrome's purple ::target-text, which stays
+  // after amber clears.
+  return articleUrlWithoutHash(input.canonicalUrl) ?? input.canonicalUrl;
 }
