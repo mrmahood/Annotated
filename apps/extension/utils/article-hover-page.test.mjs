@@ -474,7 +474,11 @@ test('longest unique prefix walks back by words and fails closed when ambiguous'
 
 test('Enes-style leading truncation matches the unique exercised span', () => {
   assert.equal(findUniqueNormalizedMatch(ENES_LIVE, ENES_STORED), null);
-  assert.equal(findUniqueNormalizedMatch(ENES_LIVE, `dom exercised his constitutional right`), null);
+  // `dom exercised` is a false substring of `Freedom exercised`. A highlight
+  // that starts there would paint inside Freedom; drop the remnant instead.
+  const falseHead = findUniqueNormalizedMatch(ENES_LIVE, 'dom exercised his constitutional right');
+  assert.ok(falseHead);
+  assert.equal(ENES_LIVE.slice(falseHead.start - 4, falseHead.start + 3), 'Freedom');
   const recovered = findArticleHoverNormalizedMatch(ENES_LIVE, ENES_STORED);
   assert.ok(recovered);
   const span = ENES_LIVE.slice(recovered.start, recovered.end);
@@ -483,6 +487,7 @@ test('Enes-style leading truncation matches the unique exercised span', () => {
   assert.equal(span.includes('Freedom'), false);
   assert.equal(span.includes('held ac'), false);
   assert.ok(span.length >= ARTICLE_HOVER_PREFIX_MIN_CHARS);
+  assert.equal(ENES_LIVE.slice(recovered.start - 8, recovered.start), 'Freedom ');
 });
 
 test('longest unique suffix walks forward by words and fails closed when ambiguous', () => {
