@@ -321,6 +321,10 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .card-passage-excerpt.expanded { -webkit-line-clamp: unset; display: block; }
 .card-clip-range { display: block; margin: 0; color: var(--text-evidence); font-family: var(--font-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .card-clip-range.expanded { font-size: 1rem; }
+.card-hosted-media { display: grid; gap: 8px; }
+.card-hosted-media video { display: block; width: 100%; height: auto; max-height: 220px; background: #000; }
+.card-hosted-media audio { display: block; width: 100%; height: 38px; color-scheme: dark; }
+.card-hosted-media .hosted-media-error { margin: 0; }
 .open-source-link { width: max-content; color: var(--text-muted); font-size: 0.73rem; font-weight: 550; text-decoration: none; }
 .open-source-link:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
 .card-actions { justify-content: space-between; gap: 16px; padding: 8px 18px 14px; }

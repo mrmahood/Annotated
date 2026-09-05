@@ -5,7 +5,7 @@ import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
   parseAnnotationAudio,
   type AnnotationAudio,
-} from './audio-commentary';
+} from './audio-commentary.ts';
 import {
   parsePublicHostedExcerpt,
   type HostedExcerpt,
@@ -17,13 +17,14 @@ import {
   getHttpUrl,
   getCommentPageRange,
   getOptionalText,
+  isPublicAnnotationSlug,
+  isPublicCreatorHandle,
   isUuid,
-  parsePublicAnnotationRoute,
   PUBLIC_COMMENT_STATUS,
   requireParticipation,
   sortComments,
   type PublicAnnotationRoute,
-} from './social-helpers';
+} from './social-helpers.ts';
 
 type PublicAnnotationBase = {
   id: string;
@@ -101,17 +102,25 @@ export type PublicProfile = {
 
 type UnknownRecord = Record<string, unknown>;
 
-const ANNOTATION_SELECT = `
+const ANNOTATION_SOURCE_EMBED =
+  'canonical_url, normalized_url, source_type, title, author, publisher, metadata';
+
+export function buildAnnotationSelect(options: { innerSource?: boolean } = {}): string {
+  const sourceHint = options.innerSource
+    ? 'source:sources!annotations_source_id_fkey!inner'
+    : 'source:sources!annotations_source_id_fkey';
+  return `
   id,
   slug,
   annotation_type,
   commentary_text,
   published_at,
   creator:profiles!annotations_user_id_fkey(id, username, display_name, avatar_url),
-  source:sources!inner(canonical_url, normalized_url, source_type, title, author, publisher, metadata),
+  ${sourceHint}(${ANNOTATION_SOURCE_EMBED}),
   target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms),
   audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)
 `;
+}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === 'object' && value !== null;
@@ -124,7 +133,7 @@ function getSingleRelation(value: unknown): UnknownRecord | null {
   return isRecord(value) ? value : null;
 }
 
-function mapAnnotation(value: unknown): PublicAnnotation | null {
+export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
   if (!isRecord(value)) return null;
   const creator = getSingleRelation(value.creator);
   const source = getSingleRelation(value.source);
@@ -137,16 +146,20 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
   const sourceType = getOptionalText(source?.source_type);
   const targetType = getOptionalText(target?.target_type);
   const canonicalUrl = getHttpUrl(source?.canonical_url);
-  const normalizedUrl = getHttpUrl(source?.normalized_url);
+  const storedNormalizedUrl = getOptionalText(source?.normalized_url);
   const publishedAt = getOptionalText(value.published_at);
   const sourceMetadata = isRecord(source?.metadata) ? source.metadata : {};
   const date = publishedAt ? new Date(publishedAt) : null;
-  const route = parsePublicAnnotationRoute(creator?.username, value.slug);
+  const username = creator?.username;
+  const slug = value.slug;
+  const route = isPublicCreatorHandle(username) && isPublicAnnotationSlug(slug)
+    ? { creatorHandle: username, annotationSlug: slug }
+    : null;
 
   if (
     !id || !isUuid(id) || !creatorId || !isUuid(creatorId) ||
-    !commentaryText || !canonicalUrl || !normalizedUrl ||
-    !date || Number.isNaN(date.getTime()) || route === undefined
+    !commentaryText || !canonicalUrl ||
+    !date || Number.isNaN(date.getTime())
   ) {
     return null;
   }
@@ -165,7 +178,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
     },
     source: {
       canonicalUrl,
-      normalizedUrl,
+      normalizedUrl: storedNormalizedUrl ?? canonicalUrl,
       title: getOptionalText(source?.title),
       hostname: new URL(canonicalUrl).hostname,
       author: getOptionalText(source?.author),
@@ -198,7 +211,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
   ) {
     try {
       const identity = getYouTubeVideoIdentity(canonicalUrl);
-      if (identity.normalizedUrl !== normalizedUrl) return null;
+      if (identity.normalizedUrl !== storedNormalizedUrl) return null;
       return {
         ...common,
         kind: 'youtube',
@@ -221,7 +234,7 @@ function mapAnnotation(value: unknown): PublicAnnotation | null {
   ) {
     try {
       const identity = getAudioSourceIdentity(canonicalUrl);
-      if (identity.normalizedUrl !== normalizedUrl) return null;
+      if (identity.normalizedUrl !== storedNormalizedUrl) return null;
       return {
         ...common,
         kind: 'audio',
@@ -279,7 +292,9 @@ export async function queryAnnotations(
 
   let query = supabase
     .from('annotations')
-    .select(ANNOTATION_SELECT, { count: 'exact' })
+    .select(buildAnnotationSelect({
+      innerSource: Boolean(plan.normalizedUrl || plan.normalizedUrls),
+    }), { count: 'exact' })
     .eq('status', plan.status);
   if (plan.normalizedUrls && plan.normalizedUrls.length > 1) {
     query = query.in('source.normalized_url', plan.normalizedUrls);
@@ -298,9 +313,8 @@ export async function queryAnnotations(
 
   const rows = data.slice(0, ANNOTATION_PAGE_SIZE);
   const annotations = rows
-    .map(mapAnnotation)
+    .map(mapPublicAnnotation)
     .filter((annotation): annotation is PublicAnnotation => Boolean(annotation));
-  if (annotations.length !== rows.length) throw new Error('An annotation response was malformed.');
 
   const counts = await queryCommentCounts(
     supabase,
@@ -365,13 +379,13 @@ export async function queryAnnotation(
   if (!isUuid(annotationId)) return null;
   const { data, error } = await supabase
     .from('annotations')
-    .select(ANNOTATION_SELECT)
+    .select(buildAnnotationSelect())
     .eq('id', annotationId)
     .eq('status', 'published')
     .maybeSingle();
   if (error) throw new Error('The annotation is unavailable.');
   if (!data) return null;
-  const annotation = mapAnnotation(data);
+  const annotation = mapPublicAnnotation(data);
   if (!annotation) throw new Error('The annotation response was malformed.');
   const counts = await queryCommentCounts(supabase, [annotation.id]);
   annotation.commentCount = counts.get(annotation.id) ?? 0;
