@@ -223,8 +223,12 @@ function validateModeCapabilities(capabilities: ModeCapabilities): void {
   }
 }
 
-export function getRecommendedMode(capabilities: ModeCapabilities): CreateMode | null {
+export function getRecommendedMode(
+  capabilities: ModeCapabilities,
+  preferText = false,
+): CreateMode | null {
   validateModeCapabilities(capabilities);
+  if (preferText && isAvailable(capabilities.text)) return 'text';
   if (isAvailable(capabilities.video)) return 'video';
   if (isAvailable(capabilities.audio)) return 'audio';
   if (isAvailable(capabilities.text)) return 'text';
@@ -234,9 +238,10 @@ export function getRecommendedMode(capabilities: ModeCapabilities): CreateMode |
 export function createModeSelectionState(
   page: CreatePageGeneration,
   capabilities: ModeCapabilities,
+  preferText = false,
 ): ModeSelectionState {
   validateModeCapabilities(capabilities);
-  const recommendedMode = getRecommendedMode(capabilities);
+  const recommendedMode = getRecommendedMode(capabilities, preferText);
   return {
     page,
     capabilities,
@@ -249,9 +254,10 @@ export function createModeSelectionState(
 export function updateModeCapabilities(
   state: ModeSelectionState,
   capabilities: ModeCapabilities,
+  preferText = false,
 ): ModeSelectionState {
   validateModeCapabilities(capabilities);
-  const recommendedMode = getRecommendedMode(capabilities);
+  const recommendedMode = getRecommendedMode(capabilities, preferText);
   const currentCapability = state.selectedMode
     ? capabilities[state.selectedMode]
     : null;
@@ -286,14 +292,15 @@ export function moveSelectionToPage(
   state: ModeSelectionState,
   page: CreatePageGeneration,
   capabilities: ModeCapabilities,
+  preferText = false,
 ): ModeSelectionState {
   if (
     state.page.generation === page.generation &&
     pageIdentityMatches(state.page.identity, page.identity)
   ) {
-    return updateModeCapabilities(state, capabilities);
+    return updateModeCapabilities(state, capabilities, preferText);
   }
-  return createModeSelectionState(page, capabilities);
+  return createModeSelectionState(page, capabilities, preferText);
 }
 
 export function advanceModeRevision(

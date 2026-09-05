@@ -215,7 +215,7 @@ test('an audio element without a media source is not a credible player', () => {
   }]).status, 'no-audio');
 });
 
-test('a bare NYT-like article audio player stays a web page, not a podcast', () => {
+test('a bare NYT-like article audio player is an audio capability without exclusive podcast signals', () => {
   const articleUrl = 'https://www.nytimes.com/2026/09/04/us/politics/trump-administration-fund-compensation-jan-6.html';
   const result = validateAudioPageSnapshot(articleUrl, {
     pageUrl: articleUrl,
@@ -230,8 +230,9 @@ test('a bare NYT-like article audio player stays a web page, not a podcast', () 
       schemaTypes: ['NewsArticle'],
     },
   });
-  assert.equal(result.status, 'not-audio-page');
-  assert.equal(classifyConnectedSource(articleUrl, result.status), 'article');
+  assert.equal(result.status, 'supported');
+  assert.equal(result.status === 'supported' && result.exclusivePodcast, false);
+  assert.equal(classifyConnectedSource(articleUrl, result.status), 'audio');
   assert.equal(hasStrongPodcastSignals({
     ogType: 'article',
     schemaTypes: ['NewsArticle'],
@@ -249,6 +250,7 @@ test('strong podcast metadata still classifies a page with an audio player as po
     },
   });
   assert.equal(result.status, 'supported');
+  assert.equal(result.status === 'supported' && result.exclusivePodcast, true);
   assert.equal(classifyConnectedSource('https://example.test/shows/42', result.status), 'audio');
   assert.equal(hasStrongPodcastSignals({ ogType: 'music.song' }), true);
   assert.equal(hasStrongPodcastSignals({ applePodcasts: true }), true);

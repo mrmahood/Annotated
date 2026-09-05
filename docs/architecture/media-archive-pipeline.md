@@ -99,8 +99,9 @@ closeout state is recorded above; the bullets below preserve the baseline audit:
 - `profiles` contains a nullable `username` with lowercase-format validation and
   a case-insensitive unique index. New-user provisioning deliberately leaves it
   null. Current public profile routes use the profile UUID, not `username`.
-- `sources` deduplicates all source kinds on `normalized_url`. Its allowed types
-  are `article`, `youtube`, and `podcast`. Source metadata is public.
+- `sources` deduplicates on `(normalized_url, source_type)`. A webpage URL may
+  have coexisting `article` and `podcast` rows (and `youtube` only for watch
+  URLs). Source metadata is public.
 - `annotations` owns creator, source, required product type, commentary, public
   lifecycle, and publication time. Its states are `draft`, `published`,
   `claim_pending`, `hidden`, and `removed`.

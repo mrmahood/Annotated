@@ -41,6 +41,7 @@ export type AudioPageSource = {
 export type AudioPageDetection =
   | {
       status: 'supported';
+      exclusivePodcast: boolean;
       source: AudioPageSource;
       selection: Exclude<AudioPlayerSelection, { status: 'no-audio' }>;
       readiness: AudioPlayerReadiness | null;
@@ -255,9 +256,6 @@ export function validateAudioPageSnapshot(expectedPageUrl: string, value: unknow
       ? { status: 'no-audio' }
       : { status: 'not-audio-page' };
   }
-  if (!podcastPage) {
-    return { status: 'not-audio-page' };
-  }
   const text = (key: string) => typeof metadata[key] === 'string'
     ? metadata[key].replace(/\s+/g, ' ').trim().slice(0, 500) || null
     : null;
@@ -268,6 +266,7 @@ export function validateAudioPageSnapshot(expectedPageUrl: string, value: unknow
       : null;
     return {
       status: 'supported',
+      exclusivePodcast: podcastPage,
       selection,
       readiness,
       source: {

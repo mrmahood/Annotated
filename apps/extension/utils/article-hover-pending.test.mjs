@@ -430,10 +430,10 @@ test('pending highlight wiring applies on tab complete and matching sidepanel co
   assert.match(app, /leaveArticleHoverLink/);
   assert.match(app, /window.addEventListener\('blur'/);
   assert.match(app, /clearArticleHoverOnConnectedTab\(previous\)/);
-  assert.match(app, /lookupExistingSourceType/);
+  assert.match(app, /audioAvailable: true/);
   assert.match(pending, /scheduleArticleHoverOpenIdleClear/);
   assert.doesNotMatch(pending, /leaveArticleHoverLink/);
-  assert.match(app, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
+  assert.doesNotMatch(app, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
   assert.doesNotMatch(app, /host_permissions|defineContentScript/);
 
   assert.match(social, /openArticleSourceFromPanel/);

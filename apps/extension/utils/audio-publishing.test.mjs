@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  audioUnavailableReasonForExistingSource,
   beginHostedAudioClipAnnotation,
-  EXISTING_NON_AUDIO_SOURCE_MESSAGE,
-  existingSourceLookupUrls,
-  lookupExistingSourceType,
-  messageForAudioSourceConflict,
   parseHostedAudioBeginResponse,
 } from './audio-publishing.ts';
 
@@ -65,64 +60,14 @@ test('rejects malformed hosted audio begin responses', () => {
   assert.throws(() => parseHostedAudioBeginResponse([]), /invalid draft/);
 });
 
-test('maps the non-audio source RPC into a readable article-conflict message', () => {
-  assert.equal(
-    messageForAudioSourceConflict(new Error('The normalized URL belongs to a non-audio source.')),
-    EXISTING_NON_AUDIO_SOURCE_MESSAGE,
-  );
-  assert.equal(
-    messageForAudioSourceConflict(new Error('22023: The normalized URL belongs to a non-audio source.')),
-    EXISTING_NON_AUDIO_SOURCE_MESSAGE,
-  );
-  assert.equal(
-    messageForAudioSourceConflict({ message: 'The normalized URL belongs to a non-audio source.', code: '22023' }),
-    EXISTING_NON_AUDIO_SOURCE_MESSAGE,
-  );
-  assert.equal(audioUnavailableReasonForExistingSource('article'), EXISTING_NON_AUDIO_SOURCE_MESSAGE);
-  assert.equal(audioUnavailableReasonForExistingSource('youtube'), EXISTING_NON_AUDIO_SOURCE_MESSAGE);
-  assert.equal(audioUnavailableReasonForExistingSource('podcast'), null);
-  assert.equal(audioUnavailableReasonForExistingSource(null), null);
-});
-
-test('lookup treats an existing article source as blocking audio publish', async () => {
-  const urls = existingSourceLookupUrls(
-    'https://www.nytimes.com/2026/09/04/us/politics/trump-administration-fund-compensation-jan-6.html',
-  );
-  assert.ok(urls.includes('https://www.nytimes.com/2026/09/04/us/politics/trump-administration-fund-compensation-jan-6.html'));
-
-  const calls = [];
-  const supabase = {
-    from(table) {
-      assert.equal(table, 'sources');
-      return {
-        select(columns) {
-          assert.match(columns, /source_type/);
-          return {
-            in(column, values) {
-              calls.push([column, values]);
-              return {
-                async limit() {
-                  return { data: [{ source_type: 'article', normalized_url: urls[0] }], error: null };
-                },
-              };
-            },
-          };
-        },
-      };
-    },
-  };
-  assert.equal(await lookupExistingSourceType(supabase, urls[0]), 'article');
-  assert.equal(calls[0][0], 'normalized_url');
-});
-
-test('begin hosted audio remaps a non-audio source RPC error', async () => {
+test('does not remap begin errors into a same-URL article conflict', async () => {
   const fake = fakeClient();
   fake.client.rpc = async () => ({
     data: null,
-    error: { message: 'The normalized URL belongs to a non-audio source.', code: '22023' },
+    error: { message: 'The audio source could not be created or reused.', code: 'P0001' },
   });
   await assert.rejects(
     beginHostedAudioClipAnnotation(fake.client, input),
-    (error) => error instanceof Error && error.message === EXISTING_NON_AUDIO_SOURCE_MESSAGE,
+    (error) => error instanceof Error && error.message === 'The audio source could not be created or reused.',
   );
 });

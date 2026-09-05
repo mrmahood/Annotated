@@ -42,7 +42,9 @@ test('recommendation is deterministic and independent from simultaneous availabi
   });
   assert.equal(getRecommendedMode(capabilities()), 'text');
   assert.equal(getRecommendedMode(capabilities({ audio: 'available' })), 'audio');
+  assert.equal(getRecommendedMode(capabilities({ audio: 'available' }), true), 'text');
   assert.equal(getRecommendedMode(capabilities({ video: 'available', audio: 'available' })), 'video');
+  assert.equal(getRecommendedMode(capabilities({ video: 'available', audio: 'available' }), true), 'text');
   assert.equal(getRecommendedMode(capabilities({ text: 'unavailable' })), null);
   assert.throws(() => getRecommendedMode({
     ...capabilities(),
@@ -210,7 +212,7 @@ test('draft contract rejects invalid commentary, times, and media identities', (
   }));
 });
 
-test('incidental article audio does not become the recommended Create mode', async () => {
+test('incidental article audio stays a Web page capability instead of an exclusive podcast flip', async () => {
   const [audioPage, app, publishing] = await Promise.all([
     readFile(new URL('./audio-page.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8'),
@@ -218,13 +220,13 @@ test('incidental article audio does not become the recommended Create mode', asy
   ]);
   assert.match(audioPage, /hasStrongPodcastSignals/);
   assert.match(audioPage, /PodcastEpisode/);
-  assert.match(app, /detection.status === 'supported'/);
-  assert.match(app, /audioDetectionResolved: true/);
+  assert.match(app, /audioAvailable: true/);
+  assert.match(app, /audioIdentity: detection\.source/);
+  assert.match(app, /preferText = sourceState\.source\.classification === 'Web page' &&/);
   assert.match(app, /articleHoverConnectionForTab/);
-  assert.match(app, /lookupExistingSourceType/);
-  assert.match(app, /audioUnavailableReasonForExistingSource/);
-  assert.match(publishing, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
-  assert.match(publishing, /This page is already annotated as text\/article/);
+  assert.doesNotMatch(app, /lookupExistingSourceType|EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
+  assert.doesNotMatch(publishing, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
+  assert.doesNotMatch(app, /detection\.status === 'supported'[\s\S]{0,180}\.\.\.detection\.source/);
 });
 
 test('the side panel is wired to independent Text, Video, and Audio draft slices', async () => {

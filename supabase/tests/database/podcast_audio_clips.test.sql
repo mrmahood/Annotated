@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(36);
 
 select has_function(
   'public', 'publish_audio_clip_annotation',
@@ -50,9 +50,9 @@ select lives_ok(
 );
 reset role;
 
-select is((select pg_catalog.count(*) from public.sources where normalized_url = 'https://example.test/episodes/42'), 1::bigint, 'one source row represents the episode');
-select is((select source_type from public.sources where normalized_url = 'https://example.test/episodes/42'), 'podcast', 'the shared source is typed as podcast');
-select is((select metadata ->> 'show_name' from public.sources where normalized_url = 'https://example.test/episodes/42'), 'Example Show', 'show metadata is stored on the source');
+select is((select pg_catalog.count(*) from public.sources where normalized_url = 'https://example.test/episodes/42'), 1::bigint, 'one podcast source row represents the episode when only audio is published');
+select is((select source_type from public.sources where normalized_url = 'https://example.test/episodes/42'), 'podcast', 'the shared audio source is typed as podcast');
+select is((select metadata ->> 'show_name' from public.sources where normalized_url = 'https://example.test/episodes/42' and source_type = 'podcast'), 'Example Show', 'show metadata is stored on the podcast source');
 select is((select pg_catalog.count(*) from public.annotations where user_id = '91000000-0000-4000-8000-000000000001' and annotation_type = 'audio_clip' and status = 'published'), 2::bigint, 'published clips are owned by auth.uid()');
 select is((select pg_catalog.count(*) from public.annotation_targets targets join public.annotations annotations on annotations.id = targets.annotation_id where annotations.annotation_type = 'audio_clip' and targets.target_type = 'time_range'), 2::bigint, 'each audio clip stores a typed time range');
 
@@ -102,7 +102,81 @@ select lives_ok(
   $$select public.publish_youtube_annotation('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'dQw4w9WgXcQ', 'Video', null, 0, 1000, 'Commentary')$$,
   'existing YouTube publishing still works'
 );
+select lives_ok(
+  $$select public.publish_article_annotation('https://example.test/hybrid-page', 'https://example.test/hybrid-page', 'Narrated article', null, null, 'Selected passage', null, null, 'Text first')$$,
+  'text publishes on a hybrid page URL'
+);
+select lives_ok(
+  $$select public.publish_audio_clip_annotation('https://example.test/hybrid-page', 'https://example.test/hybrid-page', 'Narrated article', null, null, null, 0, 5000, 'Audio after text')$$,
+  'audio publishes on the same URL after an article source exists'
+);
+select lives_ok(
+  $$select public.publish_audio_clip_annotation('https://example.test/audio-then-text', 'https://example.test/audio-then-text', 'Episode first', null, null, null, 0, 4000, 'Audio first')$$,
+  'audio publishes first on a shared URL'
+);
+select lives_ok(
+  $$select public.publish_article_annotation('https://example.test/audio-then-text', 'https://example.test/audio-then-text', 'Article after audio', null, null, 'Later passage', null, null, 'Text after audio')$$,
+  'text publishes on the same URL after a podcast source exists'
+);
+select lives_ok(
+  $$select public.begin_hosted_audio_annotation('https://example.test/hybrid-page', 'https://example.test/hybrid-page', 'Narrated article', null, null, null, 1000, 4000, 'Hosted audio after text')$$,
+  'hosted audio begin inserts a podcast source beside an existing article row'
+);
+select throws_ok(
+  $$select public.publish_youtube_annotation('https://example.test/hybrid-page', 'https://example.test/hybrid-page', 'dQw4w9WgXcQ', 'Not a watch URL', null, 0, 1000, 'Commentary')$$,
+  '22023',
+  'The normalized URL must identify exactly one canonical YouTube video.',
+  'YouTube stays watch-URL identity and does not merge with article or podcast rows'
+);
 reset role;
+
+select is(
+  (
+    select pg_catalog.count(*)
+    from public.sources
+    where normalized_url = 'https://example.test/hybrid-page'
+  ),
+  2::bigint,
+  'the same normalized URL can have article and podcast sources'
+);
+select ok(
+  (
+    select pg_catalog.bool_and(source_type in ('article', 'podcast'))
+      and pg_catalog.count(distinct source_type) = 2
+    from public.sources
+    where normalized_url = 'https://example.test/hybrid-page'
+  ),
+  'hybrid-page sources are article and podcast, not a stolen cross-type row'
+);
+select is(
+  (
+    select pg_catalog.count(*)
+    from public.sources
+    where normalized_url = 'https://example.test/audio-then-text'
+  ),
+  2::bigint,
+  'text after audio also keeps both article and podcast source rows'
+);
+select is(
+  (
+    select annotations.annotation_type
+    from public.annotations
+    join public.sources on sources.id = annotations.source_id
+    where annotations.commentary_text = 'Audio after text'
+  ),
+  'audio_clip',
+  'the audio-after-text clip is attached to the podcast source'
+);
+select is(
+  (
+    select annotations.annotation_type
+    from public.annotations
+    join public.sources on sources.id = annotations.source_id
+    where annotations.commentary_text = 'Text after audio'
+  ),
+  'article_text',
+  'the text-after-audio annotation is attached to the article source'
+);
 
 select ok(pg_catalog.to_regprocedure('public.publish_article_annotation_with_audio(text,text,text,text,text,text,text,text,text,text,integer,text,integer)') is not null, 'existing recorded audio commentary publishing remains available');
 select ok(not pg_catalog.has_table_privilege('anon', 'public.claims', 'select') and not pg_catalog.has_table_privilege('authenticated', 'public.claims', 'select'), 'claim privacy remains intact');

@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(9);
+select plan(15);
 
 insert into auth.users (id, raw_user_meta_data)
 values (
@@ -82,7 +82,7 @@ select is(
     where normalized_url = 'https://example.test/articles/publishing'
   ),
   1::bigint,
-  'the same normalized URL reuses one source row'
+  'the same article URL reuses one article source row'
 );
 
 select is(
@@ -156,7 +156,90 @@ select throws_ok(
   'invalid URLs are rejected'
 );
 
+select lives_ok(
+  $sql$
+    select public.publish_audio_clip_annotation(
+      'https://example.test/articles/publishing',
+      'https://example.test/articles/publishing',
+      'Narrated article',
+      null,
+      null,
+      null,
+      0,
+      5000,
+      'Audio after the shared article source'
+    )
+  $sql$,
+  'audio publishing after text creates a sibling podcast source'
+);
+
+select lives_ok(
+  $sql$
+    select public.publish_audio_clip_annotation(
+      'https://example.test/articles/audio-first',
+      'https://example.test/articles/audio-first',
+      'Audio first',
+      null,
+      null,
+      null,
+      0,
+      4000,
+      'Audio before text'
+    )
+  $sql$,
+  'audio can occupy a URL before any article row exists'
+);
+
+select lives_ok(
+  $sql$
+    select public.publish_article_annotation(
+      'https://example.test/articles/audio-first',
+      'https://example.test/articles/audio-first',
+      'Text after audio',
+      null,
+      null,
+      'A later selected passage.',
+      null,
+      null,
+      'Text after the shared audio source'
+    )
+  $sql$,
+  'article publishing after audio inserts an article row instead of reusing podcast'
+);
+
 reset role;
+
+select is(
+  (
+    select pg_catalog.count(*)
+    from public.sources
+    where normalized_url = 'https://example.test/articles/publishing'
+  ),
+  2::bigint,
+  'the published article URL now has article and podcast source rows'
+);
+
+select is(
+  (
+    select source_type
+    from public.sources
+    join public.annotations on annotations.source_id = sources.id
+    where annotations.commentary_text = 'This is why the passage matters.'
+  ),
+  'article',
+  'the original text annotation stays on the article source'
+);
+
+select is(
+  (
+    select source_type
+    from public.sources
+    join public.annotations on annotations.source_id = sources.id
+    where annotations.commentary_text = 'Text after the shared audio source'
+  ),
+  'article',
+  'text after audio is attached to a new article source'
+);
 
 select * from finish();
 rollback;

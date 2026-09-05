@@ -20,14 +20,7 @@ import {
   validateAudioPageSnapshot,
   type AudioPageSource,
 } from '../../utils/audio-page';
-import {
-  audioUnavailableReasonForExistingSource,
-  beginHostedAudioClipAnnotation,
-  EXISTING_NON_AUDIO_SOURCE_MESSAGE,
-  lookupExistingSourceType,
-  messageForAudioSourceConflict,
-  type ExistingSourceType,
-} from '../../utils/audio-publishing';
+import { beginHostedAudioClipAnnotation } from '../../utils/audio-publishing';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import {
   ACTIVE_TAB_CONTEXT_KEY,
@@ -184,6 +177,9 @@ type ArticlePageSource = {
   url: string;
   classification: 'Web page';
   audioDetectionResolved: boolean;
+  audioAvailable: boolean;
+  audioIdentity: AudioPageSource | null;
+  exclusivePodcast: boolean;
   videoDetectionResolved: boolean;
   videoAvailable: boolean;
 };
@@ -289,6 +285,9 @@ function getSourceState(title: string, value: string): SourceState {
         url: tabUrl,
         classification: 'Web page',
         audioDetectionResolved: false,
+        audioAvailable: false,
+        audioIdentity: null,
+        exclusivePodcast: false,
         videoDetectionResolved: false,
         videoAvailable: false,
       },
@@ -334,27 +333,18 @@ function createUnavailableCapabilities(reason: string): ModeCapabilities {
   };
 }
 
-type ExistingSourceLookup =
-  | { status: 'idle' }
-  | { status: 'checking'; pageUrl: string }
-  | { status: 'ready'; pageUrl: string; sourceType: ExistingSourceType | null };
+function connectedAudioSource(source: PageSource): AudioPageSource | null {
+  if (source.classification === 'Podcast / web audio') return source;
+  if (source.classification === 'Web page' && source.audioAvailable && source.audioIdentity) {
+    return source.audioIdentity;
+  }
+  return null;
+}
 
 function audioCapabilityForConnectedSource(
   sourceState: Extract<SourceState, { status: 'connected' }>,
-  existingSource: ExistingSourceLookup,
 ): ModeCapability {
-  const conflict = existingSource.status === 'ready' && existingSource.pageUrl === sourceState.source.url
-    ? audioUnavailableReasonForExistingSource(existingSource.sourceType)
-    : null;
-  if (conflict) return { status: 'unavailable', reason: conflict };
-  if (
-    existingSource.status === 'checking' &&
-    existingSource.pageUrl === sourceState.source.url &&
-    sourceState.source.classification === 'Podcast / web audio'
-  ) {
-    return { status: 'checking' };
-  }
-  if (sourceState.source.classification === 'Podcast / web audio') {
+  if (connectedAudioSource(sourceState.source)) {
     return { status: 'available' };
   }
   if (sourceState.source.classification === 'Web page') {
@@ -365,10 +355,7 @@ function audioCapabilityForConnectedSource(
   return { status: 'unavailable', reason: 'No supported top-level page audio was found.' };
 }
 
-function getModeCapabilities(
-  sourceState: SourceState,
-  existingSource: ExistingSourceLookup = { status: 'idle' },
-): ModeCapabilities {
+function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
   if (
     sourceState.status === 'loading' ||
     sourceState.status === 'refreshing'
@@ -402,7 +389,7 @@ function getModeCapabilities(
           ? { status: 'available' }
           : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
         : { status: 'checking' },
-      audio: audioCapabilityForConnectedSource(sourceState, existingSource),
+      audio: audioCapabilityForConnectedSource(sourceState),
     };
   }
   return {
@@ -412,7 +399,7 @@ function getModeCapabilities(
         ? { status: 'available' }
         : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
       : { status: 'checking' },
-    audio: audioCapabilityForConnectedSource(sourceState, existingSource),
+    audio: audioCapabilityForConnectedSource(sourceState),
   };
 }
 
@@ -628,7 +615,6 @@ function App() {
   const publishInFlightRef = useRef(false);
   const socialCacheRef = useRef<SessionSocialCache>(new Map());
   const articleHoverRef = useRef<ArticleHoverConnection | null>(null);
-  const [existingSourceLookup, setExistingSourceLookup] = useState<ExistingSourceLookup>({ status: 'idle' });
   const audioRecorder = useAudioRecorder();
 
   const commentary = createDraftState.text.commentary;
@@ -641,8 +627,8 @@ function App() {
     audio: audioDraftState.playerIdentity,
   };
   const modeCapabilities = useMemo(
-    () => getModeCapabilities(sourceState, existingSourceLookup),
-    [existingSourceLookup, sourceState],
+    () => getModeCapabilities(sourceState),
+    [sourceState],
   );
   const operationGuardState = useMemo(() => deriveOperationGuardState({
     articlePublishing: publishState.status === 'publishing',
@@ -1088,7 +1074,8 @@ function App() {
     const context = connectedContextRef.current;
     if (!context) throw new Error(RECONNECT_MESSAGE);
     const genericVideo = mode === 'video' && sourceState.source.classification !== 'YouTube';
-    if (mode === 'audio' && sourceState.source.classification !== 'Podcast / web audio') throw new Error(RECONNECT_MESSAGE);
+    const audioIdentity = connectedAudioSource(sourceState.source);
+    if (mode === 'audio' && !audioIdentity) throw new Error(RECONNECT_MESSAGE);
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
     const execution = await chrome.scripting.executeScript({
@@ -1104,9 +1091,7 @@ function App() {
           ? sourceState.source.videoId
           : mode === 'video'
             ? normalizeArticleUrl(sourceState.source.url)
-            : sourceState.source.classification === 'Podcast / web audio'
-              ? sourceState.source.normalizedUrl
-              : '',
+            : audioIdentity?.normalizedUrl ?? '',
         action,
         startSeconds,
         genericVideo,
@@ -1134,7 +1119,8 @@ function App() {
     const mode: PlayerMode | null = modeSelection?.selectedMode === 'video'
       ? 'video'
       : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
-    if (!mode || (mode === 'audio' && sourceState.source.classification !== 'Podcast / web audio')) return;
+    const audioIdentity = connectedAudioSource(sourceState.source);
+    if (!mode || (mode === 'audio' && !audioIdentity)) return;
     const draft = mode === 'video' ? videoDraftState : audioDraftState;
     let token: PlayerActionToken;
     try { token = getPlayerActionToken(mode, draft.playerIdentity); } catch { return; }
@@ -1147,9 +1133,7 @@ function App() {
           ? sourceState.source.videoId
           : mode === 'video'
             ? normalizeArticleUrl(sourceState.source.url)
-            : sourceState.source.classification === 'Podcast / web audio'
-              ? sourceState.source.normalizedUrl
-              : '',
+            : audioIdentity?.normalizedUrl ?? '',
         playerIdentity: draft.playerIdentity,
         playerTimeMs: player.currentTimeMs,
         durationMs: player.durationMs,
@@ -1174,9 +1158,9 @@ function App() {
           action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
           videoDraftState.commentary,
         );
-      } else if (mode === 'audio' && sourceState.source.classification === 'Podcast / web audio') {
+      } else if (mode === 'audio' && audioIdentity) {
         persistAudioDraft(
-          sourceState.source,
+          audioIdentity,
           action === 'start' ? player.currentTimeMs : audioDraftState.startMs,
           action === 'end' ? player.currentTimeMs : audioDraftState.endMs,
           audioDraftState.commentary,
@@ -1204,12 +1188,13 @@ function App() {
   };
 
   const changeAudioCommentary = (value: string) => {
-    const sourceKey = sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio'
-      ? sourceState.source.normalizedUrl
-      : audioDraftState.sourceKey;
+    const audioIdentity = sourceState.status === 'connected'
+      ? connectedAudioSource(sourceState.source)
+      : null;
+    const sourceKey = audioIdentity?.normalizedUrl ?? audioDraftState.sourceKey;
     dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { commentary: value, sourceKey } });
-    if (sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio') {
-      persistAudioDraft(sourceState.source, audioDraftState.startMs, audioDraftState.endMs, value);
+    if (audioIdentity) {
+      persistAudioDraft(audioIdentity, audioDraftState.startMs, audioDraftState.endMs, value);
     }
   };
 
@@ -1428,10 +1413,12 @@ function App() {
   }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoDraftState]);
 
   const publishAudioClip = useCallback(async () => {
+    const audioIdentity = sourceState.status === 'connected'
+      ? connectedAudioSource(sourceState.source)
+      : null;
     if (
       !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
-      sourceState.status !== 'connected' ||
-      sourceState.source.classification !== 'Podcast / web audio' ||
+      sourceState.status !== 'connected' || !audioIdentity ||
       audioDraftState.startMs === null || audioDraftState.endMs === null ||
       !audioDraftState.commentary.trim() || audioDraftState.durationMs === null ||
       !audioDraftState.playerIdentity
@@ -1443,14 +1430,6 @@ function App() {
     );
     if (rangeError || audioDraftState.commentary.length > 2_000) {
       setAudioPublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
-      return;
-    }
-    if (
-      existingSourceLookup.status === 'ready' &&
-      existingSourceLookup.pageUrl === sourceState.source.url &&
-      audioUnavailableReasonForExistingSource(existingSourceLookup.sourceType)
-    ) {
-      setAudioPublishState({ status: 'error', message: EXISTING_NON_AUDIO_SOURCE_MESSAGE });
       return;
     }
     let token: PlayerActionToken;
@@ -1471,12 +1450,12 @@ function App() {
       );
       if (actionRangeError) throw new Error(actionRangeError);
       const operation = await beginHostedAudioClipAnnotation(supabase, {
-        sourceUrl: sourceState.source.url,
-        canonicalUrl: sourceState.source.canonicalUrl,
-        title: sourceState.source.title,
-        author: sourceState.source.author,
-        publisher: sourceState.source.publisher,
-        showName: sourceState.source.showName,
+        sourceUrl: audioIdentity.url,
+        canonicalUrl: audioIdentity.canonicalUrl,
+        title: audioIdentity.title,
+        author: audioIdentity.author,
+        publisher: audioIdentity.publisher,
+        showName: audioIdentity.showName,
         startMs: audioDraftState.startMs,
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
@@ -1495,14 +1474,14 @@ function App() {
       await startHostedCapture(operation, {
         kind: 'audio',
         pageUrl: sourceState.source.url,
-        sourceKey: sourceState.source.normalizedUrl,
+        sourceKey: audioIdentity.normalizedUrl,
         playerIdentity: audioDraftState.playerIdentity,
       }, audioDraftState.startMs, audioDraftState.endMs);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
       setAudioPublishState({
         status: 'error',
-        message: messageForAudioSourceConflict(error),
+        message: error instanceof Error ? error.message : 'The audio clip could not be published.',
       });
     } finally {
       publishInFlightRef.current = false;
@@ -1511,7 +1490,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [audioDraftState, authState.status, cancelStaleHostedBegin, existingSourceLookup, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
+  }, [audioDraftState, authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
 
   const cancelHostedMedia = useCallback(async (expectedAttempt?: HostedAttemptToken) => {
     const session = hostedMediaSessionRef.current;
@@ -1622,11 +1601,12 @@ function App() {
       }, session.startMs, session.endMs);
     } else if (
       session.mediaType === 'audio' &&
-      sourceState.source.classification === 'Podcast / web audio'
+      connectedAudioSource(sourceState.source)
     ) {
+      const audioIdentity = connectedAudioSource(sourceState.source)!;
       let originalAudioIdentity: string | null = null;
       try { originalAudioIdentity = getAudioSourceIdentity(session.sourceUrl).normalizedUrl; } catch { /* Invalid persisted source. */ }
-      if (originalAudioIdentity !== sourceState.source.normalizedUrl) {
+      if (originalAudioIdentity !== audioIdentity.normalizedUrl) {
         setMediaCaptureState({
           status: 'error',
           captureId: null,
@@ -1645,7 +1625,7 @@ function App() {
       await startHostedCapture(session.operation, {
         kind: 'audio',
         pageUrl: sourceState.source.url,
-        sourceKey: sourceState.source.normalizedUrl,
+        sourceKey: audioIdentity.normalizedUrl,
         playerIdentity: audioDraftState.playerIdentity,
       }, session.startMs, session.endMs);
     }
@@ -1665,10 +1645,13 @@ function App() {
   const playConnectedAudioClip = useCallback(async (
     annotation: Extract<PublicAnnotation, { kind: 'audio' }>,
   ) => {
+    const audioIdentity = sourceState.status === 'connected'
+      ? connectedAudioSource(sourceState.source)
+      : null;
     if (
       sourceState.status !== 'connected' ||
-      sourceState.source.classification !== 'Podcast / web audio' ||
-      sourceState.source.normalizedUrl !== annotation.source.normalizedUrl
+      !audioIdentity ||
+      audioIdentity.normalizedUrl !== annotation.source.normalizedUrl
     ) throw new Error('The connected audio source does not match this clip.');
     const token = getPlayerActionToken('audio', audioDraftState.playerIdentity);
     await runSelectedPlayerAction(token, 'play', annotation.startMs / 1_000);
@@ -1698,7 +1681,7 @@ function App() {
   const previewAudioDraft = useCallback(async () => {
     if (
       audioDraftState.startMs === null || sourceState.status !== 'connected' ||
-      sourceState.source.classification !== 'Podcast / web audio'
+      !connectedAudioSource(sourceState.source)
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
@@ -1743,9 +1726,11 @@ function App() {
           return {
             status: 'connected',
             source: {
-              ...detection.source,
-              videoDetectionResolved: state.source.videoDetectionResolved,
-              videoAvailable: state.source.videoAvailable,
+              ...state.source,
+              audioDetectionResolved: true,
+              audioAvailable: true,
+              audioIdentity: detection.source,
+              exclusivePodcast: detection.exclusivePodcast,
             },
           };
         }
@@ -1771,16 +1756,19 @@ function App() {
   }, [sourceState]);
 
   useEffect(() => {
+    const audioIdentity = sourceState.status === 'connected'
+      ? connectedAudioSource(sourceState.source)
+      : null;
     if (
       draftRestorationStatus !== 'ready' || sourceState.status !== 'connected' ||
-      sourceState.source.classification !== 'Podcast / web audio'
+      !audioIdentity
     ) return;
     const draft = audioDraftRef.current;
     if (
       draft && audioClipDraftBelongsToSource(
         draft,
-        sourceState.source.url,
-        sourceState.source.canonicalUrl,
+        audioIdentity.url,
+        audioIdentity.canonicalUrl,
       )
     ) {
       dispatchCreateDraft({
@@ -2032,10 +2020,12 @@ function App() {
       sourceKey,
     });
     createPageRef.current = page;
+    const preferText = sourceState.source.classification === 'Web page' &&
+      !sourceState.source.exclusivePodcast;
     setModeSelection((current) => {
       let next = current
-        ? moveSelectionToPage(current, page, modeCapabilities)
-        : createModeSelectionState(page, modeCapabilities);
+        ? moveSelectionToPage(current, page, modeCapabilities, preferText)
+        : createModeSelectionState(page, modeCapabilities, preferText);
       const stored = storedModeSelectionRef.current;
       if (
         stored &&
@@ -2066,8 +2056,9 @@ function App() {
     const probes: Array<{ mode: PlayerMode; genericVideo: boolean; sourceKey: string }> = [
       { mode: 'video', genericVideo, sourceKey: videoSourceKey },
     ];
-    if (sourceState.source.classification === 'Podcast / web audio') {
-      probes.push({ mode: 'audio', genericVideo: false, sourceKey: sourceState.source.normalizedUrl });
+    const audioIdentity = connectedAudioSource(sourceState.source);
+    if (audioIdentity) {
+      probes.push({ mode: 'audio', genericVideo: false, sourceKey: audioIdentity.normalizedUrl });
     } else {
       setAudioPlayers(EMPTY_PLAYER_DISCOVERY);
     }
@@ -2275,33 +2266,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (sourceState.status !== 'connected' || sourceState.source.classification === 'YouTube') {
-      setExistingSourceLookup({ status: 'idle' });
-      return;
-    }
-    if (!supabase) {
-      setExistingSourceLookup({ status: 'ready', pageUrl: sourceState.source.url, sourceType: null });
-      return;
-    }
-    const pageUrl = sourceState.source.url;
-    const canonicalUrl = sourceState.source.classification === 'Podcast / web audio'
-      ? sourceState.source.canonicalUrl
-      : pageUrl;
-    let current = true;
-    setExistingSourceLookup({ status: 'checking', pageUrl });
-    void lookupExistingSourceType(supabase, pageUrl, canonicalUrl)
-      .then((sourceType) => {
-        if (!current) return;
-        setExistingSourceLookup({ status: 'ready', pageUrl, sourceType });
-      })
-      .catch(() => {
-        if (!current) return;
-        setExistingSourceLookup({ status: 'ready', pageUrl, sourceType: null });
-      });
-    return () => { current = false; };
-  }, [sourceState, supabase]);
-
-  useEffect(() => {
     if (!refreshSuccess) return;
     const timer = window.setTimeout(() => setRefreshSuccess(false), 3_000);
     return () => window.clearTimeout(timer);
@@ -2422,9 +2386,13 @@ function App() {
     ? sourceState.source
     : null;
   const videoSource = youtubeSource ?? webVideoSource;
-  const audioSource = sourceState.status === 'connected' && sourceState.source.classification === 'Podcast / web audio'
-    ? sourceState.source
+  const audioSource = sourceState.status === 'connected'
+    ? connectedAudioSource(sourceState.source)
     : null;
+  const exclusivePodcast = sourceState.status === 'connected' && (
+    sourceState.source.classification === 'Podcast / web audio' ||
+    (sourceState.source.classification === 'Web page' && sourceState.source.exclusivePodcast)
+  );
   const connectedContext = sourceState.status === 'connected' ? connectedContextRef.current : null;
   const youtubeHover = youtubeSource && connectedContext
     ? { tabId: connectedContext.tabId, tabUrl: youtubeSource.url }
@@ -2540,7 +2508,7 @@ function App() {
   let contextCacheKey: string | null = null;
   if (contextUrl) {
     try {
-      contextCacheKey = `context:${youtubeSource?.normalizedUrl ?? audioSource?.normalizedUrl ?? normalizeArticleUrl(contextUrl)}`;
+      contextCacheKey = `context:${youtubeSource?.normalizedUrl ?? normalizeArticleUrl(contextUrl)}`;
     } catch { contextCacheKey = null; }
   }
 
@@ -2634,7 +2602,7 @@ function App() {
             </section>
           ) : selectedCreateMode === 'audio' && audioSource ? (
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
-              <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>Podcast / web audio</span></div>
+              <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>{exclusivePodcast ? 'Podcast / web audio' : 'Page audio'}</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected page audio, set the start, continue listening, then set the end.</p>
                 <PlayerSelector mode="audio" discovery={audioPlayers} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
@@ -2661,7 +2629,7 @@ function App() {
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
           )}
           {hostedMediaPanel}
-          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={audioSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} emptyTitle={youtubeSource ? 'No clips on this video yet' : audioSource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : audioSource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : audioSource ? 'Clips on this episode' : 'On this source'} />}
+          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} emptyTitle={youtubeSource ? 'No clips on this video yet' : exclusivePodcast ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : exclusivePodcast ? 'Clips on this episode' : 'On this source'} />}
         </div>
       )}
       {pendingModeSwitch && (

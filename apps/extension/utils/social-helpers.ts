@@ -1,3 +1,4 @@
+import { normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 import { isYouTubeVideoUrl, normalizeYouTubeUrl } from '@annotated/shared/youtube';
 
@@ -18,6 +19,7 @@ const RESERVED_ROOT_HANDLES = new Set(['api', 'auth', '_next']);
 
 export type AnnotationQueryPlan = {
   normalizedUrl?: string;
+  normalizedUrls?: string[];
   profileId?: string;
   status: typeof PUBLIC_ANNOTATION_STATUS;
   orders: readonly [
@@ -76,9 +78,13 @@ export function buildAnnotationQueryPlan(options: {
     throw new Error('Invalid profile identifier.');
   }
 
+  const normalizedUrls = options.sourceUrl
+    ? listingNormalizedUrls(options.sourceUrl)
+    : undefined;
+
   return {
-    ...(options.sourceUrl
-      ? { normalizedUrl: normalizeSourceUrl(options.sourceUrl) }
+    ...(normalizedUrls
+      ? { normalizedUrl: normalizedUrls[0], normalizedUrls }
       : {}),
     ...(options.profileId ? { profileId: options.profileId } : {}),
     status: PUBLIC_ANNOTATION_STATUS,
@@ -97,6 +103,18 @@ export function normalizeSourceUrl(value: string): string {
   return classifySourceUrl(value) === 'youtube'
     ? normalizeYouTubeUrl(value)
     : normalizeArticleUrl(value);
+}
+
+function listingNormalizedUrls(sourceUrl: string): string[] {
+  const urls = new Set<string>([normalizeSourceUrl(sourceUrl)]);
+  if (classifySourceUrl(sourceUrl) !== 'youtube') {
+    try {
+      urls.add(normalizeAudioSourceUrl(sourceUrl));
+    } catch {
+      // Invalid audio identity is ignored; article normalization still lists text.
+    }
+  }
+  return [...urls];
 }
 
 export function getHttpUrl(value: unknown): string | null {
