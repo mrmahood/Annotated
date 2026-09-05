@@ -8,6 +8,9 @@ test('detail mapping keeps youtube/audio kinds and loads hosted media only throu
   assert.match(source, /kind: 'youtube'/);
   assert.match(source, /kind: 'audio'/);
   assert.match(source, /hosted: null/);
+  assert.match(source, /sources!annotations_source_id_fkey/);
+  assert.match(source, /sources!annotations_source_id_fkey!inner/);
+  assert.doesNotMatch(source, /source:sources!inner\(/);
   assert.match(source, /get_public_annotation_media_state/);
   assert.match(source, /get_public_annotation_transcript/);
   assert.match(source, /parsePublicHostedExcerpt/);
@@ -17,6 +20,7 @@ test('detail mapping keeps youtube/audio kinds and loads hosted media only throu
   assert.doesNotMatch(source, /\.from\(['"]annotation_(?:media|transcripts)['"]\)/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
   assert.doesNotMatch(source, /console\.(?:log|info|debug|warn)/);
+  assert.doesNotMatch(source, /An annotation response was malformed/);
 });
 
 test('detail UI prefers the hosted player and transcript for ready media', async () => {

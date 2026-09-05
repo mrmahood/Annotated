@@ -89,7 +89,7 @@ function getSingleRelation(value: unknown): UnknownRecord | null {
   return isRecord(value) ? value : null;
 }
 
-function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
+export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
   if (!isRecord(value)) return null;
 
   const annotator = getSingleRelation(value.annotator);

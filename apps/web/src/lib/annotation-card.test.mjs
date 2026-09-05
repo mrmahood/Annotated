@@ -15,6 +15,11 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(card, /Open source/);
   assert.match(card, /getYouTubeTimestampUrl\(annotation\.source\.canonicalUrl, annotation\.startMs\)/);
   assert.match(card, /View annotation/);
+  assert.match(card, /import \{ HostedMediaPlayer \} from "\.\/hosted-media-player"/);
+  assert.match(card, /expanded && clipMedia &&/);
+  assert.match(card, /<HostedMediaPlayer annotationId=\{annotation\.id\} media=\{clipMedia\} compact \/>/);
+  assert.match(card, /annotation\.kind === "youtube" \? "video\/mp4"/);
+  assert.match(card, /"audio\/mp4"/);
   assert.doesNotMatch(card, /section-label/);
   assert.doesNotMatch(card, />Commentary</);
   assert.doesNotMatch(card, />Clip</);
@@ -25,6 +30,8 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(styles, /--motion-duration: 180ms/);
   assert.match(styles, /\.card-commentary-lead/);
   assert.match(styles, /\.card-nested-source/);
+  assert.match(styles, /\.card-hosted-media/);
+  assert.match(styles, /\.card-hosted-media audio/);
   assert.match(styles, /\.open-source-link/);
   assert.match(styles, /\.site-header/);
   assert.match(styles, /\.site-wordmark/);

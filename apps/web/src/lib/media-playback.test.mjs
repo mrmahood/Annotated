@@ -188,6 +188,8 @@ test("the signing route accepts no caller path and logs only allow-listed fields
   }
   assert.match(player, /controlsList="nodownload"/);
   assert.match(player, /attempt === 0/);
+  assert.match(player, /compact = false/);
+  assert.match(player, /className="card-hosted-media"/);
   assert.doesNotMatch(player, /download=/);
   assert.match(loader, /get_public_annotation_media_state/);
   assert.match(loader, /get_public_annotation_transcript/);

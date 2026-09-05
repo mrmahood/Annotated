@@ -7,6 +7,7 @@ import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
 import type { PublicAnnotationCardData } from "@/lib/data/public-discovery";
 import { getInitial, truncateExcerpt } from "@/lib/public-content";
 import { getPublicAnnotationPath } from "@/lib/public-routes";
+import { HostedMediaPlayer } from "./hosted-media-player";
 
 const PASSAGE_EXCERPT_LENGTH = 360;
 const COMMENTARY_EXCERPT_LENGTH = 280;
@@ -15,6 +16,16 @@ function sourceChipLabel(kind: PublicAnnotationCardData["kind"]): string {
   if (kind === "youtube") return "Video";
   if (kind === "audio") return "Audio";
   return "Text";
+}
+
+function hostedClipMedia(annotation: PublicAnnotationCardData) {
+  if (annotation.kind !== "youtube" && annotation.kind !== "audio") return null;
+  return {
+    mimeType: annotation.kind === "youtube" ? "video/mp4" as const : "audio/mp4" as const,
+    durationMs: annotation.endMs - annotation.startMs,
+    width: null,
+    height: null,
+  };
 }
 
 export function AnnotationCard({
@@ -39,6 +50,7 @@ export function AnnotationCard({
   const detailPath = getPublicAnnotationPath(annotation.route, annotation.id);
   const hasPassage = annotation.kind === "article";
   const hasClip = annotation.kind === "youtube" || annotation.kind === "audio";
+  const clipMedia = hostedClipMedia(annotation);
   const passageText = hasPassage
     ? expanded
       ? annotation.selectedText
@@ -103,6 +115,9 @@ export function AnnotationCard({
               </span>
             )}
           </button>
+          {expanded && clipMedia && (
+            <HostedMediaPlayer annotationId={annotation.id} media={clipMedia} compact />
+          )}
           <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
             Open source <span aria-hidden="true">↗</span>
           </a>
