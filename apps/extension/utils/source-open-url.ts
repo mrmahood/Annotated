@@ -69,8 +69,8 @@ export function getSourceOpenUrl(input: SourceOpenInput): string {
     return getYouTubeTimestampUrl(input.canonicalUrl, input.startMs ?? 0);
   }
   if (input.kind === 'audio') {
-    // Sprint 4 owns in-page audio hover/seek. Without page scripting, Open
-    // source can only load the episode URL — it cannot seek the quoted range.
+    // Sprint 4 hover/pending apply owns in-page player highlight. Open source
+    // still loads the episode URL only — it does not seek or mutate playback.
     return input.canonicalUrl;
   }
   // Amber host-access highlight is the Open source path. A `#:~:text=`

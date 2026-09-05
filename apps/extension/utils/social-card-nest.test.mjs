@@ -34,8 +34,13 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /articlePassageHoverTarget/);
   assert.match(card, /onArticleHoverResult/);
   assert.match(card, /ArticlePassageMissStatus/);
-  assert.match(card, /handleArticleSourceOpenClick\(event, annotation, articleHover, sourceUrl, onArticleHoverResult, onAwaitingConnection\)/);
+  assert.match(card, /handleSourceOpenClick\(event, annotation, articleHover, audioHover, sourceUrl, onArticleHoverResult, annotation\.kind === 'audio' \? onAudioAwaitingConnection : onAwaitingConnection\)/);
   assert.match(card, /ArticlePendingConnectHint/);
+  assert.match(card, /audioHoverRegionHandlers/);
+  assert.match(card, /audioHoverNestedChipHandlers/);
+  assert.match(card, /audioClipHoverTarget/);
+  assert.match(card, /AudioPendingConnectHint/);
+  assert.match(card, /handleAudioSourceOpenClick/);
   assert.match(source, /ARTICLE_PENDING_CONNECT_HINT/);
   assert.match(source, /ARTICLE_HOVER_LAST_APPLY_KEY/);
   assert.match(source, /readArticleHoverLastApply/);

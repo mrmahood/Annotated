@@ -192,11 +192,13 @@ test('surf-follow wiring uses tabs listeners and does not add persistent content
   assert.match(background, /chrome\.tabs\.onActivated|installSurfFollow/);
   assert.match(background, /chrome\.action\.onClicked/);
   assert.match(background, /applyPendingArticleHoverOnTab/);
+  assert.match(background, /applyPendingAudioHoverOnTab/);
   assert.doesNotMatch(background, /defineContentScript|content_scripts/);
 
   assert.match(follow, /tabs\.onActivated/);
   assert.match(follow, /tabs\.onUpdated/);
   assert.match(follow, /ACTIVE_TAB_CONTEXT_MESSAGE/);
   assert.match(follow, /applyPendingArticleHoverOnTab/);
+  assert.match(follow, /applyPendingAudioHoverOnTab/);
   assert.doesNotMatch(follow, /defineContentScript|content_scripts/);
 });

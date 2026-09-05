@@ -3,6 +3,7 @@ import {
   isActiveTabContext,
 } from '../utils/active-tab-context';
 import { applyPendingArticleHoverOnTab } from '../utils/article-hover-pending';
+import { applyPendingAudioHoverOnTab } from '../utils/audio-hover-pending';
 import { installMediaCapture } from '../utils/media-capture-background';
 import {
   followBrowsingTab,
@@ -18,7 +19,10 @@ export default defineBackground(() => {
 
   installMediaCapture(chrome);
   installSurfFollow(chrome, {
-    applyPending: (tab) => applyPendingArticleHoverOnTab(tab),
+    applyPending: async (tab) => {
+      await applyPendingArticleHoverOnTab(tab);
+      await applyPendingAudioHoverOnTab(tab);
+    },
   });
 
   void chrome.sidePanel
@@ -40,10 +44,12 @@ export default defineBackground(() => {
     void followBrowsingTab(chrome, tab)
       .then(async () => {
         if (tab.url) {
-          await applyPendingArticleHoverOnTab({
+          const pendingTab = {
             tabId: tab.id as number,
             tabUrl: tab.url,
-          });
+          };
+          await applyPendingArticleHoverOnTab(pendingTab);
+          await applyPendingAudioHoverOnTab(pendingTab);
         }
       })
       .catch((error: unknown) => {
