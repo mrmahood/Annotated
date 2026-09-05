@@ -20,6 +20,9 @@ const AUDIO = 'https://example.com/podcast/episode-42';
 const SHORT_PASSAGE = 'The unique passage on this page.';
 const IRAN_STORED = '. Central Command announced that as of Friday, the ongoing U.S. military blockade of Iranian ports has redirected 62 commerci';
 const IRAN_CLEANED = 'Central Command announced that as of Friday, the ongoing U.S. military blockade of Iranian ports has redirected 62';
+const ENES_URL = 'https://www.foxnews.com/outkick-sports/enes-kanter-freedoms-legal-representatives-file-foia-request-related-chicago-sky-ejection-incident';
+const ENES_STORED = 'dom exercised his constitutional right as an American when he attended the WNBA game in Chicago," AFPI chief legal affairs officer Leigh Ann O’Neill said in a statement. "Today, we launched an investigation, seeking critical documents that will assist in our efforts to ensure that public entities are held ac';
+const ENES_CLEANED = 'exercised his constitutional right as an American when he attended the WNBA game in Chicago," AFPI chief legal affairs officer Leigh Ann O’Neill said in a statement. "Today, we launched an investigation, seeking critical documents that will assist in our efforts to ensure that public entities are held';
 const ABC7_PREFIX = 'Because they did not allow him to do a credible fear interview with respect to Guyana, the country that they said they were going to send him to and he was under supervision, it was depriving him of his right to due process, so that is the basis of our habeas corpus, meaning you don\'t have a right to hold him without due process,';
 const ABC7_SUFFIX = 'He cannot be removed from the detention center to any country at any time until we are fully finished with these submissions.';
 const ABC7_STORED = `${ABC7_PREFIX} said Alex's attorney Jane Oak. ${ABC7_SUFFIX}`;
@@ -54,6 +57,26 @@ test('Iran-style truncated Open source fragment uses the cleaned prefix, not com
       kind: 'article',
       canonicalUrl: 'https://example.com/live-news',
       selectedText: IRAN_STORED,
+    }),
+    href,
+  );
+});
+
+test('Enes-style leading truncation Open source fragment drops dom and held ac', () => {
+  assert.equal(prepareArticlePassageQuery(ENES_STORED), ENES_CLEANED);
+  assert.match(ENES_CLEANED, /^exercised /);
+  const href = buildArticleTextFragmentUrl(ENES_URL, ENES_STORED);
+  const decoded = decodeURIComponent(href);
+  assert.ok(href.startsWith(`${ENES_URL}#:~:text=`));
+  assert.match(decoded, /exercised his constitutional right/);
+  assert.equal(decoded.includes('dom '), false);
+  assert.equal(decoded.startsWith(`${ENES_URL}#:~:text=dom`), false);
+  assert.equal(decoded.includes('held ac'), false);
+  assert.equal(
+    getSourceOpenUrl({
+      kind: 'article',
+      canonicalUrl: ENES_URL,
+      selectedText: ENES_STORED,
     }),
     href,
   );

@@ -10,6 +10,7 @@ const WRAPPING_QUOTES = /^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u201
 const LEADING_PASSAGE_CRUMBS = /^(?:[\s.·*•\u2022\u2023\u2043\u2219\u2026\-\u2013\u2014])+/u;
 const CLOSED_SENTENCE_END = /[.!?…]["'”’)\]]*$/u;
 const TRAILING_LETTER = /\p{L}$/u;
+const LEADING_LOWERCASE_LETTER = /^\p{Ll}/u;
 
 export type ArticleHoverStrength = 'soft' | 'strong';
 
@@ -56,6 +57,17 @@ function lastTokenLooksIncomplete(value: string): boolean {
   return TRAILING_LETTER.test(value);
 }
 
+// Capture often starts mid-word (`dom exercised`). A leading lowercase
+// letter means the first token is a remnant — drop it. Uppercase, a
+// digit, or leftover quote crumbs already stripped stay intact.
+export function dropIncompleteLeadingArticleToken(value: string): string {
+  const current = value.trim();
+  if (!current || !LEADING_LOWERCASE_LETTER.test(current)) return current;
+  const firstSpace = current.indexOf(' ');
+  if (firstSpace < 0) return current;
+  return current.slice(firstSpace + 1).trimStart();
+}
+
 // Capture often stops mid-word (`commerci`) or keeps a list leftover
 // (`. Central Command`). Drop one incomplete tail token so match and
 // `#:~:text=` both end on a word boundary.
@@ -69,7 +81,9 @@ export function dropIncompleteTrailingArticleToken(value: string): string {
 
 export function prepareArticlePassageQuery(selectedText: string): string {
   const normalized = stripWrappingQuotes(normalizeArticleHoverText(selectedText));
-  return dropIncompleteTrailingArticleToken(stripLeadingArticlePassageCrumbs(normalized));
+  const withoutCrumbs = stripLeadingArticlePassageCrumbs(normalized);
+  const withoutLeading = dropIncompleteLeadingArticleToken(withoutCrumbs);
+  return dropIncompleteTrailingArticleToken(withoutLeading);
 }
 
 // Unique whitespace-normalized substring only. Zero or two-plus matches fail
@@ -179,9 +193,35 @@ export function findLongestUniquePrefixMatch(
   return null;
 }
 
+// Walk forward by dropping leading words until one unique hit is at
+// least ARTICLE_HOVER_PREFIX_MIN_CHARS. Used when a leading mid-word
+// remnant still blocks every prefix (`dom exercised…`). Ambiguous
+// leftovers fail closed.
+export function findLongestUniqueSuffixMatch(
+  haystack: string,
+  needle: string,
+  minChars = ARTICLE_HOVER_PREFIX_MIN_CHARS,
+): NormalizedTextMatch | null {
+  const normalizedHaystack = normalizeArticleHoverText(haystack);
+  const tokens = normalizeArticleHoverText(needle).split(' ').filter(Boolean);
+  while (tokens.length > 0) {
+    const candidate = tokens.join(' ');
+    if (candidate.length < minChars) return null;
+    const count = countNormalizedOccurrences(normalizedHaystack, candidate);
+    if (count > 1) return null;
+    if (count === 1) {
+      const start = normalizedHaystack.indexOf(candidate);
+      return start >= 0 ? { start, end: start + candidate.length } : null;
+    }
+    tokens.shift();
+  }
+  return null;
+}
+
 // Cleaned exact match, then #65 leading+trailing recovery, then the
-// longest unique prefix. Passage-only — audio commentary is irrelevant.
-// Ambiguous or short leftovers stay fail-closed.
+// longest unique prefix, then the longest unique suffix. Passage-only —
+// audio commentary is irrelevant. Ambiguous or short leftovers stay
+// fail-closed.
 export function findArticleHoverNormalizedMatch(
   haystack: string,
   needle: string,
@@ -209,7 +249,8 @@ export function findArticleHoverNormalizedMatch(
   if (trailingMatch && isRecoveredAnchorLongEnough(trailing, cleanedNeedle)) {
     return trailingMatch;
   }
-  return findLongestUniquePrefixMatch(normalizedHaystack, cleanedNeedle);
+  return findLongestUniquePrefixMatch(normalizedHaystack, cleanedNeedle)
+    ?? findLongestUniqueSuffixMatch(normalizedHaystack, cleanedNeedle);
 }
 
 export function normalizeArticleHoverPageUrl(value: string): string | null {
@@ -308,6 +349,12 @@ export function applyArticleHoverHighlightOnPage(
       value.replace(/^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g, '').trim();
     const stripCrumbs = (value: string) =>
       value.replace(/^(?:[\s.·*•\u2022\u2023\u2043\u2219\u2026\-\u2013\u2014])+/u, '').trim();
+    const dropIncompleteLead = (value: string) => {
+      if (!value || !/^\p{Ll}/u.test(value)) return value;
+      const firstSpace = value.indexOf(' ');
+      if (firstSpace < 0) return value;
+      return value.slice(firstSpace + 1).replace(/^\s+/, '');
+    };
     const dropIncompleteTail = (value: string) => {
       if (!value || /[.!?…]["'”’)\]]*$/u.test(value)) return value;
       if (!/\p{L}$/u.test(value)) return value;
@@ -316,7 +363,7 @@ export function applyArticleHoverHighlightOnPage(
       return value.slice(0, lastSpace).replace(/\s+$/, '');
     };
     const selectedText = request && typeof request.selectedText === 'string'
-      ? dropIncompleteTail(stripCrumbs(stripQuotes(normalizeText(request.selectedText))))
+      ? dropIncompleteTail(dropIncompleteLead(stripCrumbs(stripQuotes(normalizeText(request.selectedText)))))
       : '';
     const expectedNormalizedUrl = request && typeof request.expectedNormalizedUrl === 'string'
       ? request.expectedNormalizedUrl
@@ -452,6 +499,21 @@ export function applyArticleHoverHighlightOnPage(
           break;
         }
         tokens.pop();
+      }
+    }
+    if (!match) {
+      const tokens = selectedText.split(' ').filter(Boolean);
+      tokens.shift();
+      while (tokens.length > 0) {
+        const candidate = tokens.join(' ');
+        if (candidate.length < 40) break;
+        const count = countNeedle(candidate);
+        if (count > 1) break;
+        if (count === 1) {
+          match = findUnique(candidate);
+          break;
+        }
+        tokens.shift();
       }
     }
     if (!match) {

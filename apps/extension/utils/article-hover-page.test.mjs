@@ -6,8 +6,10 @@ import {
   ARTICLE_HOVER_PREFIX_MIN_CHARS,
   ARTICLE_HOVER_ROOT_ID,
   clearArticleHoverHighlightOnPage,
+  dropIncompleteLeadingArticleToken,
   findArticleHoverNormalizedMatch,
   findLongestUniquePrefixMatch,
+  findLongestUniqueSuffixMatch,
   findUniqueNormalizedMatch,
   normalizeArticleHoverPageUrl,
   normalizeArticleHoverText,
@@ -25,6 +27,13 @@ const IRAN_LIVE = 'U.S. Central Command announced that as of Friday, the ongoing
 const PREFIX_STORED = 'Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone missingtail.';
 const PREFIX_LIVE = 'Intro. Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone. Outro.';
 const PREFIX_MATCH = 'Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone';
+const ENES_STORED = 'dom exercised his constitutional right as an American when he attended the WNBA game in Chicago," AFPI chief legal affairs officer Leigh Ann O’Neill said in a statement. "Today, we launched an investigation, seeking critical documents that will assist in our efforts to ensure that public entities are held ac';
+const ENES_CLEANED = 'exercised his constitutional right as an American when he attended the WNBA game in Chicago," AFPI chief legal affairs officer Leigh Ann O’Neill said in a statement. "Today, we launched an investigation, seeking critical documents that will assist in our efforts to ensure that public entities are held';
+const ENES_LIVE_SENTENCE = 'Freedom exercised his constitutional right as an American when he attended the WNBA game in Chicago," AFPI chief legal affairs officer Leigh Ann O’Neill said in a statement.';
+const ENES_LIVE = `Intro. ${ENES_LIVE_SENTENCE} The rest of the capture is not on this live excerpt.`;
+const SUFFIX_STORED = 'Wrongstart Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone.';
+const SUFFIX_LIVE = 'Intro. Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone. Outro.';
+const SUFFIX_MATCH = 'Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone.';
 
 function withPage(callback, overrides = {}) {
   const names = [
@@ -417,6 +426,18 @@ test('prepareArticlePassageQuery strips leading crumbs and a mid-word tail', () 
   assert.match(IRAN_CLEANED, /62$/);
 });
 
+test('prepareArticlePassageQuery drops a leading mid-word token and the Enes tail', () => {
+  assert.equal(dropIncompleteLeadingArticleToken('dom exercised his constitutional right'), 'exercised his constitutional right');
+  assert.equal(dropIncompleteLeadingArticleToken('Freedom exercised his constitutional right'), 'Freedom exercised his constitutional right');
+  assert.equal(dropIncompleteLeadingArticleToken('62 commercial ships redirected here'), '62 commercial ships redirected here');
+  assert.equal(prepareArticlePassageQuery(ENES_STORED), ENES_CLEANED);
+  assert.match(ENES_CLEANED, /^exercised /);
+  assert.equal(ENES_CLEANED.startsWith('dom'), false);
+  assert.equal(ENES_CLEANED.includes('held ac'), false);
+  assert.match(ENES_CLEANED, /held$/);
+  assert.equal(prepareArticlePassageQuery(IRAN_STORED), IRAN_CLEANED);
+});
+
 test('Iran-style truncated commerci recovers a unique cleaned prefix', () => {
   const recovered = findArticleHoverNormalizedMatch(IRAN_LIVE, IRAN_STORED);
   assert.ok(recovered);
@@ -451,6 +472,44 @@ test('longest unique prefix walks back by words and fails closed when ambiguous'
   );
 });
 
+test('Enes-style leading truncation matches the unique exercised span', () => {
+  assert.equal(findUniqueNormalizedMatch(ENES_LIVE, ENES_STORED), null);
+  // `dom exercised` is a false substring of `Freedom exercised`. A highlight
+  // that starts there would paint inside Freedom; drop the remnant instead.
+  const falseHead = findUniqueNormalizedMatch(ENES_LIVE, 'dom exercised his constitutional right');
+  assert.ok(falseHead);
+  assert.equal(ENES_LIVE.slice(falseHead.start - 4, falseHead.start + 3), 'Freedom');
+  const recovered = findArticleHoverNormalizedMatch(ENES_LIVE, ENES_STORED);
+  assert.ok(recovered);
+  const span = ENES_LIVE.slice(recovered.start, recovered.end);
+  assert.match(span, /^exercised his constitutional right/);
+  assert.equal(span.startsWith('dom'), false);
+  assert.equal(span.includes('Freedom'), false);
+  assert.equal(span.includes('held ac'), false);
+  assert.ok(span.length >= ARTICLE_HOVER_PREFIX_MIN_CHARS);
+  assert.equal(ENES_LIVE.slice(recovered.start - 8, recovered.start), 'Freedom ');
+});
+
+test('longest unique suffix walks forward by words and fails closed when ambiguous', () => {
+  assert.equal(findUniqueNormalizedMatch(SUFFIX_LIVE, SUFFIX_STORED), null);
+  assert.equal(findLongestUniquePrefixMatch(SUFFIX_LIVE, SUFFIX_STORED), null);
+  const recovered = findArticleHoverNormalizedMatch(SUFFIX_LIVE, SUFFIX_STORED);
+  assert.ok(recovered);
+  assert.equal(SUFFIX_LIVE.slice(recovered.start, recovered.end), SUFFIX_MATCH);
+  assert.deepEqual(
+    findLongestUniqueSuffixMatch(SUFFIX_LIVE, SUFFIX_STORED),
+    recovered,
+  );
+  assert.equal(
+    findArticleHoverNormalizedMatch(`${SUFFIX_LIVE} later ${SUFFIX_LIVE}`, SUFFIX_STORED),
+    null,
+  );
+  assert.equal(
+    findLongestUniqueSuffixMatch('short haystack', 'also short leftover.'),
+    null,
+  );
+});
+
 test('page injector recovers Iran-style truncated text and scrolls it into view', () => {
   withPage(({ documentElement, scrollCalls }) => {
     const result = applyArticleHoverHighlightOnPage({
@@ -467,6 +526,24 @@ test('page injector recovers Iran-style truncated text and scrolls it into view'
       call.options.behavior === 'smooth'
     )));
   }, { bodyText: IRAN_LIVE });
+});
+
+test('page injector recovers Enes-style leading truncation and scrolls it into view', () => {
+  withPage(({ documentElement, scrollCalls }) => {
+    const result = applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: ENES_STORED,
+      strength: 'soft',
+    });
+    assert.equal(result.ok, true);
+    assert.ok(documentElement.querySelector('#annotated-article-hover-root'));
+    assert.match(documentElement.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /rgba\(255, 214, 74/);
+    assert.ok(scrollCalls.some((call) => (
+      call.options.block === 'center' &&
+      call.options.inline === 'nearest' &&
+      call.options.behavior === 'smooth'
+    )));
+  }, { bodyText: ENES_LIVE });
 });
 
 test('article hover matching has no audio-commentary skip path', () => {
