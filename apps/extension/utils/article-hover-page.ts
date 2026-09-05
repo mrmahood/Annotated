@@ -255,8 +255,8 @@ export function applyArticleHoverHighlightOnPage(
     const strong = request.strength === 'strong';
     const dimOpacity = strong ? 0.12 : 0.09;
     const ringWidth = strong ? 3 : 2;
-    const ringColor = strong ? 'rgba(236, 241, 246, 0.92)' : 'rgba(154, 167, 181, 0.78)';
-    const fillColor = strong ? 'rgba(154, 167, 181, 0.28)' : 'rgba(154, 167, 181, 0.18)';
+    const ringColor = strong ? 'rgba(180, 130, 0, 0.95)' : 'rgba(212, 160, 20, 0.85)';
+    const fillColor = strong ? 'rgba(255, 214, 74, 0.72)' : 'rgba(255, 214, 74, 0.55)';
 
     let style = document.getElementById(styleId);
     if (!(style instanceof HTMLStyleElement)) {
