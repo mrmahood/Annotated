@@ -1,6 +1,9 @@
 export const ARTICLE_HOVER_ROOT_ID = 'annotated-article-hover-root';
 export const ARTICLE_HOVER_STYLE_ID = 'annotated-article-hover-style';
 export const ARTICLE_HOVER_HIGHLIGHT_NAME = 'annotated-article-hover';
+export const ARTICLE_HOVER_ANCHOR_MIN_CHARS = 80;
+export const ARTICLE_HOVER_ANCHOR_MAX_CHARS = 120;
+export const ARTICLE_HOVER_SINGLE_ANCHOR_RATIO = 0.4;
 
 export type ArticleHoverStrength = 'soft' | 'strong';
 
@@ -57,6 +60,83 @@ export function findUniqueNormalizedMatch(
   }
   if (count !== 1 || start < 0) return null;
   return { start, end: start + normalizedNeedle.length };
+}
+
+export function takeLeadingNormalizedWindow(
+  normalized: string,
+  minChars = ARTICLE_HOVER_ANCHOR_MIN_CHARS,
+  maxChars = ARTICLE_HOVER_ANCHOR_MAX_CHARS,
+): string {
+  const value = normalizeArticleHoverText(normalized);
+  if (!value) return '';
+  if (value.length <= maxChars) return value;
+  let window = value.slice(0, maxChars);
+  const next = value[maxChars];
+  if (next && !/\s/.test(next) && !/\s/.test(window[window.length - 1] ?? ' ')) {
+    const lastSpace = window.lastIndexOf(' ');
+    if (lastSpace >= minChars) window = window.slice(0, lastSpace);
+  }
+  return window.trimEnd();
+}
+
+export function takeTrailingNormalizedWindow(
+  normalized: string,
+  minChars = ARTICLE_HOVER_ANCHOR_MIN_CHARS,
+  maxChars = ARTICLE_HOVER_ANCHOR_MAX_CHARS,
+): string {
+  const value = normalizeArticleHoverText(normalized);
+  if (!value) return '';
+  if (value.length <= maxChars) return value;
+  let window = value.slice(-maxChars);
+  const previous = value[value.length - maxChars - 1];
+  if (previous && !/\s/.test(previous) && !/\s/.test(window[0] ?? ' ')) {
+    const firstSpace = window.indexOf(' ');
+    if (firstSpace >= 0) {
+      const after = window.slice(firstSpace + 1);
+      if (after.length >= minChars) window = after;
+    }
+  }
+  return window.trimStart();
+}
+
+function isRecoveredAnchorLongEnough(anchor: string, selection: string): boolean {
+  return (
+    anchor.length >= ARTICLE_HOVER_ANCHOR_MIN_CHARS ||
+    (selection.length > 0 && anchor.length >= selection.length * ARTICLE_HOVER_SINGLE_ANCHOR_RATIO)
+  );
+}
+
+// Exact unique full-string match first. If the live page edited the middle,
+// recover a unique leading+trailing span, or one unique long-enough window.
+// Ambiguous or short leftovers stay fail-closed.
+export function findArticleHoverNormalizedMatch(
+  haystack: string,
+  needle: string,
+): NormalizedTextMatch | null {
+  const normalizedHaystack = normalizeArticleHoverText(haystack);
+  const normalizedNeedle = normalizeArticleHoverText(needle);
+  if (!normalizedHaystack || !normalizedNeedle) return null;
+
+  const exact = findUniqueNormalizedMatch(normalizedHaystack, normalizedNeedle);
+  if (exact) return exact;
+
+  const leading = takeLeadingNormalizedWindow(normalizedNeedle);
+  const trailing = takeTrailingNormalizedWindow(normalizedNeedle);
+  const leadingMatch = leading ? findUniqueNormalizedMatch(normalizedHaystack, leading) : null;
+  const trailingMatch = trailing ? findUniqueNormalizedMatch(normalizedHaystack, trailing) : null;
+
+  if (leadingMatch && trailingMatch) {
+    return leadingMatch.start < trailingMatch.end
+      ? { start: leadingMatch.start, end: trailingMatch.end }
+      : null;
+  }
+  if (leadingMatch && isRecoveredAnchorLongEnough(leading, normalizedNeedle)) {
+    return leadingMatch;
+  }
+  if (trailingMatch && isRecoveredAnchorLongEnough(trailing, normalizedNeedle)) {
+    return trailingMatch;
+  }
+  return null;
 }
 
 export function normalizeArticleHoverPageUrl(value: string): string | null {
@@ -217,27 +297,69 @@ export function applyArticleHoverHighlightOnPage(
       map.pop();
     }
 
-    let matchStart = -1;
-    let from = 0;
-    let matchCount = 0;
-    while (from <= normalized.length - selectedText.length) {
-      const index = normalized.indexOf(selectedText, from);
-      if (index === -1) break;
-      matchCount += 1;
-      if (matchCount > 1) {
-        removePaint();
-        return { ok: false, reason: 'text-unmatched' };
+    const findUnique = (needle: string) => {
+      if (!needle) return null;
+      let start = -1;
+      let from = 0;
+      let count = 0;
+      while (from <= normalized.length - needle.length) {
+        const index = normalized.indexOf(needle, from);
+        if (index === -1) break;
+        count += 1;
+        if (count > 1) return null;
+        start = index;
+        from = index + 1;
       }
-      matchStart = index;
-      from = index + 1;
+      if (count !== 1 || start < 0) return null;
+      return { start, end: start + needle.length };
+    };
+    const takeLeading = (value: string) => {
+      if (value.length <= 120) return value;
+      let window = value.slice(0, 120);
+      const next = value[120];
+      if (next && !/\s/.test(next) && !/\s/.test(window[window.length - 1] || ' ')) {
+        const lastSpace = window.lastIndexOf(' ');
+        if (lastSpace >= 80) window = window.slice(0, lastSpace);
+      }
+      return window.replace(/\s+$/, '');
+    };
+    const takeTrailing = (value: string) => {
+      if (value.length <= 120) return value;
+      let window = value.slice(-120);
+      const previous = value[value.length - 121];
+      if (previous && !/\s/.test(previous) && !/\s/.test(window[0] || ' ')) {
+        const firstSpace = window.indexOf(' ');
+        if (firstSpace >= 0) {
+          const after = window.slice(firstSpace + 1);
+          if (after.length >= 80) window = after;
+        }
+      }
+      return window.replace(/^\s+/, '');
+    };
+
+    let match = findUnique(selectedText);
+    if (!match) {
+      const leading = takeLeading(selectedText);
+      const trailing = takeTrailing(selectedText);
+      const leadingMatch = findUnique(leading);
+      const trailingMatch = findUnique(trailing);
+      if (leadingMatch && trailingMatch) {
+        match = leadingMatch.start < trailingMatch.end
+          ? { start: leadingMatch.start, end: trailingMatch.end }
+          : null;
+      } else if (leadingMatch && (leading.length >= 80 || leading.length >= selectedText.length * 0.4)) {
+        match = leadingMatch;
+      } else if (trailingMatch && (trailing.length >= 80 || trailing.length >= selectedText.length * 0.4)) {
+        match = trailingMatch;
+      }
     }
-    if (matchCount !== 1 || matchStart < 0) {
+    if (!match) {
       removePaint();
       return { ok: false, reason: 'text-unmatched' };
     }
 
-    const startPoint = map[matchStart];
-    const endPoint = map[matchStart + selectedText.length - 1];
+    const startPoint = map[match.start];
+    const endPoint = map[match.end - 1];
     if (!startPoint || !endPoint || typeof document.createRange !== 'function') {
       removePaint();
       return { ok: false, reason: 'text-unmatched' };
@@ -347,6 +469,24 @@ export function applyArticleHoverHighlightOnPage(
       window.removeEventListener('scroll', onChange, true);
       window.removeEventListener('resize', onChange);
     };
+
+    try {
+      const scrollOptions: ScrollIntoViewOptions = {
+        block: 'center',
+        inline: 'nearest',
+        behavior: 'smooth',
+      };
+      const parent = startPoint.node.parentElement;
+      if (parent && typeof parent.scrollIntoView === 'function') {
+        parent.scrollIntoView(scrollOptions);
+      }
+      const firstRing = rings.querySelector('[data-annotated-hover-ring="1"]');
+      if (firstRing && typeof firstRing.scrollIntoView === 'function') {
+        firstRing.scrollIntoView(scrollOptions);
+      }
+    } catch {
+      // Scroll is best-effort after a successful paint.
+    }
 
     return { ok: true };
   } catch {

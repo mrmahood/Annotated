@@ -46,6 +46,7 @@ export type ArticleHoverChrome = {
   };
   tabs: {
     get: (tabId: number) => Promise<{ id?: number; url?: string }>;
+    update?: (tabId: number, update: { active: true }) => Promise<unknown>;
   };
 };
 
@@ -185,6 +186,27 @@ export async function applyArticleHoverOnConnectedTab(
   } catch {
     return false;
   }
+}
+
+export async function openArticleSourceOnConnectedTab(
+  connection: ArticleHoverConnection,
+  target: Omit<ArticleHoverTarget, 'strength'> & { strength?: ArticleHoverStrength },
+  chromeApi?: ArticleHoverChrome,
+): Promise<boolean> {
+  cancelArticleHoverLink();
+  const applied = await applyArticleHoverOnConnectedTab(
+    connection,
+    { ...target, strength: target.strength ?? 'strong' },
+    chromeApi,
+  );
+  if (!applied) return false;
+  const chrome = resolveChrome(chromeApi);
+  try {
+    await chrome?.tabs.update?.(connection.tabId, { active: true });
+  } catch {
+    // Focus is best-effort; highlight and scroll already ran on the page.
+  }
+  return true;
 }
 
 export async function clearArticleHoverOnConnectedTab(

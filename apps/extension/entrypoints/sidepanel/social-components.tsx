@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { formatMediaTime } from '@annotated/shared/media-time';
-import { getYouTubeTimestampUrl } from '@annotated/shared/youtube';
 import {
   ANNOTATION_AUDIO_BUCKET,
   formatAudioDuration,
@@ -47,11 +46,14 @@ import {
   mergeCommentPages,
 } from '../../utils/social-helpers';
 import {
+  annotationMatchesConnectedArticle,
   articleHoverNestedChipHandlers,
   articleHoverRegionHandlers,
   cancelArticleHoverLink,
+  openArticleSourceOnConnectedTab,
   type ArticleHoverConnection,
 } from '../../utils/article-hover-link';
+import { getSourceOpenUrl } from '../../utils/source-open-url';
 import {
   cancelYouTubeHoverLink,
   enterYouTubeHoverLink,
@@ -234,6 +236,30 @@ function articlePassageHoverTarget(annotation: PublicAnnotation) {
     : null;
 }
 
+function sourceOpenHref(annotation: PublicAnnotation): string {
+  return getSourceOpenUrl({
+    kind: annotation.kind,
+    canonicalUrl: annotation.source.canonicalUrl,
+    selectedText: annotation.kind === 'article' ? annotation.selectedText : null,
+    startMs: annotation.startMs,
+  });
+}
+
+function handleArticleSourceOpenClick(
+  event: { preventDefault: () => void },
+  annotation: PublicAnnotation,
+  connection: ArticleHoverConnection | null,
+  href: string,
+) {
+  const target = articlePassageHoverTarget(annotation);
+  if (!target || !connection) return;
+  if (!annotationMatchesConnectedArticle(annotation, connection.tabUrl)) return;
+  event.preventDefault();
+  void openArticleSourceOnConnectedTab(connection, { ...target, strength: 'strong' }).then((opened) => {
+    if (!opened) window.open(href, '_blank', 'noopener,noreferrer');
+  });
+}
+
 function ExcerptTranscript({
   transcript,
   youtubeHover = null,
@@ -312,9 +338,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   const [hostedStatus, setHostedStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>(
     annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted) ? 'ready' : 'idle',
   );
-  const sourceUrl = annotation.kind === 'youtube'
-    ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
-    : annotation.source.canonicalUrl;
+  const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
   const hasArticleAudio = annotation.kind === 'article' && Boolean(annotation.audio);
@@ -448,7 +472,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           {expanded && hasArticleAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
           )}
-          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">Open source ↗</a>
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceUrl)}>Open source ↗</a>
         </div>
       </div>
       <footer className="social-card-actions">
@@ -843,9 +867,7 @@ export function AnnotationDetailView({
   const audioUrl = annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;
-  const youtubeUrl = annotation.kind === 'youtube'
-    ? getYouTubeTimestampUrl(annotation.source.canonicalUrl, annotation.startMs)
-    : null;
+  const sourceOpenUrl = sourceOpenHref(annotation);
   const hostedReady = annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted)
     ? annotation.hosted
     : null;
@@ -889,13 +911,13 @@ export function AnnotationDetailView({
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
       {annotation.kind === 'article' ? <>
-        <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">View original source ↗</a></section>
+        <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl)}>View original source ↗</a></section>
         <section className="detail-passage" {...sourceHover}><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
       </> : annotation.kind === 'youtube' ? <>
-        <section className="detail-source" {...sourceHover}><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={youtubeUrl!} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
+        <section className="detail-source" {...sourceHover}><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </> : <>
-        <section className="detail-source"><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">Open original source ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
+        <section className="detail-source"><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open original source ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
         <section className="detail-clip-range"><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </>}
       {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} />}
