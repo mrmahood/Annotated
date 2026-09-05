@@ -16,11 +16,18 @@ import {
   type AudioClipDraft,
 } from '../../utils/audio-draft';
 import {
-  classifyConnectedSource,
   readAudioPageSnapshot,
   validateAudioPageSnapshot,
   type AudioPageSource,
 } from '../../utils/audio-page';
+import {
+  getSourceState,
+  hostedVideoBeginRpc,
+  isHostedWatchSource,
+  videoPlayerSourceKey,
+  type PageSource,
+  type SourceState,
+} from '../../utils/connected-source';
 import { beginHostedAudioClipAnnotation } from '../../utils/audio-publishing';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import {
@@ -133,12 +140,10 @@ import {
 } from '../../utils/web-video-draft';
 import {
   extractYouTubePageMetadata,
-  normalizeYouTubeVideoTitle,
   validateYouTubePageMetadata,
 } from '../../utils/youtube-page';
 import {
   extractTikTokPageMetadata,
-  normalizeTikTokVideoTitle,
   validateTikTokPageMetadata,
 } from '../../utils/tiktok-page';
 import {
@@ -207,69 +212,6 @@ const RECONNECT_MESSAGE = 'Click the Annotated toolbar icon on this page to reco
 const RESTRICTED_PAGE_MESSAGE = 'Annotated cannot capture text from this page.';
 const UNEXPECTED_CAPTURE_MESSAGE = 'Something went wrong while capturing the passage. Try again.';
 
-type ArticlePageSource = {
-  title: string;
-  hostname: string;
-  url: string;
-  classification: 'Web page';
-  audioDetectionResolved: boolean;
-  audioAvailable: boolean;
-  audioIdentity: AudioPageSource | null;
-  exclusivePodcast: boolean;
-  videoDetectionResolved: boolean;
-  videoAvailable: boolean;
-};
-
-type YouTubePageSource = {
-  title: string;
-  hostname: 'youtube.com';
-  url: string;
-  classification: 'YouTube';
-  videoId: string;
-  normalizedUrl: string;
-  canonicalUrl: string;
-  channelName: string | null;
-  metadataResolved: boolean;
-};
-
-type TikTokPageSource = {
-  title: string;
-  hostname: 'tiktok.com';
-  url: string;
-  classification: 'TikTok';
-  videoId: string;
-  handle: string;
-  normalizedUrl: string;
-  canonicalUrl: string;
-  author: string | null;
-  metadataResolved: boolean;
-};
-
-type AudioVideoPageSource = AudioPageSource & {
-  videoDetectionResolved: boolean;
-  videoAvailable: boolean;
-};
-
-type PageSource = ArticlePageSource | YouTubePageSource | TikTokPageSource | AudioVideoPageSource;
-
-function isHostedWatchSource(source: PageSource): source is YouTubePageSource | TikTokPageSource {
-  return source.classification === 'YouTube' || source.classification === 'TikTok';
-}
-
-function videoPlayerSourceKey(source: PageSource): string {
-  return isHostedWatchSource(source) ? source.videoId : normalizeArticleUrl(source.url);
-}
-
-type SourceState =
-  | { status: 'loading' }
-  | { status: 'connected'; source: PageSource }
-  | { status: 'refreshing' }
-  | { status: 'not-connected' }
-  | { status: 'different-tab' }
-  | { status: 'reconnect-required' }
-  | { status: 'unsupported'; url?: string }
-  | { status: 'unexpected-error'; message: string };
-
 type AccountDetails = {
   id: string;
   name: string;
@@ -309,67 +251,6 @@ function isSameOrigin(firstUrl: string, secondUrl: string) {
 function isRestrictedPageError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /cannot access|cannot be scripted|missing host permission|extensions gallery|no frame with id|frame with id.*(?:removed|not found)|chrome:\/\/|edge:\/\/|about:/i.test(message);
-}
-
-function getSourceState(title: string, value: string): SourceState {
-  const tabUrl = value.trim();
-  try {
-    const url = new URL(tabUrl);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return { status: 'unsupported', url: tabUrl };
-    try {
-      if (classifyConnectedSource(tabUrl, 'not-audio-page') !== 'youtube') throw new Error('Not YouTube');
-      const identity = getYouTubeVideoIdentity(tabUrl);
-      return {
-        status: 'connected',
-        source: {
-          title: normalizeYouTubeVideoTitle(title) || 'youtube.com',
-          hostname: 'youtube.com',
-          url: tabUrl,
-          classification: 'YouTube',
-          ...identity,
-          channelName: null,
-          metadataResolved: false,
-        },
-      };
-    } catch {
-      // Non-YouTube HTTP(S) pages continue through TikTok, then the article path.
-    }
-    try {
-      if (classifyConnectedSource(tabUrl, 'not-audio-page') !== 'tiktok') throw new Error('Not TikTok');
-      const identity = getTikTokVideoIdentity(tabUrl);
-      return {
-        status: 'connected',
-        source: {
-          title: normalizeTikTokVideoTitle(title) || 'tiktok.com',
-          hostname: 'tiktok.com',
-          url: tabUrl,
-          classification: 'TikTok',
-          ...identity,
-          author: null,
-          metadataResolved: false,
-        },
-      };
-    } catch {
-      // Non-watch HTTP(S) pages continue through the unchanged article path.
-    }
-    return {
-      status: 'connected',
-      source: {
-        title: title.trim() || 'Untitled page',
-        hostname: url.hostname,
-        url: tabUrl,
-        classification: 'Web page',
-        audioDetectionResolved: false,
-        audioAvailable: false,
-        audioIdentity: null,
-        exclusivePodcast: false,
-        videoDetectionResolved: false,
-        videoAvailable: false,
-      },
-    };
-  } catch {
-    return { status: 'unsupported', url: tabUrl || undefined };
-  }
 }
 
 const CREATE_MODE_LABELS: Record<CreateMode, string> = {
@@ -1640,6 +1521,15 @@ function App() {
       !videoDraftState.commentary.trim() || !videoDraftState.playerIdentity
     ) return;
     if (isHostedWatchSource(sourceState.source)) return;
+    if (hostedVideoBeginRpc(sourceState.source.url) !== 'begin_hosted_webpage_video_annotation') {
+      setYoutubePublishState({
+        status: 'error',
+        message: hostedVideoBeginRpc(sourceState.source.url) === 'begin_hosted_tiktok_annotation'
+          ? 'Webpage video clips cannot use a TikTok watch URL. Use the TikTok hosted begin path.'
+          : 'Webpage video clips cannot use a YouTube watch URL. Use the YouTube hosted begin path.',
+      });
+      return;
+    }
     if (!sourceState.source.videoDetectionResolved || !sourceState.source.videoAvailable) return;
     const rangeError = getNewMediaPublicationRangeError(
       videoDraftState.startMs,

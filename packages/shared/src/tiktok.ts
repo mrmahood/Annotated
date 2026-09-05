@@ -28,13 +28,14 @@ export function isTikTokHandle(value: unknown): value is string {
   return typeof value === 'string' && TIKTOK_HANDLE_PATTERN.test(value);
 }
 
+const TIKTOK_WATCH_PATH = /\/@([A-Za-z0-9._]{2,24})\/video\/(\d{10,25})(?=\/|$)/i;
+
 function parseWatchPath(pathname: string): { handle: string; videoId: string } | null {
-  const segments = pathname.split('/').filter(Boolean);
-  if (segments.length !== 3) return null;
-  const [rawHandle, kind, videoId] = segments;
-  if (kind?.toLowerCase() !== 'video' || !isTikTokVideoId(videoId)) return null;
-  const handle = rawHandle?.startsWith('@') ? rawHandle.slice(1).toLowerCase() : '';
-  if (!isTikTokHandle(handle)) return null;
+  const match = pathname.match(TIKTOK_WATCH_PATH);
+  if (!match) return null;
+  const handle = match[1]!.toLowerCase();
+  const videoId = match[2]!;
+  if (!isTikTokHandle(handle) || !isTikTokVideoId(videoId)) return null;
   return { handle, videoId };
 }
 

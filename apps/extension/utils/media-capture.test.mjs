@@ -8,6 +8,7 @@ import {
   captureRequestMatchesConnectedTab,
   executeHostedMediaUpload,
   getCaptureRangeError,
+  isCapturePreparedPage,
   isCaptureStartRequest,
   isCurrentCaptureId,
   isMediaCaptureCancelMessage,
@@ -451,6 +452,44 @@ test('capture binds the exact connected tab and stable source identity', () => {
     { id: 42, url: 'https://www.youtube.com/watch?v=other-video' },
   ), false);
   assert.equal(sourceIdentityMatchesUrl(source, 'https://m.youtube.com/watch?v=abcdefghijk&t=10'), true);
+});
+
+test('TikTok watch capture uses video identity and accepts a prepared tiktok page', () => {
+  const tiktokSource = {
+    kind: 'tiktok',
+    pageUrl: 'https://www.tiktok.com/@abcnews/video/7682104834304036110',
+    sourceKey: '7682104834304036110',
+    playerIdentity: 'video:1:f8443fef',
+  };
+  const tiktokRequest = { ...request, source: tiktokSource };
+  assert.equal(isCaptureStartRequest(tiktokRequest), true);
+  assert.equal(sourceIdentityMatchesUrl(tiktokSource, tiktokSource.pageUrl), true);
+  assert.equal(sourceIdentityMatchesUrl(tiktokSource, `${tiktokSource.pageUrl}?is_from_webapp=1`), true);
+  assert.equal(sourceIdentityMatchesUrl(tiktokSource, 'https://www.tiktok.com/@cnn/video/7550999999999999999'), false);
+  const prepared = {
+    sourceKind: 'tiktok',
+    requestedStartMs: 5_000,
+    requestedEndMs: 20_000,
+    requestedDurationMs: 15_000,
+    playerCurrentTimeBeforeRecordingMs: 5_000,
+    mediaDurationMs: 70_000,
+    pageUrl: tiktokSource.pageUrl,
+    geometry: {
+      viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+      boundingClientRect: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+      videoWidth: 1080, videoHeight: 1920, objectFit: 'contain', objectPosition: '50% 50%',
+      fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+    },
+  };
+  assert.equal(isCapturePreparedPage(prepared), true);
+  assert.equal(isOffscreenStartMessage({
+    target: 'offscreen',
+    type: 'annotated.mediaCapture.offscreenStart.v1',
+    captureId: request.captureId,
+    streamId: 'stream',
+    request: tiktokRequest,
+    prepared,
+  }), true);
 });
 
 test('generic webpage video capture binds normalized article and frame/player identity', () => {

@@ -40,6 +40,18 @@ test('removes tracking, share, and playback parameters from video identity', () 
   );
 });
 
+test('accepts locale prefixes and trailing slashes on an otherwise canonical watch path', () => {
+  assert.equal(
+    normalizeTikTokUrl(`https://www.tiktok.com/en/@${HANDLE}/video/${VIDEO_ID}`),
+    CANONICAL,
+  );
+  assert.equal(normalizeTikTokUrl(`${CANONICAL}/`), CANONICAL);
+  assert.equal(
+    isTikTokVideoUrl('https://www.tiktok.com/@abcnews/video/7682104834304036110'),
+    true,
+  );
+});
+
 test('rejects For You, live, photos, short links, and non-TikTok URLs', () => {
   assert.throws(() => normalizeTikTokUrl('https://www.tiktok.com/foryou'), TikTokUrlError);
   assert.throws(() => normalizeTikTokUrl('https://www.tiktok.com/'), TikTokUrlError);
