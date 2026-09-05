@@ -1,7 +1,7 @@
 import { getYouTubeTimestampUrl } from '@annotated/shared/youtube';
 import {
   ARTICLE_HOVER_ANCHOR_MAX_CHARS,
-  normalizeArticleHoverText,
+  prepareArticlePassageQuery,
   takeLeadingNormalizedWindow,
   takeTrailingNormalizedWindow,
 } from './article-hover-page.ts';
@@ -17,12 +17,6 @@ export type SourceOpenInput = {
 
 export const SOURCE_OPEN_TEXT_FRAGMENT_MIN_CHARS = 20;
 export const SOURCE_OPEN_ENCODED_FRAGMENT_MAX = 1800;
-
-const WRAPPING_QUOTES = /^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g;
-
-export function stripWrappingQuotes(value: string): string {
-  return value.replace(WRAPPING_QUOTES, '').trim();
-}
 
 export function encodeTextFragmentValue(value: string): string {
   return encodeURIComponent(value).replace(/-/g, '%2D');
@@ -47,7 +41,9 @@ export function buildArticleTextFragmentUrl(
 ): string {
   const base = articleUrlWithoutHash(canonicalUrl);
   if (!base) return canonicalUrl;
-  const normalized = stripWrappingQuotes(normalizeArticleHoverText(selectedText));
+  // Clean crumbs and drop a mid-word tail (`commerci`) before encoding.
+  // Never emit a fragment that ends inside a cut-off token.
+  const normalized = prepareArticlePassageQuery(selectedText);
   if (normalized.length < SOURCE_OPEN_TEXT_FRAGMENT_MIN_CHARS) return base;
 
   let directive: string;

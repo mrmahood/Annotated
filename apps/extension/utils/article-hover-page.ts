@@ -4,6 +4,12 @@ export const ARTICLE_HOVER_HIGHLIGHT_NAME = 'annotated-article-hover';
 export const ARTICLE_HOVER_ANCHOR_MIN_CHARS = 80;
 export const ARTICLE_HOVER_ANCHOR_MAX_CHARS = 120;
 export const ARTICLE_HOVER_SINGLE_ANCHOR_RATIO = 0.4;
+export const ARTICLE_HOVER_PREFIX_MIN_CHARS = 40;
+
+const WRAPPING_QUOTES = /^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g;
+const LEADING_PASSAGE_CRUMBS = /^(?:[\s.·*•\u2022\u2023\u2043\u2219\u2026\-\u2013\u2014])+/u;
+const CLOSED_SENTENCE_END = /[.!?…]["'”’)\]]*$/u;
+const TRAILING_LETTER = /\p{L}$/u;
 
 export type ArticleHoverStrength = 'soft' | 'strong';
 
@@ -35,6 +41,35 @@ const ARTICLE_HOVER_TRACKING_PARAMETERS = new Set([
 
 export function normalizeArticleHoverText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+export function stripWrappingQuotes(value: string): string {
+  return value.replace(WRAPPING_QUOTES, '').trim();
+}
+
+export function stripLeadingArticlePassageCrumbs(value: string): string {
+  return value.replace(LEADING_PASSAGE_CRUMBS, '').trim();
+}
+
+function lastTokenLooksIncomplete(value: string): boolean {
+  if (!value || CLOSED_SENTENCE_END.test(value)) return false;
+  return TRAILING_LETTER.test(value);
+}
+
+// Capture often stops mid-word (`commerci`) or keeps a list leftover
+// (`. Central Command`). Drop one incomplete tail token so match and
+// `#:~:text=` both end on a word boundary.
+export function dropIncompleteTrailingArticleToken(value: string): string {
+  const current = value.trim();
+  if (!lastTokenLooksIncomplete(current)) return current;
+  const lastSpace = current.lastIndexOf(' ');
+  if (lastSpace < 0) return current;
+  return current.slice(0, lastSpace).trimEnd();
+}
+
+export function prepareArticlePassageQuery(selectedText: string): string {
+  const normalized = stripWrappingQuotes(normalizeArticleHoverText(selectedText));
+  return dropIncompleteTrailingArticleToken(stripLeadingArticlePassageCrumbs(normalized));
 }
 
 // Unique whitespace-normalized substring only. Zero or two-plus matches fail
@@ -106,22 +141,60 @@ function isRecoveredAnchorLongEnough(anchor: string, selection: string): boolean
   );
 }
 
-// Exact unique full-string match first. If the live page edited the middle,
-// recover a unique leading+trailing span, or one unique long-enough window.
+function countNormalizedOccurrences(haystack: string, needle: string): number {
+  if (!haystack || !needle || needle.length > haystack.length) return 0;
+  let count = 0;
+  let from = 0;
+  while (from <= haystack.length - needle.length) {
+    const index = haystack.indexOf(needle, from);
+    if (index === -1) break;
+    count += 1;
+    if (count > 1) return 2;
+    from = index + 1;
+  }
+  return count;
+}
+
+// Walk back by words from a cleaned passage until one unique hit is at
+// least ARTICLE_HOVER_PREFIX_MIN_CHARS. Zero matches keep walking; two or
+// more fail closed immediately because a shorter prefix is also ambiguous.
+export function findLongestUniquePrefixMatch(
+  haystack: string,
+  needle: string,
+  minChars = ARTICLE_HOVER_PREFIX_MIN_CHARS,
+): NormalizedTextMatch | null {
+  const normalizedHaystack = normalizeArticleHoverText(haystack);
+  const tokens = normalizeArticleHoverText(needle).split(' ').filter(Boolean);
+  while (tokens.length > 0) {
+    const candidate = tokens.join(' ');
+    if (candidate.length < minChars) return null;
+    const count = countNormalizedOccurrences(normalizedHaystack, candidate);
+    if (count > 1) return null;
+    if (count === 1) {
+      const start = normalizedHaystack.indexOf(candidate);
+      return start >= 0 ? { start, end: start + candidate.length } : null;
+    }
+    tokens.pop();
+  }
+  return null;
+}
+
+// Cleaned exact match, then #65 leading+trailing recovery, then the
+// longest unique prefix. Passage-only — audio commentary is irrelevant.
 // Ambiguous or short leftovers stay fail-closed.
 export function findArticleHoverNormalizedMatch(
   haystack: string,
   needle: string,
 ): NormalizedTextMatch | null {
   const normalizedHaystack = normalizeArticleHoverText(haystack);
-  const normalizedNeedle = normalizeArticleHoverText(needle);
-  if (!normalizedHaystack || !normalizedNeedle) return null;
+  const cleanedNeedle = prepareArticlePassageQuery(needle);
+  if (!normalizedHaystack || !cleanedNeedle) return null;
 
-  const exact = findUniqueNormalizedMatch(normalizedHaystack, normalizedNeedle);
+  const exact = findUniqueNormalizedMatch(normalizedHaystack, cleanedNeedle);
   if (exact) return exact;
 
-  const leading = takeLeadingNormalizedWindow(normalizedNeedle);
-  const trailing = takeTrailingNormalizedWindow(normalizedNeedle);
+  const leading = takeLeadingNormalizedWindow(cleanedNeedle);
+  const trailing = takeTrailingNormalizedWindow(cleanedNeedle);
   const leadingMatch = leading ? findUniqueNormalizedMatch(normalizedHaystack, leading) : null;
   const trailingMatch = trailing ? findUniqueNormalizedMatch(normalizedHaystack, trailing) : null;
 
@@ -130,13 +203,13 @@ export function findArticleHoverNormalizedMatch(
       ? { start: leadingMatch.start, end: trailingMatch.end }
       : null;
   }
-  if (leadingMatch && isRecoveredAnchorLongEnough(leading, normalizedNeedle)) {
+  if (leadingMatch && isRecoveredAnchorLongEnough(leading, cleanedNeedle)) {
     return leadingMatch;
   }
-  if (trailingMatch && isRecoveredAnchorLongEnough(trailing, normalizedNeedle)) {
+  if (trailingMatch && isRecoveredAnchorLongEnough(trailing, cleanedNeedle)) {
     return trailingMatch;
   }
-  return null;
+  return findLongestUniquePrefixMatch(normalizedHaystack, cleanedNeedle);
 }
 
 export function normalizeArticleHoverPageUrl(value: string): string | null {
@@ -231,8 +304,19 @@ export function applyArticleHoverHighlightOnPage(
       }
     };
 
+    const stripQuotes = (value: string) =>
+      value.replace(/^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g, '').trim();
+    const stripCrumbs = (value: string) =>
+      value.replace(/^(?:[\s.·*•\u2022\u2023\u2043\u2219\u2026\-\u2013\u2014])+/u, '').trim();
+    const dropIncompleteTail = (value: string) => {
+      if (!value || /[.!?…]["'”’)\]]*$/u.test(value)) return value;
+      if (!/\p{L}$/u.test(value)) return value;
+      const lastSpace = value.lastIndexOf(' ');
+      if (lastSpace < 0) return value;
+      return value.slice(0, lastSpace).replace(/\s+$/, '');
+    };
     const selectedText = request && typeof request.selectedText === 'string'
-      ? normalizeText(request.selectedText)
+      ? dropIncompleteTail(stripCrumbs(stripQuotes(normalizeText(request.selectedText))))
       : '';
     const expectedNormalizedUrl = request && typeof request.expectedNormalizedUrl === 'string'
       ? request.expectedNormalizedUrl
@@ -297,21 +381,23 @@ export function applyArticleHoverHighlightOnPage(
       map.pop();
     }
 
-    const findUnique = (needle: string) => {
-      if (!needle) return null;
-      let start = -1;
-      let from = 0;
+    const countNeedle = (needle: string) => {
+      if (!needle || needle.length > normalized.length) return 0;
       let count = 0;
+      let from = 0;
       while (from <= normalized.length - needle.length) {
         const index = normalized.indexOf(needle, from);
         if (index === -1) break;
         count += 1;
-        if (count > 1) return null;
-        start = index;
+        if (count > 1) return 2;
         from = index + 1;
       }
-      if (count !== 1 || start < 0) return null;
-      return { start, end: start + needle.length };
+      return count;
+    };
+    const findUnique = (needle: string) => {
+      if (!needle || countNeedle(needle) !== 1) return null;
+      const start = normalized.indexOf(needle);
+      return start >= 0 ? { start, end: start + needle.length } : null;
     };
     const takeLeading = (value: string) => {
       if (value.length <= 120) return value;
@@ -351,6 +437,21 @@ export function applyArticleHoverHighlightOnPage(
         match = leadingMatch;
       } else if (trailingMatch && (trailing.length >= 80 || trailing.length >= selectedText.length * 0.4)) {
         match = trailingMatch;
+      }
+    }
+    if (!match) {
+      const tokens = selectedText.split(' ').filter(Boolean);
+      tokens.pop();
+      while (tokens.length > 0) {
+        const candidate = tokens.join(' ');
+        if (candidate.length < 40) break;
+        const count = countNeedle(candidate);
+        if (count > 1) break;
+        if (count === 1) {
+          match = findUnique(candidate);
+          break;
+        }
+        tokens.pop();
       }
     }
     if (!match) {
