@@ -10,9 +10,11 @@ acceptance. Sprint 6 (TikTok hosted capture/publish + hover) is
 implemented on `main` (squash-merged PR #78) pending owner Chrome
 and Staging acceptance. After TikTok Sprint 6, Spotify podcast /
 episode audio is the next platform follow-on (roadmap planning
-only). Approving those sections does not authorize migrations,
-Staging, Production, X OAuth re-enable, Phase G, or Spotify
-capture.
+only). Typed clip range entry (type start/end such as `1:00`–`2:30`
+in addition to Set start / Set end) is a separate Create UX
+follow-on on the roadmap. Approving those sections does not
+authorize migrations, Staging, Production, X OAuth re-enable,
+Phase G, Spotify capture, or typed-range UI.
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
 Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
@@ -183,6 +185,12 @@ later hover-link fades. No spring/bounce presets.
   capture/upload. The confirm UI is the mode-switch dialog in `App.tsx`.
 - Independent per-mode drafts, recommended vs selected vs available, and
   honest restart/recovery are Phase E behavior and stay.
+- Hosted Video / Audio range entry today is **Set start** / **Set end**
+  at the current playback position. A later Create UX follow-on (see
+  `docs/product/roadmap.md`; not this brief’s implementation slice)
+  must also let the user type start and end timestamps (`m:ss` /
+  `h:mm:ss`, e.g. `1:00`–`2:30`), validate 1–90 s and clip bounds, and
+  keep Set start / Set end in sync with those fields.
 
 ### 5.2 Annotation cards
 
@@ -551,6 +559,8 @@ Out of this brief’s implementation slices:
 - Spotify podcast / episode capture, publication, migrations, or
   hover. After TikTok Sprint 6 those belong on the product roadmap,
   not in this brief’s implementation slices.
+- Typed clip range entry (type start/end in addition to Set start /
+  Set end). Roadmap Create UX follow-on only; do not implement here.
 
 Later options (not Sprint 1 unless noted):
 
@@ -564,9 +574,11 @@ Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
 Sprint 4 and Sprint 5 are implemented pending owner Chrome acceptance.
 Sprint 6 is implemented on `main` (PR #78) pending owner Chrome and
 Staging acceptance. After that, Spotify podcast / episode audio is
-the next platform follow-on and is not authorized here. Do not
-treat this brief as permission to change capture, hosted-media
-publication, claims, or extension permissions beyond the later
-owner-authorized webpage-video publication increment and the
-owner-authorized Sprint 6 TikTok increment. Brightcove /
-cross-origin adapters remain out of Sprint 5 and Sprint 6.
+the next platform follow-on and is not authorized here. Typed
+start/end clip fields are a separate Create UX follow-on and are
+not authorized here. Do not treat this brief as permission to
+change capture, hosted-media publication, claims, or extension
+permissions beyond the later owner-authorized webpage-video
+publication increment and the owner-authorized Sprint 6 TikTok
+increment. Brightcove / cross-origin adapters remain out of Sprint
+5 and Sprint 6.
