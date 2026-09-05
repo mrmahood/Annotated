@@ -37,7 +37,7 @@ const SUFFIX_MATCH = 'Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Ju
 
 function withPage(callback, overrides = {}) {
   const names = [
-    'location', 'document', 'window', 'HTMLElement', 'HTMLStyleElement',
+    'location', 'document', 'window', 'history', 'HTMLElement', 'HTMLStyleElement',
     'getComputedStyle', 'CSS', 'Highlight',
   ];
   const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
@@ -170,8 +170,13 @@ function withPage(callback, overrides = {}) {
     }
   }
 
+  const locationState = {
+    href: overrides.url ?? ARTICLE,
+    hash: overrides.hash ?? '',
+  };
+  const historyCalls = [];
   const values = {
-    location: { href: overrides.url ?? ARTICLE },
+    location: locationState,
     HTMLElement: ElementStub,
     HTMLStyleElement: StyleStub,
     Highlight: HighlightStub,
@@ -217,13 +222,26 @@ function withPage(callback, overrides = {}) {
         listeners[name] = listeners[name].filter((entry) => entry !== fn);
       },
     },
+    history: {
+      state: null,
+      replaceState(state, title, url) {
+        historyCalls.push({ state, title, url });
+        if (typeof url === 'string') {
+          const next = new URL(url, locationState.href);
+          locationState.href = next.href;
+          locationState.hash = next.hash;
+        }
+      },
+    },
   };
 
   try {
     for (const [name, value] of Object.entries(values)) {
       Object.defineProperty(globalThis, name, { configurable: true, value });
     }
-    return callback({ documentElement, body, highlights, listeners, nodes, text, scrollCalls });
+    return callback({
+      documentElement, body, highlights, listeners, nodes, text, scrollCalls, historyCalls, locationState,
+    });
   } finally {
     for (const name of names) {
       const descriptor = previous.get(name);
@@ -343,6 +361,45 @@ test('page injector fails closed off-source, unmatched, or ambiguous text', () =
       strength: 'soft',
     }), { ok: false, reason: 'text-unmatched' });
   }, { noRects: true });
+});
+
+test('page injector clears a leftover Chrome text-fragment hash after amber apply', () => {
+  withPage(({ historyCalls, locationState }) => {
+    assert.equal(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }).ok, true);
+    assert.equal(historyCalls.length, 1);
+    assert.equal(historyCalls[0].url, '/story');
+    assert.equal(locationState.hash, '');
+  }, {
+    url: `${ARTICLE}#:~:text=${encodeURIComponent(PASSAGE)}`,
+    hash: `#:~:text=${encodeURIComponent(PASSAGE)}`,
+  });
+
+  withPage(({ historyCalls, locationState }) => {
+    assert.equal(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }).ok, true);
+    assert.equal(historyCalls.length, 1);
+    assert.equal(historyCalls[0].url, '/story#intro');
+    assert.equal(locationState.hash, '#intro');
+  }, {
+    url: `${ARTICLE}#intro:~:text=${encodeURIComponent(PASSAGE)}`,
+    hash: `#intro:~:text=${encodeURIComponent(PASSAGE)}`,
+  });
+
+  withPage(({ historyCalls }) => {
+    assert.equal(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }).ok, true);
+    assert.equal(historyCalls.length, 0);
+  }, { url: `${ARTICLE}#intro`, hash: '#intro' });
 });
 
 test('serialized hover functions stay closure-free and do not throw', () => {

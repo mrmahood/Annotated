@@ -27,7 +27,7 @@ const ABC7_PREFIX = 'Because they did not allow him to do a credible fear interv
 const ABC7_SUFFIX = 'He cannot be removed from the detention center to any country at any time until we are fully finished with these submissions.';
 const ABC7_STORED = `${ABC7_PREFIX} said Alex's attorney Jane Oak. ${ABC7_SUFFIX}`;
 
-test('article Open source uses a start/end text fragment for long edited quotes', () => {
+test('article text-fragment helper uses a start/end directive for long edited quotes', () => {
   const href = buildArticleTextFragmentUrl(ARTICLE, ABC7_STORED);
   const start = takeLeadingNormalizedWindow(ABC7_STORED);
   const end = takeTrailingNormalizedWindow(ABC7_STORED);
@@ -39,7 +39,7 @@ test('article Open source uses a start/end text fragment for long edited quotes'
   assert.equal(href.includes(encodeURIComponent("Alex's attorney")), false);
   assert.equal(
     getSourceOpenUrl({ kind: 'article', canonicalUrl: ARTICLE, selectedText: ABC7_STORED }),
-    href,
+    ARTICLE,
   );
 });
 
@@ -58,7 +58,7 @@ test('Iran-style truncated Open source fragment uses the cleaned prefix, not com
       canonicalUrl: 'https://example.com/live-news',
       selectedText: IRAN_STORED,
     }),
-    href,
+    'https://example.com/live-news',
   );
 });
 
@@ -78,7 +78,7 @@ test('Enes-style leading truncation Open source fragment drops dom and held ac',
       canonicalUrl: ENES_URL,
       selectedText: ENES_STORED,
     }),
-    href,
+    ENES_URL,
   );
 });
 
@@ -116,6 +116,29 @@ test('text fragment values strip wrapping quotes and percent-encode dashes', () 
   );
 });
 
+test('article Open source uses the bare canonical URL, not a text fragment', () => {
+  assert.equal(
+    getSourceOpenUrl({ kind: 'article', canonicalUrl: ARTICLE, selectedText: SHORT_PASSAGE }),
+    ARTICLE,
+  );
+  assert.equal(
+    getSourceOpenUrl({
+      kind: 'article',
+      canonicalUrl: `${ARTICLE}#existing`,
+      selectedText: SHORT_PASSAGE,
+    }),
+    ARTICLE,
+  );
+  assert.equal(
+    getSourceOpenUrl({
+      kind: 'article',
+      canonicalUrl: `${ARTICLE}#:~:text=old`,
+      selectedText: SHORT_PASSAGE,
+    }),
+    ARTICLE,
+  );
+});
+
 test('YouTube Open source keeps the existing timestamp URL; audio stays a bare canonical', () => {
   assert.equal(
     getSourceOpenUrl({ kind: 'youtube', canonicalUrl: YOUTUBE, startMs: 42_000 }),
@@ -138,7 +161,8 @@ test('Open source helper stays URL-only and adds no persistent content scripts',
   assert.doesNotMatch(config, /content_scripts|defineContentScript/);
   assert.doesNotMatch(helper, /chrome\.|host_permissions|defineContentScript|executeScript/);
   assert.match(social, /getSourceOpenUrl/);
-  assert.match(social, /#:~:text=|sourceOpenHref|handleArticleSourceOpenClick/);
+  assert.match(social, /sourceOpenHref|handleArticleSourceOpenClick/);
+  assert.doesNotMatch(helper, /return buildArticleTextFragmentUrl/);
   assert.match(social, /View original source/);
   assert.match(social, /Open on YouTube/);
 });

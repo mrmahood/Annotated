@@ -651,6 +651,23 @@ export function applyArticleHoverHighlightOnPage(
       // Scroll is best-effort after a successful paint.
     }
 
+    try {
+      const hash = typeof location.hash === 'string' ? location.hash : '';
+      if (hash.includes(':~:text=')) {
+        const kept = hash.replace(/:~:text=.*/u, '');
+        const nextHash = kept === '#' ? '' : kept;
+        const url = new URL(location.href);
+        const historyApi = typeof history !== 'undefined' && history && typeof history.replaceState === 'function'
+          ? history
+          : null;
+        if (historyApi) {
+          historyApi.replaceState(historyApi.state, '', `${url.pathname}${url.search}${nextHash}`);
+        }
+      }
+    } catch {
+      // Leftover Chrome text-fragment hashes are best-effort to clear.
+    }
+
     return { ok: true };
   } catch {
     removePaint();

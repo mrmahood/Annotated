@@ -231,6 +231,77 @@ test('page injector fails closed off-source and when no player is present', () =
   }, { url: 'https://youtu.be/dQw4w9WgXcQ' });
 });
 
+test('page injector seeks only when currentTime is outside the clip and far from seekMs', () => {
+  withPage(({ video }) => {
+    video.currentTime = 12;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'strong',
+      startMs: 1_000,
+      endMs: 4_000,
+      seekMs: 2_500,
+    }).ok, true);
+    assert.equal(video.currentTime, 2.5);
+
+    video.currentTime = 2.6;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'strong',
+      startMs: 1_000,
+      endMs: 4_000,
+      seekMs: 2_500,
+    }).ok, true);
+    assert.equal(video.currentTime, 2.6);
+
+    video.currentTime = 3.2;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'strong',
+      startMs: 1_000,
+      endMs: 4_000,
+      seekMs: 1_000,
+    }).ok, true);
+    assert.equal(video.currentTime, 3.2);
+
+    video.currentTime = 8;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'soft',
+      startMs: 1_000,
+      endMs: 4_000,
+      seekMs: null,
+    }).ok, true);
+    assert.equal(video.currentTime, 8);
+  });
+});
+
+test('page injector collapses a rapid same-seek re-apply and never calls play', () => {
+  assert.doesNotMatch(applyYouTubeHoverHighlightOnPage.toString(), /\.play\s*\(/);
+  withPage(({ video, documentElement }) => {
+    video.currentTime = 20;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'strong',
+      startMs: 10_000,
+      endMs: 14_000,
+      seekMs: 10_000,
+    }).ok, true);
+    assert.equal(video.currentTime, 10);
+    const root = documentElement.querySelector('#annotated-yt-hover-root');
+    assert.equal(root.dataset.annotatedSeekMs, '10000');
+
+    video.currentTime = 40;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'strong',
+      startMs: 10_000,
+      endMs: 14_000,
+      seekMs: 10_000,
+    }).ok, true);
+    assert.equal(video.currentTime, 40);
+  });
+});
+
 test('serialized hover functions stay closure-free and do not throw', () => {
   const apply = Function(`return (${applyYouTubeHoverHighlightOnPage.toString()})`)();
   const clear = Function(`return (${clearYouTubeHoverHighlightOnPage.toString()})`)();

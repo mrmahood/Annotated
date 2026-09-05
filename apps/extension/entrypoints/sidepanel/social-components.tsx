@@ -592,10 +592,6 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                       seekMs: segment.startMs,
                     });
                   }}
-                  onPointerLeave={() => {
-                    if (!youtubeHover || !clipTarget) return;
-                    enterYouTubeHoverLink(youtubeHover, { ...clipTarget, strength: 'soft' });
-                  }}
                 >
                   {segment.text}
                 </li>

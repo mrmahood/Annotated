@@ -243,8 +243,40 @@ export function applyYouTubeHoverHighlightOnPage(
       const video = player.querySelector('video') ?? document.querySelector('video');
       if (video instanceof HTMLVideoElement) {
         const nextSeconds = request.seekMs / 1_000;
-        if (!Number.isFinite(video.duration) || nextSeconds <= video.duration + 0.25) {
-          try { video.currentTime = nextSeconds; } catch { /* Seek is optional. */ }
+        const currentSeconds = video.currentTime;
+        const nearSeconds = 1;
+        const alreadyNear = Number.isFinite(currentSeconds) &&
+          Math.abs(currentSeconds - nextSeconds) <= nearSeconds;
+        const startSeconds = typeof request.startMs === 'number' && Number.isFinite(request.startMs)
+          ? request.startMs / 1_000
+          : null;
+        const endSeconds = typeof request.endMs === 'number' && Number.isFinite(request.endMs)
+          ? request.endMs / 1_000
+          : null;
+        const alreadyInRange = startSeconds !== null &&
+          endSeconds !== null &&
+          endSeconds > startSeconds &&
+          Number.isFinite(currentSeconds) &&
+          currentSeconds >= startSeconds &&
+          currentSeconds <= endSeconds;
+        const now = Date.now();
+        const lastSeekMs = Number(root.dataset.annotatedSeekMs);
+        const lastSeekAt = Number(root.dataset.annotatedSeekAt);
+        const sameSeekRecent = lastSeekMs === request.seekMs &&
+          Number.isFinite(lastSeekAt) &&
+          now - lastSeekAt < 250;
+        // Hover re-enters must not replay from seekMs. Never call play().
+        if (
+          !alreadyNear &&
+          !alreadyInRange &&
+          !sameSeekRecent &&
+          (!Number.isFinite(video.duration) || nextSeconds <= video.duration + 0.25)
+        ) {
+          try {
+            video.currentTime = nextSeconds;
+            root.dataset.annotatedSeekMs = String(request.seekMs);
+            root.dataset.annotatedSeekAt = String(now);
+          } catch { /* Seek is optional. */ }
         }
       }
     }
