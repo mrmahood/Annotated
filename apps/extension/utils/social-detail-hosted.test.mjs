@@ -45,7 +45,10 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /canPlayConnectedClip \|\| hostedReady \? 'button button-secondary'/);
   assert.match(detail, /ArticlePassageMissStatus/);
   assert.match(detail, /onArticleHoverResult/);
-  assert.match(detail, /handleArticleSourceOpenClick\(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult\)/);
+  assert.match(detail, /handleArticleSourceOpenClick\(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection\)/);
+  assert.match(detail, /ArticlePendingConnectHint/);
+  assert.match(detail, /ARTICLE_PENDING_CONNECT_HINT/);
+  assert.match(detail, /openArticleSourceFromPanel/);
   assert.match(detail, /articleHoverRegionHandlers\(articleHover, \{ \.\.\.articleTarget, strength: 'soft' \}, onArticleHoverResult\)/);
   assert.match(styles, /\.article-passage-miss/);
   assert.doesNotMatch(detail, /download=/);

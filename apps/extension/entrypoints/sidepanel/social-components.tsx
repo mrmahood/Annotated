@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import { formatMediaTime } from '@annotated/shared/media-time';
 import {
   ANNOTATION_AUDIO_BUCKET,
@@ -52,11 +54,17 @@ import {
   ARTICLE_PASSAGE_MISS_OPEN_HINT,
   ARTICLE_PASSAGE_MISS_STATUS,
   cancelArticleHoverLink,
-  openArticleSourceOnConnectedTab,
   type ArticleHoverApplyResult,
   type ArticleHoverConnection,
   type ArticleHoverResultListener,
 } from '../../utils/article-hover-link';
+import {
+  ARTICLE_HOVER_PENDING_KEY,
+  ARTICLE_PENDING_CONNECT_HINT,
+  articleHoverPendingMatchesTarget,
+  openArticleSourceFromPanel,
+  readArticleHoverPending,
+} from '../../utils/article-hover-pending';
 import { getSourceOpenUrl } from '../../utils/source-open-url';
 import {
   cancelYouTubeHoverLink,
@@ -255,16 +263,21 @@ function handleArticleSourceOpenClick(
   connection: ArticleHoverConnection | null,
   href: string,
   onResult?: ArticleHoverResultListener,
+  onAwaitingConnection?: (awaiting: boolean) => void,
 ) {
   const target = articlePassageHoverTarget(annotation);
-  if (!target || !connection) return;
-  if (!annotationMatchesConnectedArticle(annotation, connection.tabUrl)) return;
+  if (!target) return;
   event.preventDefault();
-  void openArticleSourceOnConnectedTab(connection, { ...target, strength: 'strong' }).then((result) => {
-    onResult?.(result);
-    if (result.status === 'unavailable' || result.status === 'source-mismatch') {
-      window.open(href, '_blank', 'noopener,noreferrer');
-    }
+  void openArticleSourceFromPanel({
+    target,
+    connection,
+    href,
+    openFallback: (openHref) => {
+      window.open(openHref, '_blank', 'noopener,noreferrer');
+    },
+  }).then((outcome) => {
+    if (outcome.applied) onResult?.(outcome.applied);
+    onAwaitingConnection?.(outcome.awaitingConnection);
   });
 }
 
@@ -309,6 +322,48 @@ function ArticlePassageMissStatus({
       <span>{ARTICLE_PASSAGE_MISS_OPEN_HINT}</span>
     </p>
   );
+}
+
+function useArticlePendingConnectHint(annotation: PublicAnnotation | null) {
+  const [awaiting, setAwaiting] = useState(false);
+  const target = annotation ? articlePassageHoverTarget(annotation) : null;
+  const targetKey = target
+    ? `${target.normalizedUrl}\n${target.canonicalUrl}\n${target.selectedText}`
+    : '';
+
+  useEffect(() => {
+    if (!awaiting || !target) return;
+    let mounted = true;
+    const matchedTarget = target;
+    const sync = async () => {
+      const pending = await readArticleHoverPending();
+      if (!mounted) return;
+      if (!pending || !articleHoverPendingMatchesTarget(pending, matchedTarget)) {
+        setAwaiting(false);
+      }
+    };
+    void sync();
+    const onChange = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+      if (area === 'session' && Object.prototype.hasOwnProperty.call(changes, ARTICLE_HOVER_PENDING_KEY)) {
+        void sync();
+      }
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => {
+      mounted = false;
+      chrome.storage.onChanged.removeListener(onChange);
+    };
+  }, [awaiting, targetKey]);
+
+  return {
+    showHint: awaiting,
+    onAwaitingConnection: (value: boolean) => setAwaiting(value),
+  };
+}
+
+function ArticlePendingConnectHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <p className="article-pending-connect-hint">{ARTICLE_PENDING_CONNECT_HINT}</p>;
 }
 
 function ExcerptTranscript({
@@ -390,6 +445,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
     annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted) ? 'ready' : 'idle',
   );
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotation.id, articleHover);
+  const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
   const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
@@ -524,7 +580,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           {expanded && hasArticleAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
           )}
-          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceUrl, onArticleHoverResult)}>Open source ↗</a>
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceUrl, onArticleHoverResult, onAwaitingConnection)}>Open source ↗</a>
+          <ArticlePendingConnectHint show={showHint} />
           <ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} />
         </div>
       </div>
@@ -895,6 +952,7 @@ export function AnnotationDetailView({
   const [audioError, setAudioError] = useState<string | null>(null);
   const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover);
+  const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
 
   useEffect(() => {
     let current = true;
@@ -965,7 +1023,7 @@ export function AnnotationDetailView({
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
       {annotation.kind === 'article' ? <>
-        <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult)}>View original source ↗</a></section>
+        <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection)}>View original source ↗</a><ArticlePendingConnectHint show={showHint} /></section>
         <section className="detail-passage" {...sourceHover}><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote><ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} /></section>
       </> : annotation.kind === 'youtube' ? <>
         <section className="detail-source" {...sourceHover}><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>

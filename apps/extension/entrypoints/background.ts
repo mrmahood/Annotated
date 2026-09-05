@@ -4,6 +4,7 @@ import {
   isActiveTabContext,
   type ActiveTabContext,
 } from '../utils/active-tab-context';
+import { applyPendingArticleHoverOnActionTab } from '../utils/article-hover-pending';
 import { installMediaCapture } from '../utils/media-capture-background';
 
 export default defineBackground(() => {
@@ -42,7 +43,13 @@ export default defineBackground(() => {
 
     void chrome.storage.session
       .set({ [ACTIVE_TAB_CONTEXT_KEY]: context })
-      .then(() => {
+      .then(async () => {
+        if (context.url) {
+          await applyPendingArticleHoverOnActionTab({
+            tabId: context.tabId,
+            tabUrl: context.url,
+          });
+        }
         void chrome.runtime
           .sendMessage({
             type: ACTIVE_TAB_CONTEXT_MESSAGE,
