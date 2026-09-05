@@ -13,15 +13,15 @@ const PASSAGE_EXCERPT_LENGTH = 360;
 const COMMENTARY_EXCERPT_LENGTH = 280;
 
 function sourceChipLabel(kind: PublicAnnotationCardData["kind"]): string {
-  if (kind === "youtube") return "Video";
+  if (kind === "youtube" || kind === "video") return "Video";
   if (kind === "audio") return "Audio";
   return "Text";
 }
 
 function hostedClipMedia(annotation: PublicAnnotationCardData) {
-  if (annotation.kind !== "youtube" && annotation.kind !== "audio") return null;
+  if (annotation.kind !== "youtube" && annotation.kind !== "video" && annotation.kind !== "audio") return null;
   return {
-    mimeType: annotation.kind === "youtube" ? "video/mp4" as const : "audio/mp4" as const,
+    mimeType: annotation.kind === "audio" ? "audio/mp4" as const : "video/mp4" as const,
     durationMs: annotation.endMs - annotation.startMs,
     width: null,
     height: null,
@@ -49,7 +49,7 @@ export function AnnotationCard({
   }).format(new Date(annotation.publishedAt));
   const detailPath = getPublicAnnotationPath(annotation.route, annotation.id);
   const hasPassage = annotation.kind === "article";
-  const hasClip = annotation.kind === "youtube" || annotation.kind === "audio";
+  const hasClip = annotation.kind === "youtube" || annotation.kind === "video" || annotation.kind === "audio";
   const clipMedia = hostedClipMedia(annotation);
   const passageText = hasPassage
     ? expanded

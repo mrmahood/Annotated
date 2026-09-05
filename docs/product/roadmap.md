@@ -10,7 +10,10 @@ linking are merged and owner-accepted on `main`; Sprint 3 (article/text)
 hover is implemented on `main`. Sprint 4 (audio/podcast) hover is
 implemented pending owner Chrome acceptance. Sprint 5 (generic
 page-video hover; not YouTube `/watch`) is implemented pending owner
-Chrome acceptance. D1 and D2 completed their
+Chrome acceptance on a readable HTML5 webpage-video fixture. Generic
+webpage-video publication (`video_clip` + article source identity) is
+implemented in this increment; Brightcove / inaccessible cross-origin
+player adapters remain a separate increment. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -34,8 +37,8 @@ post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
 post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
 and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
 after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-origin
-player adapters and generic webpage-video publication remain separately
-authorized. E2a passed Owner Chrome acceptance and merged through PR #33 as
+player adapters remain separately authorized. Generic webpage-video
+publication is implemented in a later increment on this branch. E2a passed Owner Chrome acceptance and merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781` after PR CI `33259588362`;
 post-merge `main` CI `33260246341` passed. E2b passed Owner Local web acceptance
 and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`
@@ -394,8 +397,8 @@ tenth-second range display passed Owner Chrome acceptance. PR #31
 passed required CI run `33230216132`, was squash-merged as
 `185d1a386ac374f7a1d9fe56dda97b872553b671`, and passed post-merge `main` CI run
 `33230745060`. Inaccessible cross-origin players continue to fail closed;
-cross-origin adapters and generic webpage-video publication remain separate
-increments. E2a's provider-neutral web and extension authentication boundaries,
+cross-origin adapters remain a separate increment. Generic webpage-video
+publication is implemented later on this branch. E2a's provider-neutral web and extension authentication boundaries,
 bounded attempt/provider/callback/session validation, one-attempt handling,
 safe cleanup, provider-mismatch rejection, and token-safe errors preserved the
 proven Google flow. E2a passed Owner Chrome acceptance and PR CI run
@@ -456,8 +459,11 @@ increment.
   before each action, preserves the article page as source identity, excludes
   transient advertising media, and never persists or logs ephemeral media
   delivery URLs. Inaccessible cross-origin players remain unsupported pending a
-  separately authorized player-adapter contract; generic webpage publication is
-  also deferred to a separate server/data/public-reader increment.
+  separately authorized player-adapter contract. Generic webpage-video
+  publication is the later article-backed hosted begin increment on this
+  branch: `video_clip` on the existing article source, same capture →
+  upload → Processing → ready path as YouTube/audio. Brightcove /
+  inaccessible cross-origin adapters remain out of that increment.
 - E2a placed existing Google sign-in behind provider-neutral web and extension
   boundaries with bounded attempt, callback, provider, session, retry, cleanup,
   and token-safe error handling. It did not display, execute, or configure X.
@@ -628,10 +634,13 @@ Production launch and hardening remain separately authorized.
     stays on the Sprint 2 path. Article and audio hover on the same
     URL are not stolen. Open source writes a pending highlight applied
     on tab complete / surf-follow. Fail closed off-source, on identity
-    mismatch, or when no safe player target exists. Generic
-    webpage-video hosted publish remains a separate gap. Same
-    permissions; no persistent content scripts; no host-specific
-    selectors.
+    mismatch, or when no safe player target exists. Webpage-video
+    hosted publish is implemented as an article-backed `video_clip`
+    begin RPC plus Feed/detail projection; owner Staging acceptance
+    still needs a readable HTML5 fixture (not opaque Brightcove unless
+    that player is already same-origin readable). Same permissions; no
+    persistent content scripts; no host-specific selectors. Brightcove
+    / cross-origin adapters remain separate.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.
@@ -715,9 +724,10 @@ extension live-X Staging acceptance, PR CI `33578556343`, squash merge
 `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and post-merge `main` CI
 `33579104948`; exact disposable-user/grant cleanup and reversible capability/
 provider rollback then passed. X is currently disabled on both user surfaces and
-in Supabase Staging. Cross-origin player adapters, generic webpage-video
-publication, later implementation, schedule enablement, Production access, and
-deployment remain separately authorized.
+in Supabase Staging. Cross-origin player adapters, later implementation,
+schedule enablement, Production access, and deployment remain separately
+authorized. Generic webpage-video publication is implemented on this
+branch pending owner Staging fixture acceptance.
 Phase E has passed its Local, required CI, and bounded Staging gates. Production
 rollout still requires its own explicit authorization. Phase F F0–F5 are merged
 on `main`; F6 owner-authorized Staging acceptance is recorded in the Phase F

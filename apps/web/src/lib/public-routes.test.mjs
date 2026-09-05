@@ -119,6 +119,42 @@ test("emits exact canonical metadata without commentary, passage, or media crede
   assert.deepEqual(getNotFoundMetadata().robots, { index: false, follow: false });
 });
 
+test("webpage video metadata names the article host, not YouTube", () => {
+  const previous = process.env.NEXT_PUBLIC_SITE_URL;
+  process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000";
+  try {
+    const webpageVideo = {
+      ...ARTICLE,
+      kind: "video_hosted",
+      selectedText: null,
+      startMs: 1_000,
+      endMs: 10_000,
+      source: { ...ARTICLE.source, type: "article", videoId: null },
+      media: {
+        id: "42000000-0000-4000-8000-000000000001",
+        mimeType: "video/mp4",
+        durationMs: 9_000,
+        width: 426,
+        height: 240,
+        byteSize: 200_000,
+      },
+      transcript: {
+        text: "Private transcript body marker",
+        language: "en",
+        segments: null,
+      },
+    };
+    const metadata = getPublicAnnotationMetadata(webpageVideo);
+    const serialized = JSON.stringify(metadata);
+    assert.match(serialized, /annotated a video clip from example.com/);
+    assert.doesNotMatch(serialized, /YouTube clip/);
+    assert.doesNotMatch(serialized, /Private transcript body marker|signed|storage/i);
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = previous;
+  }
+});
+
 test("hosted and removed metadata remains text-only and credential-free", () => {
   const previous = process.env.NEXT_PUBLIC_SITE_URL;
   process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000";
@@ -190,6 +226,8 @@ test("route implementations share one renderer and preserve public-only redirect
   assert.match(renderer, /aria-label="Timestamped excerpt transcript"/);
   assert.match(renderer, /<time dateTime=\{getDurationDateTime\(segment\.startMs\)\}>/);
   assert.match(renderer, /aria-labelledby="media-removed-heading"/);
+  assert.match(renderer, /isWebpageVideo \? "Webpage video"/);
+  assert.match(renderer, /isYouTubeVideo \? "Open clip on YouTube"/);
   assert.match(player, /aria-label="Archived source video excerpt"/);
   assert.match(player, /aria-label="Archived source audio excerpt"/);
   assert.match(player, /role="status"/);

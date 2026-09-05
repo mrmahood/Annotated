@@ -11,7 +11,7 @@ export function hostedExcerptExpandSessionKey(input: {
   annotationId: string;
   kind: 'article' | 'youtube' | 'audio' | 'video';
 }): string | null {
-  if (!input.expanded || input.kind === 'article' || input.kind === 'video') return null;
+  if (!input.expanded || input.kind === 'article') return null;
   return `${input.annotationId}:${input.kind}`;
 }
 

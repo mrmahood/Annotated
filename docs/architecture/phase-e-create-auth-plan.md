@@ -37,9 +37,10 @@ was squash-merged as `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and
 passed post-merge `main` CI run `33579104948`. Exact Staging cleanup and
 reversible rollback then removed the disposable identity and grant and disabled
 both capability opt-ins plus the Supabase Staging X provider. Cross-origin
-player adapters, generic webpage-video publication, later implementation,
-database work, Production, schedules, and further deployment are not authorized
-by this document.
+player adapters, later implementation, Production, schedules, and further
+deployment are not authorized by this document. Generic webpage-video
+publication was later owner-authorized as a separate article-backed hosted
+begin increment.
 
 This plan is subordinate to the durable security and media rules in
 `docs/architecture/media-archive-pipeline.md`. Future-code descriptions define a
@@ -77,8 +78,10 @@ source, full transcript, or download action; and the accepted
 
 Phase E does not authorize:
 
-- generic webpage-video publication, inaccessible cross-origin player adapters,
-  DRM, paywall, download, full-source transcript, or full-source archive support;
+- inaccessible cross-origin player adapters, DRM, paywall, download,
+  full-source transcript, or full-source archive support; generic
+  webpage-video publication was later owner-authorized as a separate
+  article-backed hosted begin increment;
 - extension host permissions, persistent content scripts, remote page
   instrumentation, new production permissions, or a Chrome minimum below 116;
 - moving the complete raw Blob through the side panel or background service
@@ -125,13 +128,15 @@ capture Blob. Phase E retains that distinction.
 | Mode | Exact Phase E source scope | Current limitation |
 | --- | --- | --- |
 | Text | A connected, scriptable, top-level HTTP(S) page on which existing selection capture validates the source | Restricted or otherwise unscriptable pages remain unavailable |
-| Video | A connected supported YouTube watch page, or an ordinary HTTP(S) page with a readable qualifying HTML video in the top frame or a same-origin child frame | Inaccessible cross-origin, DRM, canvas-only, hidden/inoperable, source-invalid, or unsafe-geometry players remain unsupported; generic webpage publication is deferred |
+| Video | A connected supported YouTube watch page, or an ordinary HTTP(S) page with a readable qualifying HTML video in the top frame or a same-origin child frame | Inaccessible cross-origin, DRM, canvas-only, hidden/inoperable, source-invalid, or unsafe-geometry players remain unsupported; readable HTML5 webpage video publishes as `video_clip` on the article source |
 | Audio | A connected top-level HTTP(S) page with an eligible top-frame `<audio>` or operable audio-only `<video>` with a credible source and readable metadata | Cross-origin/embedded players are inaccessible; more than five eligible players fail closed |
 
 Video remained YouTube-only through E1d. A `youtu.be` URL must finish redirecting
 to a supported watch page before it is available. E1e adds bounded generic web-
 video availability for readable top-frame and same-origin-frame HTML players;
-that availability does not imply that generic webpage publication is enabled.
+that availability now continues through the later article-backed hosted
+webpage-video begin increment. Inaccessible cross-origin players still fail
+closed.
 
 E1c caps top-frame audio/video discovery at five eligible candidates and reads
 only the sixth to detect overflow. One candidate auto-selects; two to five use a
@@ -177,11 +182,10 @@ Blob into the side panel or bypass worker probe/crop validation.
 
 The connected article page, not its media-delivery URL, is the durable source.
 E1e's client-side draft and capture contract reuses article source identity
-without persisting ephemeral delivery URLs. Publishing remains intentionally
-unavailable until a separately authorized authenticated hosted-web-video begin
-boundary and additive data/route/reader handling can distinguish an article-
-backed `video_clip` from a YouTube clip. Database, worker, public rendering, and
-Staging changes remain separately authorized.
+without persisting ephemeral delivery URLs. The later webpage-video publication
+increment adds `begin_hosted_webpage_video_annotation`, attaches
+`video_clip` to the article source, and projects Feed/detail Video cards.
+Brightcove / inaccessible cross-origin adapters remain separately authorized.
 
 ## 5. Existing draft and active-operation state
 

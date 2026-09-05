@@ -80,7 +80,7 @@ test('processing copy describes queued work instead of a missing worker', async 
   assert.doesNotMatch(source, /until the media worker ships/);
 });
 
-test('generic webpage video is discovered independently and cannot cross the unimplemented server boundary', async () => {
+test('generic webpage video publishes through the article-backed hosted begin path', async () => {
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /const genericVideo = sourceState\.source\.classification !== 'YouTube'/);
   assert.match(source, /args: \[probe\.mode, probe\.genericVideo\]/);
@@ -88,7 +88,13 @@ test('generic webpage video is discovered independently and cannot cross the uni
   assert.match(source, /world: probe\.genericVideo \? 'MAIN' : 'ISOLATED'/);
   assert.match(source, /world: genericVideo \? 'MAIN' : 'ISOLATED'/);
   assert.match(source, /webVideoClipDraftBelongsToSource/);
-  assert.match(source, /Publishing not enabled/);
-  assert.match(source, /separately authorized article-backed hosted-video server contract/);
+  assert.match(source, /beginHostedWebpageVideoAnnotation/);
+  assert.match(source, /kind: 'web-video'/);
+  assert.match(source, /publishWebpageVideoClip/);
+  assert.match(source, /canPublishWebpageVideo/);
+  assert.match(source, /mediaType: source\.kind === 'audio' \? 'audio' : 'video'/);
+  assert.doesNotMatch(source, /Publishing not enabled/);
+  assert.doesNotMatch(source, /separately authorized article-backed hosted-video server contract/);
   assert.doesNotMatch(source, /beginHostedYouTubeAnnotation\(supabase, \{[\s\S]{0,500}webVideoSource/);
+  assert.doesNotMatch(source, /Brightcove|brightcove|cross-origin adapter/);
 });

@@ -697,10 +697,10 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hosted, setHosted] = useState<HostedExcerpt | null>(
-    annotation.kind === 'article' || annotation.kind === 'video' ? null : annotation.hosted,
+    annotation.kind === 'article' ? null : annotation.hosted,
   );
   const [hostedStatus, setHostedStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>(
-    annotation.kind !== 'article' && annotation.kind !== 'video' && isHostedExcerptReady(annotation.hosted) ? 'ready' : 'idle',
+    annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted) ? 'ready' : 'idle',
   );
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotation.id, articleHover, annotation);
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
@@ -735,7 +735,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
     }
 
     const current = annotationRef.current;
-    if (current.kind === 'article' || current.kind === 'video') return;
+    if (current.kind === 'article') return;
 
     let cancelled = false;
     setHostedStatus('loading');
@@ -1299,13 +1299,13 @@ export function AnnotationDetailView({
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;
   const sourceOpenUrl = sourceOpenHref(annotation);
-  const hostedReady = annotation.kind !== 'article' && annotation.kind !== 'video' && isHostedExcerptReady(annotation.hosted)
+  const hostedReady = annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted)
     ? annotation.hosted
     : null;
   const hostedTranscript = hostedReady && hasHostedExcerptTranscript(hostedReady.transcript)
     ? hostedReady.transcript
     : null;
-  const hostedRemoved = annotation.kind !== 'article' && annotation.kind !== 'video' && annotation.hosted?.status === 'removed';
+  const hostedRemoved = annotation.kind !== 'article' && annotation.hosted?.status === 'removed';
   const canPlayConnectedClip = !hostedReady && annotation.kind === 'youtube' &&
     connectedVideoId === annotation.source.videoId;
   const canPlayConnectedAudioClip = !hostedReady && annotation.kind === 'audio' &&

@@ -431,9 +431,10 @@ diagnostic UI, no Fox-only or host-specific selectors.
 Feed projection: webpage video cards are `video_clip` rows whose source
 identity is the article page (`source_type = article`), distinct from
 YouTube `video_clip` + `youtube`. Generic webpage-video **hosted
-publish** remains a separately authorized gap; Sprint 5 ships hover for
-whatever Video cards the Feed can already project and does not implement
-that publish path.
+publish** is implemented as an article-backed begin RPC plus Feed/detail
+projection. Sprint 5 Chrome acceptance still needs a readable HTML5
+fixture; Brightcove / inaccessible cross-origin adapters remain a
+separate increment.
 
 ## 9. Acceptance criteria (Sprint 1)
 
@@ -452,8 +453,10 @@ that publish path.
   on `main`. Sprint 4 waits on owner Chrome verification of scroll +
   highlight on the source-page audio player. Sprint 5 waits on owner
   Chrome verification of generic page-video hover/scroll on a
-  non-YouTube source page, plus YouTube `/watch` and article/audio
-  regression.
+  readable HTML5 webpage-video fixture, plus YouTube `/watch` and
+  article/audio regression. Opaque Brightcove/Fox cross-origin
+  players remain out of scope unless they are already same-origin
+  readable.
 
 Sprint 1 and Sprint 2 owner Chrome acceptance are recorded. Automated
 tests should cover Create-mode guards, card expand/collapse, and hover
@@ -484,5 +487,6 @@ Approving this document authorizes the polish slices described here.
 Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
 Sprint 4 and Sprint 5 are implemented pending owner Chrome acceptance.
 Do not treat this brief as permission to change capture, hosted-media
-publication, claims, or extension permissions. Generic webpage-video
-hosted publish remains out of Sprint 5.
+publication, claims, or extension permissions beyond the later
+owner-authorized webpage-video publication increment. Brightcove /
+cross-origin adapters remain out of Sprint 5.

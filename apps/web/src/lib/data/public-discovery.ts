@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
-import { getYouTubeVideoIdentity } from "@annotated/shared/youtube";
+import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from "@annotated/shared/youtube";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
+import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
 import {
   formatHostname,
   getHttpUrl,
@@ -54,6 +55,13 @@ export type PublicAnnotationCardData = PublicAnnotationCardBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationCardBase["source"] & { type: "youtube"; videoId: string };
+    }
+  | {
+      kind: "video";
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationCardBase["source"] & { type: "article"; videoId: null };
     }
   | {
       kind: "audio";
@@ -173,6 +181,29 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
         startMs: startMs as number,
         endMs: endMs as number,
         source: { ...common.source, type: "youtube", videoId: identity.videoId },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  if (
+    annotationType === "video_clip" && sourceType === "article" &&
+    targetType === "time_range" && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      if (isYouTubeVideoUrl(canonicalUrl.href)) return null;
+      const normalizedUrl = normalizeArticleUrl(canonicalUrl.href);
+      if (normalizedUrl !== getOptionalText(source.normalized_url)) return null;
+      return {
+        ...common,
+        kind: "video",
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: "article", videoId: null },
       };
     } catch {
       return null;
