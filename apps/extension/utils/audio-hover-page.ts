@@ -185,7 +185,7 @@ export function applyAudioHoverHighlightOnPage(
       return { ok: false, reason: 'source-mismatch' };
     }
 
-    const visibleArea = (element: Element) => {
+    const isLaidOut = (element: Element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       if (
@@ -193,15 +193,23 @@ export function applyAudioHoverHighlightOnPage(
         style.visibility === 'hidden' ||
         Number(style.opacity) <= 0 ||
         element.getClientRects().length === 0
-      ) return 0;
+      ) return false;
+      return rect.width > 8 && rect.height > 8;
+    };
+
+    // Viewport intersection only. Do not use this to reject a laid-out player
+    // or to gate scroll — below-fold chrome must still paint and scroll-to.
+    const visibleArea = (element: Element) => {
+      if (!isLaidOut(element)) return 0;
+      const rect = element.getBoundingClientRect();
       const width = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
       const height = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
       return width > 8 && height > 8 ? width * height : 0;
     };
 
-    const visibleRect = (element: Element) => {
-      if (visibleArea(element) <= 0) return null;
-      return element.getBoundingClientRect();
+    const inFlowPosition = (element: Element) => {
+      const position = getComputedStyle(element).position;
+      return position !== 'fixed' && position !== 'sticky';
     };
 
     const tokenBlob = (element: Element) => {
@@ -286,7 +294,7 @@ export function applyAudioHoverHighlightOnPage(
     };
 
     const surfaceFromMedia = (media: HTMLMediaElement): HTMLElement | null => {
-      const selfVisible = visibleArea(media) > 0 &&
+      const selfVisible = isLaidOut(media) &&
         media.getBoundingClientRect().width > 80 &&
         media.getBoundingClientRect().height > 20;
       let node: HTMLElement | null = media.parentElement;
@@ -294,7 +302,7 @@ export function applyAudioHoverHighlightOnPage(
         ? media
         : selfVisible ? media : null;
       for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
-        if (visibleArea(node) <= 0 || !compactChrome(node)) continue;
+        if (!isLaidOut(node) || !compactChrome(node)) continue;
         const blob = tokenBlob(node);
         if (looksLikeAdvertising(blob)) continue;
         const named = looksLikePlayerName(blob);
@@ -336,7 +344,7 @@ export function applyAudioHoverHighlightOnPage(
     const seen = new Set<HTMLElement>();
     const addCandidate = (surface: HTMLElement, media: HTMLMediaElement | null, extra = 0) => {
       if (seen.has(surface) || looksLikeAdvertising(tokenBlob(surface))) return;
-      if (visibleArea(surface) <= 0) return;
+      if (!isLaidOut(surface)) return;
       seen.add(surface);
       const blob = tokenBlob(surface);
       const named = looksLikePlayerName(blob);
@@ -349,7 +357,9 @@ export function applyAudioHoverHighlightOnPage(
       if (scrubber) score += 30;
       if (hasPlay) score += 20;
       if (named) score += 25;
-      if (media instanceof HTMLAudioElement && media.controls && visibleArea(media) > 0) score += 20;
+      if (media instanceof HTMLAudioElement && media.controls && isLaidOut(media)) score += 20;
+      if (visibleArea(surface) > 0) score += 8;
+      if (inFlowPosition(surface)) score += 12;
       if (!compactChrome(surface) && !playing) score -= 40;
       candidates.push({ surface, media, score });
     };
@@ -369,7 +379,7 @@ export function applyAudioHoverHighlightOnPage(
       if (!(named instanceof HTMLElement) || seen.has(named)) continue;
       const blob = tokenBlob(named);
       if (!looksLikePlayerName(blob) || looksLikeAdvertising(blob)) continue;
-      if (visibleArea(named) <= 0 || !compactChrome(named)) continue;
+      if (!isLaidOut(named) || !compactChrome(named)) continue;
       const nestedMedia = named.querySelector('audio, video');
       addCandidate(
         named,
@@ -496,15 +506,34 @@ export function applyAudioHoverHighlightOnPage(
     };
 
     try {
-      if (visibleRect(player) && typeof player.scrollIntoView === 'function') {
-        player.scrollIntoView({
-          block: 'center',
-          inline: 'nearest',
-          behavior: 'smooth',
-        });
+      const scrollOptions: ScrollIntoViewOptions = {
+        block: 'center',
+        inline: 'nearest',
+        behavior: 'smooth',
+      };
+      const bar = findScrubber(player);
+      const scrollableChrome = (start: HTMLElement | null): HTMLElement | null => {
+        let node: HTMLElement | null = start;
+        for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+          if (!isLaidOut(node) || !inFlowPosition(node)) continue;
+          return node;
+        }
+        return start instanceof HTMLElement && isLaidOut(start) ? start : null;
+      };
+      const chromeTarget = (bar instanceof HTMLElement && scrubberVisible(bar)
+        ? scrollableChrome(bar)
+        : null) ??
+        scrollableChrome(player) ??
+        (isLaidOut(player) ? player : null);
+      if (chromeTarget && typeof chromeTarget.scrollIntoView === 'function') {
+        chromeTarget.scrollIntoView(scrollOptions);
+      }
+      if (ring && typeof ring.scrollIntoView === 'function') {
+        ring.scrollIntoView(scrollOptions);
       }
     } catch {
-      // Scroll is best-effort after a successful paint.
+      // Scroll is best-effort after a successful paint. Leave debounce must
+      // not cancel this attempt — apply already succeeded.
     }
 
     return { ok: true };
