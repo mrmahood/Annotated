@@ -49,10 +49,11 @@ This is a pnpm monorepo:
 - Browser restart cannot recover an in-memory raw Blob. Persist only safe
   operation/recovery identifiers; reconcile with owner status and offer an
   honest Recapture/Cancel path.
-- Production extension permissions are exactly `sidePanel`, `activeTab`,
-  `storage`, `scripting`, `identity`, `tabCapture`, and `offscreen`, with minimum
-  Chrome 116. Keep `host_permissions` absent and do not add persistent content
-  scripts or diagnostic UI.
+- Production extension permissions are `sidePanel`, `activeTab`, `storage`,
+  `scripting`, `identity`, `tabCapture`, `offscreen`, and `tabs`, plus
+  `host_permissions` for `http://*/*` and `https://*/*` (owner-authorized
+  2026-09-05 for Open source amber apply and surf-follow). Minimum Chrome 116.
+  Do not add persistent content scripts or diagnostic UI.
 - Keep source attribution, original links, required commentary, claims/takedown,
   no DRM/paywall bypass, and no download action intact.
 

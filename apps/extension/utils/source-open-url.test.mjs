@@ -127,14 +127,15 @@ test('YouTube Open source keeps the existing timestamp URL; audio stays a bare c
   );
 });
 
-test('Open source helper does not add host permissions or content scripts', async () => {
+test('Open source helper stays URL-only and adds no persistent content scripts', async () => {
   const [config, helper, social] = await Promise.all([
     readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
     readFile(new URL('./source-open-url.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/sidepanel/social-components.tsx', import.meta.url), 'utf8'),
   ]);
-  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'\]/);
-  assert.doesNotMatch(config, /host_permissions|content_scripts|defineContentScript/);
+  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
+  assert.match(config, /host_permissions:\s*\['http:\/\/\*\/\*', 'https:\/\/\*\/\*'\]/);
+  assert.doesNotMatch(config, /content_scripts|defineContentScript/);
   assert.doesNotMatch(helper, /chrome\.|host_permissions|defineContentScript|executeScript/);
   assert.match(social, /getSourceOpenUrl/);
   assert.match(social, /#:~:text=|sourceOpenHref|handleArticleSourceOpenClick/);

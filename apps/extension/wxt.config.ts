@@ -7,7 +7,8 @@ export default defineConfig({
     name: 'Annotated',
     description: 'Annotate and organize sources from the web.',
     minimum_chrome_version: '116',
-    permissions: ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'],
+    permissions: ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'],
+    host_permissions: ['http://*/*', 'https://*/*'],
     action: {
       default_title: 'Open Annotated',
     },

@@ -12,15 +12,24 @@ import { applyArticleHoverHighlightOnPage } from './article-hover-page.ts';
 import { classifySourceUrl, normalizeSourceUrl } from './social-helpers.ts';
 
 export const ARTICLE_HOVER_PENDING_KEY = 'annotatedArticleHoverPending';
+export const ARTICLE_HOVER_LAST_APPLY_KEY = 'annotatedArticleHoverLastApply';
 export const ARTICLE_HOVER_PENDING_TTL_MS = 12 * 60 * 1000;
 export const ARTICLE_PENDING_CONNECT_HINT =
-  'Amber highlight applies when Annotated is connected on that tab.';
+  'Amber highlight applies when the article finishes loading.';
 
 export type ArticleHoverPendingTarget = {
   normalizedUrl: string;
   selectedText: string;
   canonicalUrl: string;
   strength: 'strong';
+  setAt: number;
+};
+
+export type ArticleHoverLastApply = {
+  normalizedUrl: string;
+  selectedText: string;
+  canonicalUrl: string;
+  status: 'matched' | 'unmatched';
   setAt: number;
 };
 
@@ -33,7 +42,21 @@ export type ArticlePendingChrome = ArticleHoverChrome & {
     };
   };
   tabs: ArticleHoverChrome['tabs'] & {
-    create?: (createProperties: { url: string; active: true }) => Promise<unknown>;
+    create?: (createProperties: { url: string; active: true }) => Promise<{
+      id?: number;
+      url?: string;
+      status?: string;
+      windowId?: number;
+    }>;
+    query?: (queryInfo?: Record<string, unknown>) => Promise<Array<{
+      id?: number;
+      url?: string;
+      status?: string;
+      windowId?: number;
+    }>>;
+  };
+  windows?: {
+    update?: (windowId: number, update: { focused: true }) => Promise<unknown>;
   };
 };
 
@@ -95,7 +118,7 @@ export function articleHoverPendingMatchesUrl(
 }
 
 export function articleHoverPendingMatchesTarget(
-  pending: ArticleHoverPendingTarget,
+  pending: Pick<ArticleHoverPendingTarget, 'normalizedUrl' | 'canonicalUrl' | 'selectedText'>,
   target: Pick<ArticleHoverTarget, 'selectedText' | 'canonicalUrl' | 'normalizedUrl'>,
 ): boolean {
   if (pending.selectedText.trim() !== target.selectedText.trim()) return false;
@@ -166,13 +189,71 @@ export async function writeArticleHoverPending(
   }
 }
 
-async function clearPendingAfterApply(result: ArticleHoverApplyResult, chromeApi?: ArticlePendingChrome) {
+export function isArticleHoverLastApply(value: unknown): value is ArticleHoverLastApply {
+  if (typeof value !== 'object' || value === null) return false;
+  const last = value as Partial<ArticleHoverLastApply>;
+  return (
+    typeof last.normalizedUrl === 'string' &&
+    last.normalizedUrl.trim().length > 0 &&
+    typeof last.selectedText === 'string' &&
+    last.selectedText.trim().length > 0 &&
+    typeof last.canonicalUrl === 'string' &&
+    last.canonicalUrl.trim().length > 0 &&
+    (last.status === 'matched' || last.status === 'unmatched') &&
+    typeof last.setAt === 'number' &&
+    Number.isFinite(last.setAt)
+  );
+}
+
+export async function readArticleHoverLastApply(
+  chromeApi?: ArticlePendingChrome,
+): Promise<ArticleHoverLastApply | null> {
+  const chrome = resolvePendingChrome(chromeApi);
+  if (!chrome) return null;
+  try {
+    const stored = await chrome.storage.session.get(ARTICLE_HOVER_LAST_APPLY_KEY);
+    const value = stored[ARTICLE_HOVER_LAST_APPLY_KEY];
+    return isArticleHoverLastApply(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function rememberLastApply(
+  result: ArticleHoverApplyResult,
+  pending: Pick<ArticleHoverPendingTarget, 'normalizedUrl' | 'selectedText' | 'canonicalUrl'>,
+  chromeApi?: ArticlePendingChrome,
+) {
+  if (result.status !== 'matched' && result.status !== 'unmatched') return;
+  const chrome = resolvePendingChrome(chromeApi);
+  if (!chrome) return;
+  try {
+    await chrome.storage.session.set({
+      [ARTICLE_HOVER_LAST_APPLY_KEY]: {
+        normalizedUrl: pending.normalizedUrl,
+        selectedText: pending.selectedText,
+        canonicalUrl: pending.canonicalUrl,
+        status: result.status,
+        setAt: Date.now(),
+      } satisfies ArticleHoverLastApply,
+    });
+  } catch {
+    // Last-apply is best-effort for miss-state UI.
+  }
+}
+
+async function clearPendingAfterApply(
+  result: ArticleHoverApplyResult,
+  pending: Pick<ArticleHoverPendingTarget, 'normalizedUrl' | 'selectedText' | 'canonicalUrl'>,
+  chromeApi?: ArticlePendingChrome,
+) {
   if (result.status === 'matched' || result.status === 'unmatched') {
+    await rememberLastApply(result, pending, chromeApi);
     await clearArticleHoverPending(chromeApi);
   }
 }
 
-export async function applyPendingArticleHoverOnActionTab(
+export async function applyPendingArticleHoverOnTab(
   tab: { tabId: number; tabUrl: string },
   chromeApi?: ArticlePendingChrome,
   now = Date.now(),
@@ -198,11 +279,38 @@ export async function applyPendingArticleHoverOnActionTab(
       }],
     });
     const result = articleHoverApplyResultFromPage(injection);
-    await clearPendingAfterApply(result, chrome);
+    await clearPendingAfterApply(result, pending, chrome);
     return result;
   } catch {
     return { status: 'unavailable' };
   }
+}
+
+export const applyPendingArticleHoverOnActionTab = applyPendingArticleHoverOnTab;
+
+export type ExistingArticleTab = {
+  id: number;
+  url: string;
+  status?: string;
+  windowId?: number;
+};
+
+export function findExistingArticleTab(
+  tabs: Array<{ id?: number; url?: string; status?: string; windowId?: number }>,
+  pending: Pick<ArticleHoverPendingTarget, 'normalizedUrl' | 'canonicalUrl'>,
+): ExistingArticleTab | null {
+  for (const tab of tabs) {
+    if (!Number.isInteger(tab.id) || (tab.id ?? -1) < 0 || typeof tab.url !== 'string') continue;
+    if (articleHoverPendingMatchesUrl(pending, tab.url)) {
+      return {
+        id: tab.id as number,
+        url: tab.url,
+        ...(tab.status ? { status: tab.status } : {}),
+        ...(typeof tab.windowId === 'number' ? { windowId: tab.windowId } : {}),
+      };
+    }
+  }
+  return null;
 }
 
 export async function applyPendingArticleHoverOnConnection(
@@ -226,24 +334,52 @@ export async function applyPendingArticleHoverOnConnection(
     },
     chrome,
   );
-  await clearPendingAfterApply(result, chrome);
+  await clearPendingAfterApply(result, pending, chrome);
   return result;
 }
 
-async function openSourceHref(
+async function focusExistingOrCreateTab(
   href: string,
+  pending: ArticleHoverPendingTarget,
   chromeApi: ArticlePendingChrome,
   openFallback?: (href: string) => void,
-): Promise<void> {
+): Promise<ExistingArticleTab | null> {
+  try {
+    const listed = chromeApi.tabs.query ? await chromeApi.tabs.query({}) : [];
+    const existing = findExistingArticleTab(listed, pending);
+    if (existing) {
+      try {
+        await chromeApi.tabs.update?.(existing.id, { active: true });
+        if (existing.windowId != null) {
+          await chromeApi.windows?.update?.(existing.windowId, { focused: true });
+        }
+      } catch {
+        // Focus is best-effort; pending apply still runs on complete/activate.
+      }
+      return existing;
+    }
+  } catch {
+    // Query failures fall through to create.
+  }
+
   try {
     if (chromeApi.tabs.create) {
-      await chromeApi.tabs.create({ url: href, active: true });
-      return;
+      const created = await chromeApi.tabs.create({ url: href, active: true });
+      if (created && Number.isInteger(created.id) && (created.id ?? -1) >= 0) {
+        return {
+          id: created.id as number,
+          url: typeof created.url === 'string' && created.url ? created.url : href,
+          ...(created.status ? { status: created.status } : {}),
+          ...(typeof created.windowId === 'number' ? { windowId: created.windowId } : {}),
+        };
+      }
+      return null;
     }
   } catch {
     // Fall through to the window.open path when tabs.create is unavailable.
   }
   openFallback?.(href);
+  return null;
 }
 
 export async function openArticleSourceFromPanel(input: {
@@ -260,7 +396,7 @@ export async function openArticleSourceFromPanel(input: {
     return { applied: null, awaitingConnection: true };
   }
 
-  await writeArticleHoverPending(input.target, chrome, input.now ?? Date.now());
+  const pending = await writeArticleHoverPending(input.target, chrome, input.now ?? Date.now());
 
   if (
     input.connection &&
@@ -280,13 +416,39 @@ export async function openArticleSourceFromPanel(input: {
       chrome,
     );
     if (applied.status === 'matched' || applied.status === 'unmatched') {
+      await rememberLastApply(applied, pending ?? {
+        normalizedUrl: input.target.normalizedUrl,
+        selectedText: input.target.selectedText,
+        canonicalUrl: input.target.canonicalUrl,
+      }, chrome);
       await clearArticleHoverPending(chrome);
       return { applied, awaitingConnection: false };
     }
-    await openSourceHref(input.href, chrome, input.openFallback);
+  }
+
+  if (!pending) {
+    await focusExistingOrCreateTab(input.href, {
+      normalizedUrl: input.target.normalizedUrl,
+      selectedText: input.target.selectedText,
+      canonicalUrl: input.target.canonicalUrl,
+      strength: 'strong',
+      setAt: input.now ?? Date.now(),
+    }, chrome, input.openFallback);
+    return { applied: null, awaitingConnection: true };
+  }
+
+  const opened = await focusExistingOrCreateTab(input.href, pending, chrome, input.openFallback);
+  if (opened?.status === 'complete' && articleHoverPendingMatchesUrl(pending, opened.url)) {
+    const applied = await applyPendingArticleHoverOnTab(
+      { tabId: opened.id, tabUrl: opened.url },
+      chrome,
+      input.now ?? Date.now(),
+    );
+    if (applied.status === 'matched' || applied.status === 'unmatched') {
+      return { applied, awaitingConnection: false };
+    }
     return { applied, awaitingConnection: true };
   }
 
-  await openSourceHref(input.href, chrome, input.openFallback);
   return { applied: null, awaitingConnection: true };
 }

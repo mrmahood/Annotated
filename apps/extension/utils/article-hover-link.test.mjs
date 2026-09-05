@@ -327,7 +327,7 @@ test('article miss copy stays short and does not blame the reader', () => {
   assert.doesNotMatch(ARTICLE_PASSAGE_MISS_STATUS, /you|your|wrong|failed|error/i);
 });
 
-test('Sprint 3 hover linking does not add permissions or persistent content scripts', async () => {
+test('Sprint 3 hover linking keeps one-shot scripting and no persistent content scripts', async () => {
   const [config, background, link, page, pending] = await Promise.all([
     readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/background.ts', import.meta.url), 'utf8'),
@@ -335,8 +335,9 @@ test('Sprint 3 hover linking does not add permissions or persistent content scri
     readFile(new URL('./article-hover-page.ts', import.meta.url), 'utf8'),
     readFile(new URL('./article-hover-pending.ts', import.meta.url), 'utf8'),
   ]);
-  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'\]/);
-  assert.doesNotMatch(config, /host_permissions|content_scripts|defineContentScript/);
+  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
+  assert.match(config, /host_permissions:\s*\['http:\/\/\*\/\*', 'https:\/\/\*\/\*'\]/);
+  assert.doesNotMatch(config, /content_scripts|defineContentScript/);
   assert.doesNotMatch(background, /defineContentScript|content_scripts/);
   assert.match(link, /frameIds: \[0\]/);
   assert.match(link, /ACTIVE_TAB_CONTEXT_KEY/);
@@ -345,6 +346,6 @@ test('Sprint 3 hover linking does not add permissions or persistent content scri
   assert.match(page, /Serialized into the explicitly connected top-level tab/);
   assert.doesNotMatch(page, /chrome\.|host_permissions|defineContentScript/);
   assert.match(pending, /ARTICLE_HOVER_PENDING_KEY/);
-  assert.match(background, /applyPendingArticleHoverOnActionTab/);
+  assert.match(background, /applyPendingArticleHoverOnTab/);
   assert.doesNotMatch(pending, /host_permissions|defineContentScript/);
 });

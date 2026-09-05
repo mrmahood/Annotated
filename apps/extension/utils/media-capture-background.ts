@@ -33,7 +33,7 @@ import {
 type ExtensionChrome = typeof browser;
 type ActiveCapture = { captureId: string; request: CaptureStartRequest };
 const OFFSCREEN_URL = 'offscreen.html';
-const ACTIVE_CAPTURE_KEY = 'annotated.mediaCapture.active.v1';
+export const ACTIVE_CAPTURE_KEY = 'annotated.mediaCapture.active.v1';
 
 function failure(code: CaptureFailureCode, message: string, captureId: string | null = null, diagnosticCode?: PreparationDiagnosticCode): CaptureSnapshot {
   return { status: 'error', code, message, captureId, ...(diagnosticCode ? { diagnosticCode } : {}) };

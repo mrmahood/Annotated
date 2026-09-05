@@ -96,11 +96,11 @@ jobs:
           import { readFile } from 'node:fs/promises';
 
           const manifest = JSON.parse(await readFile('apps/extension/.output/chrome-mv3/manifest.json', 'utf8'));
-          const expectedPermissions = ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'];
+          const expectedPermissions = ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'];
           assert.equal(manifest.manifest_version, 3);
           assert.equal(manifest.minimum_chrome_version, '116');
           assert.deepEqual(manifest.permissions, expectedPermissions);
-          assert.equal(Object.hasOwn(manifest, 'host_permissions'), false);
+          assert.deepEqual(manifest.host_permissions, ['http://*/*', 'https://*/*']);
           assert.equal(Object.hasOwn(manifest, 'content_scripts'), false);
           NODE
 

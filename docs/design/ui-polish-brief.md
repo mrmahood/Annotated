@@ -47,8 +47,10 @@ The annotation is the product; chrome gets out of the way.
 - Rebuilding Feed information architecture beyond the card nest.
 - Multi-operator admin UI or claimant email.
 - Hover linking in Sprint 1 (historical; Sprint 2 shipped YouTube only).
-- `host_permissions`, persistent content scripts, diagnostic UI, or
-  host-specific shadow-DOM piercing in any hover sprint.
+- Persistent content scripts, diagnostic UI, or host-specific shadow-DOM
+  piercing in any hover sprint. `host_permissions` were later
+  owner-authorized on 2026-09-05 for Open source amber apply and
+  surf-follow; see §5.3.
 - Forcing a shared-package extract of card components unless the monorepo
   already makes that extract natural.
 
@@ -183,16 +185,27 @@ later hover-link fades. No spring/bounce presets.
 
 ### 5.3 Permissions relevant to hover linking (Sprint 2–4)
 
-Production extension permissions stay exactly `sidePanel`, `activeTab`,
-`storage`, `scripting`, `identity`, `tabCapture`, and `offscreen`.
-`host_permissions` stay absent. Do not add persistent content scripts or
-diagnostic UI. Sprint 2 used on-demand `scripting` against the connected
-tab; Sprint 3 and Sprint 4 must reuse that model. This brief does not
-invent a new permission.
+Owner override, 2026-09-05 (Matt): production permissions now include
+`tabs` plus `host_permissions` for `http://*/*` and `https://*/*`, in
+addition to `sidePanel`, `activeTab`, `storage`, `scripting`, `identity`,
+`tabCapture`, and `offscreen`. This is an explicit replacement of the
+earlier “no `host_permissions`” rule. The grant exists so:
 
-Sprint 2 shipped a YouTube `/watch` hover overlay (outline + light page
-dim) under those constraints. Article and audio hover slices are not
-implemented yet.
+1. Feed **Open source** can `executeScript` the amber article highlight
+   after the opened tab reaches `status === 'complete'`, without a later
+   toolbar-icon click. Amber is the source of truth; a text fragment is
+   optional.
+2. Keeping the side panel open while surfing can follow the active tab
+   (`tabs.onActivated` / `tabs.onUpdated`) so Create, on-this-source, and
+   article/YouTube hover connections stay current without re-clicking the
+   action icon.
+
+Do not add persistent content scripts, `defineContentScript` entrypoints,
+or diagnostic UI. Hover and Open source still use one-shot
+`scripting.executeScript` only. Capture, `tabCapture`, and auth stay on
+their existing boundaries. Fail closed on passage match failure (miss
+UI). Historical Sprint 2–3 slices shipped under `activeTab` only; this
+override is what makes Open source amber and surf-follow reliable.
 
 ## 6. Sprint 1 — tokens, switch, cards
 
@@ -304,10 +317,11 @@ lands on an injected wrapper rather than native player chrome. Sprint 2
 documented that limitation and used light-DOM best-effort; do not chase a
 brittle piercing of YouTube internals.
 
-Sprint 2 remains bound by production permissions: no `host_permissions`,
-no persistent content scripts. Implementation uses the existing
-`activeTab` / `scripting` injection model and fails closed when the tab
-is not the watch source.
+Sprint 2 originally shipped under `activeTab` / `scripting` with no
+`host_permissions`. The 2026-09-05 owner override now lets YouTube hover
+use the surf-followed tab context the same way article hover does. Still
+no persistent content scripts. Fail closed when the tab is not the watch
+source.
 
 ## 8. Sprint 3 / Sprint 4 — article and audio hover linking (specify only)
 
@@ -322,9 +336,10 @@ grammar and the same permission model. They remain separately authorized.
   hover.
 - Fail closed when the connected tab is not that annotation’s source page,
   when identity cannot be confirmed, or when scripting fails.
-- Production permissions stay exact: no `host_permissions`, no persistent
-  content scripts, no diagnostic UI. On-demand `scripting` against the
-  connected tab only.
+- Production permissions follow §5.3: `host_permissions` and `tabs` are
+  owner-authorized for Open source amber and surf-follow. Still no
+  persistent content scripts, no diagnostic UI. On-demand `scripting`
+  against the live surf-followed tab only.
 - The YouTube shadow-DOM limitation does not apply the same way to article
   ranges or typical audio players. Still fail closed and avoid brittle
   host-specific piercing of player or page internals.
@@ -375,8 +390,9 @@ Out of this brief’s implementation slices:
   accent-color picker, broad admin UI.
 - Multi-operator admin UI, claimant email, rebuilding Feed IA beyond the
   card nest.
-- `host_permissions`, persistent content scripts, diagnostic UI, or
-  brittle host-specific piercing for any hover sprint.
+- Persistent content scripts, diagnostic UI, or brittle host-specific
+  piercing for any hover sprint. `host_permissions` are owner-authorized
+  only as documented in §5.3.
 
 Later options (not Sprint 1 unless noted):
 

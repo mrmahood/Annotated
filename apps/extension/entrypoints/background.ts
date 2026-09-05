@@ -1,11 +1,13 @@
 import {
   ACTIVE_TAB_CONTEXT_KEY,
-  ACTIVE_TAB_CONTEXT_MESSAGE,
   isActiveTabContext,
-  type ActiveTabContext,
 } from '../utils/active-tab-context';
-import { applyPendingArticleHoverOnActionTab } from '../utils/article-hover-pending';
+import { applyPendingArticleHoverOnTab } from '../utils/article-hover-pending';
 import { installMediaCapture } from '../utils/media-capture-background';
+import {
+  followBrowsingTab,
+  installSurfFollow,
+} from '../utils/surf-follow';
 
 export default defineBackground(() => {
   const chrome = (globalThis as typeof globalThis & {
@@ -15,6 +17,9 @@ export default defineBackground(() => {
   let actionContextRevision = 0;
 
   installMediaCapture(chrome);
+  installSurfFollow(chrome, {
+    applyPending: (tab) => applyPendingArticleHoverOnTab(tab),
+  });
 
   void chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: false })
@@ -32,36 +37,14 @@ export default defineBackground(() => {
 
     actionContextRevision += 1;
 
-    const context: ActiveTabContext = {
-      tabId: tab.id,
-      windowId: tab.windowId,
-      title: tab.title ?? '',
-      url: tab.url ?? '',
-      ...(tab.favIconUrl ? { favIconUrl: tab.favIconUrl } : {}),
-      capturedAt: Date.now(),
-    };
-
-    void chrome.storage.session
-      .set({ [ACTIVE_TAB_CONTEXT_KEY]: context })
+    void followBrowsingTab(chrome, tab)
       .then(async () => {
-        if (context.url) {
-          await applyPendingArticleHoverOnActionTab({
-            tabId: context.tabId,
-            tabUrl: context.url,
+        if (tab.url) {
+          await applyPendingArticleHoverOnTab({
+            tabId: tab.id as number,
+            tabUrl: tab.url,
           });
         }
-        void chrome.runtime
-          .sendMessage({
-            type: ACTIVE_TAB_CONTEXT_MESSAGE,
-            context,
-          })
-          .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error);
-
-            if (!message.includes('Receiving end does not exist')) {
-              console.warn('Unable to notify the Annotated side panel:', error);
-            }
-          });
       })
       .catch((error: unknown) => {
         console.error('Unable to store the Annotated action tab:', error);

@@ -596,8 +596,9 @@ test('production manifest and capture source keep the required security shape', 
     readFile(new URL('./media-capture-background.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/offscreen/main.ts', import.meta.url), 'utf8'),
   ]);
-  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'\]/);
-  assert.doesNotMatch(config, /host_permissions/);
+  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
+  assert.match(config, /host_permissions:\s*\['http:\/\/\*\/\*', 'https:\/\/\*\/\*'\]/);
+  assert.doesNotMatch(config, /content_scripts|defineContentScript/);
   assert.match(background, /getContexts/);
   assert.match(background, /createDocument/);
   assert.match(background, /getMediaStreamId/);
