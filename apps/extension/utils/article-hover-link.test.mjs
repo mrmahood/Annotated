@@ -328,11 +328,12 @@ test('article miss copy stays short and does not blame the reader', () => {
 });
 
 test('Sprint 3 hover linking does not add permissions or persistent content scripts', async () => {
-  const [config, background, link, page] = await Promise.all([
+  const [config, background, link, page, pending] = await Promise.all([
     readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/background.ts', import.meta.url), 'utf8'),
     readFile(new URL('./article-hover-link.ts', import.meta.url), 'utf8'),
     readFile(new URL('./article-hover-page.ts', import.meta.url), 'utf8'),
+    readFile(new URL('./article-hover-pending.ts', import.meta.url), 'utf8'),
   ]);
   assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'\]/);
   assert.doesNotMatch(config, /host_permissions|content_scripts|defineContentScript/);
@@ -343,4 +344,7 @@ test('Sprint 3 hover linking does not add permissions or persistent content scri
   assert.doesNotMatch(link, /host_permissions|defineContentScript/);
   assert.match(page, /Serialized into the explicitly connected top-level tab/);
   assert.doesNotMatch(page, /chrome\.|host_permissions|defineContentScript/);
+  assert.match(pending, /ARTICLE_HOVER_PENDING_KEY/);
+  assert.match(background, /applyPendingArticleHoverOnActionTab/);
+  assert.doesNotMatch(pending, /host_permissions|defineContentScript/);
 });

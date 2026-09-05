@@ -28,6 +28,7 @@ import {
   isActiveTabContextMessage,
   type ActiveTabContext,
 } from '../../utils/active-tab-context';
+import { applyPendingArticleHoverOnConnection } from '../../utils/article-hover-pending';
 import {
   clearLocalAuthSession,
   EXTENSION_AUTH_CAPABILITIES,
@@ -2185,6 +2186,18 @@ function App() {
       });
     return () => { current = false; };
   }, [authState.status, hostedMediaSession, mediaCaptureOperation, mediaCaptureState, supabase]);
+
+  useEffect(() => {
+    if (sourceState.status !== 'connected' || sourceState.source.classification !== 'Web page') {
+      return;
+    }
+    const context = connectedContextRef.current;
+    if (!context) return;
+    void applyPendingArticleHoverOnConnection({
+      tabId: context.tabId,
+      tabUrl: sourceState.source.url,
+    });
+  }, [sourceState]);
 
   useEffect(() => {
     if (!refreshSuccess) return;
