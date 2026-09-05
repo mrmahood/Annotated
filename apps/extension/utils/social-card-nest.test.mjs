@@ -31,6 +31,15 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /articleHoverRegionHandlers/);
   assert.match(card, /articleHoverNestedChipHandlers/);
   assert.match(card, /articlePassageHoverTarget/);
+  assert.match(card, /onArticleHoverResult/);
+  assert.match(card, /ArticlePassageMissStatus/);
+  assert.match(card, /handleArticleSourceOpenClick\(event, annotation, articleHover, sourceUrl, onArticleHoverResult\)/);
+  assert.match(source, /ARTICLE_PASSAGE_MISS_STATUS/);
+  assert.match(source, /ARTICLE_PASSAGE_MISS_OPEN_HINT/);
+  assert.match(source, /status === 'unmatched'/);
+  assert.match(source, /role="status"/);
+  assert.match(source, /annotationMatchesConnectedArticle\(annotation, connection\.tabUrl\)/);
+  assert.match(styles, /\.article-passage-miss/);
   assert.match(card, /View annotation/);
   assert.doesNotMatch(card, /className="annotation-card-main"/);
   assert.doesNotMatch(card, /Commentary/);

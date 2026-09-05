@@ -5,7 +5,10 @@ import { ACTIVE_TAB_CONTEXT_KEY } from './active-tab-context.ts';
 import {
   annotationMatchesConnectedArticle,
   applyArticleHoverOnConnectedTab,
+  articleHoverApplyResultFromPage,
   ARTICLE_HOVER_LEAVE_MS,
+  ARTICLE_PASSAGE_MISS_OPEN_HINT,
+  ARTICLE_PASSAGE_MISS_STATUS,
   clearArticleHoverOnConnectedTab,
   createArticleHoverLeaveController,
   createArticleHoverSession,
@@ -53,7 +56,7 @@ function fakeChrome(options = {}) {
       executeScript: async (injection) => {
         calls.push(injection);
         if (options.scriptingError) throw new Error('scripting failed');
-        return [{ result: { ok: true } }];
+        return [{ result: options.pageResult ?? { ok: true } }];
       },
     },
     storage: {
@@ -138,11 +141,11 @@ test('debounces leave by 120 ms and cancels clear when another region is entered
 
 test('injects APPLY only for the explicitly connected matching article tab', async () => {
   const chrome = fakeChrome();
-  assert.equal(await applyArticleHoverOnConnectedTab(
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
     { tabId: 17, tabUrl: ARTICLE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
     chrome,
-  ), true);
+  ), { status: 'matched' });
   assert.equal(chrome.calls.length, 1);
   assert.deepEqual(chrome.calls[0].target, { tabId: 17, frameIds: [0] });
   assert.equal(chrome.calls[0].func, applyArticleHoverHighlightOnPage);
@@ -152,36 +155,80 @@ test('injects APPLY only for the explicitly connected matching article tab', asy
     strength: 'soft',
   });
 
-  assert.equal(await applyArticleHoverOnConnectedTab(
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
     { tabId: 17, tabUrl: OTHER },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'strong' },
     fakeChrome(),
-  ), false);
-  assert.equal(await applyArticleHoverOnConnectedTab(
+  ), { status: 'unavailable' });
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
     { tabId: 17, tabUrl: YOUTUBE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
     fakeChrome({ liveUrl: YOUTUBE, context: connectedContext({ url: YOUTUBE }) }),
-  ), false);
-  assert.equal(await applyArticleHoverOnConnectedTab(
+  ), { status: 'unavailable' });
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
     { tabId: 17, tabUrl: ARTICLE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
     fakeChrome({ context: connectedContext({ tabId: 99 }) }),
-  ), false);
-  assert.equal(await applyArticleHoverOnConnectedTab(
+  ), { status: 'unavailable' });
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
     { tabId: 17, tabUrl: ARTICLE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
     fakeChrome({ liveUrl: OTHER }),
-  ), false);
-  assert.equal(await applyArticleHoverOnConnectedTab(
+  ), { status: 'unavailable' });
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
     { tabId: 17, tabUrl: ARTICLE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
     fakeChrome({ tabError: true }),
-  ), false);
-  assert.equal(await applyArticleHoverOnConnectedTab(
+  ), { status: 'unavailable' });
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
     { tabId: 17, tabUrl: ARTICLE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
     fakeChrome({ scriptingError: true }),
-  ), false);
+  ), { status: 'unavailable' });
+});
+
+test('apply helper surfaces unmatched from the first-frame page result', async () => {
+  assert.deepEqual(
+    articleHoverApplyResultFromPage([{ result: { ok: false, reason: 'text-unmatched' } }]),
+    { status: 'unmatched' },
+  );
+  assert.deepEqual(
+    articleHoverApplyResultFromPage([{ result: { ok: false, reason: 'source-mismatch' } }]),
+    { status: 'source-mismatch' },
+  );
+  assert.deepEqual(
+    articleHoverApplyResultFromPage([{ result: { ok: true } }]),
+    { status: 'matched' },
+  );
+  assert.deepEqual(articleHoverApplyResultFromPage([]), { status: 'unavailable' });
+  assert.deepEqual(articleHoverApplyResultFromPage([{ result: { ok: false } }]), { status: 'unavailable' });
+
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
+    fakeChrome({ pageResult: { ok: false, reason: 'text-unmatched' } }),
+  ), { status: 'unmatched' });
+  assert.deepEqual(await applyArticleHoverOnConnectedTab(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'strong' },
+    fakeChrome({ pageResult: { ok: false, reason: 'source-mismatch' } }),
+  ), { status: 'source-mismatch' });
+});
+
+test('session enter notifies UI when a connected URL probe is unmatched', async () => {
+  const drain = async () => {
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+  };
+  const results = [];
+  const session = createArticleHoverSession();
+  session.enter(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE, strength: 'soft' },
+    fakeChrome({ pageResult: { ok: false, reason: 'text-unmatched' } }),
+    (result) => results.push(result),
+  );
+  await drain();
+  assert.deepEqual(results, [{ status: 'unmatched' }]);
 });
 
 test('session leave waits 120 ms before CLEAR and stays on the connected tab', async () => {
@@ -227,29 +274,57 @@ test('CLEAR fails closed when the stored tab is no longer the connected tab', as
 
 test('Open source on a connected article focuses the tab and applies highlight', async () => {
   const chrome = fakeChrome();
-  assert.equal(await openArticleSourceOnConnectedTab(
+  assert.deepEqual(await openArticleSourceOnConnectedTab(
     { tabId: 17, tabUrl: ARTICLE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
     chrome,
-  ), true);
+  ), { status: 'matched' });
   assert.equal(chrome.calls.length, 1);
   assert.equal(chrome.calls[0].func, applyArticleHoverHighlightOnPage);
   assert.equal(chrome.calls[0].args[0].strength, 'strong');
   assert.deepEqual(chrome.tabUpdates, [{ tabId: 17, update: { active: true } }]);
 
-  assert.equal(await openArticleSourceOnConnectedTab(
+  assert.deepEqual(await openArticleSourceOnConnectedTab(
     { tabId: 17, tabUrl: OTHER },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
     fakeChrome(),
-  ), false);
+  ), { status: 'unavailable' });
 
   const focusFails = fakeChrome({ updateError: true });
-  assert.equal(await openArticleSourceOnConnectedTab(
+  assert.deepEqual(await openArticleSourceOnConnectedTab(
     { tabId: 17, tabUrl: ARTICLE },
     { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
     focusFails,
-  ), true);
+  ), { status: 'matched' });
   assert.equal(focusFails.calls.length, 1);
+});
+
+test('Open source still focuses the connected tab when the live passage is unmatched', async () => {
+  const chrome = fakeChrome({ pageResult: { ok: false, reason: 'text-unmatched' } });
+  assert.deepEqual(await openArticleSourceOnConnectedTab(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    chrome,
+  ), { status: 'unmatched' });
+  assert.equal(chrome.calls.length, 1);
+  assert.deepEqual(chrome.tabUpdates, [{ tabId: 17, update: { active: true } }]);
+
+  const mismatched = fakeChrome({ pageResult: { ok: false, reason: 'source-mismatch' } });
+  assert.deepEqual(await openArticleSourceOnConnectedTab(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    mismatched,
+  ), { status: 'source-mismatch' });
+  assert.deepEqual(mismatched.tabUpdates, []);
+});
+
+test('article miss copy stays short and does not blame the reader', () => {
+  assert.equal(
+    ARTICLE_PASSAGE_MISS_STATUS,
+    'This passage isn’t on the live page anymore (it may have been edited).',
+  );
+  assert.equal(ARTICLE_PASSAGE_MISS_OPEN_HINT, 'Open source still opens the article.');
+  assert.doesNotMatch(ARTICLE_PASSAGE_MISS_STATUS, /you|your|wrong|failed|error/i);
 });
 
 test('Sprint 3 hover linking does not add permissions or persistent content scripts', async () => {

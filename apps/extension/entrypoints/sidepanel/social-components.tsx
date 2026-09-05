@@ -49,9 +49,13 @@ import {
   annotationMatchesConnectedArticle,
   articleHoverNestedChipHandlers,
   articleHoverRegionHandlers,
+  ARTICLE_PASSAGE_MISS_OPEN_HINT,
+  ARTICLE_PASSAGE_MISS_STATUS,
   cancelArticleHoverLink,
   openArticleSourceOnConnectedTab,
+  type ArticleHoverApplyResult,
   type ArticleHoverConnection,
+  type ArticleHoverResultListener,
 } from '../../utils/article-hover-link';
 import { getSourceOpenUrl } from '../../utils/source-open-url';
 import {
@@ -250,14 +254,61 @@ function handleArticleSourceOpenClick(
   annotation: PublicAnnotation,
   connection: ArticleHoverConnection | null,
   href: string,
+  onResult?: ArticleHoverResultListener,
 ) {
   const target = articlePassageHoverTarget(annotation);
   if (!target || !connection) return;
   if (!annotationMatchesConnectedArticle(annotation, connection.tabUrl)) return;
   event.preventDefault();
-  void openArticleSourceOnConnectedTab(connection, { ...target, strength: 'strong' }).then((opened) => {
-    if (!opened) window.open(href, '_blank', 'noopener,noreferrer');
+  void openArticleSourceOnConnectedTab(connection, { ...target, strength: 'strong' }).then((result) => {
+    onResult?.(result);
+    if (result.status === 'unavailable' || result.status === 'source-mismatch') {
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
   });
+}
+
+function useArticlePassageMiss(
+  annotationId: string,
+  connection: ArticleHoverConnection | null,
+) {
+  const [passageMissed, setPassageMissed] = useState(false);
+  const connectionKey = connection ? `${connection.tabId}:${connection.tabUrl}` : '';
+
+  useEffect(() => {
+    setPassageMissed(false);
+  }, [annotationId, connectionKey]);
+
+  const onArticleHoverResult = useCallback((result: ArticleHoverApplyResult) => {
+    if (result.status === 'unmatched') setPassageMissed(true);
+    if (result.status === 'matched') setPassageMissed(false);
+  }, []);
+
+  return { passageMissed, onArticleHoverResult };
+}
+
+function ArticlePassageMissStatus({
+  show,
+  annotation,
+  connection,
+}: {
+  show: boolean;
+  annotation: PublicAnnotation;
+  connection: ArticleHoverConnection | null;
+}) {
+  if (
+    !show ||
+    !connection ||
+    !annotationMatchesConnectedArticle(annotation, connection.tabUrl)
+  ) {
+    return null;
+  }
+  return (
+    <p className="article-passage-miss" role="status">
+      {ARTICLE_PASSAGE_MISS_STATUS}
+      <span>{ARTICLE_PASSAGE_MISS_OPEN_HINT}</span>
+    </p>
+  );
 }
 
 function ExcerptTranscript({
@@ -338,6 +389,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   const [hostedStatus, setHostedStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>(
     annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted) ? 'ready' : 'idle',
   );
+  const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotation.id, articleHover);
   const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
@@ -396,13 +448,13 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   const clipTarget = youtubeClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
   const cardHover = articleTarget
-    ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' })
+    ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' }, onArticleHoverResult)
     : youtubeHoverRegionHandlers(
       youtubeHover,
       clipTarget ? { ...clipTarget, strength: 'soft' } : null,
     );
   const chipHover = articleTarget
-    ? articleHoverNestedChipHandlers(articleHover, articleTarget)
+    ? articleHoverNestedChipHandlers(articleHover, articleTarget, onArticleHoverResult)
     : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
 
   return (
@@ -472,7 +524,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           {expanded && hasArticleAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
           )}
-          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceUrl)}>Open source ↗</a>
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceUrl, onArticleHoverResult)}>Open source ↗</a>
+          <ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} />
         </div>
       </div>
       <footer className="social-card-actions">
@@ -841,6 +894,7 @@ export function AnnotationDetailView({
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [audioError, setAudioError] = useState<string | null>(null);
   const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
+  const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover);
 
   useEffect(() => {
     let current = true;
@@ -882,13 +936,13 @@ export function AnnotationDetailView({
   const clipTarget = youtubeClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
   const commentaryHover = articleTarget
-    ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' })
+    ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' }, onArticleHoverResult)
     : youtubeHoverRegionHandlers(
       youtubeHover,
       clipTarget ? { ...clipTarget, strength: 'soft' } : null,
     );
   const sourceHover = articleTarget
-    ? articleHoverNestedChipHandlers(articleHover, articleTarget)
+    ? articleHoverNestedChipHandlers(articleHover, articleTarget, onArticleHoverResult)
     : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
   const playConnected = async () => {
     if (annotation.kind === 'article' || hostedReady) return;
@@ -911,8 +965,8 @@ export function AnnotationDetailView({
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
       {annotation.kind === 'article' ? <>
-        <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl)}>View original source ↗</a></section>
-        <section className="detail-passage" {...sourceHover}><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
+        <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult)}>View original source ↗</a></section>
+        <section className="detail-passage" {...sourceHover}><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote><ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} /></section>
       </> : annotation.kind === 'youtube' ? <>
         <section className="detail-source" {...sourceHover}><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>

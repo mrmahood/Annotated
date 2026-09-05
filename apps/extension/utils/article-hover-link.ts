@@ -3,11 +3,24 @@ import {
   applyArticleHoverHighlightOnPage,
   clearArticleHoverHighlightOnPage,
   type ArticleHoverPageRequest,
+  type ArticleHoverPageResult,
   type ArticleHoverStrength,
 } from './article-hover-page.ts';
 import { classifySourceUrl, normalizeSourceUrl } from './social-helpers.ts';
 
 export const ARTICLE_HOVER_LEAVE_MS = 120;
+
+export const ARTICLE_PASSAGE_MISS_STATUS =
+  'This passage isn’t on the live page anymore (it may have been edited).';
+export const ARTICLE_PASSAGE_MISS_OPEN_HINT = 'Open source still opens the article.';
+
+export type ArticleHoverApplyResult =
+  | { status: 'matched' }
+  | { status: 'unmatched' }
+  | { status: 'source-mismatch' }
+  | { status: 'unavailable' };
+
+export type ArticleHoverResultListener = (result: ArticleHoverApplyResult) => void;
 
 export type ArticleHoverConnection = {
   tabId: number;
@@ -58,6 +71,39 @@ function tryNormalizeArticleUrl(value: string | null | undefined): string | null
   } catch {
     return null;
   }
+}
+
+function readFirstFramePageResult(value: unknown): ArticleHoverPageResult | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const entry = value[0];
+  if (typeof entry !== 'object' || entry === null || !('result' in entry)) return null;
+  const result = entry.result;
+  if (typeof result !== 'object' || result === null || typeof (result as { ok?: unknown }).ok !== 'boolean') {
+    return null;
+  }
+  const ok = (result as { ok: boolean }).ok;
+  const reason = (result as { reason?: unknown }).reason;
+  if (reason === undefined) return { ok };
+  if (
+    reason === 'cleared' ||
+    reason === 'source-mismatch' ||
+    reason === 'text-unmatched' ||
+    reason === 'invalid-request'
+  ) {
+    return { ok, reason };
+  }
+  return { ok };
+}
+
+export function articleHoverApplyResultFromPage(
+  value: unknown,
+): ArticleHoverApplyResult {
+  const page = readFirstFramePageResult(value);
+  if (!page) return { status: 'unavailable' };
+  if (page.ok) return { status: 'matched' };
+  if (page.reason === 'text-unmatched') return { status: 'unmatched' };
+  if (page.reason === 'source-mismatch') return { status: 'source-mismatch' };
+  return { status: 'unavailable' };
 }
 
 export function annotationMatchesConnectedArticle(
@@ -165,15 +211,17 @@ export async function applyArticleHoverOnConnectedTab(
   connection: ArticleHoverConnection,
   target: ArticleHoverTarget,
   chromeApi?: ArticleHoverChrome,
-): Promise<boolean> {
+): Promise<ArticleHoverApplyResult> {
   const chrome = resolveChrome(chromeApi);
-  if (!chrome || !Number.isInteger(connection.tabId) || connection.tabId < 0) return false;
+  if (!chrome || !Number.isInteger(connection.tabId) || connection.tabId < 0) {
+    return { status: 'unavailable' };
+  }
   const liveUrl = await connectedArticleUrl(connection, chrome, target);
-  if (!liveUrl) return false;
+  if (!liveUrl) return { status: 'unavailable' };
   const expectedNormalizedUrl = tryNormalizeArticleUrl(liveUrl);
-  if (!expectedNormalizedUrl) return false;
+  if (!expectedNormalizedUrl) return { status: 'unavailable' };
   try {
-    await chrome.scripting.executeScript({
+    const injection = await chrome.scripting.executeScript({
       target: { tabId: connection.tabId, frameIds: [0] },
       func: applyArticleHoverHighlightOnPage,
       args: [{
@@ -182,9 +230,9 @@ export async function applyArticleHoverOnConnectedTab(
         strength: target.strength,
       }],
     });
-    return true;
+    return articleHoverApplyResultFromPage(injection);
   } catch {
-    return false;
+    return { status: 'unavailable' };
   }
 }
 
@@ -192,21 +240,23 @@ export async function openArticleSourceOnConnectedTab(
   connection: ArticleHoverConnection,
   target: Omit<ArticleHoverTarget, 'strength'> & { strength?: ArticleHoverStrength },
   chromeApi?: ArticleHoverChrome,
-): Promise<boolean> {
+): Promise<ArticleHoverApplyResult> {
   cancelArticleHoverLink();
   const applied = await applyArticleHoverOnConnectedTab(
     connection,
     { ...target, strength: target.strength ?? 'strong' },
     chromeApi,
   );
-  if (!applied) return false;
+  if (applied.status === 'unavailable' || applied.status === 'source-mismatch') {
+    return applied;
+  }
   const chrome = resolveChrome(chromeApi);
   try {
     await chrome?.tabs.update?.(connection.tabId, { active: true });
   } catch {
-    // Focus is best-effort; highlight and scroll already ran on the page.
+    // Focus is best-effort; matched highlight or unmatched honesty already ran.
   }
-  return true;
+  return applied;
 }
 
 export async function clearArticleHoverOnConnectedTab(
@@ -240,10 +290,13 @@ export function createArticleHoverSession(options: {
       connection: ArticleHoverConnection | null,
       target: ArticleHoverTarget,
       chromeApi?: ArticleHoverChrome,
+      onResult?: ArticleHoverResultListener,
     ) {
       leave.enter(() => {
         if (!connection) return;
-        void applyArticleHoverOnConnectedTab(connection, target, chromeApi);
+        void applyArticleHoverOnConnectedTab(connection, target, chromeApi).then((result) => {
+          onResult?.(result);
+        });
       });
     },
     leave(connection: ArticleHoverConnection | null, chromeApi?: ArticleHoverChrome) {
@@ -264,8 +317,9 @@ export function enterArticleHoverLink(
   connection: ArticleHoverConnection | null,
   target: ArticleHoverTarget,
   chromeApi?: ArticleHoverChrome,
+  onResult?: ArticleHoverResultListener,
 ) {
-  sharedHover.enter(connection, target, chromeApi);
+  sharedHover.enter(connection, target, chromeApi, onResult);
 }
 
 export function leaveArticleHoverLink(
@@ -282,11 +336,12 @@ export function cancelArticleHoverLink() {
 export function articleHoverRegionHandlers(
   connection: ArticleHoverConnection | null,
   target: ArticleHoverTarget | null,
+  onResult?: ArticleHoverResultListener,
 ) {
   return {
     onPointerEnter: () => {
       if (!connection || !target) return;
-      enterArticleHoverLink(connection, target);
+      enterArticleHoverLink(connection, target, undefined, onResult);
     },
     onPointerLeave: () => {
       if (!connection || !target) return;
@@ -298,15 +353,16 @@ export function articleHoverRegionHandlers(
 export function articleHoverNestedChipHandlers(
   connection: ArticleHoverConnection | null,
   target: Omit<ArticleHoverTarget, 'strength'> | null,
+  onResult?: ArticleHoverResultListener,
 ) {
   return {
     onPointerEnter: () => {
       if (!connection || !target) return;
-      enterArticleHoverLink(connection, { ...target, strength: 'strong' });
+      enterArticleHoverLink(connection, { ...target, strength: 'strong' }, undefined, onResult);
     },
     onPointerLeave: () => {
       if (!connection || !target) return;
-      enterArticleHoverLink(connection, { ...target, strength: 'soft' });
+      enterArticleHoverLink(connection, { ...target, strength: 'soft' }, undefined, onResult);
     },
   };
 }
