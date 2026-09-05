@@ -5,9 +5,12 @@ import {
   ARTICLE_HOVER_HIGHLIGHT_NAME,
   ARTICLE_HOVER_ROOT_ID,
   clearArticleHoverHighlightOnPage,
+  findArticleHoverNormalizedMatch,
   findUniqueNormalizedMatch,
   normalizeArticleHoverPageUrl,
   normalizeArticleHoverText,
+  takeLeadingNormalizedWindow,
+  takeTrailingNormalizedWindow,
 } from './article-hover-page.ts';
 
 const ARTICLE = 'https://example.com/story';
@@ -23,6 +26,7 @@ function withPage(callback, overrides = {}) {
   const listeners = { scroll: [], resize: [] };
   const nodes = new Map();
   const highlights = new Map();
+  const scrollCalls = [];
 
   class ElementStub {
     constructor(tagName, id = '') {
@@ -92,6 +96,9 @@ function withPage(callback, overrides = {}) {
       return this.rect ?? { left: 40, top: 80, right: 400, bottom: 104, width: 360, height: 24 };
     }
     getClientRects() { return [{}]; }
+    scrollIntoView(options) {
+      scrollCalls.push({ id: this.id, tagName: this.tagName, options });
+    }
   }
 
   class StyleStub extends ElementStub {
@@ -198,7 +205,7 @@ function withPage(callback, overrides = {}) {
     for (const [name, value] of Object.entries(values)) {
       Object.defineProperty(globalThis, name, { configurable: true, value });
     }
-    return callback({ documentElement, body, highlights, listeners, nodes, text });
+    return callback({ documentElement, body, highlights, listeners, nodes, text, scrollCalls });
   } finally {
     for (const name of names) {
       const descriptor = previous.get(name);
@@ -239,7 +246,7 @@ test('safe text match requires a unique whitespace-normalized substring', () => 
 });
 
 test('page injector paints an idempotent outline and dim on a unique passage', () => {
-  withPage(({ documentElement, highlights }) => {
+  withPage(({ documentElement, highlights, scrollCalls }) => {
     const first = applyArticleHoverHighlightOnPage({
       expectedNormalizedUrl: ARTICLE,
       selectedText: PASSAGE,
@@ -257,6 +264,8 @@ test('page injector paints an idempotent outline and dim on a unique passage', (
       /background-color:rgba\(255, 214, 74, 0\.55\)/,
     );
     assert.equal(highlights.has(ARTICLE_HOVER_HIGHLIGHT_NAME), true);
+    assert.ok(scrollCalls.length >= 1);
+    assert.deepEqual(scrollCalls[0].options, { block: 'center', inline: 'nearest', behavior: 'smooth' });
 
     const second = applyArticleHoverHighlightOnPage({
       expectedNormalizedUrl: ARTICLE,
@@ -334,4 +343,65 @@ test('serialized hover functions stay closure-free and do not throw', () => {
     assert.equal(apply(null).ok, false);
   });
   assert.equal(ARTICLE_HOVER_ROOT_ID, 'annotated-article-hover-root');
+});
+
+const ABC7_PREFIX = 'Because they did not allow him to do a credible fear interview with respect to Guyana, the country that they said they were going to send him to and he was under supervision, it was depriving him of his right to due process, so that is the basis of our habeas corpus, meaning you don\'t have a right to hold him without due process,';
+const ABC7_SUFFIX = 'He cannot be removed from the detention center to any country at any time until we are fully finished with these submissions.';
+const ABC7_STORED_MIDDLE = "said Alex's attorney Jane Oak";
+const ABC7_LIVE_MIDDLE = "said Pereira-Alves' attorney, Jane Oak";
+const ABC7_STORED = `${ABC7_PREFIX} ${ABC7_STORED_MIDDLE}. ${ABC7_SUFFIX}`;
+const ABC7_LIVE = `${ABC7_PREFIX} ${ABC7_LIVE_MIDDLE}. ${ABC7_SUFFIX}`;
+
+test('exact unique match still wins before anchor recovery', () => {
+  assert.deepEqual(
+    findArticleHoverNormalizedMatch(`Intro. ${PASSAGE} Outro.`, PASSAGE),
+    findUniqueNormalizedMatch(`Intro. ${PASSAGE} Outro.`, PASSAGE),
+  );
+  assert.ok(takeLeadingNormalizedWindow(ABC7_STORED).length >= 80);
+  assert.ok(takeTrailingNormalizedWindow(ABC7_STORED).length >= 80);
+});
+
+test('ABC7-style edited middle recovers a unique prefix-to-suffix span', () => {
+  assert.equal(findUniqueNormalizedMatch(ABC7_LIVE, ABC7_STORED), null);
+  const recovered = findArticleHoverNormalizedMatch(ABC7_LIVE, ABC7_STORED);
+  assert.ok(recovered);
+  assert.equal(ABC7_LIVE.slice(recovered.start, recovered.end), ABC7_LIVE);
+});
+
+test('a single unique long-enough window recovers that window only', () => {
+  const leading = takeLeadingNormalizedWindow(ABC7_PREFIX);
+  const live = `${ABC7_PREFIX} said Pereira-Alves' attorney, Jane Oak. Completely different closing words live here.`;
+  const recovered = findArticleHoverNormalizedMatch(live, ABC7_STORED);
+  assert.ok(recovered);
+  assert.equal(live.slice(recovered.start, recovered.end), leading);
+});
+
+test('anchor recovery fails closed when windows are ambiguous or too short', () => {
+  const ambiguous = `${ABC7_LIVE} later copy ${ABC7_LIVE}`;
+  assert.equal(findArticleHoverNormalizedMatch(ambiguous, ABC7_STORED), null);
+  assert.equal(
+    findArticleHoverNormalizedMatch('A short live page without the quote.', 'tiny edit xx'),
+    null,
+  );
+  assert.equal(
+    findArticleHoverNormalizedMatch('Hello world this is a short edited quote here.', 'Hello world this is a SHORT edited quote here.'),
+    null,
+  );
+});
+
+test('page injector recovers an edited-middle passage and scrolls it into view', () => {
+  withPage(({ documentElement, scrollCalls }) => {
+    const result = applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: ABC7_STORED,
+      strength: 'soft',
+    });
+    assert.equal(result.ok, true);
+    assert.ok(documentElement.querySelector('#annotated-article-hover-root'));
+    assert.ok(scrollCalls.some((call) => (
+      call.options.block === 'center' &&
+      call.options.inline === 'nearest' &&
+      call.options.behavior === 'smooth'
+    )));
+  }, { bodyText: ABC7_LIVE });
 });

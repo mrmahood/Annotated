@@ -17,7 +17,9 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /className="nested-source"/);
   assert.match(card, /aria-expanded=\{expanded\}/);
   assert.match(card, /Open source ↗/);
-  assert.match(card, /getYouTubeTimestampUrl\(annotation\.source\.canonicalUrl, annotation\.startMs\)/);
+  assert.match(card, /sourceOpenHref\(annotation\)/);
+  assert.match(card, /handleArticleSourceOpenClick/);
+  assert.match(source, /getSourceOpenUrl/);
   assert.match(card, /queryPublicHostedExcerpt/);
   assert.match(card, /HostedExcerptPlayer/);
   assert.match(card, /compact/);

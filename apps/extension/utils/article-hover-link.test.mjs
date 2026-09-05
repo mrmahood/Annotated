@@ -9,6 +9,7 @@ import {
   clearArticleHoverOnConnectedTab,
   createArticleHoverLeaveController,
   createArticleHoverSession,
+  openArticleSourceOnConnectedTab,
 } from './article-hover-link.ts';
 import { applyArticleHoverHighlightOnPage } from './article-hover-page.ts';
 
@@ -44,8 +45,10 @@ function connectedContext(overrides = {}) {
 
 function fakeChrome(options = {}) {
   const calls = [];
+  const tabUpdates = [];
   return {
     calls,
+    tabUpdates,
     scripting: {
       executeScript: async (injection) => {
         calls.push(injection);
@@ -65,6 +68,11 @@ function fakeChrome(options = {}) {
       get: async (tabId) => {
         if (options.tabError) throw new Error('tab missing');
         return { id: tabId, url: options.liveUrl ?? ARTICLE };
+      },
+      update: async (tabId, update) => {
+        tabUpdates.push({ tabId, update });
+        if (options.updateError) throw new Error('tab update failed');
+        return { id: tabId, active: true };
       },
     },
   };
@@ -212,6 +220,33 @@ test('CLEAR fails closed when the stored tab is no longer the connected tab', as
     { tabId: 17, tabUrl: ARTICLE },
     fakeChrome({ context: connectedContext({ tabId: 4 }) }),
   ), false);
+});
+
+test('Open source on a connected article focuses the tab and applies highlight', async () => {
+  const chrome = fakeChrome();
+  assert.equal(await openArticleSourceOnConnectedTab(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    chrome,
+  ), true);
+  assert.equal(chrome.calls.length, 1);
+  assert.equal(chrome.calls[0].func, applyArticleHoverHighlightOnPage);
+  assert.equal(chrome.calls[0].args[0].strength, 'strong');
+  assert.deepEqual(chrome.tabUpdates, [{ tabId: 17, update: { active: true } }]);
+
+  assert.equal(await openArticleSourceOnConnectedTab(
+    { tabId: 17, tabUrl: OTHER },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    fakeChrome(),
+  ), false);
+
+  const focusFails = fakeChrome({ updateError: true });
+  assert.equal(await openArticleSourceOnConnectedTab(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    focusFails,
+  ), true);
+  assert.equal(focusFails.calls.length, 1);
 });
 
 test('Sprint 3 hover linking does not add permissions or persistent content scripts', async () => {
