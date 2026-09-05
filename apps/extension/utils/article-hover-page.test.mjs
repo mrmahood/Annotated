@@ -3,12 +3,15 @@ import test from 'node:test';
 import {
   applyArticleHoverHighlightOnPage,
   ARTICLE_HOVER_HIGHLIGHT_NAME,
+  ARTICLE_HOVER_PREFIX_MIN_CHARS,
   ARTICLE_HOVER_ROOT_ID,
   clearArticleHoverHighlightOnPage,
   findArticleHoverNormalizedMatch,
+  findLongestUniquePrefixMatch,
   findUniqueNormalizedMatch,
   normalizeArticleHoverPageUrl,
   normalizeArticleHoverText,
+  prepareArticlePassageQuery,
   takeLeadingNormalizedWindow,
   takeTrailingNormalizedWindow,
 } from './article-hover-page.ts';
@@ -16,6 +19,12 @@ import {
 const ARTICLE = 'https://example.com/story';
 const OTHER = 'https://example.com/other';
 const PASSAGE = 'The unique passage on this page.';
+const IRAN_STORED = '. Central Command announced that as of Friday, the ongoing U.S. military blockade of Iranian ports has redirected 62 commerci';
+const IRAN_CLEANED = 'Central Command announced that as of Friday, the ongoing U.S. military blockade of Iranian ports has redirected 62';
+const IRAN_LIVE = 'U.S. Central Command announced that as of Friday, the ongoing U.S. military blockade of Iranian ports has redirected 62 commercial ships through the Strait of Hormuz.';
+const PREFIX_STORED = 'Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone missingtail.';
+const PREFIX_LIVE = 'Intro. Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone. Outro.';
+const PREFIX_MATCH = 'Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel India Juliet unique landing zone';
 
 function withPage(callback, overrides = {}) {
   const names = [
@@ -387,6 +396,85 @@ test('anchor recovery fails closed when windows are ambiguous or too short', () 
     findArticleHoverNormalizedMatch('Hello world this is a short edited quote here.', 'Hello world this is a SHORT edited quote here.'),
     null,
   );
+});
+
+test('prepareArticlePassageQuery strips leading crumbs and a mid-word tail', () => {
+  assert.equal(prepareArticlePassageQuery(IRAN_STORED), IRAN_CLEANED);
+  assert.equal(
+    prepareArticlePassageQuery(`“${IRAN_STORED}”`),
+    IRAN_CLEANED,
+  );
+  assert.equal(
+    prepareArticlePassageQuery('• Central Command announced more than twenty characters here.'),
+    'Central Command announced more than twenty characters here.',
+  );
+  assert.equal(
+    prepareArticlePassageQuery('- Central Command announced more than twenty characters here.'),
+    'Central Command announced more than twenty characters here.',
+  );
+  assert.equal(prepareArticlePassageQuery(PASSAGE), PASSAGE);
+  assert.equal(IRAN_CLEANED.includes('commerci'), false);
+  assert.match(IRAN_CLEANED, /62$/);
+});
+
+test('Iran-style truncated commerci recovers a unique cleaned prefix', () => {
+  const recovered = findArticleHoverNormalizedMatch(IRAN_LIVE, IRAN_STORED);
+  assert.ok(recovered);
+  assert.equal(IRAN_LIVE.slice(recovered.start, recovered.end), IRAN_CLEANED);
+  assert.equal(IRAN_LIVE.slice(recovered.start, recovered.end).includes('commerci'), false);
+  assert.ok(IRAN_LIVE.slice(recovered.start, recovered.end).length >= ARTICLE_HOVER_PREFIX_MIN_CHARS);
+
+  const liveWithoutUsPeriod = IRAN_LIVE.replace('U.S. Central Command', 'US Central Command');
+  assert.equal(findUniqueNormalizedMatch(liveWithoutUsPeriod, IRAN_STORED), null);
+  const recoveredWithoutPeriod = findArticleHoverNormalizedMatch(liveWithoutUsPeriod, IRAN_STORED);
+  assert.ok(recoveredWithoutPeriod);
+  assert.equal(liveWithoutUsPeriod.slice(recoveredWithoutPeriod.start, recoveredWithoutPeriod.end), IRAN_CLEANED);
+});
+
+test('longest unique prefix walks back by words and fails closed when ambiguous', () => {
+  assert.equal(findUniqueNormalizedMatch(PREFIX_LIVE, PREFIX_STORED), null);
+  assert.equal(findUniqueNormalizedMatch(PREFIX_LIVE, prepareArticlePassageQuery(PREFIX_STORED)), null);
+  const recovered = findArticleHoverNormalizedMatch(PREFIX_LIVE, PREFIX_STORED);
+  assert.ok(recovered);
+  assert.equal(PREFIX_LIVE.slice(recovered.start, recovered.end), PREFIX_MATCH);
+  assert.deepEqual(
+    findLongestUniquePrefixMatch(PREFIX_LIVE, prepareArticlePassageQuery(PREFIX_STORED)),
+    recovered,
+  );
+  assert.equal(
+    findArticleHoverNormalizedMatch(`${PREFIX_LIVE} later ${PREFIX_LIVE}`, PREFIX_STORED),
+    null,
+  );
+  assert.equal(
+    findLongestUniquePrefixMatch('short haystack', 'also short leftover.'),
+    null,
+  );
+});
+
+test('page injector recovers Iran-style truncated text and scrolls it into view', () => {
+  withPage(({ documentElement, scrollCalls }) => {
+    const result = applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: IRAN_STORED,
+      strength: 'soft',
+    });
+    assert.equal(result.ok, true);
+    assert.ok(documentElement.querySelector('#annotated-article-hover-root'));
+    assert.match(documentElement.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /rgba\(255, 214, 74/);
+    assert.ok(scrollCalls.some((call) => (
+      call.options.block === 'center' &&
+      call.options.inline === 'nearest' &&
+      call.options.behavior === 'smooth'
+    )));
+  }, { bodyText: IRAN_LIVE });
+});
+
+test('article hover matching has no audio-commentary skip path', () => {
+  assert.doesNotMatch(applyArticleHoverHighlightOnPage.toString(), /audio/);
+  assert.doesNotMatch(findArticleHoverNormalizedMatch.toString(), /audio/);
+  assert.doesNotMatch(prepareArticlePassageQuery.toString(), /audio/);
+  const recovered = findArticleHoverNormalizedMatch(IRAN_LIVE, IRAN_STORED);
+  assert.ok(recovered);
 });
 
 test('page injector recovers an edited-middle passage and scrolls it into view', () => {

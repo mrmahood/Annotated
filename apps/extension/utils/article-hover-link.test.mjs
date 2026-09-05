@@ -90,6 +90,9 @@ test('matches only the annotation article URL and fails closed otherwise', () =>
   assert.equal(annotationMatchesConnectedArticle(articleAnnotation({ kind: 'youtube' }), ARTICLE), false);
   assert.equal(annotationMatchesConnectedArticle(articleAnnotation({ kind: 'audio' }), ARTICLE), false);
   assert.equal(annotationMatchesConnectedArticle(articleAnnotation({
+    audio: { storagePath: 'owners/example/commentary.webm', durationMs: 4000 },
+  }), ARTICLE), true);
+  assert.equal(annotationMatchesConnectedArticle(articleAnnotation({
     source: { type: 'youtube', canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
   }), ARTICLE), false);
   assert.equal(annotationMatchesConnectedArticle(articleAnnotation({ selectedText: '   ' }), ARTICLE), false);

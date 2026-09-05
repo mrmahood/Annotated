@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { getYouTubeTimestampUrl } from '@annotated/shared/youtube';
 import {
+  prepareArticlePassageQuery,
+  stripWrappingQuotes,
   takeLeadingNormalizedWindow,
   takeTrailingNormalizedWindow,
 } from './article-hover-page.ts';
@@ -10,13 +12,14 @@ import {
   buildArticleTextFragmentUrl,
   encodeTextFragmentValue,
   getSourceOpenUrl,
-  stripWrappingQuotes,
 } from './source-open-url.ts';
 
 const ARTICLE = 'https://abc7.com/post/federal-judge-blocks-deportation-west-chester-man-detained-by-ice-during-immigration-check-in/19681050/';
 const YOUTUBE = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 const AUDIO = 'https://example.com/podcast/episode-42';
 const SHORT_PASSAGE = 'The unique passage on this page.';
+const IRAN_STORED = '. Central Command announced that as of Friday, the ongoing U.S. military blockade of Iranian ports has redirected 62 commerci';
+const IRAN_CLEANED = 'Central Command announced that as of Friday, the ongoing U.S. military blockade of Iranian ports has redirected 62';
 const ABC7_PREFIX = 'Because they did not allow him to do a credible fear interview with respect to Guyana, the country that they said they were going to send him to and he was under supervision, it was depriving him of his right to due process, so that is the basis of our habeas corpus, meaning you don\'t have a right to hold him without due process,';
 const ABC7_SUFFIX = 'He cannot be removed from the detention center to any country at any time until we are fully finished with these submissions.';
 const ABC7_STORED = `${ABC7_PREFIX} said Alex's attorney Jane Oak. ${ABC7_SUFFIX}`;
@@ -37,6 +40,25 @@ test('article Open source uses a start/end text fragment for long edited quotes'
   );
 });
 
+test('Iran-style truncated Open source fragment uses the cleaned prefix, not commerci', () => {
+  assert.equal(prepareArticlePassageQuery(IRAN_STORED), IRAN_CLEANED);
+  const href = buildArticleTextFragmentUrl('https://example.com/live-news', IRAN_STORED);
+  assert.equal(
+    href,
+    `https://example.com/live-news#:~:text=${encodeTextFragmentValue(IRAN_CLEANED)}`,
+  );
+  assert.equal(href.includes('commerci'), false);
+  assert.match(href, /62$/);
+  assert.equal(
+    getSourceOpenUrl({
+      kind: 'article',
+      canonicalUrl: 'https://example.com/live-news',
+      selectedText: IRAN_STORED,
+    }),
+    href,
+  );
+});
+
 test('article Open source uses a single textStart for a short unique passage', () => {
   const href = buildArticleTextFragmentUrl('https://example.com/story', SHORT_PASSAGE);
   assert.equal(
@@ -47,6 +69,7 @@ test('article Open source uses a single textStart for a short unique passage', (
 
 test('article Open source falls back to the bare URL when the quote is too short or unsafe', () => {
   assert.equal(buildArticleTextFragmentUrl(ARTICLE, 'too short'), ARTICLE);
+  assert.equal(buildArticleTextFragmentUrl(ARTICLE, '. hi commerci'), ARTICLE);
   assert.equal(buildArticleTextFragmentUrl(ARTICLE, '   '), ARTICLE);
   assert.equal(buildArticleTextFragmentUrl(ARTICLE, '“”'), ARTICLE);
   assert.equal(buildArticleTextFragmentUrl('javascript:alert(1)', SHORT_PASSAGE), 'javascript:alert(1)');
