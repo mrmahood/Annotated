@@ -49,5 +49,6 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.doesNotMatch(styles, /annotation-media-raw|signedUrl/);
 
   assert.match(app, /Uploaded and queued\. Processing is in progress\./);
+  assert.match(app, /youtubeHover=\{youtubeHover\}/);
   assert.doesNotMatch(app, /until the media worker ships/);
 });
