@@ -47,6 +47,12 @@ import {
   mergeCommentPages,
 } from '../../utils/social-helpers';
 import {
+  articleHoverNestedChipHandlers,
+  articleHoverRegionHandlers,
+  cancelArticleHoverLink,
+  type ArticleHoverConnection,
+} from '../../utils/article-hover-link';
+import {
   cancelYouTubeHoverLink,
   enterYouTubeHoverLink,
   youtubeHoverNestedChipHandlers,
@@ -218,6 +224,16 @@ function youtubeClipHoverTarget(annotation: PublicAnnotation) {
     : null;
 }
 
+function articlePassageHoverTarget(annotation: PublicAnnotation) {
+  return annotation.kind === 'article'
+    ? {
+        selectedText: annotation.selectedText,
+        canonicalUrl: annotation.source.canonicalUrl,
+        normalizedUrl: annotation.source.normalizedUrl,
+      }
+    : null;
+}
+
 function ExcerptTranscript({
   transcript,
   youtubeHover = null,
@@ -281,12 +297,13 @@ function sourceChipLabel(annotation: PublicAnnotation): string {
   return 'Text';
 }
 
-function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null }: {
+function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null }: {
   annotation: PublicAnnotation;
   navigation: NavigationCallbacks;
   supabase: SupabaseClient;
   getPublicUrl: (path: string) => string | null;
   youtubeHover?: YouTubeHoverConnection | null;
+  articleHover?: ArticleHoverConnection | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hosted, setHosted] = useState<HostedExcerpt | null>(
@@ -353,11 +370,16 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
     </span>
   );
   const clipTarget = youtubeClipHoverTarget(annotation);
-  const cardHover = youtubeHoverRegionHandlers(
-    youtubeHover,
-    clipTarget ? { ...clipTarget, strength: 'soft' } : null,
-  );
-  const chipHover = youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
+  const articleTarget = articlePassageHoverTarget(annotation);
+  const cardHover = articleTarget
+    ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' })
+    : youtubeHoverRegionHandlers(
+      youtubeHover,
+      clipTarget ? { ...clipTarget, strength: 'soft' } : null,
+    );
+  const chipHover = articleTarget
+    ? articleHoverNestedChipHandlers(articleHover, articleTarget)
+    : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
 
   return (
     <article className="social-card">
@@ -453,6 +475,7 @@ export function AnnotationCollection({
   emptyMessage,
   compactHeading,
   youtubeHover = null,
+  articleHover = null,
 }: {
   supabase: SupabaseClient;
   cache: SessionSocialCache;
@@ -465,6 +488,7 @@ export function AnnotationCollection({
   emptyMessage: string;
   compactHeading?: string;
   youtubeHover?: YouTubeHoverConnection | null;
+  articleHover?: ArticleHoverConnection | null;
 }) {
   const [page, setPage] = useState<AnnotationPage | null>(() => cache.get(cacheKey) ?? null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(page ? 'ready' : 'loading');
@@ -472,7 +496,10 @@ export function AnnotationCollection({
   const [error, setError] = useState<string | null>(null);
   const revisions = useRef(new RequestRevision());
 
-  useEffect(() => () => { cancelYouTubeHoverLink(); }, []);
+  useEffect(() => () => {
+    cancelYouTubeHoverLink();
+    cancelArticleHoverLink();
+  }, []);
 
   const loadInitial = useCallback(async (force = false) => {
     const revision = revisions.current.begin();
@@ -540,7 +567,7 @@ export function AnnotationCollection({
     <section className="social-list-section" aria-label={compactHeading ?? 'Annotations'}>
       {compactHeading && <div className="section-heading"><h2>{compactHeading}</h2><span>{page.total ?? page.annotations.length}</span></div>}
       <div className="social-list">
-        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} />)}
+        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} />)}
       </div>
       {page.hasMore && (
         <button className="button button-secondary load-more" type="button" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -770,6 +797,7 @@ export function AnnotationDetailView({
   connectedAudioNormalizedUrl = null,
   onPlayConnectedAudioClip,
   youtubeHover = null,
+  articleHover = null,
 }: {
   supabase: SupabaseClient;
   annotationId: string;
@@ -782,6 +810,7 @@ export function AnnotationDetailView({
   connectedAudioNormalizedUrl?: string | null;
   onPlayConnectedAudioClip?: (annotation: Extract<PublicAnnotation, { kind: 'audio' }>) => Promise<void>;
   youtubeHover?: YouTubeHoverConnection | null;
+  articleHover?: ArticleHoverConnection | null;
 } & AuthProps) {
   const [annotation, setAnnotation] = useState<PublicAnnotation | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
@@ -829,11 +858,16 @@ export function AnnotationDetailView({
   const canPlayConnectedAudioClip = !hostedReady && annotation.kind === 'audio' &&
     connectedAudioNormalizedUrl === annotation.source.normalizedUrl;
   const clipTarget = youtubeClipHoverTarget(annotation);
-  const commentaryHover = youtubeHoverRegionHandlers(
-    youtubeHover,
-    clipTarget ? { ...clipTarget, strength: 'soft' } : null,
-  );
-  const sourceHover = youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
+  const articleTarget = articlePassageHoverTarget(annotation);
+  const commentaryHover = articleTarget
+    ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' })
+    : youtubeHoverRegionHandlers(
+      youtubeHover,
+      clipTarget ? { ...clipTarget, strength: 'soft' } : null,
+    );
+  const sourceHover = articleTarget
+    ? articleHoverNestedChipHandlers(articleHover, articleTarget)
+    : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
   const playConnected = async () => {
     if (annotation.kind === 'article' || hostedReady) return;
     if (annotation.kind === 'youtube' && !onPlayConnectedClip) return;
@@ -855,8 +889,8 @@ export function AnnotationDetailView({
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
       {annotation.kind === 'article' ? <>
-        <section className="detail-source"><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">View original source ↗</a></section>
-        <section className="detail-passage"><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
+        <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={annotation.source.canonicalUrl} target="_blank" rel="noopener noreferrer">View original source ↗</a></section>
+        <section className="detail-passage" {...sourceHover}><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote></section>
       </> : annotation.kind === 'youtube' ? <>
         <section className="detail-source" {...sourceHover}><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={youtubeUrl!} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
@@ -889,6 +923,7 @@ export function ProfileView({
   cache,
   getPublicUrl,
   youtubeHover = null,
+  articleHover = null,
 }: {
   supabase: SupabaseClient;
   profileId: string;
@@ -896,6 +931,7 @@ export function ProfileView({
   cache: SessionSocialCache;
   getPublicUrl: (path: string) => string | null;
   youtubeHover?: YouTubeHoverConnection | null;
+  articleHover?: ArticleHoverConnection | null;
 } & AuthProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
@@ -921,7 +957,7 @@ export function ProfileView({
         <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} onCountChange={(followerCount) => setProfile((current) => current ? { ...current, followerCount } : current)} />
         {publicUrl && <a className="secondary-link" href={publicUrl} target="_blank" rel="noopener noreferrer">Open public profile ↗</a>}
       </header>
-      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
+      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
     </div>
   );
 }
