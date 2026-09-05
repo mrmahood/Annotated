@@ -203,6 +203,7 @@ function withPage(callback, overrides = {}) {
       display: element?.hiddenRects ? 'none' : 'block',
       visibility: element?.hiddenRects ? 'hidden' : 'visible',
       opacity: element?.hiddenRects ? '0' : '1',
+      position: element?.cssPosition ?? 'static',
     }),
     document: {
       documentElement,
@@ -302,7 +303,7 @@ test('page injector paints an idempotent ring, dim, range, and scrolls the playe
 });
 
 test('hidden native audio still highlights visible player chrome', () => {
-  withPage(({ documentElement, player }) => {
+  withPage(({ documentElement, player, audio }) => {
     assert.equal(applyAudioHoverHighlightOnPage({
       expectedNormalizedUrl: EPISODE,
       strength: 'soft',
@@ -311,7 +312,60 @@ test('hidden native audio still highlights visible player chrome', () => {
     }).ok, true);
     assert.ok(documentElement.querySelector('#annotated-audio-hover-root'));
     assert.equal(player.scrolls.length, 1);
+    assert.equal(audio.scrolls.length, 0);
   }, { hiddenAudio: true });
+});
+
+test('page injector scrolls laid-out chrome even when the player starts off-viewport', () => {
+  withPage(({ documentElement, player, audio, bar }) => {
+    const belowFold = { left: 40, top: 1800, right: 680, bottom: 1864, width: 640, height: 64 };
+    player.rect = belowFold;
+    bar.rect = { left: 80, top: 1840, right: 640, bottom: 1848, width: 560, height: 8 };
+    const decoy = new globalThis.HTMLElement('div', 'listen-promo');
+    decoy.className = 'listen';
+    decoy.setAttribute('aria-label', 'Listen to this article');
+    decoy.rect = { left: 40, top: 80, right: 280, bottom: 120, width: 240, height: 40 };
+    const decoyPlay = new globalThis.HTMLElement('button');
+    decoyPlay.setAttribute('aria-label', 'Play');
+    decoy.appendChild(decoyPlay);
+    documentElement.appendChild(decoy);
+
+    assert.equal(applyAudioHoverHighlightOnPage({
+      expectedNormalizedUrl: EPISODE,
+      strength: 'soft',
+      startMs: 1_000,
+      endMs: 4_000,
+    }).ok, true);
+    const root = documentElement.querySelector('#annotated-audio-hover-root');
+    assert.ok(root);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /top:1800px/);
+    assert.equal(player.scrolls.length, 1);
+    assert.deepEqual(player.scrolls[0], { block: 'center', inline: 'nearest', behavior: 'smooth' });
+    assert.equal(audio.scrolls.length, 0);
+    assert.equal(decoy.scrolls.length, 0);
+    const ring = root.querySelector('[data-annotated-hover-ring="1"]');
+    assert.equal(ring.scrolls.length, 1);
+  });
+});
+
+test('sticky player chrome scrolls an in-flow ancestor instead of no-opping in view', () => {
+  withPage(({ documentElement, player }) => {
+    player.cssPosition = 'sticky';
+    player.rect = { left: 40, top: 640, right: 680, bottom: 704, width: 640, height: 64 };
+    assert.equal(applyAudioHoverHighlightOnPage({
+      expectedNormalizedUrl: EPISODE,
+      strength: 'strong',
+      startMs: 1_000,
+      endMs: 4_000,
+    }).ok, true);
+    assert.equal(player.scrolls.length, 0);
+    assert.ok(documentElement.scrolls.length >= 1);
+    assert.deepEqual(documentElement.scrolls[0], {
+      block: 'center',
+      inline: 'nearest',
+      behavior: 'smooth',
+    });
+  });
 });
 
 test('page injector fails closed off-source and when no player is present', () => {
@@ -355,6 +409,12 @@ test('soft and strong hover never seek or play the host player', () => {
     assert.equal(audio.currentTime, 12);
     assert.equal(audio.paused, true);
   });
+});
+
+test('scroll is not gated on viewport intersection of the painted player', () => {
+  assert.doesNotMatch(applyAudioHoverHighlightOnPage.toString(), /visibleRect\s*\(\s*player/);
+  assert.match(applyAudioHoverHighlightOnPage.toString(), /scrollIntoView/);
+  assert.match(applyAudioHoverHighlightOnPage.toString(), /isLaidOut/);
 });
 
 test('serialized hover functions stay closure-free and do not throw', () => {
