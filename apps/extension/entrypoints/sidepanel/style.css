@@ -115,7 +115,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .open-source-link:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
 .article-passage-miss { margin: 6px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
 .article-passage-miss > span { display: block; margin-top: 2px; }
-.article-pending-connect-hint, .audio-pending-connect-hint, .page-video-pending-connect-hint { margin: 6px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
+.article-pending-connect-hint, .audio-pending-connect-hint, .page-video-pending-connect-hint, .tiktok-pending-connect-hint { margin: 6px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
 .card-hosted-media, .card-transcript-peek { display: grid; gap: 6px; }
 .card-hosted-media video { display: block; width: 100%; height: auto; max-height: 160px; background: #000; }
 .card-hosted-media audio, .nested-source audio { width: 100%; height: 32px; color-scheme: dark; }

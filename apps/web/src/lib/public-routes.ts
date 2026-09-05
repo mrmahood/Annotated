@@ -90,6 +90,8 @@ export function getPublicAnnotationMetadata(annotation: PublicAnnotation): Metad
     (annotation.kind === "media_removed" && annotation.mediaType === "video");
   const description = isVideoKind && annotation.source.type === "youtube"
     ? `${annotation.annotator.name} annotated a YouTube clip from ${formatMediaTime(annotation.startMs)} to ${formatMediaTime(annotation.endMs)}.`
+    : isVideoKind && annotation.source.type === "tiktok"
+      ? `${annotation.annotator.name} annotated a TikTok clip from ${formatMediaTime(annotation.startMs)} to ${formatMediaTime(annotation.endMs)}.`
     : isVideoKind && annotation.source.type === "article"
       ? `${annotation.annotator.name} annotated a video clip from ${annotation.source.hostname}.`
     : annotation.kind === "audio_legacy" ||

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getHistoricalStoredTargetRangeError } from '@annotated/shared/media-time';
-import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
+import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from '@annotated/shared/youtube';
+import { getTikTokVideoIdentity, isTikTokVideoUrl } from '@annotated/shared/tiktok';
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
   parseAnnotationAudio,
@@ -59,6 +60,14 @@ export type PublicAnnotation = PublicAnnotationBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationBase['source'] & { type: 'youtube'; videoId: string };
+      hosted: HostedExcerpt | null;
+    }
+  | {
+      kind: 'tiktok';
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationBase['source'] & { type: 'tiktok'; videoId: string };
       hosted: HostedExcerpt | null;
     }
   | {
@@ -235,11 +244,35 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
   }
 
   if (
+    annotationType === 'video_clip' && sourceType === 'tiktok' &&
+    targetType === 'time_range' && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getTikTokVideoIdentity(canonicalUrl);
+      if (identity.normalizedUrl !== storedNormalizedUrl) return null;
+      return {
+        ...common,
+        kind: 'tiktok',
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: 'tiktok', videoId: identity.videoId },
+        hosted: null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  if (
     annotationType === 'video_clip' && sourceType === 'article' &&
     targetType === 'time_range' && Number.isSafeInteger(startMs) &&
     Number.isSafeInteger(endMs) &&
     getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
+    if (isYouTubeVideoUrl(canonicalUrl) || isTikTokVideoUrl(canonicalUrl)) return null;
     return {
       ...common,
       kind: 'video',
@@ -359,7 +392,7 @@ export async function queryAnnotations(
 
 async function loadHostedExcerpt(
   supabase: SupabaseClient,
-  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' | 'video' }>,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' | 'audio' | 'video' }>,
 ): Promise<HostedExcerpt | null> {
   try {
     const { data: mediaState, error: mediaError } = await supabase
@@ -392,7 +425,7 @@ async function loadHostedExcerpt(
 
 export async function queryPublicHostedExcerpt(
   supabase: SupabaseClient,
-  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' | 'video' }>,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' | 'audio' | 'video' }>,
 ): Promise<HostedExcerpt | null> {
   return loadHostedExcerpt(supabase, annotation);
 }
@@ -414,7 +447,7 @@ export async function queryAnnotation(
   if (!annotation) throw new Error('The annotation response was malformed.');
   const counts = await queryCommentCounts(supabase, [annotation.id]);
   annotation.commentCount = counts.get(annotation.id) ?? 0;
-  if (annotation.kind === 'youtube' || annotation.kind === 'audio' || annotation.kind === 'video') {
+  if (annotation.kind === 'youtube' || annotation.kind === 'tiktok' || annotation.kind === 'audio' || annotation.kind === 'video') {
     annotation.hosted = await loadHostedExcerpt(supabase, annotation);
   }
   return annotation;

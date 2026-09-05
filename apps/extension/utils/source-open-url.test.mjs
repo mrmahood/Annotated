@@ -152,6 +152,14 @@ test('YouTube Open source keeps the existing timestamp URL; audio and page-video
     getSourceOpenUrl({ kind: 'video', canonicalUrl: ENES_URL, startMs: 8_000 }),
     ENES_URL,
   );
+  assert.equal(
+    getSourceOpenUrl({
+      kind: 'tiktok',
+      canonicalUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+      startMs: 8_000,
+    }),
+    'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+  );
 });
 
 test('Open source helper stays URL-only and adds no persistent content scripts', async () => {

@@ -65,7 +65,7 @@ export type PageVideoHoverChrome = {
 function tryNormalizePageVideoUrl(value: string | null | undefined): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   try {
-    if (classifySourceUrl(value) === 'youtube') return null;
+    if (classifySourceUrl(value) === 'youtube' || classifySourceUrl(value) === 'tiktok') return null;
     return normalizePageVideoHoverPageUrl(value);
   } catch {
     return null;
@@ -109,7 +109,7 @@ export function pageVideoHoverConnectionForTab(
   tabId: number | null | undefined,
   tabUrl: string | null | undefined,
 ): PageVideoHoverConnection | null {
-  if (classification === 'YouTube') return null;
+  if (classification === 'YouTube' || classification === 'TikTok') return null;
   if (classification !== 'Web page' && classification !== 'Podcast / web audio') {
     return null;
   }

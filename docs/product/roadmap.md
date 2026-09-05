@@ -11,9 +11,12 @@ hover is implemented on `main`. Sprint 4 (audio/podcast) hover is
 implemented pending owner Chrome acceptance. Sprint 5 (generic
 page-video hover; not YouTube `/watch`) is implemented pending owner
 Chrome acceptance on a readable HTML5 webpage-video fixture. Generic
-webpage-video publication (`video_clip` + article source identity) is
-implemented in this increment; Brightcove / inaccessible cross-origin
-player adapters remain a separate increment. D1 and D2 completed their
+webpage-video publication (`video_clip` + article source identity)
+remains available but is a niche HTML5 path; owner-authorized Sprint 6
+locks hosted capture, Feed cards, and hover to **TikTok watch URLs**
+(`source_type = tiktok`, not article). Brightcove / inaccessible
+cross-origin news-site embeds remain a later increment. X OAuth is out
+of this sprint. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -583,11 +586,14 @@ Production launch and hardening remain separately authorized.
   hover highlights (YouTube `/watch`, article/text, audio/podcast, and
   generic page-video) live on this roadmap. Sprint 3 is implemented on
   `main`. Sprint 4 and Sprint 5 are implemented pending owner Chrome
+  acceptance. Sprint 6 (TikTok hosted capture/publish + Feed Video
+  cards + hover) is implemented pending owner Chrome and Staging
   acceptance. Visual grammar reuses Sprint 2 (outline + light page dim,
   ~120 ms leave debounce). Sprint 2 remains YouTube `/watch` only;
-  generic page-video is Sprint 5 and does not replace that path. Those
-  later slices still fail closed and must not chase brittle host-specific
-  piercing.
+  generic page-video is Sprint 5 and does not replace that path.
+  TikTok uses a first-class YouTube-parallel identity (`tiktok`), not
+  the article/webpage-video RPC. Those later slices still fail closed
+  and must not chase brittle host-specific piercing.
   - **Sprint 1 (done).** Dark-first tokens, the Create-mode segmented
     switch, and nested annotation cards (extension Feed + public web).
     Merged as PR #56.
@@ -641,6 +647,30 @@ Production launch and hardening remain separately authorized.
     that player is already same-origin readable). Same permissions; no
     persistent content scripts; no host-specific selectors. Brightcove
     / cross-origin adapters remain separate.
+  - **Sprint 6 — TikTok hosted capture, publish, Feed cards, and hover**
+    (extension + web + additive Staging RPC; implemented; owner Chrome
+    and Staging acceptance still required). After concluding readable
+    HTML5 webpage-video is too rare for real demos, and after confirming
+    TikTok is the post-YouTube watch leader with serious news inventory,
+    Matt authorized locking Sprint 6 to TikTok (2026-09-05). Mirror the
+    YouTube path: stable watch URL
+    `https://www.tiktok.com/@handle/video/<id>` (mobile/share variants
+    normalize to that); Create → Video on a connected TikTok watch tab;
+    1–90 s tabCapture through the existing hosted pipeline;
+    `begin_hosted_tiktok_annotation` → draft `video_clip` + media
+    `capture_pending` → upload → Processing → ready/published;
+    Feed `kind: tiktok` distinct from YouTube and from webpage
+    `video_clip` + article. Hover when the connected tab is that watch
+    URL: scroll + outline/dim player chrome; soft hover must not
+    re-seek or hijack playback; ~120 ms leave debounce; Open source
+    pending like audio/page-video. Fail closed on For You, live,
+    photos, `vm`/`vt`/`t` short links, login walls, DRM, and when
+    identity or player chrome cannot be confirmed. Desktop
+    `tiktok.com` watch URLs only for v1. Webpage HTML5 publish remains
+    the niche article-backed path; news-site opaque embeds stay later.
+    No X OAuth and no Brightcove/Fox adapter in this increment.
+    Staging migration: `20260905221500_begin_hosted_tiktok_annotation`.
+    Do not touch Production. Do not unpause Cloud Run.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.
@@ -726,8 +756,9 @@ extension live-X Staging acceptance, PR CI `33578556343`, squash merge
 provider rollback then passed. X is currently disabled on both user surfaces and
 in Supabase Staging. Cross-origin player adapters, later implementation,
 schedule enablement, Production access, and deployment remain separately
-authorized. Generic webpage-video publication is implemented on this
-branch pending owner Staging fixture acceptance.
+authorized. Generic webpage-video publication remains the niche
+HTML5/article-backed path. Sprint 6 TikTok hosted capture/publish is
+the owner-authorized demo path for hosted watch pages after YouTube.
 Phase E has passed its Local, required CI, and bounded Staging gates. Production
 rollout still requires its own explicit authorization. Phase F F0–F5 are merged
 on `main`; F6 owner-authorized Staging acceptance is recorded in the Phase F

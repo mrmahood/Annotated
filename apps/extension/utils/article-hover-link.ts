@@ -67,7 +67,7 @@ export type ArticleHoverChrome = {
 function tryNormalizeArticleUrl(value: string | null | undefined): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   try {
-    if (classifySourceUrl(value) === 'youtube') return null;
+    if (classifySourceUrl(value) === 'youtube' || classifySourceUrl(value) === 'tiktok') return null;
     return normalizeSourceUrl(value);
   } catch {
     return null;
@@ -112,7 +112,7 @@ export function articleHoverConnectionForTab(
   tabId: number | null | undefined,
   tabUrl: string | null | undefined,
 ): ArticleHoverConnection | null {
-  if (classification === 'YouTube') return null;
+  if (classification === 'YouTube' || classification === 'TikTok') return null;
   if (classification !== 'Web page' && classification !== 'Podcast / web audio') {
     return null;
   }

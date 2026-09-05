@@ -51,7 +51,9 @@ export function normalizePageVideoHoverPageUrl(value: string): string | null {
     if (
       ((host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com') &&
         url.pathname === '/watch') ||
-      host === 'youtu.be'
+      host === 'youtu.be' ||
+      ((host === 'tiktok.com' || host === 'www.tiktok.com' || host === 'm.tiktok.com') &&
+        /\/@[^/]+\/video\/\d+/.test(url.pathname))
     ) {
       return null;
     }
@@ -145,7 +147,9 @@ export function applyPageVideoHoverHighlightOnPage(
         if (
           ((host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com') &&
             url.pathname === '/watch') ||
-          host === 'youtu.be'
+          host === 'youtu.be' ||
+          ((host === 'tiktok.com' || host === 'www.tiktok.com' || host === 'm.tiktok.com') &&
+            /\/@[^/]+\/video\/\d+/.test(url.pathname))
         ) {
           return null;
         }

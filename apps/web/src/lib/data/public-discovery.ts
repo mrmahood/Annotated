@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
 import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from "@annotated/shared/youtube";
+import { getTikTokVideoIdentity, isTikTokVideoUrl } from "@annotated/shared/tiktok";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
 import {
@@ -55,6 +56,13 @@ export type PublicAnnotationCardData = PublicAnnotationCardBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationCardBase["source"] & { type: "youtube"; videoId: string };
+    }
+  | {
+      kind: "tiktok";
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationCardBase["source"] & { type: "tiktok"; videoId: string };
     }
   | {
       kind: "video";
@@ -188,13 +196,35 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
   }
 
   if (
+    annotationType === "video_clip" && sourceType === "tiktok" &&
+    targetType === "time_range" && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getTikTokVideoIdentity(canonicalUrl.href);
+      if (identity.normalizedUrl !== getOptionalText(source.normalized_url)) return null;
+      return {
+        ...common,
+        kind: "tiktok",
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: "tiktok", videoId: identity.videoId },
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  if (
     annotationType === "video_clip" && sourceType === "article" &&
     targetType === "time_range" && Number.isSafeInteger(startMs) &&
     Number.isSafeInteger(endMs) &&
     getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
     try {
-      if (isYouTubeVideoUrl(canonicalUrl.href)) return null;
+      if (isYouTubeVideoUrl(canonicalUrl.href) || isTikTokVideoUrl(canonicalUrl.href)) return null;
       const normalizedUrl = normalizeArticleUrl(canonicalUrl.href);
       if (normalizedUrl !== getOptionalText(source.normalized_url)) return null;
       return {
