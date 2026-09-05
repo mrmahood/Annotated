@@ -5,7 +5,7 @@ import { buildAnnotationSelect, mapPublicAnnotation } from './social-data.ts';
 const ANNOTATION_ID = '0ce69bb9-1264-4e45-9793-08a243127739';
 const PROFILE_ID = '3e3882b6-1111-4111-8111-111111111111';
 const NYT_URL =
-  'https://www.nytimes.com/2026/09/05/us/politics/judge-orders-trump-officials-to-divulge-names-of-those-who-set-up-1-8-billion-fund.html';
+  'https://www.nytimes.com/2026/09/04/us/politics/trump-administration-fund-compensation-jan-6.html';
 const NYT_SLUG =
   'judge-orders-trump-officials-to-divulge-names-of-those-who-set-up-1-8-billion-fund-0ce69bb9';
 

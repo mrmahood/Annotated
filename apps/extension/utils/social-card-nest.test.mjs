@@ -74,3 +74,23 @@ test('in-feed expand loads hosted media only through the public excerpt helper',
   assert.match(card, /hostedReady && \(/);
   assert.doesNotMatch(card, /\.from\(['"]annotation_(?:media|transcripts)['"]\)/);
 });
+
+test('Feed remount shows cache then revalidates so a newly published audio card can appear', async () => {
+  const source = await readFile(
+    new URL('../entrypoints/sidepanel/social-components.tsx', import.meta.url),
+    'utf8',
+  );
+  const collection = source.slice(
+    source.indexOf('export function AnnotationCollection'),
+    source.indexOf('function FollowControl'),
+  );
+  const loader = collection.slice(
+    collection.indexOf('const loadInitial'),
+    collection.indexOf('}, [cache, cacheKey, profileId, sourceUrl, supabase]);'),
+  );
+  assert.match(loader, /const cached = !force \? cache\.get\(cacheKey\) : undefined/);
+  assert.match(loader, /if \(cached\) \{/);
+  assert.match(loader, /setPage\(cached\)/);
+  assert.match(loader, /queryAnnotations\(supabase, \{ sourceUrl, profileId \}\)/);
+  assert.doesNotMatch(loader, /setStatus\('ready'\);\s*return;/);
+});

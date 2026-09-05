@@ -669,10 +669,10 @@ export function AnnotationCollection({
     if (cached) {
       setPage(cached);
       setStatus('ready');
-      return;
+    } else {
+      setStatus('loading');
+      setError(null);
     }
-    setStatus('loading');
-    setError(null);
     try {
       const result = await queryAnnotations(supabase, { sourceUrl, profileId });
       if (!revisions.current.isCurrent(revision)) return;
@@ -681,6 +681,7 @@ export function AnnotationCollection({
       setStatus('ready');
     } catch {
       if (!revisions.current.isCurrent(revision)) return;
+      if (cached) return;
       setStatus('error');
       setError('Annotations could not be loaded. Check your connection and try again.');
     }
