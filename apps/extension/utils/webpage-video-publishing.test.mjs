@@ -25,8 +25,12 @@ function fakeClient() {
     calls,
     client: {
       auth: {
-        async getSession() { return { data: { session: { user: { id: USER_ID } } }, error: null }; },
-        async getUser() { return { data: { user: { id: USER_ID } } }, error: null }; },
+        async getSession() {
+          return { data: { session: { user: { id: USER_ID } } }, error: null };
+        },
+        async getUser() {
+          return { data: { user: { id: USER_ID } }, error: null };
+        },
       },
       async rpc(name, args) {
         calls.push([name, args]);
