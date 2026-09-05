@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import { ACTIVE_TAB_CONTEXT_KEY } from './active-tab-context.ts';
+import { cancelArticleHoverLink } from './article-hover-link.ts';
 import { applyArticleHoverHighlightOnPage } from './article-hover-page.ts';
 import {
   ARTICLE_HOVER_LAST_APPLY_KEY,
@@ -20,6 +21,10 @@ import {
   readArticleHoverPending,
   writeArticleHoverPending,
 } from './article-hover-pending.ts';
+
+afterEach(() => {
+  cancelArticleHoverLink();
+});
 
 const ARTICLE = 'https://example.com/story';
 const ARTICLE_TRACKED = 'https://Example.com/story/?utm_source=feed#:~:text=quote';
@@ -245,7 +250,7 @@ test('action-tab apply clears pending after an honest unmatched passage', async 
   assert.equal(chrome.store[ARTICLE_HOVER_LAST_APPLY_KEY]?.selectedText, SELECTED);
 });
 
-test('pending apply starts the shared leave debounce after a successful match', async () => {
+test('pending apply does not clear amber in the 120 ms hover leave window', async () => {
   const drain = async () => {
     for (let index = 0; index < 8; index += 1) await Promise.resolve();
   };
@@ -258,7 +263,8 @@ test('pending apply starts the shared leave debounce after a successful match', 
   assert.equal(chrome.calls.length, 1);
   await new Promise((resolve) => setTimeout(resolve, 150));
   await drain();
-  assert.ok(chrome.calls.some((call) => call.func?.name === 'clearArticleHoverHighlightOnPage'));
+  assert.equal(chrome.calls.length, 1);
+  assert.equal(chrome.calls[0].func, applyArticleHoverHighlightOnPage);
 });
 
 test('connection apply uses the connected-tab helper and clears on match', async () => {
@@ -422,7 +428,11 @@ test('pending highlight wiring applies on tab complete and matching sidepanel co
   assert.match(app, /articleHoverConnectionForTab/);
   assert.match(app, /Podcast \/ web audio/);
   assert.match(app, /leaveArticleHoverLink/);
+  assert.match(app, /window.addEventListener\('blur'/);
+  assert.match(app, /clearArticleHoverOnConnectedTab\(previous\)/);
   assert.match(app, /lookupExistingSourceType/);
+  assert.match(pending, /scheduleArticleHoverOpenIdleClear/);
+  assert.doesNotMatch(pending, /leaveArticleHoverLink/);
   assert.match(app, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
   assert.doesNotMatch(app, /host_permissions|defineContentScript/);
 

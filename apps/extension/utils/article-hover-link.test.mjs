@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import { ACTIVE_TAB_CONTEXT_KEY } from './active-tab-context.ts';
 import {
   annotationMatchesConnectedArticle,
@@ -8,14 +8,20 @@ import {
   articleHoverApplyResultFromPage,
   articleHoverConnectionForTab,
   ARTICLE_HOVER_LEAVE_MS,
+  ARTICLE_HOVER_OPEN_IDLE_MS,
   ARTICLE_PASSAGE_MISS_OPEN_HINT,
   ARTICLE_PASSAGE_MISS_STATUS,
+  cancelArticleHoverLink,
   clearArticleHoverOnConnectedTab,
   createArticleHoverLeaveController,
   createArticleHoverSession,
   openArticleSourceOnConnectedTab,
 } from './article-hover-link.ts';
 import { applyArticleHoverHighlightOnPage } from './article-hover-page.ts';
+
+afterEach(() => {
+  cancelArticleHoverLink();
+});
 
 const ARTICLE = 'https://example.com/story';
 const ARTICLE_TRACKED = 'https://Example.com/story/?utm_source=feed#quote';
@@ -314,7 +320,7 @@ test('Open source on a connected article focuses the tab and applies highlight',
   assert.equal(focusFails.calls.length, 1);
 });
 
-test('Open source schedules the shared leave clear after a successful apply', async () => {
+test('Open source does not use the 120 ms hover leave window after apply', async () => {
   const drain = async () => {
     for (let index = 0; index < 8; index += 1) await Promise.resolve();
   };
@@ -327,8 +333,38 @@ test('Open source schedules the shared leave clear after a successful apply', as
   assert.equal(chrome.calls.length, 1);
   await new Promise((resolve) => setTimeout(resolve, 150));
   await drain();
-  assert.equal(chrome.calls.length, 2);
-  assert.equal(chrome.calls[1].func.name, 'clearArticleHoverHighlightOnPage');
+  assert.equal(chrome.calls.length, 1);
+  assert.equal(chrome.calls[0].func, applyArticleHoverHighlightOnPage);
+});
+
+test('Open source idle clear uses a long TTL separate from hover leave', async () => {
+  const drain = async () => {
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+  };
+  assert.equal(ARTICLE_HOVER_OPEN_IDLE_MS, 12_000);
+  assert.ok(ARTICLE_HOVER_OPEN_IDLE_MS >= 8_000);
+  assert.ok(ARTICLE_HOVER_OPEN_IDLE_MS !== ARTICLE_HOVER_LEAVE_MS);
+  const timers = [];
+  const chrome = fakeChrome();
+  const session = createArticleHoverSession({
+    idleMs: ARTICLE_HOVER_OPEN_IDLE_MS,
+    setTimeoutFn: (fn, delay) => {
+      const id = timers.length + 1;
+      timers.push({ id, fn, delay });
+      return id;
+    },
+    clearTimeoutFn: (id) => {
+      const index = timers.findIndex((timer) => timer.id === id);
+      if (index >= 0) timers.splice(index, 1);
+    },
+  });
+  session.scheduleIdle({ tabId: 17, tabUrl: ARTICLE }, chrome);
+  assert.equal(timers[0]?.delay, 12_000);
+  assert.equal(chrome.calls.length, 0);
+  timers[0].fn();
+  await drain();
+  assert.equal(chrome.calls.length, 1);
+  assert.equal(chrome.calls[0].func.name, 'clearArticleHoverHighlightOnPage');
 });
 
 test('Open source still focuses the connected tab when the live passage is unmatched', async () => {
@@ -374,6 +410,8 @@ test('Sprint 3 hover linking keeps one-shot scripting and no persistent content 
   assert.match(link, /frameIds: \[0\]/);
   assert.match(link, /ACTIVE_TAB_CONTEXT_KEY/);
   assert.match(link, /normalizeSourceUrl|classifySourceUrl/);
+  assert.match(link, /ARTICLE_HOVER_OPEN_IDLE_MS = 12_000/);
+  assert.doesNotMatch(link, /leaveArticleHoverLink\(connection, chromeApi\);\s*return applied/);
   assert.doesNotMatch(link, /host_permissions|defineContentScript/);
   assert.match(page, /Serialized into the explicitly connected top-level tab/);
   assert.doesNotMatch(page, /chrome\.|host_permissions|defineContentScript/);

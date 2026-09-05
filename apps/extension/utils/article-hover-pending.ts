@@ -2,8 +2,8 @@ import {
   applyArticleHoverOnConnectedTab,
   articleHoverApplyResultFromPage,
   annotationMatchesConnectedArticle,
-  leaveArticleHoverLink,
   openArticleSourceOnConnectedTab,
+  scheduleArticleHoverOpenIdleClear,
   type ArticleHoverApplyResult,
   type ArticleHoverChrome,
   type ArticleHoverConnection,
@@ -282,7 +282,7 @@ export async function applyPendingArticleHoverOnTab(
     const result = articleHoverApplyResultFromPage(injection);
     await clearPendingAfterApply(result, pending, chrome);
     if (result.status === 'matched' || result.status === 'unmatched') {
-      leaveArticleHoverLink({ tabId: tab.tabId, tabUrl: tab.tabUrl }, chrome);
+      scheduleArticleHoverOpenIdleClear({ tabId: tab.tabId, tabUrl: tab.tabUrl }, chrome);
     }
     return result;
   } catch {
@@ -340,7 +340,7 @@ export async function applyPendingArticleHoverOnConnection(
   );
   await clearPendingAfterApply(result, pending, chrome);
   if (result.status === 'matched' || result.status === 'unmatched') {
-    leaveArticleHoverLink(connection, chrome);
+    scheduleArticleHoverOpenIdleClear(connection, chrome);
   }
   return result;
 }
