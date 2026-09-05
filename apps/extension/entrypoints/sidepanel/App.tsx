@@ -137,6 +137,7 @@ import {
   type PlayerDiscovery,
   type PlayerMode,
 } from '../../utils/player-discovery';
+import { beginHostedWebpageVideoAnnotation } from '../../utils/webpage-video-publishing';
 import { beginHostedYouTubeAnnotation } from '../../utils/youtube-publishing';
 import {
   MEDIA_CAPTURE_CANCEL,
@@ -1302,7 +1303,7 @@ function App() {
     const session: HostedMediaSession = {
       operation,
       sourceUrl: source.pageUrl,
-      mediaType: source.kind === 'youtube' ? 'video' : 'audio',
+      mediaType: source.kind === 'audio' ? 'audio' : 'video',
       startMs,
       endMs,
       createdAt: Date.now(),
@@ -1418,6 +1419,80 @@ function App() {
       setYoutubePublishState({
         status: 'error',
         message: error instanceof Error ? error.message : 'The YouTube clip could not be published.',
+      });
+    } finally {
+      publishInFlightRef.current = false;
+      if (hostedBeginModeRef.current === 'video') {
+        hostedBeginModeRef.current = null;
+        setHostedBeginMode(null);
+      }
+    }
+  }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoDraftState]);
+
+  const publishWebpageVideoClip = useCallback(async () => {
+    if (
+      !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
+      sourceState.status !== 'connected' ||
+      videoDraftState.startMs === null || videoDraftState.endMs === null ||
+      !videoDraftState.commentary.trim() || !videoDraftState.playerIdentity
+    ) return;
+    if (sourceState.source.classification === 'YouTube') return;
+    if (!sourceState.source.videoDetectionResolved || !sourceState.source.videoAvailable) return;
+    const rangeError = getNewMediaPublicationRangeError(
+      videoDraftState.startMs,
+      videoDraftState.endMs,
+      videoDraftState.durationMs,
+    );
+    if (rangeError || videoDraftState.commentary.length > 2_000) {
+      setYoutubePublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
+      return;
+    }
+    let token: PlayerActionToken;
+    try { token = getPlayerActionToken('video', videoDraftState.playerIdentity); }
+    catch { return; }
+    publishInFlightRef.current = true;
+    hostedBeginModeRef.current = 'video';
+    setHostedBeginMode('video');
+    setYoutubePublishState({ status: 'publishing' });
+    try {
+      const player = await runSelectedPlayerAction(token, 'read', null);
+      if (!playerTokenIsCurrent(token)) throw new Error('The Video draft changed. Review it and try again.');
+      const actionRangeError = getNewMediaPublicationRangeError(
+        videoDraftState.startMs, videoDraftState.endMs, player.durationMs,
+      );
+      if (actionRangeError) throw new Error(actionRangeError);
+      const normalizedUrl = normalizeArticleUrl(sourceState.source.url);
+      const operation = await beginHostedWebpageVideoAnnotation(supabase, {
+        sourceUrl: sourceState.source.url,
+        title: sourceState.source.title,
+        author: null,
+        publisher: null,
+        startMs: videoDraftState.startMs,
+        endMs: videoDraftState.endMs,
+        commentaryText: videoDraftState.commentary,
+        videoDurationMs: player.durationMs,
+      });
+      if (!playerTokenIsCurrent(token)) {
+        await cancelStaleHostedBegin(
+          operation,
+          sourceState.source.url,
+          'video',
+          videoDraftState.startMs,
+          videoDraftState.endMs,
+        );
+        throw new Error('The Video page, player, or draft changed. The hosted draft was cancelled; review it and try again.');
+      }
+      await startHostedCapture(operation, {
+        kind: 'web-video',
+        pageUrl: sourceState.source.url,
+        sourceKey: normalizedUrl,
+        playerIdentity: videoDraftState.playerIdentity,
+      }, videoDraftState.startMs, videoDraftState.endMs);
+      setYoutubePublishState({ status: 'idle' });
+    } catch (error) {
+      setYoutubePublishState({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'The webpage video clip could not be published.',
       });
     } finally {
       publishInFlightRef.current = false;
@@ -1613,6 +1688,37 @@ function App() {
         kind: 'youtube',
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
+        playerIdentity: videoDraftState.playerIdentity,
+      }, session.startMs, session.endMs);
+    } else if (
+      session.mediaType === 'video' &&
+      sourceState.source.classification !== 'YouTube' &&
+      sourceState.source.videoAvailable
+    ) {
+      let originalPageIdentity: string | null = null;
+      try { originalPageIdentity = normalizeArticleUrl(session.sourceUrl); } catch { /* Invalid persisted source. */ }
+      let connectedPageIdentity: string | null = null;
+      try { connectedPageIdentity = normalizeArticleUrl(sourceState.source.url); } catch { /* Invalid connected source. */ }
+      if (!originalPageIdentity || originalPageIdentity !== connectedPageIdentity) {
+        setMediaCaptureState({
+          status: 'error',
+          captureId: null,
+          code: 'connected-source-changed',
+          message: 'Reconnect the original page before recapturing this draft.',
+        });
+        return;
+      }
+      if (!videoDraftState.playerIdentity) {
+        setMediaCaptureState({ status: 'error', captureId: null, code: 'connected-source-changed', message: 'Choose the original video player before recapturing this draft.' });
+        return;
+      }
+      const token = getPlayerActionToken('video', videoDraftState.playerIdentity);
+      await runSelectedPlayerAction(token, 'read', null);
+      if (!playerTokenIsCurrent(token)) return;
+      await startHostedCapture(session.operation, {
+        kind: 'web-video',
+        pageUrl: sourceState.source.url,
+        sourceKey: connectedPageIdentity,
         playerIdentity: videoDraftState.playerIdentity,
       }, session.startMs, session.endMs);
     } else if (
@@ -2535,6 +2641,11 @@ function App() {
     videoClipRangeError === null && videoDraftState.commentary.trim().length > 0 &&
     videoDraftState.commentary.length <= 2_000 && youtubePublishState.status !== 'publishing' &&
     hostedMediaSession === null;
+  const canPublishWebpageVideo = authState.status === 'signed-in' && webVideoSource !== null &&
+    videoPlayerSelected &&
+    videoClipRangeError === null && videoDraftState.commentary.trim().length > 0 &&
+    videoDraftState.commentary.length <= 2_000 && youtubePublishState.status !== 'publishing' &&
+    hostedMediaSession === null;
   const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
     audioPlayerSelected &&
     audioDraftState.durationMs !== null && audioClipRangeError === null &&
@@ -2667,8 +2778,7 @@ function App() {
                 {videoDraftState.startMs !== null && videoDraftState.endMs !== null && videoClipRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
                 <div className="annotation-field"><label htmlFor="youtube-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="youtube-commentary" value={videoDraftState.commentary} maxLength={2_000} rows={6} required disabled={mediaEditorLocked} onChange={(event) => changeYoutubeCommentary(event.target.value)} /><span aria-live="polite">{videoDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
-                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginSignIn()}>Continue with Google</button> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" disabled>Publishing not enabled</button>}</div>
-                {webVideoSource && <p className="create-help" role="status">This readable webpage player can be selected and revalidated. Publishing remains closed until the separately authorized article-backed hosted-video server contract is available.</p>}
+                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginSignIn()}>Continue with Google</button> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
               </>}
             </section>

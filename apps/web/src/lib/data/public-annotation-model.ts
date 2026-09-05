@@ -1,6 +1,7 @@
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
-import { getYouTubeVideoIdentity } from "@annotated/shared/youtube";
+import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
+import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from "@annotated/shared/youtube";
 import { parsePublicAnnotationAudio } from "../audio-commentary";
 import { formatHostname, getHttpUrl, getOptionalText, isUuid } from "../public-content";
 import {
@@ -54,7 +55,9 @@ type PublicAnnotationBase = {
   audio: { publicUrl: string; durationMs: number } | null;
 };
 
-type VideoSource = PublicAnnotationBase["source"] & { type: "youtube"; videoId: string };
+type YouTubeVideoSource = PublicAnnotationBase["source"] & { type: "youtube"; videoId: string };
+type WebpageVideoSource = PublicAnnotationBase["source"] & { type: "article"; videoId: null };
+type VideoSource = YouTubeVideoSource | WebpageVideoSource;
 type AudioSource = PublicAnnotationBase["source"] & { type: "podcast"; videoId: null };
 
 export type PublicAnnotation = PublicAnnotationBase & (
@@ -312,7 +315,28 @@ export function mapPublicAnnotationDetail(
     try {
       const identity = getYouTubeVideoIdentity(canonicalUrl.href);
       if (identity.normalizedUrl !== getOptionalText(sourceValue.normalized_url)) return null;
-      const source: VideoSource = { ...common.source, type: "youtube", videoId: identity.videoId };
+      const source: YouTubeVideoSource = { ...common.source, type: "youtube", videoId: identity.videoId };
+      if (mediaState === null) return transcriptValue === null
+        ? { ...common, kind: "video_legacy", selectedText: null, startMs, endMs, source }
+        : null;
+      if (isRemovedMedia(mediaState, annotationId, "video")) return transcriptValue === null
+        ? { ...common, kind: "media_removed", mediaType: "video", selectedText: null, startMs, endMs, source }
+        : null;
+      const media = parseReadyMedia(mediaState, annotationId, "video", targetDurationMs);
+      if (!media || media.mimeType !== "video/mp4") return null;
+      const transcript = media ? parseTranscript(transcriptValue, annotationId, media.durationMs) : null;
+      return media && transcript
+        ? { ...common, kind: "video_hosted", selectedText: null, startMs, endMs, source, media, transcript }
+        : null;
+    } catch { return null; }
+  }
+
+  if (annotationValue.annotation_type === "video_clip" && sourceValue.source_type === "article" && targetValue.target_type === "time_range") {
+    try {
+      if (isYouTubeVideoUrl(canonicalUrl.href)) return null;
+      const normalizedUrl = normalizeArticleUrl(canonicalUrl.href);
+      if (normalizedUrl !== getOptionalText(sourceValue.normalized_url)) return null;
+      const source: WebpageVideoSource = { ...common.source, type: "article", videoId: null };
       if (mediaState === null) return transcriptValue === null
         ? { ...common, kind: "video_legacy", selectedText: null, startMs, endMs, source }
         : null;

@@ -85,10 +85,13 @@ export function getNotFoundMetadata(): Metadata {
 export function getPublicAnnotationMetadata(annotation: PublicAnnotation): Metadata {
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const title = `Annotation on ${sourceTitle}`;
-  const description = annotation.kind === "video_legacy" ||
+  const isVideoKind = annotation.kind === "video_legacy" ||
     annotation.kind === "video_hosted" ||
-    (annotation.kind === "media_removed" && annotation.mediaType === "video")
+    (annotation.kind === "media_removed" && annotation.mediaType === "video");
+  const description = isVideoKind && annotation.source.type === "youtube"
     ? `${annotation.annotator.name} annotated a YouTube clip from ${formatMediaTime(annotation.startMs)} to ${formatMediaTime(annotation.endMs)}.`
+    : isVideoKind && annotation.source.type === "article"
+      ? `${annotation.annotator.name} annotated a video clip from ${annotation.source.hostname}.`
     : annotation.kind === "audio_legacy" ||
         annotation.kind === "audio_hosted" ||
         annotation.kind === "media_removed"

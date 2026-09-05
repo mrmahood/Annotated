@@ -29,7 +29,7 @@ test('expand session key ignores loading status so the effect cannot self-cancel
   );
   assert.equal(
     hostedExcerptExpandSessionKey({ ...expandedYoutube, kind: 'video' }),
-    null,
+    `${ANNOTATION}:video`,
   );
   assert.notEqual(
     hostedExcerptExpandSessionKey(expandedYoutube),

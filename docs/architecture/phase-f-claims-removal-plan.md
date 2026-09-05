@@ -45,7 +45,8 @@ controlled removal:
   Phase F code).
 - Production deployment, DNS/TLS cutover, or enabling paused worker schedules
   except for an explicitly authorized bounded Staging acceptance run.
-- Generic webpage-video publication or cross-origin player adapters.
+- Cross-origin / Brightcove player adapters. Generic webpage-video
+  publication is a later article-backed hosted begin increment.
 - Legal counsel substitution; this plan encodes owner policy decisions, not
   legal advice.
 

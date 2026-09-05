@@ -29,8 +29,9 @@ post-merge `main` CI `32965527019`. E1c merged through PR #27 as
 post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
 and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
 after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-origin
-player adapters and generic webpage-video publication remain separately
-authorized. E2a passed Owner Chrome acceptance and merged through PR #33 as
+player adapters remain separately authorized. Generic webpage-video
+publication is implemented as an article-backed hosted begin increment.
+E2a passed Owner Chrome acceptance and merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781` after PR CI `33259588362`;
 post-merge `main` CI `33260246341` passed. E2b passed Owner Local web acceptance
 and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`
@@ -152,8 +153,11 @@ and user JWT. E1e uses bounded, one-shot scripts to enumerate readable top-frame
 and same-origin child-frame HTML video players without adding host permissions;
 inaccessible cross-origin frames remain unsupported. The article page remains the
 durable source identity, and ephemeral media delivery URLs are neither persisted
-nor logged. Generic webpage-video publication remains unavailable pending a
-separately authorized authenticated server/data/public-reader contract.
+nor logged. Generic webpage-video publication uses the article page as
+source identity (`video_clip` + `source_type = article`) and the same
+hosted capture → upload → Processing → ready path as YouTube/audio.
+Inaccessible cross-origin / Brightcove adapters remain a separate
+increment and continue to fail closed.
 
 ### Storage and security conventions
 
@@ -883,7 +887,8 @@ tenth-second range display passed Owner Chrome acceptance. PR #31
 passed required CI run `33230216132`, was squash-merged as
 `185d1a386ac374f7a1d9fe56dda97b872553b671`, and passed post-merge `main` CI run
 `33230745060`. Inaccessible cross-origin players fail closed; cross-origin player
-adapters and generic webpage-video publication remain separately authorized.
+adapters remain separately authorized. Generic webpage-video publication is
+implemented as an article-backed hosted begin increment.
 E2a's provider-neutral web and extension authentication boundaries added bounded
 attempt/provider/callback/session validation, one-attempt handling, safe cleanup,
 provider-mismatch rejection, and token-safe errors while preserving Google.
@@ -945,8 +950,9 @@ increment boundaries, and acceptance plan are in
 - E1e adds readable top-frame and same-origin-frame `<video>` support with
   article-page source identity, authoritative top-frame geometry, and fail-closed
   handling for inaccessible cross-origin, DRM, and canvas players. It preserves
-  `tabCapture` and offscreen Blob ownership. Cross-origin adapters and generic
-  webpage-video publication remain deferred behind separate authorization.
+  `tabCapture` and offscreen Blob ownership. Cross-origin adapters remain
+  deferred. Generic webpage-video publication is the later article-backed
+  hosted begin increment (`video_clip` on the article source).
 - E2a places the proven Google flow behind provider-neutral web and extension
   boundaries with bounded attempt, callback, provider, session, retry, cleanup,
   and token-safe error handling. It does not display, execute, or configure X.

@@ -101,7 +101,11 @@ select ok(
     join pg_catalog.pg_namespace on pg_namespace.oid = pg_proc.pronamespace
     cross join lateral pg_catalog.unnest(pg_proc.proargnames) as argument_name
     where pg_namespace.nspname = 'public'
-      and pg_proc.proname in ('begin_hosted_youtube_annotation', 'begin_hosted_audio_annotation')
+      and pg_proc.proname in (
+        'begin_hosted_youtube_annotation',
+        'begin_hosted_audio_annotation',
+        'begin_hosted_webpage_video_annotation'
+      )
       and argument_name in ('user_id', 'p_user_id', 'owner_id', 'p_owner_id')
   ),
   'hosted begin RPCs expose no spoofable ownership argument'

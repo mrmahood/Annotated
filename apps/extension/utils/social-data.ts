@@ -359,7 +359,7 @@ export async function queryAnnotations(
 
 async function loadHostedExcerpt(
   supabase: SupabaseClient,
-  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' }>,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' | 'video' }>,
 ): Promise<HostedExcerpt | null> {
   try {
     const { data: mediaState, error: mediaError } = await supabase
@@ -382,7 +382,7 @@ async function loadHostedExcerpt(
       mediaState,
       transcript,
       annotation.id,
-      annotation.kind === 'youtube' ? 'video' : 'audio',
+      annotation.kind === 'audio' ? 'audio' : 'video',
       annotation.endMs - annotation.startMs,
     );
   } catch {
@@ -392,7 +392,7 @@ async function loadHostedExcerpt(
 
 export async function queryPublicHostedExcerpt(
   supabase: SupabaseClient,
-  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' }>,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'audio' | 'video' }>,
 ): Promise<HostedExcerpt | null> {
   return loadHostedExcerpt(supabase, annotation);
 }
@@ -414,7 +414,7 @@ export async function queryAnnotation(
   if (!annotation) throw new Error('The annotation response was malformed.');
   const counts = await queryCommentCounts(supabase, [annotation.id]);
   annotation.commentCount = counts.get(annotation.id) ?? 0;
-  if (annotation.kind === 'youtube' || annotation.kind === 'audio') {
+  if (annotation.kind === 'youtube' || annotation.kind === 'audio' || annotation.kind === 'video') {
     annotation.hosted = await loadHostedExcerpt(supabase, annotation);
   }
   return annotation;
