@@ -129,6 +129,14 @@ test('injects APPLY only for the explicitly connected matching /watch tab', asyn
     seekMs: null,
   });
 
+  const withSeek = fakeChrome();
+  assert.equal(await applyYouTubeHoverOnConnectedTab(
+    { tabId: 17, tabUrl: WATCH },
+    { videoId: VIDEO_ID, strength: 'soft', startMs: 1_000, endMs: 4_000, seekMs: 1_000 },
+    withSeek,
+  ), true);
+  assert.equal(withSeek.calls[0].args[0].seekMs, null);
+
   assert.equal(await applyYouTubeHoverOnConnectedTab(
     { tabId: 17, tabUrl: OTHER },
     { videoId: VIDEO_ID, strength: 'strong' },

@@ -1,8 +1,85 @@
-import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
+import { getAudioSourceIdentity, normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
+import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUuid } from './social-helpers.ts';
 import type { HostedMediaOperation } from './media-capture.ts';
+
+export const EXISTING_NON_AUDIO_SOURCE_MESSAGE =
+  'This page is already annotated as text/article; audio clips can’t share that source URL.';
+
+export type ExistingSourceType = 'article' | 'youtube' | 'podcast';
+
+export function audioUnavailableReasonForExistingSource(
+  sourceType: ExistingSourceType | null | undefined,
+): string | null {
+  if (sourceType === 'article' || sourceType === 'youtube') {
+    return EXISTING_NON_AUDIO_SOURCE_MESSAGE;
+  }
+  return null;
+}
+
+export function messageForAudioSourceConflict(error: unknown): string {
+  const raw = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : String(error ?? '');
+  if (/non-audio source/i.test(raw) || /\b22023\b/.test(raw)) {
+    return EXISTING_NON_AUDIO_SOURCE_MESSAGE;
+  }
+  return raw.trim() || 'The audio clip could not be published.';
+}
+
+function addNormalizedCandidate(candidates: Set<string>, value: string, kind: 'article' | 'audio') {
+  try {
+    candidates.add(kind === 'article' ? normalizeArticleUrl(value) : normalizeAudioSourceUrl(value));
+  } catch {
+    // Invalid candidates are ignored; lookup fails closed to "no existing source".
+  }
+}
+
+export function existingSourceLookupUrls(
+  pageUrl: string,
+  canonicalUrl?: string | null,
+): string[] {
+  const candidates = new Set<string>();
+  addNormalizedCandidate(candidates, pageUrl, 'article');
+  addNormalizedCandidate(candidates, pageUrl, 'audio');
+  if (typeof canonicalUrl === 'string' && canonicalUrl.trim()) {
+    addNormalizedCandidate(candidates, canonicalUrl, 'article');
+    addNormalizedCandidate(candidates, canonicalUrl, 'audio');
+    try {
+      candidates.add(getAudioSourceIdentity(pageUrl, canonicalUrl).normalizedUrl);
+    } catch {
+      // Identity failures are ignored.
+    }
+  }
+  return [...candidates];
+}
+
+export async function lookupExistingSourceType(
+  supabase: Pick<SupabaseClient, 'from'>,
+  pageUrl: string,
+  canonicalUrl?: string | null,
+): Promise<ExistingSourceType | null> {
+  const urls = existingSourceLookupUrls(pageUrl, canonicalUrl);
+  if (urls.length === 0) return null;
+  const { data, error } = await supabase
+    .from('sources')
+    .select('source_type, normalized_url')
+    .in('normalized_url', urls)
+    .limit(4);
+  if (error || !Array.isArray(data)) return null;
+  for (const row of data) {
+    if (typeof row !== 'object' || row === null) continue;
+    const sourceType = (row as { source_type?: unknown }).source_type;
+    if (sourceType === 'article' || sourceType === 'youtube' || sourceType === 'podcast') {
+      return sourceType;
+    }
+  }
+  return null;
+}
 
 export type AudioClipAnnotationInput = {
   sourceUrl: string;
@@ -70,6 +147,6 @@ export async function beginHostedAudioClipAnnotation(
     p_end_ms: input.endMs,
     p_commentary_text: input.commentaryText,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(messageForAudioSourceConflict(error));
   return parseHostedAudioBeginResponse(data);
 }

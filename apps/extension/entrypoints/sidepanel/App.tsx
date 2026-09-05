@@ -20,7 +20,14 @@ import {
   validateAudioPageSnapshot,
   type AudioPageSource,
 } from '../../utils/audio-page';
-import { beginHostedAudioClipAnnotation } from '../../utils/audio-publishing';
+import {
+  audioUnavailableReasonForExistingSource,
+  beginHostedAudioClipAnnotation,
+  EXISTING_NON_AUDIO_SOURCE_MESSAGE,
+  lookupExistingSourceType,
+  messageForAudioSourceConflict,
+  type ExistingSourceType,
+} from '../../utils/audio-publishing';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import {
   ACTIVE_TAB_CONTEXT_KEY,
@@ -29,6 +36,12 @@ import {
   type ActiveTabContext,
 } from '../../utils/active-tab-context';
 import { applyPendingArticleHoverOnConnection } from '../../utils/article-hover-pending';
+import {
+  articleHoverConnectionForTab,
+  clearArticleHoverOnConnectedTab,
+  leaveArticleHoverLink,
+  type ArticleHoverConnection,
+} from '../../utils/article-hover-link';
 import {
   clearLocalAuthSession,
   EXTENSION_AUTH_CAPABILITIES,
@@ -85,6 +98,7 @@ import {
   type MediaCreateMode,
   type ModeRevisionState,
   type ModeCapabilities,
+  type ModeCapability,
   type ModeSelectionState,
   type StoredCreateModeSelection,
 } from '../../utils/create-mode';
@@ -320,7 +334,41 @@ function createUnavailableCapabilities(reason: string): ModeCapabilities {
   };
 }
 
-function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
+type ExistingSourceLookup =
+  | { status: 'idle' }
+  | { status: 'checking'; pageUrl: string }
+  | { status: 'ready'; pageUrl: string; sourceType: ExistingSourceType | null };
+
+function audioCapabilityForConnectedSource(
+  sourceState: Extract<SourceState, { status: 'connected' }>,
+  existingSource: ExistingSourceLookup,
+): ModeCapability {
+  const conflict = existingSource.status === 'ready' && existingSource.pageUrl === sourceState.source.url
+    ? audioUnavailableReasonForExistingSource(existingSource.sourceType)
+    : null;
+  if (conflict) return { status: 'unavailable', reason: conflict };
+  if (
+    existingSource.status === 'checking' &&
+    existingSource.pageUrl === sourceState.source.url &&
+    sourceState.source.classification === 'Podcast / web audio'
+  ) {
+    return { status: 'checking' };
+  }
+  if (sourceState.source.classification === 'Podcast / web audio') {
+    return { status: 'available' };
+  }
+  if (sourceState.source.classification === 'Web page') {
+    return sourceState.source.audioDetectionResolved
+      ? { status: 'unavailable', reason: 'No supported top-level page audio was found.' }
+      : { status: 'checking' };
+  }
+  return { status: 'unavailable', reason: 'No supported top-level page audio was found.' };
+}
+
+function getModeCapabilities(
+  sourceState: SourceState,
+  existingSource: ExistingSourceLookup = { status: 'idle' },
+): ModeCapabilities {
   if (
     sourceState.status === 'loading' ||
     sourceState.status === 'refreshing'
@@ -354,7 +402,7 @@ function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
           ? { status: 'available' }
           : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
         : { status: 'checking' },
-      audio: { status: 'available' },
+      audio: audioCapabilityForConnectedSource(sourceState, existingSource),
     };
   }
   return {
@@ -364,9 +412,7 @@ function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
         ? { status: 'available' }
         : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
       : { status: 'checking' },
-    audio: sourceState.source.audioDetectionResolved
-      ? { status: 'unavailable', reason: 'No supported top-level page audio was found.' }
-      : { status: 'checking' },
+    audio: audioCapabilityForConnectedSource(sourceState, existingSource),
   };
 }
 
@@ -581,6 +627,8 @@ function App() {
   const authMountedRef = useRef(false);
   const publishInFlightRef = useRef(false);
   const socialCacheRef = useRef<SessionSocialCache>(new Map());
+  const articleHoverRef = useRef<ArticleHoverConnection | null>(null);
+  const [existingSourceLookup, setExistingSourceLookup] = useState<ExistingSourceLookup>({ status: 'idle' });
   const audioRecorder = useAudioRecorder();
 
   const commentary = createDraftState.text.commentary;
@@ -592,7 +640,10 @@ function App() {
     video: videoDraftState.playerIdentity,
     audio: audioDraftState.playerIdentity,
   };
-  const modeCapabilities = useMemo(() => getModeCapabilities(sourceState), [sourceState]);
+  const modeCapabilities = useMemo(
+    () => getModeCapabilities(sourceState, existingSourceLookup),
+    [existingSourceLookup, sourceState],
+  );
   const operationGuardState = useMemo(() => deriveOperationGuardState({
     articlePublishing: publishState.status === 'publishing',
     hostedBeginMode,
@@ -1394,6 +1445,14 @@ function App() {
       setAudioPublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
       return;
     }
+    if (
+      existingSourceLookup.status === 'ready' &&
+      existingSourceLookup.pageUrl === sourceState.source.url &&
+      audioUnavailableReasonForExistingSource(existingSourceLookup.sourceType)
+    ) {
+      setAudioPublishState({ status: 'error', message: EXISTING_NON_AUDIO_SOURCE_MESSAGE });
+      return;
+    }
     let token: PlayerActionToken;
     try { token = getPlayerActionToken('audio', audioDraftState.playerIdentity); }
     catch { return; }
@@ -1443,7 +1502,7 @@ function App() {
     } catch (error) {
       setAudioPublishState({
         status: 'error',
-        message: error instanceof Error ? error.message : 'The audio clip could not be published.',
+        message: messageForAudioSourceConflict(error),
       });
     } finally {
       publishInFlightRef.current = false;
@@ -1452,7 +1511,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [audioDraftState, authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
+  }, [audioDraftState, authState.status, cancelStaleHostedBegin, existingSourceLookup, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
 
   const cancelHostedMedia = useCallback(async (expectedAttempt?: HostedAttemptToken) => {
     const session = hostedMediaSessionRef.current;
@@ -2188,16 +2247,59 @@ function App() {
   }, [authState.status, hostedMediaSession, mediaCaptureOperation, mediaCaptureState, supabase]);
 
   useEffect(() => {
-    if (sourceState.status !== 'connected' || sourceState.source.classification !== 'Web page') {
+    const context = connectedContextRef.current;
+    const next = sourceState.status === 'connected'
+      ? articleHoverConnectionForTab(
+        sourceState.source.classification,
+        context?.tabId,
+        sourceState.source.url,
+      )
+      : null;
+    const previous = articleHoverRef.current;
+    articleHoverRef.current = next;
+    if (previous && (!next || previous.tabId !== next.tabId || previous.tabUrl !== next.tabUrl)) {
+      void clearArticleHoverOnConnectedTab(previous);
+    }
+    if (next) {
+      void applyPendingArticleHoverOnConnection(next);
+    }
+  }, [sourceState]);
+
+  useEffect(() => {
+    const onBlur = () => {
+      const connection = articleHoverRef.current;
+      if (connection) leaveArticleHoverLink(connection);
+    };
+    window.addEventListener('blur', onBlur);
+    return () => window.removeEventListener('blur', onBlur);
+  }, []);
+
+  useEffect(() => {
+    if (sourceState.status !== 'connected' || sourceState.source.classification === 'YouTube') {
+      setExistingSourceLookup({ status: 'idle' });
       return;
     }
-    const context = connectedContextRef.current;
-    if (!context) return;
-    void applyPendingArticleHoverOnConnection({
-      tabId: context.tabId,
-      tabUrl: sourceState.source.url,
-    });
-  }, [sourceState]);
+    if (!supabase) {
+      setExistingSourceLookup({ status: 'ready', pageUrl: sourceState.source.url, sourceType: null });
+      return;
+    }
+    const pageUrl = sourceState.source.url;
+    const canonicalUrl = sourceState.source.classification === 'Podcast / web audio'
+      ? sourceState.source.canonicalUrl
+      : pageUrl;
+    let current = true;
+    setExistingSourceLookup({ status: 'checking', pageUrl });
+    void lookupExistingSourceType(supabase, pageUrl, canonicalUrl)
+      .then((sourceType) => {
+        if (!current) return;
+        setExistingSourceLookup({ status: 'ready', pageUrl, sourceType });
+      })
+      .catch(() => {
+        if (!current) return;
+        setExistingSourceLookup({ status: 'ready', pageUrl, sourceType: null });
+      });
+    return () => { current = false; };
+  }, [sourceState, supabase]);
 
   useEffect(() => {
     if (!refreshSuccess) return;
@@ -2327,11 +2429,12 @@ function App() {
   const youtubeHover = youtubeSource && connectedContext
     ? { tabId: connectedContext.tabId, tabUrl: youtubeSource.url }
     : null;
-  const articleSource = sourceState.status === 'connected' && sourceState.source.classification === 'Web page'
-    ? sourceState.source
-    : null;
-  const articleHover = articleSource && connectedContext
-    ? { tabId: connectedContext.tabId, tabUrl: articleSource.url }
+  const articleHover = sourceState.status === 'connected' && connectedContext
+    ? articleHoverConnectionForTab(
+      sourceState.source.classification,
+      connectedContext.tabId,
+      sourceState.source.url,
+    )
     : null;
   const selectedCreateMode = modeSelection?.selectedMode ?? null;
   const textDraftAttached = Boolean(

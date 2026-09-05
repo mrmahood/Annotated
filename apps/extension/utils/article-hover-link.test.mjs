@@ -6,6 +6,7 @@ import {
   annotationMatchesConnectedArticle,
   applyArticleHoverOnConnectedTab,
   articleHoverApplyResultFromPage,
+  articleHoverConnectionForTab,
   ARTICLE_HOVER_LEAVE_MS,
   ARTICLE_PASSAGE_MISS_OPEN_HINT,
   ARTICLE_PASSAGE_MISS_STATUS,
@@ -80,6 +81,20 @@ function fakeChrome(options = {}) {
     },
   };
 }
+
+test('article hover connects Web page and Podcast sources but not YouTube', () => {
+  assert.deepEqual(articleHoverConnectionForTab('Web page', 17, ARTICLE), {
+    tabId: 17,
+    tabUrl: ARTICLE,
+  });
+  assert.deepEqual(articleHoverConnectionForTab('Podcast / web audio', 17, ARTICLE), {
+    tabId: 17,
+    tabUrl: ARTICLE,
+  });
+  assert.equal(articleHoverConnectionForTab('YouTube', 17, YOUTUBE), null);
+  assert.equal(articleHoverConnectionForTab('Web page', 17, 'chrome://extensions'), null);
+  assert.equal(articleHoverConnectionForTab('Web page', -1, ARTICLE), null);
+});
 
 test('matches only the annotation article URL and fails closed otherwise', () => {
   assert.equal(annotationMatchesConnectedArticle(articleAnnotation(), ARTICLE), true);
@@ -297,6 +312,23 @@ test('Open source on a connected article focuses the tab and applies highlight',
     focusFails,
   ), { status: 'matched' });
   assert.equal(focusFails.calls.length, 1);
+});
+
+test('Open source schedules the shared leave clear after a successful apply', async () => {
+  const drain = async () => {
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+  };
+  const chrome = fakeChrome();
+  assert.deepEqual(await openArticleSourceOnConnectedTab(
+    { tabId: 17, tabUrl: ARTICLE },
+    { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    chrome,
+  ), { status: 'matched' });
+  assert.equal(chrome.calls.length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await drain();
+  assert.equal(chrome.calls.length, 2);
+  assert.equal(chrome.calls[1].func.name, 'clearArticleHoverHighlightOnPage');
 });
 
 test('Open source still focuses the connected tab when the live passage is unmatched', async () => {

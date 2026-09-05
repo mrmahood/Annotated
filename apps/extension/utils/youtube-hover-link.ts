@@ -152,7 +152,7 @@ export async function applyYouTubeHoverOnConnectedTab(
         strength: target.strength,
         startMs: target.startMs ?? null,
         endMs: target.endMs ?? null,
-        seekMs: target.seekMs ?? null,
+        seekMs: target.strength === 'soft' ? null : target.seekMs ?? null,
       }],
     });
     return true;
@@ -258,7 +258,7 @@ export function youtubeHoverNestedChipHandlers(
     },
     onPointerLeave: () => {
       if (!connection || !target) return;
-      enterYouTubeHoverLink(connection, { ...target, strength: 'soft' });
+      enterYouTubeHoverLink(connection, { ...target, strength: 'soft', seekMs: null });
     },
   };
 }

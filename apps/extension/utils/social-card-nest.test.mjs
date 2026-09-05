@@ -28,6 +28,7 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /youtubeHoverRegionHandlers/);
   assert.match(card, /youtubeHoverNestedChipHandlers/);
   assert.match(card, /enterYouTubeHoverLink/);
+  assert.doesNotMatch(card, /seekMs/);
   assert.match(card, /articleHoverRegionHandlers/);
   assert.match(card, /articleHoverNestedChipHandlers/);
   assert.match(card, /articlePassageHoverTarget/);

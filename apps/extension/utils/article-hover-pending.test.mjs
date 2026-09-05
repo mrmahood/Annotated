@@ -245,6 +245,22 @@ test('action-tab apply clears pending after an honest unmatched passage', async 
   assert.equal(chrome.store[ARTICLE_HOVER_LAST_APPLY_KEY]?.selectedText, SELECTED);
 });
 
+test('pending apply starts the shared leave debounce after a successful match', async () => {
+  const drain = async () => {
+    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+  };
+  const chrome = fakeChrome({ pending: pendingTarget() });
+  assert.deepEqual(await applyPendingArticleHoverOnConnection(
+    { tabId: 17, tabUrl: ARTICLE },
+    chrome,
+    NOW,
+  ), { status: 'matched' });
+  assert.equal(chrome.calls.length, 1);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await drain();
+  assert.ok(chrome.calls.some((call) => call.func?.name === 'clearArticleHoverHighlightOnPage'));
+});
+
 test('connection apply uses the connected-tab helper and clears on match', async () => {
   const chrome = fakeChrome({ pending: pendingTarget() });
   assert.deepEqual(await applyPendingArticleHoverOnConnection(
@@ -403,7 +419,11 @@ test('pending highlight wiring applies on tab complete and matching sidepanel co
   assert.doesNotMatch(background, /defineContentScript|content_scripts/);
 
   assert.match(app, /applyPendingArticleHoverOnConnection/);
-  assert.match(app, /classification === 'Web page'/);
+  assert.match(app, /articleHoverConnectionForTab/);
+  assert.match(app, /Podcast \/ web audio/);
+  assert.match(app, /leaveArticleHoverLink/);
+  assert.match(app, /lookupExistingSourceType/);
+  assert.match(app, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
   assert.doesNotMatch(app, /host_permissions|defineContentScript/);
 
   assert.match(social, /openArticleSourceFromPanel/);

@@ -36,6 +36,7 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /<audio/);
   assert.match(detail, /Excerpt transcript/);
   assert.match(detail, /function ExcerptTranscript/);
+  assert.doesNotMatch(detail.slice(detail.indexOf('function ExcerptTranscript'), detail.indexOf('function Avatar')), /seekMs/);
   assert.match(detail, /hostedReady && <HostedExcerptPlayer/);
   assert.match(detail, /hostedTranscript && <ExcerptTranscript/);
   assert.match(detail, /hasHostedExcerptTranscript/);
@@ -58,6 +59,6 @@ test('detail UI prefers the hosted player and transcript for ready media', async
 
   assert.match(app, /Uploaded and queued\. Processing is in progress\./);
   assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\}/);
-  assert.match(app, /classification === 'Web page'/);
+  assert.match(app, /articleHoverConnectionForTab/);
   assert.doesNotMatch(app, /until the media worker ships/);
 });

@@ -210,6 +210,23 @@ test('draft contract rejects invalid commentary, times, and media identities', (
   }));
 });
 
+test('incidental article audio does not become the recommended Create mode', async () => {
+  const [audioPage, app, publishing] = await Promise.all([
+    readFile(new URL('./audio-page.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./audio-publishing.ts', import.meta.url), 'utf8'),
+  ]);
+  assert.match(audioPage, /hasStrongPodcastSignals/);
+  assert.match(audioPage, /PodcastEpisode/);
+  assert.match(app, /detection.status === 'supported'/);
+  assert.match(app, /audioDetectionResolved: true/);
+  assert.match(app, /articleHoverConnectionForTab/);
+  assert.match(app, /lookupExistingSourceType/);
+  assert.match(app, /audioUnavailableReasonForExistingSource/);
+  assert.match(publishing, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
+  assert.match(publishing, /This page is already annotated as text\/article/);
+});
+
 test('the side panel is wired to independent Text, Video, and Audio draft slices', async () => {
   const appSource = await readFile(
     new URL('../entrypoints/sidepanel/App.tsx', import.meta.url),

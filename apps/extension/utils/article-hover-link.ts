@@ -106,6 +106,26 @@ export function articleHoverApplyResultFromPage(
   return { status: 'unavailable' };
 }
 
+export function articleHoverConnectionForTab(
+  classification: string | null | undefined,
+  tabId: number | null | undefined,
+  tabUrl: string | null | undefined,
+): ArticleHoverConnection | null {
+  if (classification === 'YouTube') return null;
+  if (classification !== 'Web page' && classification !== 'Podcast / web audio') {
+    return null;
+  }
+  if (!Number.isInteger(tabId) || (tabId ?? -1) < 0) return null;
+  if (typeof tabUrl !== 'string' || !tabUrl.trim()) return null;
+  try {
+    const url = new URL(tabUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  } catch {
+    return null;
+  }
+  return { tabId: tabId as number, tabUrl };
+}
+
 export function annotationMatchesConnectedArticle(
   annotation: ArticleHoverAnnotationRef | null | undefined,
   tabUrl: string | null | undefined,
@@ -256,6 +276,7 @@ export async function openArticleSourceOnConnectedTab(
   } catch {
     // Focus is best-effort; matched highlight or unmatched honesty already ran.
   }
+  leaveArticleHoverLink(connection, chromeApi);
   return applied;
 }
 

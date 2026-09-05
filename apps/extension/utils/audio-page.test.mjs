@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   classifyConnectedSource,
   getAudioPlayerReadiness,
+  hasStrongPodcastSignals,
   selectAudioPlayerCandidate,
   validateAudioPageSnapshot,
 } from './audio-page.ts';
@@ -78,7 +80,7 @@ test('loaded audio is both supported and ready', () => {
   const result = validateAudioPageSnapshot('https://example.test/episode', {
     pageUrl: 'https://example.test/episode',
     candidates: [{ ...base, playerId: 'audio:0', elementType: 'audio' }],
-    metadata: { title: 'Episode' },
+    metadata: { title: 'Episode', schemaTypes: ['PodcastEpisode'] },
   });
   assert.equal(result.status, 'supported');
   assert.equal(result.status === 'supported' && result.source.playerStatus, 'ready');
@@ -95,7 +97,7 @@ test('unplayed supported audio classifies the page as audio without loaded durat
       currentTime: 0,
       duration: null,
     }],
-    metadata: { title: 'Episode' },
+    metadata: { title: 'Episode', ogType: 'music.song' },
   });
   assert.equal(result.status, 'supported');
   assert.equal(result.status === 'supported' && result.source.playerStatus, 'duration-unavailable');
@@ -109,7 +111,7 @@ test('an ambiguous supported audio page stays audio with dedicated player state'
       { ...base, playerId: 'audio:0', elementType: 'audio', duration: null },
       { ...base, playerId: 'audio:1', elementType: 'audio', duration: null },
     ],
-    metadata: { title: 'Episode' },
+    metadata: { title: 'Episode', audioMetadataPresent: true },
   });
   assert.equal(result.status, 'supported');
   assert.equal(result.status === 'supported' && result.selection.status, 'ambiguous');
@@ -126,6 +128,8 @@ test('validates supported audio metadata and normalized episode identity', () =>
       publisher: 'Example FM',
       showName: 'The Example Show',
       author: 'A. Host',
+      ogType: 'music.radio_station',
+      podcastSignalsPresent: true,
     },
   });
   assert.equal(result.status, 'supported');
@@ -209,6 +213,55 @@ test('an audio element without a media source is not a credible player', () => {
     elementType: 'audio',
     sourcePresent: false,
   }]).status, 'no-audio');
+});
+
+test('a bare NYT-like article audio player stays a web page, not a podcast', () => {
+  const articleUrl = 'https://www.nytimes.com/2026/09/04/us/politics/trump-administration-fund-compensation-jan-6.html';
+  const result = validateAudioPageSnapshot(articleUrl, {
+    pageUrl: articleUrl,
+    candidates: [{ ...base, playerId: 'audio:0', elementType: 'audio' }],
+    metadata: {
+      title: 'Trump Administration Fund Compensation',
+      ogType: 'article',
+      author: 'Reporter',
+      audioMetadataPresent: false,
+      applePodcasts: false,
+      podcastSignalsPresent: false,
+      schemaTypes: ['NewsArticle'],
+    },
+  });
+  assert.equal(result.status, 'not-audio-page');
+  assert.equal(classifyConnectedSource(articleUrl, result.status), 'article');
+  assert.equal(hasStrongPodcastSignals({
+    ogType: 'article',
+    schemaTypes: ['NewsArticle'],
+    audioMetadataPresent: false,
+  }), false);
+});
+
+test('strong podcast metadata still classifies a page with an audio player as podcast', () => {
+  const result = validateAudioPageSnapshot('https://example.test/shows/42', {
+    pageUrl: 'https://example.test/shows/42',
+    candidates: [{ ...base, playerId: 'audio:0', elementType: 'audio' }],
+    metadata: {
+      title: 'Episode 42',
+      schemaTypes: ['PodcastEpisode'],
+    },
+  });
+  assert.equal(result.status, 'supported');
+  assert.equal(classifyConnectedSource('https://example.test/shows/42', result.status), 'audio');
+  assert.equal(hasStrongPodcastSignals({ ogType: 'music.song' }), true);
+  assert.equal(hasStrongPodcastSignals({ applePodcasts: true }), true);
+  assert.equal(hasStrongPodcastSignals({ audioMetadataPresent: true }), true);
+});
+
+test('the serialized page snapshot reads schema, og:type, and Apple podcast signals', async () => {
+  const source = await readFile(new URL('./audio-page.ts', import.meta.url), 'utf8');
+  const snapshot = source.slice(source.indexOf('export function readAudioPageSnapshot'), source.indexOf('export function validateAudioPageSnapshot'));
+  assert.match(snapshot, /PodcastEpisode/);
+  assert.match(snapshot, /og:type/);
+  assert.match(snapshot, /podcasts\.apple\.com/);
+  assert.match(snapshot, /podcastSignalsPresent/);
 });
 
 test('discriminates article, YouTube, supported audio, and unsupported audio states', () => {

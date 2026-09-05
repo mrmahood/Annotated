@@ -57,6 +57,36 @@ export function classifyConnectedSource(
   return 'article';
 }
 
+function isPodcastOgType(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const ogType = value.toLowerCase().trim();
+  return (
+    ogType === 'podcast' ||
+    ogType.startsWith('music.') ||
+    ogType.startsWith('audio') ||
+    ogType.includes('podcast')
+  );
+}
+
+function hasPodcastSchemaTypes(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.some((item) =>
+    typeof item === 'string' &&
+    /PodcastEpisode|RadioEpisode|PodcastSeries|PodcastSeason|(?:^|\/|\s)Podcast(?:$|\s)/i.test(item),
+  );
+}
+
+export function hasStrongPodcastSignals(
+  metadata: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!metadata) return false;
+  if (metadata.podcastSignalsPresent === true) return true;
+  if (metadata.audioMetadataPresent === true) return true;
+  if (metadata.applePodcasts === true) return true;
+  if (isPodcastOgType(metadata.ogType)) return true;
+  return hasPodcastSchemaTypes(metadata.schemaTypes);
+}
+
 export function getAudioPlayerReadiness(candidate: AudioPlayerCandidate): AudioPlayerReadiness {
   if (
     candidate.currentTime === null ||
@@ -134,16 +164,58 @@ export function readAudioPageSnapshot(includeMetadata: boolean) {
     pageUrl: location.href,
     candidates,
     ...(includeMetadata ? {
-      metadata: {
-        title: meta('meta[property="og:title"]') || clean(document.title),
-        canonicalUrl: clean(document.querySelector<HTMLLinkElement>('link[rel~="canonical"]')?.href),
-        publisher: meta('meta[property="og:site_name"]', 'meta[name="application-name"]'),
-        showName: meta('meta[name="podcast:show"]', 'meta[property="og:audio:album"]', 'meta[name="podcast:title"]'),
-        author: meta('meta[name="author"]', 'meta[property="article:author"]'),
-        audioMetadataPresent: Boolean(
+      metadata: (() => {
+        const ogType = meta('meta[property="og:type"]');
+        const audioMetadataPresent = Boolean(
           document.querySelector('meta[property="og:audio"], meta[property="og:audio:url"], meta[name="podcast:show"], link[type^="audio/"]'),
-        ),
-      },
+        );
+        const appleContent = meta('meta[name="apple-itunes-app"]');
+        const applePodcasts = /podcast/i.test(appleContent) || Boolean(
+          document.querySelector('meta[name="podcast:episode"], link[href*="podcasts.apple.com"]'),
+        );
+        const schemaTypes: string[] = [];
+        const visitSchema = (node: unknown, depth: number) => {
+          if (!node || typeof node !== 'object' || depth > 6) return;
+          if (Array.isArray(node)) {
+            for (const item of node) visitSchema(item, depth + 1);
+            return;
+          }
+          const record = node as Record<string, unknown>;
+          const schemaType = record['@type'];
+          if (typeof schemaType === 'string') schemaTypes.push(schemaType.slice(0, 120));
+          else if (Array.isArray(schemaType)) {
+            for (const item of schemaType) {
+              if (typeof item === 'string') schemaTypes.push(item.slice(0, 120));
+            }
+          }
+          if (record['@graph']) visitSchema(record['@graph'], depth + 1);
+        };
+        for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+          try {
+            visitSchema(JSON.parse(script.textContent || 'null'), 0);
+          } catch { /* Invalid JSON-LD is ignored. */ }
+        }
+        for (const element of document.querySelectorAll('[itemtype]')) {
+          const itemtype = element.getAttribute('itemtype') || '';
+          if (itemtype) schemaTypes.push(itemtype.slice(0, 200));
+        }
+        const podcastSchema = schemaTypes.some((item) =>
+          /PodcastEpisode|RadioEpisode|PodcastSeries|PodcastSeason|(?:^|\/|\s)Podcast(?:$|\s)/i.test(item),
+        );
+        const podcastOgType = /^(?:podcast|audio)|(?:^|[./])music\.|podcast/i.test(ogType);
+        return {
+          title: meta('meta[property="og:title"]') || clean(document.title),
+          canonicalUrl: clean(document.querySelector<HTMLLinkElement>('link[rel~="canonical"]')?.href),
+          publisher: meta('meta[property="og:site_name"]', 'meta[name="application-name"]'),
+          showName: meta('meta[name="podcast:show"]', 'meta[property="og:audio:album"]', 'meta[name="podcast:title"]'),
+          author: meta('meta[name="author"]', 'meta[property="article:author"]'),
+          ogType,
+          schemaTypes,
+          audioMetadataPresent,
+          applePodcasts,
+          podcastSignalsPresent: podcastSchema || podcastOgType || applePodcasts || audioMetadataPresent,
+        };
+      })(),
     } : {}),
   };
 }
@@ -177,10 +249,14 @@ export function validateAudioPageSnapshot(expectedPageUrl: string, value: unknow
     ? row.metadata as Record<string, unknown>
     : {};
   const selection = selectAudioPlayerCandidate(candidates);
+  const podcastPage = hasStrongPodcastSignals(metadata);
   if (selection.status === 'no-audio') {
-    return metadata.audioMetadataPresent === true
+    return podcastPage
       ? { status: 'no-audio' }
       : { status: 'not-audio-page' };
+  }
+  if (!podcastPage) {
+    return { status: 'not-audio-page' };
   }
   const text = (key: string) => typeof metadata[key] === 'string'
     ? metadata[key].replace(/\s+/g, ' ').trim().slice(0, 500) || null
