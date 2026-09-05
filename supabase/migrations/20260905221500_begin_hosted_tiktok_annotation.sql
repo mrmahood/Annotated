@@ -63,7 +63,10 @@ begin
       errcode = '22023',
       message = 'The normalized URL must identify exactly one canonical TikTok video.';
   end if;
-  extracted_handle := pg_catalog.substring(safe_normalized_url from '^https://www\.tiktok\.com/@([A-Za-z0-9._]{2,24})/video/');
+  extracted_handle := (pg_catalog.regexp_match(
+    safe_normalized_url,
+    '^https://www\.tiktok\.com/@([A-Za-z0-9._]{2,24})/video/[0-9]{10,25}$'
+  ))[1];
   if extracted_handle is null then
     raise exception using
       errcode = '22023',
