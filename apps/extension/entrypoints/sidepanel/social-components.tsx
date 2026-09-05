@@ -59,10 +59,12 @@ import {
   type ArticleHoverResultListener,
 } from '../../utils/article-hover-link';
 import {
+  ARTICLE_HOVER_LAST_APPLY_KEY,
   ARTICLE_HOVER_PENDING_KEY,
   ARTICLE_PENDING_CONNECT_HINT,
   articleHoverPendingMatchesTarget,
   openArticleSourceFromPanel,
+  readArticleHoverLastApply,
   readArticleHoverPending,
 } from '../../utils/article-hover-pending';
 import { getSourceOpenUrl } from '../../utils/source-open-url';
@@ -284,13 +286,38 @@ function handleArticleSourceOpenClick(
 function useArticlePassageMiss(
   annotationId: string,
   connection: ArticleHoverConnection | null,
+  annotation: PublicAnnotation | null,
 ) {
   const [passageMissed, setPassageMissed] = useState(false);
   const connectionKey = connection ? `${connection.tabId}:${connection.tabUrl}` : '';
+  const target = annotation ? articlePassageHoverTarget(annotation) : null;
+  const targetKey = target
+    ? `${target.normalizedUrl}\n${target.canonicalUrl}\n${target.selectedText}`
+    : '';
 
   useEffect(() => {
     setPassageMissed(false);
-  }, [annotationId, connectionKey]);
+    if (!target) return;
+    let mounted = true;
+    const matchedTarget = target;
+    const sync = async () => {
+      const last = await readArticleHoverLastApply();
+      if (!mounted || !last) return;
+      if (!articleHoverPendingMatchesTarget(last, matchedTarget)) return;
+      setPassageMissed(last.status === 'unmatched');
+    };
+    void sync();
+    const onChange = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+      if (area === 'session' && Object.prototype.hasOwnProperty.call(changes, ARTICLE_HOVER_LAST_APPLY_KEY)) {
+        void sync();
+      }
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => {
+      mounted = false;
+      chrome.storage.onChanged.removeListener(onChange);
+    };
+  }, [annotationId, connectionKey, targetKey]);
 
   const onArticleHoverResult = useCallback((result: ArticleHoverApplyResult) => {
     if (result.status === 'unmatched') setPassageMissed(true);
@@ -444,7 +471,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   const [hostedStatus, setHostedStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>(
     annotation.kind !== 'article' && isHostedExcerptReady(annotation.hosted) ? 'ready' : 'idle',
   );
-  const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotation.id, articleHover);
+  const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotation.id, articleHover, annotation);
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
   const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
@@ -951,7 +978,7 @@ export function AnnotationDetailView({
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [audioError, setAudioError] = useState<string | null>(null);
   const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
-  const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover);
+  const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover, annotation);
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
 
   useEffect(() => {

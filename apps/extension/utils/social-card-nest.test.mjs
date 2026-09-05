@@ -36,6 +36,8 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /handleArticleSourceOpenClick\(event, annotation, articleHover, sourceUrl, onArticleHoverResult, onAwaitingConnection\)/);
   assert.match(card, /ArticlePendingConnectHint/);
   assert.match(source, /ARTICLE_PENDING_CONNECT_HINT/);
+  assert.match(source, /ARTICLE_HOVER_LAST_APPLY_KEY/);
+  assert.match(source, /readArticleHoverLastApply/);
   assert.match(source, /openArticleSourceFromPanel/);
   assert.match(styles, /\.article-pending-connect-hint/);
   assert.match(source, /ARTICLE_PASSAGE_MISS_STATUS/);

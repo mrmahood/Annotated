@@ -4,15 +4,17 @@ import test from 'node:test';
 import { ACTIVE_TAB_CONTEXT_KEY } from './active-tab-context.ts';
 import { applyArticleHoverHighlightOnPage } from './article-hover-page.ts';
 import {
+  ARTICLE_HOVER_LAST_APPLY_KEY,
   ARTICLE_HOVER_PENDING_KEY,
   ARTICLE_HOVER_PENDING_TTL_MS,
   ARTICLE_PENDING_CONNECT_HINT,
-  applyPendingArticleHoverOnActionTab,
+  applyPendingArticleHoverOnTab,
   applyPendingArticleHoverOnConnection,
   articleHoverPendingIsExpired,
   articleHoverPendingMatchesTarget,
   articleHoverPendingMatchesUrl,
   clearArticleHoverPending,
+  findExistingArticleTab,
   isArticleHoverPendingTarget,
   openArticleSourceFromPanel,
   readArticleHoverPending,
@@ -53,6 +55,7 @@ function fakeChrome(options = {}) {
   const calls = [];
   const tabCreates = [];
   const tabUpdates = [];
+  const windowUpdates = [];
   const store = {
     [ACTIVE_TAB_CONTEXT_KEY]: options.context === undefined ? connectedContext() : options.context,
     ...(options.pending === undefined ? {} : { [ARTICLE_HOVER_PENDING_KEY]: options.pending }),
@@ -61,6 +64,7 @@ function fakeChrome(options = {}) {
     calls,
     tabCreates,
     tabUpdates,
+    windowUpdates,
     store,
     scripting: {
       executeScript: async (injection) => {
@@ -92,7 +96,14 @@ function fakeChrome(options = {}) {
       create: async (createProperties) => {
         tabCreates.push(createProperties);
         if (options.createError) throw new Error('tab create failed');
-        return { id: 44, ...createProperties };
+        return { id: 44, status: options.createdStatus, ...createProperties };
+      },
+      query: async () => options.existingTabs ?? [],
+    },
+    windows: {
+      update: async (windowId, update) => {
+        windowUpdates.push({ windowId, update });
+        return { id: windowId, focused: true };
       },
     },
   };
@@ -164,7 +175,7 @@ test('pending set/clear/expiry drop stale or invalid session values', async () =
 
 test('action-tab apply injects amber for a matching pending URL and clears on match', async () => {
   const chrome = fakeChrome({ pending: pendingTarget() });
-  assert.deepEqual(await applyPendingArticleHoverOnActionTab(
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
     { tabId: 9, tabUrl: ARTICLE_TRACKED },
     chrome,
     NOW,
@@ -181,14 +192,14 @@ test('action-tab apply injects amber for a matching pending URL and clears on ma
 });
 
 test('action-tab apply ignores missing, mismatched, expired, or failed pending', async () => {
-  assert.deepEqual(await applyPendingArticleHoverOnActionTab(
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
     { tabId: 9, tabUrl: ARTICLE },
     fakeChrome({ pending: null }),
     NOW,
   ), { status: 'unavailable' });
 
   const mismatched = fakeChrome({ pending: pendingTarget() });
-  assert.deepEqual(await applyPendingArticleHoverOnActionTab(
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
     { tabId: 9, tabUrl: OTHER },
     mismatched,
     NOW,
@@ -196,7 +207,7 @@ test('action-tab apply ignores missing, mismatched, expired, or failed pending',
   assert.deepEqual(mismatched.store[ARTICLE_HOVER_PENDING_KEY], pendingTarget());
 
   const expired = fakeChrome({ pending: pendingTarget() });
-  assert.deepEqual(await applyPendingArticleHoverOnActionTab(
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
     { tabId: 9, tabUrl: ARTICLE },
     expired,
     NOW + ARTICLE_HOVER_PENDING_TTL_MS + 1,
@@ -204,14 +215,14 @@ test('action-tab apply ignores missing, mismatched, expired, or failed pending',
   assert.equal(expired.store[ARTICLE_HOVER_PENDING_KEY], undefined);
 
   const youtube = fakeChrome({ pending: pendingTarget() });
-  assert.deepEqual(await applyPendingArticleHoverOnActionTab(
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
     { tabId: 9, tabUrl: YOUTUBE },
     youtube,
     NOW,
   ), { status: 'unavailable' });
 
   const failed = fakeChrome({ pending: pendingTarget(), scriptingError: true });
-  assert.deepEqual(await applyPendingArticleHoverOnActionTab(
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
     { tabId: 9, tabUrl: ARTICLE },
     failed,
     NOW,
@@ -224,12 +235,14 @@ test('action-tab apply clears pending after an honest unmatched passage', async 
     pending: pendingTarget(),
     pageResult: { ok: false, reason: 'text-unmatched' },
   });
-  assert.deepEqual(await applyPendingArticleHoverOnActionTab(
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
     { tabId: 9, tabUrl: ARTICLE },
     chrome,
     NOW,
   ), { status: 'unmatched' });
   assert.equal(chrome.store[ARTICLE_HOVER_PENDING_KEY], undefined);
+  assert.equal(chrome.store[ARTICLE_HOVER_LAST_APPLY_KEY]?.status, 'unmatched');
+  assert.equal(chrome.store[ARTICLE_HOVER_LAST_APPLY_KEY]?.selectedText, SELECTED);
 });
 
 test('connection apply uses the connected-tab helper and clears on match', async () => {
@@ -313,7 +326,64 @@ test('Open source falls back to window.open when tabs.create is unavailable', as
   assert.deepEqual(chrome.store[ARTICLE_HOVER_PENDING_KEY], pendingTarget());
 });
 
-test('pending highlight wiring stays on action-connect and matching sidepanel connection', async () => {
+test('Open source applies amber on tab complete without an action click', async () => {
+  const chrome = fakeChrome({ pending: null, context: null });
+  assert.deepEqual(await openArticleSourceFromPanel({
+    target: { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    connection: null,
+    href: HREF,
+    chromeApi: chrome,
+    now: NOW,
+  }), { applied: null, awaitingConnection: true });
+  assert.deepEqual(chrome.tabCreates, [{ url: HREF, active: true }]);
+  assert.equal(chrome.calls.length, 0);
+  assert.deepEqual(chrome.store[ARTICLE_HOVER_PENDING_KEY], pendingTarget());
+
+  assert.deepEqual(await applyPendingArticleHoverOnTab(
+    { tabId: 44, tabUrl: ARTICLE },
+    chrome,
+    NOW,
+  ), { status: 'matched' });
+  assert.equal(chrome.calls.length, 1);
+  assert.equal(chrome.calls[0].func, applyArticleHoverHighlightOnPage);
+  assert.equal(chrome.store[ARTICLE_HOVER_PENDING_KEY], undefined);
+});
+
+test('Open source focuses an existing complete tab and applies amber immediately', async () => {
+  const chrome = fakeChrome({
+    pending: null,
+    context: null,
+    existingTabs: [{ id: 22, url: ARTICLE, status: 'complete', windowId: 3 }],
+  });
+  assert.deepEqual(await openArticleSourceFromPanel({
+    target: { selectedText: SELECTED, canonicalUrl: ARTICLE, normalizedUrl: ARTICLE },
+    connection: null,
+    href: HREF,
+    chromeApi: chrome,
+    now: NOW,
+  }), { applied: { status: 'matched' }, awaitingConnection: false });
+  assert.deepEqual(chrome.tabCreates, []);
+  assert.deepEqual(chrome.tabUpdates, [{ tabId: 22, update: { active: true } }]);
+  assert.deepEqual(chrome.windowUpdates, [{ windowId: 3, update: { focused: true } }]);
+  assert.equal(chrome.calls.length, 1);
+  assert.equal(chrome.calls[0].target.tabId, 22);
+  assert.equal(chrome.store[ARTICLE_HOVER_PENDING_KEY], undefined);
+});
+
+test('findExistingArticleTab matches the pending article URL among open tabs', () => {
+  assert.deepEqual(findExistingArticleTab([
+    { id: 8, url: OTHER },
+    { id: 22, url: ARTICLE_TRACKED, status: 'complete', windowId: 1 },
+  ], pendingTarget()), {
+    id: 22,
+    url: ARTICLE_TRACKED,
+    status: 'complete',
+    windowId: 1,
+  });
+  assert.equal(findExistingArticleTab([{ id: 8, url: OTHER }], pendingTarget()), null);
+});
+
+test('pending highlight wiring applies on tab complete and matching sidepanel connection', async () => {
   const [config, background, app, social, pending] = await Promise.all([
     readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/background.ts', import.meta.url), 'utf8'),
@@ -322,13 +392,15 @@ test('pending highlight wiring stays on action-connect and matching sidepanel co
     readFile(new URL('./article-hover-pending.ts', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'\]/);
-  assert.doesNotMatch(config, /host_permissions|content_scripts|defineContentScript/);
+  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
+  assert.match(config, /host_permissions:\s*\['http:\/\/\*\/\*', 'https:\/\/\*\/\*'\]/);
+  assert.doesNotMatch(config, /content_scripts|defineContentScript/);
 
-  assert.match(background, /applyPendingArticleHoverOnActionTab/);
+  assert.match(background, /applyPendingArticleHoverOnTab/);
+  assert.match(background, /installSurfFollow/);
   assert.match(background, /chrome\.action\.onClicked/);
   assert.match(background, /ACTIVE_TAB_CONTEXT_KEY/);
-  assert.doesNotMatch(background, /host_permissions|defineContentScript|content_scripts/);
+  assert.doesNotMatch(background, /defineContentScript|content_scripts/);
 
   assert.match(app, /applyPendingArticleHoverOnConnection/);
   assert.match(app, /classification === 'Web page'/);
@@ -341,6 +413,8 @@ test('pending highlight wiring stays on action-connect and matching sidepanel co
 
   assert.match(pending, /chrome\.storage\.session/);
   assert.match(pending, /ARTICLE_HOVER_PENDING_TTL_MS = 12 \* 60 \* 1000/);
-  assert.equal(ARTICLE_PENDING_CONNECT_HINT, 'Amber highlight applies when Annotated is connected on that tab.');
+  assert.match(pending, /findExistingArticleTab/);
+  assert.match(pending, /ARTICLE_HOVER_LAST_APPLY_KEY/);
+  assert.equal(ARTICLE_PENDING_CONNECT_HINT, 'Amber highlight applies when the article finishes loading.');
   assert.doesNotMatch(pending, /host_permissions|defineContentScript/);
 });

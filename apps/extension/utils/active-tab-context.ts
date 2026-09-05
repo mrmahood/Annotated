@@ -15,6 +15,48 @@ export type ActiveTabContextMessage = {
   context: ActiveTabContext;
 };
 
+export function activeTabContextFromTab(
+  tab: {
+    id?: number;
+    windowId?: number;
+    title?: string;
+    url?: string;
+    favIconUrl?: string;
+  },
+  capturedAt = Date.now(),
+): ActiveTabContext | null {
+  if (tab.id == null || tab.windowId == null || !Number.isInteger(tab.id) || tab.id < 0) {
+    return null;
+  }
+  if (!Number.isInteger(tab.windowId) || tab.windowId < 0) {
+    return null;
+  }
+  if (typeof tab.url !== 'string') {
+    return null;
+  }
+
+  return {
+    tabId: tab.id,
+    windowId: tab.windowId,
+    title: tab.title ?? '',
+    url: tab.url,
+    ...(tab.favIconUrl ? { favIconUrl: tab.favIconUrl } : {}),
+    capturedAt,
+  };
+}
+
+export function contextsDescribeSameTab(
+  current: Pick<ActiveTabContext, 'tabId' | 'windowId' | 'title' | 'url'>,
+  next: Pick<ActiveTabContext, 'tabId' | 'windowId' | 'title' | 'url'>,
+): boolean {
+  return (
+    current.tabId === next.tabId &&
+    current.windowId === next.windowId &&
+    current.title === next.title &&
+    current.url === next.url
+  );
+}
+
 export function isActiveTabContext(value: unknown): value is ActiveTabContext {
   if (typeof value !== 'object' || value === null) {
     return false;

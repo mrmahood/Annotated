@@ -193,15 +193,16 @@ test('CLEAR fails closed when the stored tab is no longer the connected tab', as
   ), false);
 });
 
-test('Sprint 2 hover linking does not add permissions or persistent content scripts', async () => {
+test('Sprint 2 hover linking keeps one-shot scripting and no persistent content scripts', async () => {
   const [config, background, link, page] = await Promise.all([
     readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/background.ts', import.meta.url), 'utf8'),
     readFile(new URL('./youtube-hover-link.ts', import.meta.url), 'utf8'),
     readFile(new URL('./youtube-hover-page.ts', import.meta.url), 'utf8'),
   ]);
-  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen'\]/);
-  assert.doesNotMatch(config, /host_permissions|content_scripts|defineContentScript/);
+  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
+  assert.match(config, /host_permissions:\s*\['http:\/\/\*\/\*', 'https:\/\/\*\/\*'\]/);
+  assert.doesNotMatch(config, /content_scripts|defineContentScript/);
   assert.doesNotMatch(background, /defineContentScript|content_scripts/);
   assert.match(link, /frameIds: \[0\]/);
   assert.match(link, /ACTIVE_TAB_CONTEXT_KEY/);

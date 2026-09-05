@@ -585,18 +585,24 @@ Production launch and hardening remain separately authorized.
   - **Sprint 2 (done).** Extension YouTube `/watch` hover linking: when
     the connected tab is the annotation’s watch source, hovering
     card/commentary paints the player with outline + light page dim via
-    on-demand `activeTab` / `scripting` injection. No `host_permissions`,
-    no persistent content scripts. Light-DOM best-effort (wrapper, not
-    native player chrome); fail closed off-source and on non-`/watch`
-    YouTube URLs. YouTube-only was intentional for this slice. Merged as
-    PR #61.
+    on-demand `activeTab` / `scripting` injection. Light-DOM best-effort
+    (wrapper, not native player chrome); fail closed off-source and on
+    non-`/watch` YouTube URLs. YouTube-only was intentional for this
+    slice. Merged as PR #61.
   - **Sprint 3 — article / text selection hover linking** (extension;
     separately authorized). When the connected tab is the annotation’s
     article source, hovering card/commentary paints the matched text
     range (or a safe wrapper) with outline + light page dim (~8–12%).
     Debounce leave ~120 ms. Fail closed when the tab is not that article
-    source. Same permission model: no `host_permissions`, no persistent
-    content scripts.
+    source. No persistent content scripts.
+  - **Owner-authorized host access (2026-09-05).** Matt authorized
+    `host_permissions` for `http://*/*` and `https://*/*`, plus `tabs`,
+    so Feed **Open source** can apply the amber highlight on the opened
+    article tab after load without a toolbar click, and so a kept-open
+    side panel follows the active tab (Create / on-this-source / hover)
+    while surfing. Amber is the Open source source of truth. Persistent
+    content scripts remain forbidden. See
+    `docs/design/ui-polish-brief.md` §5.3.
   - **Sprint 4 — audio / podcast hover linking** (extension; separately
     authorized). When the connected tab is the annotation’s
     audio/podcast source page, hovering card/commentary paints the

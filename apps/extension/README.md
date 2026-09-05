@@ -22,8 +22,10 @@ longer opens the web page automatically.
 Authentication continues to use Google OAuth through `chrome.identity`, with the
 Supabase session persisted in `chrome.storage.local`. The production extension
 permissions are `sidePanel`, `activeTab`, `storage`, `scripting`, `identity`,
-`tabCapture`, and `offscreen`. It has no `host_permissions` or persistent
-content scripts.
+`tabCapture`, `offscreen`, and `tabs`, plus `host_permissions` for `http://*/*`
+and `https://*/*` so Open source can apply the amber highlight after load and
+the side panel can follow the active tab. It still has no persistent content
+scripts.
 
 ## YouTube time-coded annotations
 
