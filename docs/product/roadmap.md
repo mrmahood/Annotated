@@ -5,7 +5,10 @@ E3, and the bounded live-X Gate 3 are complete, merged, accepted, and rolled
 back in Staging. Phase F F0–F5 implementation is merged on protected `main`;
 F6 owner-authorized Staging acceptance is recorded 2026-09-04. Production was
 not accessed; GCP media dispatcher and reconciler schedules remain paused.
-Updated 2026-09-04. D1 and D2 completed their
+Updated 2026-09-05. Sprint 1 UI polish and Sprint 2 YouTube hover
+linking are merged and owner-accepted on `main`; Sprint 3 (article/text)
+and Sprint 4 (audio/podcast) hover follow-ons are named under Near-term
+after Phase F. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -567,10 +570,38 @@ Production launch and hardening remain separately authorized.
 - **Extension UI polish / minimalist redesign.** Sequenced after Phase F per
   the locked September sequence in
   `docs/architecture/phase-f-claims-removal-plan.md`. The owner-approved
-  brief is `docs/design/ui-polish-brief.md`. Sprint 1 is dark-first tokens,
-  the Create-mode segmented switch, and nested annotation cards (extension
-  Feed + public web). Sprint 2 is extension ↔ page hover linking (YouTube
-  first). Hover linking is not in Sprint 1.
+  brief is `docs/design/ui-polish-brief.md`. Sprint 1 and Sprint 2 are
+  **done** (implemented, merged, and owner-accepted on `main`). All media
+  hover highlights (YouTube, article/text, and audio/podcast) live on this
+  roadmap. Sprint 3 and Sprint 4 remain separately authorized
+  implementation slices. Visual grammar reuses Sprint 2 (outline + light
+  page dim, ~120 ms leave debounce). The YouTube shadow-DOM / fullscreen
+  limitation does not apply the same way to article ranges or audio
+  players; those slices still fail closed and must not chase brittle
+  host-specific piercing.
+  - **Sprint 1 (done).** Dark-first tokens, the Create-mode segmented
+    switch, and nested annotation cards (extension Feed + public web).
+    Merged as PR #56.
+  - **Sprint 2 (done).** Extension YouTube `/watch` hover linking: when
+    the connected tab is the annotation’s watch source, hovering
+    card/commentary paints the player with outline + light page dim via
+    on-demand `activeTab` / `scripting` injection. No `host_permissions`,
+    no persistent content scripts. Light-DOM best-effort (wrapper, not
+    native player chrome); fail closed off-source and on non-`/watch`
+    YouTube URLs. YouTube-only was intentional for this slice. Merged as
+    PR #61.
+  - **Sprint 3 — article / text selection hover linking** (extension;
+    separately authorized). When the connected tab is the annotation’s
+    article source, hovering card/commentary paints the matched text
+    range (or a safe wrapper) with outline + light page dim (~8–12%).
+    Debounce leave ~120 ms. Fail closed when the tab is not that article
+    source. Same permission model: no `host_permissions`, no persistent
+    content scripts.
+  - **Sprint 4 — audio / podcast hover linking** (extension; separately
+    authorized). When the connected tab is the annotation’s
+    audio/podcast source page, hovering card/commentary paints the
+    active player / scrubber range with the same grammar. Fail closed
+    off-source. Same permissions.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.

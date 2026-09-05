@@ -1,14 +1,17 @@
 # UI polish design brief
 
-Status: **owner-approved design brief** (docs only). This document is the
-single source of truth for the near-term extension and public-web visual
-redesign. It does not authorize application code, migrations, Staging,
-Production, X OAuth re-enable, or Phase G.
+Status: **owner-approved design brief**. Sprint 1 (tokens, switch, cards)
+and Sprint 2 (YouTube `/watch` hover linking) are implemented and
+owner-accepted on `main`. Sprint 3 (article/text selection) and Sprint 4
+(audio/podcast) hover linking are specify-only follow-ons in this
+document. Approving those sections does not authorize application code,
+migrations, Staging, Production, X OAuth re-enable, or Phase G.
 
-Baseline: protected `main` after Phase F F0–F5 and F6 Staging acceptance
-(roadmap updated 2026-09-04). Sequence: polish after Phase F, before X
-re-enable and the mid-September bounty submit. Production has not been
-accessed. Worker schedules remain paused.
+Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
+Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
+polish after Phase F, before X re-enable and the mid-September bounty
+submit. Sprint 1 and Sprint 2 of that polish are done. Production has
+not been accessed. Worker schedules remain paused.
 
 This brief is subordinate to durable security and media rules in `AGENTS.md`
 and `docs/architecture/media-archive-pipeline.md`. Product sequencing follows
@@ -20,14 +23,18 @@ implementation PR is explicitly authorized to change it.
 
 ### 1.1 Purpose
 
-Define one card language and one quiet visual system for the first polish
-pass, then specify hover linking as a separate follow-on:
+Define one card language and one quiet visual system, then specify the
+remaining hover-link follow-ons:
 
 - dark-first design tokens for the extension sidepanel and the public web
-  annotation-card surfaces;
-- replace the Create-mode radio cards with a sliding segmented control;
-- restack Feed and web annotation cards as nested, commentary-led threads;
-- record Sprint 2 hover-link grammar without implementing it in Sprint 1.
+  annotation-card surfaces (Sprint 1, **done**);
+- replace the Create-mode radio cards with a sliding segmented control
+  (Sprint 1, **done**);
+- restack Feed and web annotation cards as nested, commentary-led threads
+  (Sprint 1, **done**);
+- YouTube `/watch` hover linking (Sprint 2, **done**);
+- article / text selection and audio / podcast hover linking (Sprint 3
+  and Sprint 4, specify only).
 
 The annotation is the product; chrome gets out of the way.
 
@@ -39,7 +46,9 @@ The annotation is the product; chrome gets out of the way.
 - User-selectable accent-color picker or accent presets.
 - Rebuilding Feed information architecture beyond the card nest.
 - Multi-operator admin UI or claimant email.
-- Hover linking in Sprint 1.
+- Hover linking in Sprint 1 (historical; Sprint 2 shipped YouTube only).
+- `host_permissions`, persistent content scripts, diagnostic UI, or
+  host-specific shadow-DOM piercing in any hover sprint.
 - Forcing a shared-package extract of card components unless the monorepo
   already makes that extract natural.
 
@@ -52,8 +61,11 @@ reinterpreted in implementation:
    annotation cards in the **same pass**. One card language, two surfaces.
 2. **Sprint split.** Sprint 1 is tokens (dark-first), the Create-mode
    segmented switch, and nested annotation cards (extension Feed + web).
-   Sprint 2 is extension ↔ page hover linking (YouTube first). Hover linking
-   is **not** in Sprint 1.
+   Sprint 2 is extension ↔ page hover linking (YouTube `/watch` only).
+   Sprint 3 is article / text selection hover linking. Sprint 4 is
+   audio / podcast hover linking. Hover linking was **not** in Sprint 1.
+   Sprint 1 and Sprint 2 are **done**; Sprint 3 and Sprint 4 remain
+   separately authorized implementation slices.
 3. **Demo path.** Primary judge demo path is **YouTube video annotations in
    the extension**.
 4. **Copy and marks.** No existing fonts, logo mark, or copy is sacred.
@@ -169,22 +181,23 @@ later hover-link fades. No spring/bounce presets.
 - Detail routes remain for share and deep link; this brief does not replace
   them with in-feed expand.
 
-### 5.3 Permissions relevant to Sprint 2
+### 5.3 Permissions relevant to hover linking (Sprint 2–4)
 
 Production extension permissions stay exactly `sidePanel`, `activeTab`,
 `storage`, `scripting`, `identity`, `tabCapture`, and `offscreen`.
 `host_permissions` stay absent. Do not add persistent content scripts or
-diagnostic UI. Sprint 2 hover linking must fit those constraints
-(on-demand `scripting` against the active tab is the existing pattern;
-this brief does not invent a new permission).
+diagnostic UI. Sprint 2 used on-demand `scripting` against the connected
+tab; Sprint 3 and Sprint 4 must reuse that model. This brief does not
+invent a new permission.
 
-There is no current hover-link overlay, page dim, or persistent page
-highlighter.
+Sprint 2 shipped a YouTube `/watch` hover overlay (outline + light page
+dim) under those constraints. Article and audio hover slices are not
+implemented yet.
 
 ## 6. Sprint 1 — tokens, switch, cards
 
-Implementation is later authorized work. The slices below are the Sprint 1
-contract.
+Sprint 1 is implemented and owner-accepted (PR #56). The slices below
+remain the Sprint 1 contract.
 
 ### 6.1 Design tokens
 
@@ -267,16 +280,16 @@ Rules:
 - Existing comment counts and “view annotation” / detail navigation may
   remain as quiet secondary actions; they are not the visual lead.
 
-## 7. Sprint 2 — hover linking (specify only)
+## 7. Sprint 2 — YouTube hover linking (implemented)
 
-Do not implement in Sprint 1. This section is the owner-approved grammar
-for the later slice.
+Sprint 2 is implemented and owner-accepted (PR #61). YouTube `/watch` only
+was intentional. Article/text and audio/podcast hover linking are Sprint 3
+and Sprint 4 below.
 
-When the active tab is the annotation’s source page, hovering card regions
-paints the page target:
+When the connected tab is the annotation’s YouTube `/watch` source,
+hovering card regions paints the page target:
 
-- Commentary or card hover → soft ring on the matched player (or text
-  selection range).
+- Commentary or card hover → soft ring on the matched player (or wrapper).
 - Nested media chip → same target, slightly stronger.
 - Expanded transcript line → seek and highlight that time window when
   feasible.
@@ -286,20 +299,53 @@ chrome) where safe. Debounce leave ~120 ms. When many annotations share
 one player, prefer a **time-range** overlay on the scrubber rather than
 stacked rings.
 
-Primary target: YouTube. Podcast/audio and article selection linking follow
-after YouTube works.
-
 Known constraint: YouTube shadow DOM and fullscreen may mean the highlight
-lands on an injected wrapper rather than native player chrome. Document
-that limitation in the Sprint 2 PR; do not chase a brittle piercing of
-YouTube internals.
+lands on an injected wrapper rather than native player chrome. Sprint 2
+documented that limitation and used light-DOM best-effort; do not chase a
+brittle piercing of YouTube internals.
 
 Sprint 2 remains bound by production permissions: no `host_permissions`,
-no persistent content scripts. Implementation must use the existing
-activeTab / scripting injection model and fail closed when the tab is not
-the source page.
+no persistent content scripts. Implementation uses the existing
+`activeTab` / `scripting` injection model and fails closed when the tab
+is not the watch source.
 
-## 8. Acceptance criteria (Sprint 1)
+## 8. Sprint 3 / Sprint 4 — article and audio hover linking (specify only)
+
+Do not implement in this docs change. These slices reuse Sprint 2 visual
+grammar and the same permission model. They remain separately authorized.
+
+### 8.1 Shared grammar and permissions
+
+- Outline plus light page dim (~8–12% on non-target chrome) where safe.
+- Debounce leave ~120 ms.
+- Nested media chip may use a slightly stronger ring than commentary/card
+  hover.
+- Fail closed when the connected tab is not that annotation’s source page,
+  when identity cannot be confirmed, or when scripting fails.
+- Production permissions stay exact: no `host_permissions`, no persistent
+  content scripts, no diagnostic UI. On-demand `scripting` against the
+  connected tab only.
+- The YouTube shadow-DOM limitation does not apply the same way to article
+  ranges or typical audio players. Still fail closed and avoid brittle
+  host-specific piercing of player or page internals.
+
+### 8.2 Sprint 3 — article / text selection hover linking (extension)
+
+When the connected tab is the annotation’s article source, hovering
+card/commentary paints the matched text range (or a safe wrapper) with the
+shared outline + dim. Prefer a range highlight or a non-destructive wrapper
+over rewriting page content. If the passage cannot be matched safely, do
+nothing.
+
+### 8.3 Sprint 4 — audio / podcast hover linking (extension)
+
+When the connected tab is the annotation’s audio/podcast source page,
+hovering card/commentary paints the active player / scrubber range with the
+same grammar. Prefer one time-range overlay on a visible scrubber when
+several annotations share a player. If the player or range cannot be
+identified safely, do nothing.
+
+## 9. Acceptance criteria (Sprint 1)
 
 - Dark tokens applied consistently in the extension sidepanel and the web
   card surfaces touched by the PR(s).
@@ -312,15 +358,16 @@ the source page.
 - No public nav chrome regressions.
 - Accessibility: keyboard-operable switch; expanded regions announced
   reasonably (`aria-expanded` / live region as appropriate).
-- This document stays docs-only until an implementation PR is separately
-  authorized.
+- Sprint 1 owner Chrome acceptance is recorded. Sprint 3 and Sprint 4
+  stay specify-only until an implementation PR is separately authorized.
 
-Owner Chrome acceptance remains required before claiming the visual
-redesign done. Automated tests should cover Create-mode guards and card
-expand/collapse where behavior is deterministic; they do not replace
-owner review of YouTube-in-extension as the primary demo path.
+Sprint 1 and Sprint 2 owner Chrome acceptance are recorded. Automated
+tests should cover Create-mode guards and card expand/collapse where
+behavior is deterministic; they do not replace owner review of
+YouTube-in-extension as the primary demo path, or later article/audio
+hover slices.
 
-## 9. Out of scope and later options
+## 10. Out of scope and later options
 
 Out of this brief’s implementation slices:
 
@@ -328,18 +375,20 @@ Out of this brief’s implementation slices:
   accent-color picker, broad admin UI.
 - Multi-operator admin UI, claimant email, rebuilding Feed IA beyond the
   card nest.
+- `host_permissions`, persistent content scripts, diagnostic UI, or
+  brittle host-specific piercing for any hover sprint.
 
 Later options (not Sprint 1 unless noted):
 
 - Light theme and follow-system, including a settings toggle.
 - User accent presets on that same future settings surface, post-submit.
-- Hover linking (Sprint 2).
-- Podcast/audio and article selection linking after YouTube hover linking
-  works.
+- Sprint 3 article/text and Sprint 4 audio/podcast hover linking, as
+  specified in §8. Each still needs its own implementation authorization.
 
-## 10. Authorization
+## 11. Authorization
 
-Approving this document authorizes planning only. Sprint 1 and Sprint 2
-each need their own owner-authorized implementation work. Do not treat
-this brief as permission to change capture, hosted-media publication,
-claims, or extension permissions.
+Approving this document authorizes planning for remaining hover slices
+only. Sprint 1 and Sprint 2 are already implemented and accepted. Sprint 3
+and Sprint 4 each need their own owner-authorized implementation work. Do
+not treat this brief as permission to change capture, hosted-media
+publication, claims, or extension permissions.
