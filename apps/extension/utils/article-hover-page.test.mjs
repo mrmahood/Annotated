@@ -1,0 +1,326 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  applyArticleHoverHighlightOnPage,
+  ARTICLE_HOVER_HIGHLIGHT_NAME,
+  ARTICLE_HOVER_ROOT_ID,
+  clearArticleHoverHighlightOnPage,
+  findUniqueNormalizedMatch,
+  normalizeArticleHoverPageUrl,
+  normalizeArticleHoverText,
+} from './article-hover-page.ts';
+
+const ARTICLE = 'https://example.com/story';
+const OTHER = 'https://example.com/other';
+const PASSAGE = 'The unique passage on this page.';
+
+function withPage(callback, overrides = {}) {
+  const names = [
+    'location', 'document', 'window', 'HTMLElement', 'HTMLStyleElement',
+    'getComputedStyle', 'CSS', 'Highlight',
+  ];
+  const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const listeners = { scroll: [], resize: [] };
+  const nodes = new Map();
+  const highlights = new Map();
+
+  class ElementStub {
+    constructor(tagName, id = '') {
+      this.nodeType = 1;
+      this.tagName = tagName.toUpperCase();
+      this.id = id;
+      this.children = [];
+      this.childNodes = [];
+      this.parentElement = null;
+      this.attributes = {};
+      this.dataset = {};
+      this.hidden = false;
+      this.style = { cssText: '' };
+      this.className = '';
+      this.textContent = '';
+    }
+    getAttribute(name) { return this.attributes[name] ?? null; }
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+      if (name === 'id') {
+        this.id = String(value);
+        nodes.set(String(value), this);
+      }
+    }
+    appendChild(child) {
+      child.parentElement = this;
+      this.childNodes.push(child);
+      if (child.nodeType === 1) this.children.push(child);
+      if (child.id) nodes.set(child.id, child);
+      return child;
+    }
+    replaceChildren(...next) {
+      for (const child of this.childNodes) child.parentElement = null;
+      this.childNodes = [];
+      this.children = [];
+      for (const child of next) this.appendChild(child);
+    }
+    remove() {
+      if (this.id) nodes.delete(this.id);
+      if (this.parentElement) {
+        this.parentElement.childNodes = this.parentElement.childNodes.filter((child) => child !== this);
+        this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
+        this.parentElement = null;
+      }
+    }
+    querySelector(selector) {
+      return this.querySelectorAll(selector)[0] ?? null;
+    }
+    querySelectorAll(selector) {
+      const matches = [];
+      const visit = (node) => {
+        if (node.nodeType === 1 && matchesSelector(node, selector)) matches.push(node);
+        for (const child of node.childNodes) visit(child);
+      };
+      for (const child of this.childNodes) visit(child);
+      return matches;
+    }
+    closest(selector) {
+      let node = this;
+      while (node) {
+        if (matchesSelector(node, selector)) return node;
+        node = node.parentElement;
+      }
+      return null;
+    }
+    getBoundingClientRect() {
+      return this.rect ?? { left: 40, top: 80, right: 400, bottom: 104, width: 360, height: 24 };
+    }
+    getClientRects() { return [{}]; }
+  }
+
+  class StyleStub extends ElementStub {
+    constructor() {
+      super('style');
+    }
+  }
+
+  class TextStub {
+    constructor(text) {
+      this.nodeType = 3;
+      this.textContent = text;
+      this.parentElement = null;
+      this.childNodes = [];
+    }
+  }
+
+  function matchesSelector(node, selector) {
+    if (node.nodeType !== 1) return false;
+    const parts = selector.split(',').map((part) => part.trim());
+    return parts.some((part) => {
+      if (part.startsWith('#')) return node.id === part.slice(1);
+      if (part.startsWith('.')) return node.className.split(/\s+/).includes(part.slice(1));
+      if (part.includes('#')) {
+        const [tag, id] = part.split('#');
+        return node.tagName === tag.toUpperCase() && node.id === id;
+      }
+      if (part.includes('[')) {
+        const name = part.slice(part.indexOf('[') + 1, part.indexOf('='));
+        const value = part.slice(part.indexOf('"') + 1, part.lastIndexOf('"'));
+        return node.attributes[name] === value;
+      }
+      return node.tagName === part.toUpperCase();
+    });
+  }
+
+  const documentElement = new ElementStub('html');
+  const head = new ElementStub('head');
+  const body = new ElementStub('body');
+  documentElement.appendChild(head);
+  documentElement.appendChild(body);
+
+  const paragraph = new ElementStub('p');
+  const text = new TextStub(overrides.bodyText ?? `Intro. ${PASSAGE} Outro.`);
+  paragraph.appendChild(text);
+  if (!overrides.emptyBody) body.appendChild(paragraph);
+
+  class HighlightStub {
+    constructor(range) {
+      this.range = range;
+    }
+  }
+
+  const values = {
+    location: { href: overrides.url ?? ARTICLE },
+    HTMLElement: ElementStub,
+    HTMLStyleElement: StyleStub,
+    Highlight: HighlightStub,
+    CSS: { highlights },
+    getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    document: {
+      documentElement,
+      head,
+      body,
+      createElement: (tag) => tag === 'style' ? new StyleStub() : new ElementStub(tag),
+      createRange: () => ({
+        startContainer: null,
+        startOffset: 0,
+        endContainer: null,
+        endOffset: 0,
+        setStart(node, offset) {
+          this.startContainer = node;
+          this.startOffset = offset;
+        },
+        setEnd(node, offset) {
+          this.endContainer = node;
+          this.endOffset = offset;
+        },
+        getClientRects() {
+          return overrides.noRects
+            ? []
+            : [{ left: 40, top: 80, right: 400, bottom: 104, width: 360, height: 24 }];
+        },
+        getBoundingClientRect() {
+          return { left: 40, top: 80, right: 400, bottom: 104, width: 360, height: 24 };
+        },
+      }),
+      getElementById: (id) => nodes.get(id) ?? null,
+      querySelector: (selector) => documentElement.querySelector(selector),
+      querySelectorAll: (selector) => documentElement.querySelectorAll(selector),
+    },
+    window: {
+      innerWidth: 1280,
+      innerHeight: 720,
+      addEventListener: (name, fn) => { listeners[name]?.push(fn); },
+      removeEventListener: (name, fn) => {
+        if (!listeners[name]) return;
+        listeners[name] = listeners[name].filter((entry) => entry !== fn);
+      },
+    },
+  };
+
+  try {
+    for (const [name, value] of Object.entries(values)) {
+      Object.defineProperty(globalThis, name, { configurable: true, value });
+    }
+    return callback({ documentElement, body, highlights, listeners, nodes, text });
+  } finally {
+    for (const name of names) {
+      const descriptor = previous.get(name);
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  }
+}
+
+test('normalizes hover search text and page URLs the same way as article identity', () => {
+  assert.equal(normalizeArticleHoverText('  The   unique\npassage  '), 'The unique passage');
+  assert.equal(normalizeArticleHoverPageUrl(ARTICLE), ARTICLE);
+  assert.equal(
+    normalizeArticleHoverPageUrl('https://Example.com/story/?utm_source=feed#quote'),
+    ARTICLE,
+  );
+  assert.equal(normalizeArticleHoverPageUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), null);
+  assert.equal(normalizeArticleHoverPageUrl('https://youtu.be/dQw4w9WgXcQ'), null);
+  assert.equal(normalizeArticleHoverPageUrl('javascript:alert(1)'), null);
+});
+
+test('safe text match requires a unique whitespace-normalized substring', () => {
+  assert.deepEqual(
+    findUniqueNormalizedMatch('Intro. The unique passage on this page. Outro.', PASSAGE),
+    { start: 7, end: 39 },
+  );
+  assert.deepEqual(
+    findUniqueNormalizedMatch('Intro.\nThe   unique passage on this page.\nOutro.', PASSAGE),
+    { start: 7, end: 39 },
+  );
+  assert.equal(findUniqueNormalizedMatch('No such words here.', PASSAGE), null);
+  assert.equal(
+    findUniqueNormalizedMatch(`${PASSAGE} and later ${PASSAGE}`, PASSAGE),
+    null,
+  );
+  assert.equal(findUniqueNormalizedMatch('   ', PASSAGE), null);
+  assert.equal(findUniqueNormalizedMatch('A page of words.', '   '), null);
+});
+
+test('page injector paints an idempotent outline and dim on a unique passage', () => {
+  withPage(({ documentElement, highlights }) => {
+    const first = applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    });
+    assert.equal(first.ok, true);
+    const root = documentElement.querySelector('#annotated-article-hover-root');
+    assert.ok(root);
+    assert.equal(root.dataset.strength, 'soft');
+    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.09\)/);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /box-shadow:0 0 0 2px/);
+    assert.equal(highlights.has(ARTICLE_HOVER_HIGHLIGHT_NAME), true);
+
+    const second = applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: `  ${PASSAGE}  `,
+      strength: 'strong',
+    });
+    assert.equal(second.ok, true);
+    assert.equal(documentElement.querySelectorAll('#annotated-article-hover-root').length, 1);
+    assert.equal(root.dataset.strength, 'strong');
+    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.12\)/);
+
+    assert.deepEqual(clearArticleHoverHighlightOnPage(), { ok: true, reason: 'cleared' });
+    assert.equal(documentElement.querySelector('#annotated-article-hover-root'), null);
+    assert.equal(highlights.has(ARTICLE_HOVER_HIGHLIGHT_NAME), false);
+  });
+});
+
+test('page injector fails closed off-source, unmatched, or ambiguous text', () => {
+  withPage(() => {
+    assert.deepEqual(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }), { ok: false, reason: 'source-mismatch' });
+  }, { url: OTHER });
+  withPage(() => {
+    assert.deepEqual(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }), { ok: false, reason: 'source-mismatch' });
+  }, { url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
+  withPage(() => {
+    assert.deepEqual(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: 'This sentence is not on the page.',
+      strength: 'soft',
+    }), { ok: false, reason: 'text-unmatched' });
+  });
+  withPage(() => {
+    assert.deepEqual(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }), { ok: false, reason: 'text-unmatched' });
+  }, { bodyText: `${PASSAGE} then ${PASSAGE}` });
+  withPage(() => {
+    assert.deepEqual(applyArticleHoverHighlightOnPage({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }), { ok: false, reason: 'text-unmatched' });
+  }, { noRects: true });
+});
+
+test('serialized hover functions stay closure-free and do not throw', () => {
+  const apply = Function(`return (${applyArticleHoverHighlightOnPage.toString()})`)();
+  const clear = Function(`return (${clearArticleHoverHighlightOnPage.toString()})`)();
+  assert.doesNotMatch(applyArticleHoverHighlightOnPage.toString(), /chrome\.|import /);
+  withPage(() => {
+    assert.equal(apply({
+      expectedNormalizedUrl: ARTICLE,
+      selectedText: PASSAGE,
+      strength: 'soft',
+    }).ok, true);
+    assert.equal(clear().ok, true);
+  });
+  withPage(() => {
+    assert.equal(apply(null).ok, false);
+  });
+  assert.equal(ARTICLE_HOVER_ROOT_ID, 'annotated-article-hover-root');
+});
