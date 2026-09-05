@@ -156,6 +156,9 @@ durable source identity, and ephemeral media delivery URLs are neither persisted
 nor logged. Generic webpage-video publication uses the article page as
 source identity (`video_clip` + `source_type = article`) and the same
 hosted capture → upload → Processing → ready path as YouTube/audio.
+TikTok watch pages use a first-class `source_type = tiktok` begin RPC
+(`begin_hosted_tiktok_annotation`) and the same capture → upload →
+Processing path; they are not article-backed webpage-video rows.
 Inaccessible cross-origin / Brightcove adapters remain a separate
 increment and continue to fail closed.
 

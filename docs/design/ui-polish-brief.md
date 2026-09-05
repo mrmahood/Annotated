@@ -6,7 +6,8 @@ owner-accepted on `main`. Sprint 3 (article/text selection hover) is
 implemented on `main`. Sprint 4 (audio/podcast hover linking) is
 implemented pending owner Chrome acceptance. Sprint 5 (generic
 page-video hover linking) is implemented pending owner Chrome
-acceptance. Approving those sections does not authorize migrations,
+acceptance. Sprint 6 (TikTok hosted capture/publish + hover) is
+implemented pending owner Chrome and Staging acceptance. Approving those sections does not authorize migrations,
 Staging, Production, X OAuth re-enable, or Phase G.
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
@@ -39,7 +40,9 @@ remaining hover-link follow-ons:
 - audio / podcast hover linking (Sprint 4, **implemented**; owner Chrome
   acceptance still required);
 - generic page-video hover linking (Sprint 5, **implemented**; owner
-  Chrome acceptance still required). YouTube `/watch` remains Sprint 2.
+  Chrome acceptance still required). YouTube `/watch` remains Sprint 2;
+- TikTok hosted capture, Feed Video/TikTok cards, and hover (Sprint 6,
+  **implemented**; owner Chrome and Staging acceptance still required).
 
 The annotation is the product; chrome gets out of the way.
 
@@ -74,7 +77,9 @@ reinterpreted in implementation:
    linking (non-YouTube news/HTML5/embed chrome). Hover linking was
    **not** in Sprint 1. Sprint 1, Sprint 2, and Sprint 3 are **done**;
    Sprint 4 and Sprint 5 are implemented and wait on owner Chrome
-   acceptance. Sprint 2 remains YouTube `/watch` only.
+   acceptance. Sprint 6 is TikTok hosted watch (YouTube-parallel
+   identity, not article/webpage-video). Sprint 2 remains YouTube
+   `/watch` only.
 3. **Demo path.** Primary judge demo path is **YouTube video annotations in
    the extension**.
 4. **Copy and marks.** No existing fonts, logo mark, or copy is sacred.
@@ -434,7 +439,47 @@ YouTube `video_clip` + `youtube`. Generic webpage-video **hosted
 publish** is implemented as an article-backed begin RPC plus Feed/detail
 projection. Sprint 5 Chrome acceptance still needs a readable HTML5
 fixture; Brightcove / inaccessible cross-origin adapters remain a
-separate increment.
+separate increment. Owner later concluded readable HTML5 webpage-video
+is too rare for real demos; Sprint 6 is the TikTok watch path.
+
+### 8.5 Sprint 6 — TikTok hosted capture, Feed cards, and hover (implemented)
+
+Owner authorization (2026-09-05): lock Sprint 6 to TikTok hosted
+capture/publish + hover. Do not force TikTok through
+`source_type = article` or the webpage-video RPC.
+
+Create → Video when the connected tab is a desktop TikTok watch URL
+(`https://www.tiktok.com/@handle/video/<id>`; `m.` / `www.` variants
+normalize to that). Capture uses the proven
+`tabCapture → offscreen → MediaRecorder` path with `kind: 'tiktok'`.
+`begin_hosted_tiktok_annotation` writes a draft `video_clip` on a
+`tiktok` source, media `capture_pending`, then the same upload →
+Processing → ready/published pipeline as YouTube. Feed/web project
+`kind: tiktok` so cards stay distinct from YouTube and from webpage
+`video_clip` + article. Uniqueness remains `(normalized_url, source_type)`.
+
+When the connected tab is that watch URL, hovering a TikTok Video card
+scrolls to and outlines/dims best-effort player chrome
+(`[data-e2e="browse-video"]`, `[data-e2e="video-player"]`,
+`#main-content-video_detail`, `.xgplayer`, or a visible `<video>`).
+Soft hover must not re-seek or call `.play()`. Leave debounce is
+~120 ms. Open source writes `annotatedTikTokHoverPending` (12 min TTL)
+and applies on connection / surf-follow.
+
+Known v1 limits — fail closed:
+
+- login walls and region/age gates;
+- For You / Following feeds without a stable `/@handle/video/<id>` URL;
+- live rooms and photo posts;
+- `vm.tiktok.com`, `vt.tiktok.com`, and `/t/` short links (no network
+  resolve);
+- DRM / encrypted playback;
+- opaque player chrome when identity or a visible target cannot be
+  confirmed;
+- mobile-only surfaces.
+
+Webpage HTML5 publish remains the niche article-backed path.
+News-site opaque embeds (Brightcove/Fox) stay later. No X OAuth.
 
 ## 9. Acceptance criteria (Sprint 1)
 
@@ -454,7 +499,12 @@ separate increment.
   highlight on the source-page audio player. Sprint 5 waits on owner
   Chrome verification of generic page-video hover/scroll on a
   readable HTML5 webpage-video fixture, plus YouTube `/watch` and
-  article/audio regression. Opaque Brightcove/Fox cross-origin
+  article/audio regression. Sprint 6 waits on owner Chrome
+  verification of a public TikTok watch URL (prefer a news-publisher
+  clip): Create Video → capture 1–90 s → publish → dispatcher
+  one-shot if needed → Feed Video/TikTok card → hover
+  scroll+outline on the TikTok tab, plus YouTube / NYT text/audio /
+  webpage-video regression. Opaque Brightcove/Fox cross-origin
   players remain out of scope unless they are already same-origin
   readable.
 
@@ -486,7 +536,9 @@ Later options (not Sprint 1 unless noted):
 Approving this document authorizes the polish slices described here.
 Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
 Sprint 4 and Sprint 5 are implemented pending owner Chrome acceptance.
+Sprint 6 is implemented pending owner Chrome and Staging acceptance.
 Do not treat this brief as permission to change capture, hosted-media
 publication, claims, or extension permissions beyond the later
-owner-authorized webpage-video publication increment. Brightcove /
-cross-origin adapters remain out of Sprint 5.
+owner-authorized webpage-video publication increment and the
+owner-authorized Sprint 6 TikTok increment. Brightcove /
+cross-origin adapters remain out of Sprint 5 and Sprint 6.

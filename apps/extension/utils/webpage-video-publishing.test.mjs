@@ -54,6 +54,18 @@ test('begins hosted article-page identity and strips tracking before RPC', async
   assert.equal('p_user_id' in fake.calls[0][1], false);
 });
 
+test('rejects TikTok watch URLs before calling the webpage-video RPC', async () => {
+  const fake = fakeClient();
+  await assert.rejects(
+    beginHostedWebpageVideoAnnotation(fake.client, {
+      ...input,
+      sourceUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+    }),
+    /TikTok watch URL/,
+  );
+  assert.equal(fake.calls.length, 0);
+});
+
 test('rejects YouTube watch URLs before calling the webpage-video RPC', async () => {
   const fake = fakeClient();
   await assert.rejects(

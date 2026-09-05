@@ -1,4 +1,5 @@
 import { normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 
 export const MEDIA_CAPTURE_MAX_DURATION_MS = 90_000;
@@ -17,7 +18,7 @@ export const MEDIA_CAPTURE_OFFSCREEN_EVENT = 'annotated.mediaCapture.offscreenEv
 export const MEDIA_CAPTURE_OFFSCREEN_NEEDS_END = 'annotated.mediaCapture.offscreenNeedsEnd.v1';
 
 export type CaptureSourceIdentity = {
-  kind: 'youtube' | 'web-video' | 'audio';
+  kind: 'youtube' | 'tiktok' | 'web-video' | 'audio';
   pageUrl: string;
   sourceKey: string;
   playerIdentity: string;
@@ -45,7 +46,7 @@ export type CaptureGeometry = {
   };
 };
 export type CapturePreparedPage = {
-  sourceKind: 'youtube' | 'web-video' | 'audio'; requestedStartMs: number; requestedEndMs: number;
+  sourceKind: 'youtube' | 'tiktok' | 'web-video' | 'audio'; requestedStartMs: number; requestedEndMs: number;
   requestedDurationMs: number; playerCurrentTimeBeforeRecordingMs: number;
   mediaDurationMs: number | null; pageUrl: string; geometry: CaptureGeometry;
 };
@@ -226,6 +227,14 @@ export function sourceIdentityMatchesUrl(source: CaptureSourceIdentity, value: s
       return (host === 'youtube.com' || host === 'm.youtube.com') &&
         actual.pathname === '/watch' && actual.searchParams.get('v') === source.sourceKey;
     }
+    if (source.kind === 'tiktok') {
+      try {
+        return getTikTokVideoIdentity(actual.href).videoId === source.sourceKey &&
+          getTikTokVideoIdentity(source.pageUrl).videoId === source.sourceKey;
+      } catch {
+        return false;
+      }
+    }
     if (source.kind === 'web-video') {
       return normalizeArticleUrl(actual.href) === source.sourceKey &&
         normalizeArticleUrl(source.pageUrl) === source.sourceKey;
@@ -252,11 +261,11 @@ export function isHostedMediaOperation(value: unknown): value is HostedMediaOper
 export function isCaptureStartRequest(value: unknown): value is CaptureStartRequest {
   if (!isRecord(value) || !isRecord(value.source)) return false;
   return isCaptureId(value.captureId) && isInteger(value.tabId) && value.tabId >= 0 &&
-    (value.source.kind === 'youtube' || value.source.kind === 'web-video' || value.source.kind === 'audio') &&
+    (value.source.kind === 'youtube' || value.source.kind === 'tiktok' || value.source.kind === 'web-video' || value.source.kind === 'audio') &&
     typeof value.source.pageUrl === 'string' && value.source.pageUrl.length > 0 &&
     typeof value.source.sourceKey === 'string' && value.source.sourceKey.length > 0 &&
     typeof value.source.playerIdentity === 'string' && (
-      value.source.kind === 'youtube'
+      value.source.kind === 'youtube' || value.source.kind === 'tiktok'
         ? /^video:[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
         : value.source.kind === 'web-video'
           ? /^web-video:(?:top|[1-9][0-9]*(?:\.[1-9][0-9]*)*):[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)

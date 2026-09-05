@@ -1,4 +1,5 @@
 import { getAudioSourceIdentity, normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import { isTikTokVideoUrl } from '@annotated/shared/tiktok';
 import { isYouTubeVideoUrl } from '@annotated/shared/youtube';
 
 export type AudioPlayerCandidate = {
@@ -51,8 +52,9 @@ export type AudioPageDetection =
 export function classifyConnectedSource(
   url: string,
   audioStatus: AudioPageDetection['status'],
-): 'youtube' | 'audio' | 'audio-unsupported' | 'article' {
+): 'youtube' | 'tiktok' | 'audio' | 'audio-unsupported' | 'article' {
   if (isYouTubeVideoUrl(url)) return 'youtube';
+  if (isTikTokVideoUrl(url)) return 'tiktok';
   if (audioStatus === 'supported') return 'audio';
   if (audioStatus === 'no-audio') return 'audio-unsupported';
   return 'article';

@@ -1,4 +1,5 @@
 import { normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import { isTikTokVideoUrl, normalizeTikTokUrl } from '@annotated/shared/tiktok';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 import { isYouTubeVideoUrl, normalizeYouTubeUrl } from '@annotated/shared/youtube';
 
@@ -95,19 +96,22 @@ export function buildAnnotationQueryPlan(options: {
   };
 }
 
-export function classifySourceUrl(value: string): 'youtube' | 'article' {
-  return isYouTubeVideoUrl(value) ? 'youtube' : 'article';
+export function classifySourceUrl(value: string): 'youtube' | 'tiktok' | 'article' {
+  if (isYouTubeVideoUrl(value)) return 'youtube';
+  if (isTikTokVideoUrl(value)) return 'tiktok';
+  return 'article';
 }
 
 export function normalizeSourceUrl(value: string): string {
-  return classifySourceUrl(value) === 'youtube'
-    ? normalizeYouTubeUrl(value)
-    : normalizeArticleUrl(value);
+  const kind = classifySourceUrl(value);
+  if (kind === 'youtube') return normalizeYouTubeUrl(value);
+  if (kind === 'tiktok') return normalizeTikTokUrl(value);
+  return normalizeArticleUrl(value);
 }
 
 function listingNormalizedUrls(sourceUrl: string): string[] {
   const urls = new Set<string>([normalizeSourceUrl(sourceUrl)]);
-  if (classifySourceUrl(sourceUrl) !== 'youtube') {
+  if (classifySourceUrl(sourceUrl) === 'article') {
     try {
       urls.add(normalizeAudioSourceUrl(sourceUrl));
     } catch {

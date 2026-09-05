@@ -69,7 +69,7 @@ export type ArticleSourceOpenOutcome = {
 function tryNormalizeArticleUrl(value: string | null | undefined): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   try {
-    if (classifySourceUrl(value) === 'youtube') return null;
+    if (classifySourceUrl(value) === 'youtube' || classifySourceUrl(value) === 'tiktok') return null;
     return normalizeSourceUrl(value);
   } catch {
     return null;

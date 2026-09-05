@@ -46,7 +46,7 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /hostedTranscript && <ExcerptTranscript/);
   assert.match(detail, /hasHostedExcerptTranscript/);
   assert.match(detail, /This archived excerpt is no longer available/);
-  assert.match(detail, /canPlayConnectedClip = !hostedReady && annotation\.kind === 'youtube'/);
+  assert.match(detail, /canPlayConnectedClip = !hostedReady &&\s*\(annotation\.kind === 'youtube' \|\| annotation\.kind === 'tiktok'\)/);
   assert.match(detail, /canPlayConnectedAudioClip = !hostedReady && annotation\.kind === 'audio'/);
   assert.match(detail, /canPlayConnectedClip \|\| hostedReady \? 'button button-secondary'/);
   assert.match(detail, /ArticlePassageMissStatus/);
@@ -71,9 +71,12 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.doesNotMatch(styles, /annotation-media-raw|signedUrl/);
 
   assert.match(app, /Uploaded and queued\. Processing is in progress\./);
-  assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\} audioHover=\{audioHover\} pageVideoHover=\{pageVideoHover\}/);
+  assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\} audioHover=\{audioHover\} pageVideoHover=\{pageVideoHover\} tiktokHover=\{tiktokHover\}/);
   assert.match(app, /articleHoverConnectionForTab/);
   assert.match(app, /audioHoverConnectionForTab/);
   assert.match(app, /pageVideoHoverConnectionForTab/);
+  assert.match(app, /tiktokHoverConnectionForTab/);
+  assert.match(detail, /handleTikTokSourceOpenClick/);
+  assert.match(detail, /TikTokPendingConnectHint/);
   assert.doesNotMatch(app, /until the media worker ships/);
 });

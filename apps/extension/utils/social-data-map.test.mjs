@@ -124,6 +124,56 @@ test('projects webpage video_clip rows that use the article page as source ident
   assert.equal(mapped?.source.canonicalUrl, NYT_URL);
 });
 
+test('projects TikTok video_clip rows as a first-class tiktok Feed kind', () => {
+  const watch = 'https://www.tiktok.com/@bbcnews/video/7550123456789012345';
+  const mapped = mapPublicAnnotation(baseRow({
+    commentary_text: 'this Reuters clip is the claim',
+    annotation_type: 'video_clip',
+    source: {
+      ...baseRow().source,
+      canonical_url: watch,
+      normalized_url: watch,
+      source_type: 'tiktok',
+      title: 'BBC News clip',
+      publisher: 'TikTok',
+    },
+    target: {
+      target_type: 'time_range',
+      selected_text: null,
+      start_ms: 1_000,
+      end_ms: 8_000,
+    },
+  }));
+  assert.equal(mapped?.kind, 'tiktok');
+  assert.equal(mapped?.source.type, 'tiktok');
+  assert.equal(mapped?.source.videoId, '7550123456789012345');
+  assert.equal(mapped?.startMs, 1_000);
+  assert.equal(mapped?.endMs, 8_000);
+  assert.equal(mapped?.hosted, null);
+});
+
+test('does not project TikTok watch URLs as webpage video cards', () => {
+  const watch = 'https://www.tiktok.com/@bbcnews/video/7550123456789012345';
+  assert.equal(
+    mapPublicAnnotation(baseRow({
+      annotation_type: 'video_clip',
+      source: {
+        ...baseRow().source,
+        canonical_url: watch,
+        normalized_url: watch,
+        source_type: 'article',
+      },
+      target: {
+        target_type: 'time_range',
+        selected_text: null,
+        start_ms: 1_000,
+        end_ms: 8_000,
+      },
+    })),
+    null,
+  );
+});
+
 test('the same URL can project article text, webpage video, and podcast audio as separate cards', () => {
   const article = mapPublicAnnotation(baseRow({
     annotation_type: 'article_text',

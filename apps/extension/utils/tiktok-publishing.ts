@@ -1,23 +1,20 @@
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
-import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
-import { isTikTokVideoUrl } from '@annotated/shared/tiktok';
-import { isYouTubeVideoUrl } from '@annotated/shared/youtube';
+import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUuid } from './social-helpers.ts';
 import type { HostedMediaOperation } from './media-capture.ts';
 
-export type WebpageVideoAnnotationInput = {
+export type TikTokAnnotationInput = {
   sourceUrl: string;
   title: string;
   author: string | null;
-  publisher: string | null;
   startMs: number;
   endMs: number;
   commentaryText: string;
   videoDurationMs?: number | null;
 };
 
-export function parseHostedWebpageVideoBeginResponse(data: unknown): HostedMediaOperation {
+export function parseHostedTikTokBeginResponse(data: unknown): HostedMediaOperation {
   const row = Array.isArray(data) && data.length === 1 ? data[0] : data;
   if (
     typeof row !== 'object' || row === null ||
@@ -36,9 +33,9 @@ export function parseHostedWebpageVideoBeginResponse(data: unknown): HostedMedia
   };
 }
 
-export async function beginHostedWebpageVideoAnnotation(
+export async function beginHostedTikTokAnnotation(
   supabase: SupabaseClient,
-  input: WebpageVideoAnnotationInput,
+  input: TikTokAnnotationInput,
 ): Promise<HostedMediaOperation> {
   const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] =
     await Promise.all([supabase.auth.getSession(), supabase.auth.getUser()]);
@@ -48,14 +45,7 @@ export async function beginHostedWebpageVideoAnnotation(
     userData.user.id !== sessionUser.id || !isUuid(sessionUser.id)
   ) throw new Error('The authenticated session is unavailable.');
 
-  if (isYouTubeVideoUrl(input.sourceUrl)) {
-    throw new Error('Webpage video clips cannot use a YouTube watch URL.');
-  }
-  if (isTikTokVideoUrl(input.sourceUrl)) {
-    throw new Error('Webpage video clips cannot use a TikTok watch URL.');
-  }
-
-  const normalizedUrl = normalizeArticleUrl(input.sourceUrl);
+  const identity = getTikTokVideoIdentity(input.sourceUrl);
   const rangeError = getNewMediaPublicationRangeError(
     input.startMs,
     input.endMs,
@@ -66,19 +56,19 @@ export async function beginHostedWebpageVideoAnnotation(
     throw new Error('Commentary must contain between 1 and 2,000 characters.');
   }
 
-  const { data, error } = await supabase.rpc('begin_hosted_webpage_video_annotation', {
-    p_normalized_url: normalizedUrl,
-    p_canonical_url: normalizedUrl,
-    p_page_title: input.title,
+  const { data, error } = await supabase.rpc('begin_hosted_tiktok_annotation', {
+    p_normalized_url: identity.normalizedUrl,
+    p_canonical_url: identity.canonicalUrl,
+    p_video_id: identity.videoId,
+    p_video_title: input.title,
     p_author: input.author,
-    p_publisher: input.publisher,
     p_start_ms: input.startMs,
     p_end_ms: input.endMs,
     p_commentary_text: input.commentaryText,
   });
   if (error) {
     const raw = typeof error.message === 'string' ? error.message.trim() : '';
-    throw new Error(raw || 'The webpage video clip could not be published.');
+    throw new Error(raw || 'The TikTok clip could not be published.');
   }
-  return parseHostedWebpageVideoBeginResponse(data);
+  return parseHostedTikTokBeginResponse(data);
 }

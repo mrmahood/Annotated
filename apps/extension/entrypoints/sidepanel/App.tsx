@@ -6,6 +6,7 @@ import {
 } from '@annotated/shared/media-time';
 import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-time-display';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
+import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
   AUDIO_CLIP_DRAFT_STORAGE_KEY,
@@ -117,6 +118,13 @@ import {
   type YouTubeClipDraft,
 } from '../../utils/youtube-draft';
 import {
+  TIKTOK_CLIP_DRAFT_STORAGE_KEY,
+  deserializeTikTokClipDraft,
+  serializeTikTokClipDraft,
+  tiktokClipDraftBelongsToSource,
+  type TikTokClipDraft,
+} from '../../utils/tiktok-draft';
+import {
   WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY,
   deserializeWebVideoClipDraft,
   serializeWebVideoClipDraft,
@@ -129,6 +137,11 @@ import {
   validateYouTubePageMetadata,
 } from '../../utils/youtube-page';
 import {
+  extractTikTokPageMetadata,
+  normalizeTikTokVideoTitle,
+  validateTikTokPageMetadata,
+} from '../../utils/tiktok-page';
+import {
   actOnTopFramePlayer,
   readTopFramePlayerDiscovery,
   playerDiscoveryMakesModeAvailable,
@@ -139,6 +152,14 @@ import {
 } from '../../utils/player-discovery';
 import { beginHostedWebpageVideoAnnotation } from '../../utils/webpage-video-publishing';
 import { beginHostedYouTubeAnnotation } from '../../utils/youtube-publishing';
+import { beginHostedTikTokAnnotation } from '../../utils/tiktok-publishing';
+import { applyPendingTikTokHoverOnConnection } from '../../utils/tiktok-hover-pending';
+import {
+  tiktokHoverConnectionForTab,
+  clearTikTokHoverOnConnectedTab,
+  leaveTikTokHoverLink,
+  type TikTokHoverConnection,
+} from '../../utils/tiktok-hover-link';
 import {
   MEDIA_CAPTURE_CANCEL,
   MEDIA_CAPTURE_EVENT,
@@ -211,12 +232,33 @@ type YouTubePageSource = {
   metadataResolved: boolean;
 };
 
+type TikTokPageSource = {
+  title: string;
+  hostname: 'tiktok.com';
+  url: string;
+  classification: 'TikTok';
+  videoId: string;
+  handle: string;
+  normalizedUrl: string;
+  canonicalUrl: string;
+  author: string | null;
+  metadataResolved: boolean;
+};
+
 type AudioVideoPageSource = AudioPageSource & {
   videoDetectionResolved: boolean;
   videoAvailable: boolean;
 };
 
-type PageSource = ArticlePageSource | YouTubePageSource | AudioVideoPageSource;
+type PageSource = ArticlePageSource | YouTubePageSource | TikTokPageSource | AudioVideoPageSource;
+
+function isHostedWatchSource(source: PageSource): source is YouTubePageSource | TikTokPageSource {
+  return source.classification === 'YouTube' || source.classification === 'TikTok';
+}
+
+function videoPlayerSourceKey(source: PageSource): string {
+  return isHostedWatchSource(source) ? source.videoId : normalizeArticleUrl(source.url);
+}
 
 type SourceState =
   | { status: 'loading' }
@@ -290,7 +332,25 @@ function getSourceState(title: string, value: string): SourceState {
         },
       };
     } catch {
-      // Non-video HTTP(S) pages continue through the unchanged article path.
+      // Non-YouTube HTTP(S) pages continue through TikTok, then the article path.
+    }
+    try {
+      if (classifyConnectedSource(tabUrl, 'not-audio-page') !== 'tiktok') throw new Error('Not TikTok');
+      const identity = getTikTokVideoIdentity(tabUrl);
+      return {
+        status: 'connected',
+        source: {
+          title: normalizeTikTokVideoTitle(title) || 'tiktok.com',
+          hostname: 'tiktok.com',
+          url: tabUrl,
+          classification: 'TikTok',
+          ...identity,
+          author: null,
+          metadataResolved: false,
+        },
+      };
+    } catch {
+      // Non-watch HTTP(S) pages continue through the unchanged article path.
     }
     return {
       status: 'connected',
@@ -396,6 +456,13 @@ function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
       audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not YouTube video.' },
     };
   }
+  if (sourceState.source.classification === 'TikTok') {
+    return {
+      text: { status: 'available' },
+      video: { status: 'available' },
+      audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not TikTok video.' },
+    };
+  }
   if (sourceState.source.classification === 'Podcast / web audio') {
     return {
       text: { status: 'available' },
@@ -422,7 +489,11 @@ function getCreatePageSourceKey(url: string): string | null {
   try {
     return getYouTubeVideoIdentity(url).normalizedUrl;
   } catch {
-    try { return normalizeArticleUrl(url); } catch { return null; }
+    try {
+      return getTikTokVideoIdentity(url).normalizedUrl;
+    } catch {
+      try { return normalizeArticleUrl(url); } catch { return null; }
+    }
   }
 }
 
@@ -515,7 +586,7 @@ function SourceSummary({ state }: { state: SourceState }) {
   return (
     <div className="source-summary">
       <span className="source-type">{state.source.classification}</span>
-      <div><span className="section-label">Connected source</span><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}<p>{state.source.hostname}</p></div>
+      <div><span className="section-label">Connected source</span><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'TikTok' && state.source.author && <p>{state.source.author}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}<p>{state.source.hostname}</p></div>
     </div>
   );
 }
@@ -617,6 +688,7 @@ function App() {
   const draftRevisionRef = useRef(0);
   const draftRef = useRef<AnnotationDraft | null>(null);
   const youtubeDraftRef = useRef<YouTubeClipDraft | null>(null);
+  const tiktokDraftRef = useRef<TikTokClipDraft | null>(null);
   const webVideoDraftRef = useRef<WebVideoClipDraft | null>(null);
   const audioDraftRef = useRef<AudioClipDraft | null>(null);
   const createPageRef = useRef<CreatePageGeneration | null>(null);
@@ -632,6 +704,7 @@ function App() {
   const articleHoverRef = useRef<ArticleHoverConnection | null>(null);
   const audioHoverRef = useRef<AudioHoverConnection | null>(null);
   const pageVideoHoverRef = useRef<PageVideoHoverConnection | null>(null);
+  const tiktokHoverRef = useRef<TikTokHoverConnection | null>(null);
   const audioRecorder = useAudioRecorder();
 
   const commentary = createDraftState.text.commentary;
@@ -686,9 +759,13 @@ function App() {
       const draft = serializeYouTubeClipDraft(sourceUrl, startMs, endMs, text);
       youtubeDraftRef.current = draft;
       webVideoDraftRef.current = null;
+      tiktokDraftRef.current = null;
       void chrome.storage.session
         .set({ [YOUTUBE_CLIP_DRAFT_STORAGE_KEY]: draft })
-        .then(() => chrome.storage.session.remove(WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY))
+        .then(() => chrome.storage.session.remove([
+          WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY,
+          TIKTOK_CLIP_DRAFT_STORAGE_KEY,
+        ]))
         .catch(() => console.warn('Unable to save the YouTube clip draft.'));
     } catch {
       // Invalid transient input is never persisted.
@@ -706,6 +783,40 @@ function App() {
     }
   }, []);
 
+  const persistTikTokDraft = useCallback((
+    sourceUrl: string,
+    startMs: number | null,
+    endMs: number | null,
+    text: string,
+  ) => {
+    try {
+      const draft = serializeTikTokClipDraft(sourceUrl, startMs, endMs, text);
+      tiktokDraftRef.current = draft;
+      youtubeDraftRef.current = null;
+      webVideoDraftRef.current = null;
+      void chrome.storage.session
+        .set({ [TIKTOK_CLIP_DRAFT_STORAGE_KEY]: draft })
+        .then(() => chrome.storage.session.remove([
+          YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
+          WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY,
+        ]))
+        .catch(() => console.warn('Unable to save the TikTok clip draft.'));
+    } catch {
+      // Invalid transient input is never persisted.
+    }
+  }, []);
+
+  const clearTikTokDraft = useCallback(async () => {
+    tiktokDraftRef.current = null;
+    dispatchCreateDraft({ type: 'reset-mode', mode: 'video' });
+    setYoutubePublishState({ status: 'idle' });
+    try {
+      await chrome.storage.session.remove(TIKTOK_CLIP_DRAFT_STORAGE_KEY);
+    } catch {
+      console.warn('Unable to clear the TikTok clip draft.');
+    }
+  }, []);
+
   const persistWebVideoDraft = useCallback((
     sourceUrl: string,
     startMs: number | null,
@@ -716,8 +827,12 @@ function App() {
       const draft = serializeWebVideoClipDraft(sourceUrl, startMs, endMs, text);
       webVideoDraftRef.current = draft;
       youtubeDraftRef.current = null;
+      tiktokDraftRef.current = null;
       void chrome.storage.session.set({ [WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY]: draft })
-        .then(() => chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY))
+        .then(() => chrome.storage.session.remove([
+          YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
+          TIKTOK_CLIP_DRAFT_STORAGE_KEY,
+        ]))
         .catch(() => console.warn('Unable to save the webpage video draft.'));
     } catch { /* Invalid transient input is never persisted. */ }
   }, []);
@@ -733,10 +848,12 @@ function App() {
   const clearVideoDraft = useCallback(async () => {
     const source = sourceState.status === 'connected' ? sourceState.source : null;
     if (source?.classification === 'YouTube' && youtubeDraftRef.current) await clearYoutubeDraft();
-    else if (source?.classification !== 'YouTube' && webVideoDraftRef.current) await clearWebVideoDraft();
+    else if (source?.classification === 'TikTok' && tiktokDraftRef.current) await clearTikTokDraft();
+    else if (source && !isHostedWatchSource(source) && webVideoDraftRef.current) await clearWebVideoDraft();
     else if (youtubeDraftRef.current) await clearYoutubeDraft();
+    else if (tiktokDraftRef.current) await clearTikTokDraft();
     else await clearWebVideoDraft();
-  }, [clearWebVideoDraft, clearYoutubeDraft, sourceState]);
+  }, [clearTikTokDraft, clearWebVideoDraft, clearYoutubeDraft, sourceState]);
 
   const persistAudioDraft = useCallback((
     source: AudioPageSource,
@@ -892,6 +1009,17 @@ function App() {
         startMs: youtubeDraft.startMs,
         endMs: youtubeDraft.endMs,
         commentary: youtubeDraft.commentary,
+      });
+    }
+    const tiktokDraft = tiktokDraftRef.current;
+    if (tiktokDraft && context && tiktokClipDraftBelongsToSource(tiktokDraft, context.url)) {
+      dispatchCreateDraft({
+        type: 'restore-media',
+        mode: 'video',
+        sourceKey: tiktokDraft.source.videoId,
+        startMs: tiktokDraft.startMs,
+        endMs: tiktokDraft.endMs,
+        commentary: tiktokDraft.commentary,
       });
     }
     const webVideoDraft = webVideoDraftRef.current;
@@ -1090,7 +1218,7 @@ function App() {
     if (sourceState.status !== 'connected') throw new Error('Choose a player first.');
     const context = connectedContextRef.current;
     if (!context) throw new Error(RECONNECT_MESSAGE);
-    const genericVideo = mode === 'video' && sourceState.source.classification !== 'YouTube';
+    const genericVideo = mode === 'video' && !isHostedWatchSource(sourceState.source);
     const audioIdentity = connectedAudioSource(sourceState.source);
     if (mode === 'audio' && !audioIdentity) throw new Error(RECONNECT_MESSAGE);
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -1104,7 +1232,7 @@ function App() {
       args: [
         mode,
         identity,
-        sourceState.source.classification === 'YouTube'
+        sourceState.source.classification === 'YouTube' || sourceState.source.classification === 'TikTok'
           ? sourceState.source.videoId
           : mode === 'video'
             ? normalizeArticleUrl(sourceState.source.url)
@@ -1146,11 +1274,9 @@ function App() {
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) return;
       const patch = {
-        sourceKey: sourceState.source.classification === 'YouTube'
-          ? sourceState.source.videoId
-          : mode === 'video'
-            ? normalizeArticleUrl(sourceState.source.url)
-            : audioIdentity?.normalizedUrl ?? '',
+        sourceKey: mode === 'video'
+          ? videoPlayerSourceKey(sourceState.source)
+          : audioIdentity?.normalizedUrl ?? '',
         playerIdentity: draft.playerIdentity,
         playerTimeMs: player.currentTimeMs,
         durationMs: player.durationMs,
@@ -1163,6 +1289,13 @@ function App() {
       });
       if (mode === 'video' && sourceState.source.classification === 'YouTube') {
         persistYoutubeDraft(
+          sourceState.source.url,
+          action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
+          action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
+          videoDraftState.commentary,
+        );
+      } else if (mode === 'video' && sourceState.source.classification === 'TikTok') {
+        persistTikTokDraft(
           sourceState.source.url,
           action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
           action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
@@ -1188,17 +1321,17 @@ function App() {
         dispatchCreateDraft({ type: 'set-player-read-state', mode, state: 'error' });
       }
     }
-  }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, persistAudioDraft, persistWebVideoDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
+  }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, persistAudioDraft, persistTikTokDraft, persistWebVideoDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
 
   const changeYoutubeCommentary = (value: string) => {
     const sourceKey = sourceState.status === 'connected'
-      ? sourceState.source.classification === 'YouTube'
-        ? sourceState.source.videoId
-        : normalizeArticleUrl(sourceState.source.url)
+      ? videoPlayerSourceKey(sourceState.source)
       : videoDraftState.sourceKey;
     dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { commentary: value, sourceKey } });
     if (sourceState.status === 'connected' && sourceState.source.classification === 'YouTube') {
       persistYoutubeDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
+    } else if (sourceState.status === 'connected' && sourceState.source.classification === 'TikTok') {
+      persistTikTokDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
     } else if (sourceState.status === 'connected') {
       persistWebVideoDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
     }
@@ -1429,6 +1562,76 @@ function App() {
     }
   }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoDraftState]);
 
+  const publishTikTokClip = useCallback(async () => {
+    if (
+      !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
+      sourceState.status !== 'connected' || sourceState.source.classification !== 'TikTok' ||
+      videoDraftState.startMs === null || videoDraftState.endMs === null ||
+      !videoDraftState.commentary.trim() || !videoDraftState.playerIdentity
+    ) return;
+    const rangeError = getNewMediaPublicationRangeError(
+      videoDraftState.startMs,
+      videoDraftState.endMs,
+      videoDraftState.durationMs,
+    );
+    if (rangeError || videoDraftState.commentary.length > 2_000) {
+      setYoutubePublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
+      return;
+    }
+    let token: PlayerActionToken;
+    try { token = getPlayerActionToken('video', videoDraftState.playerIdentity); }
+    catch { return; }
+    publishInFlightRef.current = true;
+    hostedBeginModeRef.current = 'video';
+    setHostedBeginMode('video');
+    setYoutubePublishState({ status: 'publishing' });
+    try {
+      const player = await runSelectedPlayerAction(token, 'read', null);
+      if (!playerTokenIsCurrent(token)) throw new Error('The Video draft changed. Review it and try again.');
+      const actionRangeError = getNewMediaPublicationRangeError(
+        videoDraftState.startMs, videoDraftState.endMs, player.durationMs,
+      );
+      if (actionRangeError) throw new Error(actionRangeError);
+      const operation = await beginHostedTikTokAnnotation(supabase, {
+        sourceUrl: sourceState.source.url,
+        title: sourceState.source.title,
+        author: sourceState.source.author,
+        startMs: videoDraftState.startMs,
+        endMs: videoDraftState.endMs,
+        commentaryText: videoDraftState.commentary,
+        videoDurationMs: player.durationMs,
+      });
+      if (!playerTokenIsCurrent(token)) {
+        await cancelStaleHostedBegin(
+          operation,
+          sourceState.source.url,
+          'video',
+          videoDraftState.startMs,
+          videoDraftState.endMs,
+        );
+        throw new Error('The Video page, player, or draft changed. The hosted draft was cancelled; review it and try again.');
+      }
+      await startHostedCapture(operation, {
+        kind: 'tiktok',
+        pageUrl: sourceState.source.url,
+        sourceKey: sourceState.source.videoId,
+        playerIdentity: videoDraftState.playerIdentity,
+      }, videoDraftState.startMs, videoDraftState.endMs);
+      setYoutubePublishState({ status: 'idle' });
+    } catch (error) {
+      setYoutubePublishState({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'The TikTok clip could not be published.',
+      });
+    } finally {
+      publishInFlightRef.current = false;
+      if (hostedBeginModeRef.current === 'video') {
+        hostedBeginModeRef.current = null;
+        setHostedBeginMode(null);
+      }
+    }
+  }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoDraftState]);
+
   const publishWebpageVideoClip = useCallback(async () => {
     if (
       !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
@@ -1436,7 +1639,7 @@ function App() {
       videoDraftState.startMs === null || videoDraftState.endMs === null ||
       !videoDraftState.commentary.trim() || !videoDraftState.playerIdentity
     ) return;
-    if (sourceState.source.classification === 'YouTube') return;
+    if (isHostedWatchSource(sourceState.source)) return;
     if (!sourceState.source.videoDetectionResolved || !sourceState.source.videoAvailable) return;
     const rangeError = getNewMediaPublicationRangeError(
       videoDraftState.startMs,
@@ -1690,9 +1893,34 @@ function App() {
         sourceKey: sourceState.source.videoId,
         playerIdentity: videoDraftState.playerIdentity,
       }, session.startMs, session.endMs);
+    } else if (session.mediaType === 'video' && sourceState.source.classification === 'TikTok') {
+      let originalVideoId: string | null = null;
+      try { originalVideoId = getTikTokVideoIdentity(session.sourceUrl).videoId; } catch { /* Invalid persisted source. */ }
+      if (originalVideoId !== sourceState.source.videoId) {
+        setMediaCaptureState({
+          status: 'error',
+          captureId: null,
+          code: 'connected-source-changed',
+          message: 'Reconnect the original video before recapturing this draft.',
+        });
+        return;
+      }
+      if (!videoDraftState.playerIdentity) {
+        setMediaCaptureState({ status: 'error', captureId: null, code: 'connected-source-changed', message: 'Choose the original video player before recapturing this draft.' });
+        return;
+      }
+      const token = getPlayerActionToken('video', videoDraftState.playerIdentity);
+      await runSelectedPlayerAction(token, 'read', null);
+      if (!playerTokenIsCurrent(token)) return;
+      await startHostedCapture(session.operation, {
+        kind: 'tiktok',
+        pageUrl: sourceState.source.url,
+        sourceKey: sourceState.source.videoId,
+        playerIdentity: videoDraftState.playerIdentity,
+      }, session.startMs, session.endMs);
     } else if (
       session.mediaType === 'video' &&
-      sourceState.source.classification !== 'YouTube' &&
+      !isHostedWatchSource(sourceState.source) &&
       sourceState.source.videoAvailable
     ) {
       let originalPageIdentity: string | null = null;
@@ -1754,10 +1982,11 @@ function App() {
   }, [audioDraftState.playerIdentity, getPlayerActionToken, hostedMediaSession, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, videoDraftState.playerIdentity]);
 
   const playConnectedClip = useCallback(async (
-    annotation: Extract<PublicAnnotation, { kind: 'youtube' }>,
+    annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' }>,
   ) => {
     if (
-      sourceState.status !== 'connected' || sourceState.source.classification !== 'YouTube' ||
+      sourceState.status !== 'connected' ||
+      !isHostedWatchSource(sourceState.source) ||
       sourceState.source.videoId !== annotation.source.videoId
     ) throw new Error('The connected video does not match this clip.');
     const token = getPlayerActionToken('video', videoDraftState.playerIdentity);
@@ -1942,6 +2171,43 @@ function App() {
   }, [sourceState]);
 
   useEffect(() => {
+    if (
+      sourceState.status !== 'connected' ||
+      sourceState.source.classification !== 'TikTok' ||
+      sourceState.source.metadataResolved
+    ) return;
+    const context = connectedContextRef.current;
+    const videoId = sourceState.source.videoId;
+    if (!context) return;
+    let current = true;
+    void chrome.scripting.executeScript({
+      target: { tabId: context.tabId, frameIds: [0] },
+      func: extractTikTokPageMetadata,
+    }).then((execution) => {
+      const metadata = validateTikTokPageMetadata(sourceState.source.url, execution[0]?.result);
+      if (!current) return;
+      setSourceState((state) => {
+        if (
+          state.status !== 'connected' || state.source.classification !== 'TikTok' ||
+          state.source.videoId !== videoId
+        ) return state;
+        return {
+          status: 'connected',
+          source: metadata
+            ? { ...state.source, ...metadata, metadataResolved: true }
+            : { ...state.source, metadataResolved: true },
+        };
+      });
+    }).catch(() => {
+      if (!current) return;
+      setSourceState((state) => state.status === 'connected' && state.source.classification === 'TikTok' && state.source.videoId === videoId
+        ? { status: 'connected', source: { ...state.source, metadataResolved: true } }
+        : state);
+    });
+    return () => { current = false; };
+  }, [sourceState]);
+
+  useEffect(() => {
     authMountedRef.current = true;
     if (!supabase) {
       setAuthState({ status: 'error', message: import.meta.env.DEV ? 'Supabase is not configured. Check apps/extension/.env.local.' : 'Authentication is temporarily unavailable.' });
@@ -2004,6 +2270,7 @@ function App() {
         ACTIVE_TAB_CONTEXT_KEY,
         ANNOTATION_DRAFT_STORAGE_KEY,
         YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
+        TIKTOK_CLIP_DRAFT_STORAGE_KEY,
         WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY,
         AUDIO_CLIP_DRAFT_STORAGE_KEY,
         CREATE_MODE_SELECTION_STORAGE_KEY,
@@ -2060,15 +2327,44 @@ function App() {
         ) {
           void chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY);
         }
+        const storedTikTokDraftValue = stored[TIKTOK_CLIP_DRAFT_STORAGE_KEY];
+        const tiktokDraft = deserializeTikTokClipDraft(storedTikTokDraftValue);
+        tiktokDraftRef.current = tiktokDraft;
+        if (
+          restorationRevision === draftRevisionRef.current && tiktokDraft && context &&
+          tiktokClipDraftBelongsToSource(tiktokDraft, context.url)
+        ) {
+          tiktokDraftRef.current = tiktokDraft;
+          dispatchCreateDraft({
+            type: 'restore-media',
+            mode: 'video',
+            sourceKey: tiktokDraft.source.videoId,
+            startMs: tiktokDraft.startMs,
+            endMs: tiktokDraft.endMs,
+            commentary: tiktokDraft.commentary,
+          });
+        } else if (
+          restorationRevision === draftRevisionRef.current &&
+          storedTikTokDraftValue !== undefined && tiktokDraft === null
+        ) {
+          void chrome.storage.session.remove(TIKTOK_CLIP_DRAFT_STORAGE_KEY);
+        }
         const storedWebVideoDraftValue = stored[WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY];
         let webVideoDraft = deserializeWebVideoClipDraft(storedWebVideoDraftValue);
-        if (youtubeDraft && webVideoDraft) {
-          if (youtubeDraft.updatedAt >= webVideoDraft.updatedAt) {
+        const newerHostedDraft = [youtubeDraft, tiktokDraft]
+          .filter((draft): draft is NonNullable<typeof draft> => Boolean(draft))
+          .sort((left, right) => right.updatedAt - left.updatedAt)[0] ?? null;
+        if (newerHostedDraft && webVideoDraft) {
+          if (newerHostedDraft.updatedAt >= webVideoDraft.updatedAt) {
             webVideoDraft = null;
             void chrome.storage.session.remove(WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY);
           } else {
             youtubeDraftRef.current = null;
-            void chrome.storage.session.remove(YOUTUBE_CLIP_DRAFT_STORAGE_KEY);
+            tiktokDraftRef.current = null;
+            void chrome.storage.session.remove([
+              YOUTUBE_CLIP_DRAFT_STORAGE_KEY,
+              TIKTOK_CLIP_DRAFT_STORAGE_KEY,
+            ]);
           }
         }
         webVideoDraftRef.current = webVideoDraft;
@@ -2171,10 +2467,8 @@ function App() {
     }
     const pageUrl = sourceState.source.url;
     const pageGeneration = page.generation;
-    const genericVideo = sourceState.source.classification !== 'YouTube';
-    const videoSourceKey = sourceState.source.classification === 'YouTube'
-      ? sourceState.source.videoId
-      : normalizeArticleUrl(sourceState.source.url);
+    const genericVideo = !isHostedWatchSource(sourceState.source);
+    const videoSourceKey = videoPlayerSourceKey(sourceState.source);
     const probes: Array<{ mode: PlayerMode; genericVideo: boolean; sourceKey: string }> = [
       { mode: 'video', genericVideo, sourceKey: videoSourceKey },
     ];
@@ -2199,7 +2493,7 @@ function App() {
         if (probe.mode === 'video') {
           setVideoPlayers(state);
           if (probe.genericVideo) setSourceState((currentState) =>
-            currentState.status === 'connected' && currentState.source.classification !== 'YouTube' &&
+            currentState.status === 'connected' && !isHostedWatchSource(currentState.source) &&
             currentState.source.url === pageUrl &&
             (currentState.source.videoDetectionResolved !== true ||
               currentState.source.videoAvailable !== playerDiscoveryMakesModeAvailable(discovery))
@@ -2225,7 +2519,7 @@ function App() {
         if (probe.mode === 'video') {
           setVideoPlayers(state);
           if (probe.genericVideo) setSourceState((currentState) =>
-            currentState.status === 'connected' && currentState.source.classification !== 'YouTube' && currentState.source.url === pageUrl
+            currentState.status === 'connected' && !isHostedWatchSource(currentState.source) && currentState.source.url === pageUrl
               ? { status: 'connected', source: { ...currentState.source, videoDetectionResolved: true, videoAvailable: false } }
               : currentState);
         } else setAudioPlayers(state);
@@ -2417,6 +2711,25 @@ function App() {
   }, [sourceState]);
 
   useEffect(() => {
+    const context = connectedContextRef.current;
+    const next = sourceState.status === 'connected'
+      ? tiktokHoverConnectionForTab(
+        sourceState.source.classification,
+        context?.tabId,
+        sourceState.source.url,
+      )
+      : null;
+    const previous = tiktokHoverRef.current;
+    tiktokHoverRef.current = next;
+    if (previous && (!next || previous.tabId !== next.tabId || previous.tabUrl !== next.tabUrl)) {
+      void clearTikTokHoverOnConnectedTab(previous);
+    }
+    if (next) {
+      void applyPendingTikTokHoverOnConnection(next);
+    }
+  }, [sourceState]);
+
+  useEffect(() => {
     const onBlur = () => {
       const articleConnection = articleHoverRef.current;
       if (articleConnection) leaveArticleHoverLink(articleConnection);
@@ -2424,6 +2737,8 @@ function App() {
       if (audioConnection) leaveAudioHoverLink(audioConnection);
       const pageVideoConnection = pageVideoHoverRef.current;
       if (pageVideoConnection) leavePageVideoHoverLink(pageVideoConnection);
+      const tiktokConnection = tiktokHoverRef.current;
+      if (tiktokConnection) leaveTikTokHoverLink(tiktokConnection);
     };
     window.addEventListener('blur', onBlur);
     return () => window.removeEventListener('blur', onBlur);
@@ -2545,11 +2860,14 @@ function App() {
   const youtubeSource = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
     ? sourceState.source
     : null;
-  const webVideoSource = sourceState.status === 'connected' && sourceState.source.classification !== 'YouTube' &&
+  const tiktokSource = sourceState.status === 'connected' && sourceState.source.classification === 'TikTok'
+    ? sourceState.source
+    : null;
+  const webVideoSource = sourceState.status === 'connected' && !isHostedWatchSource(sourceState.source) &&
     sourceState.source.videoDetectionResolved && sourceState.source.videoAvailable
     ? sourceState.source
     : null;
-  const videoSource = youtubeSource ?? webVideoSource;
+  const videoSource = youtubeSource ?? tiktokSource ?? webVideoSource;
   const audioSource = sourceState.status === 'connected'
     ? connectedAudioSource(sourceState.source)
     : null;
@@ -2560,6 +2878,13 @@ function App() {
   const connectedContext = sourceState.status === 'connected' ? connectedContextRef.current : null;
   const youtubeHover = youtubeSource && connectedContext
     ? { tabId: connectedContext.tabId, tabUrl: youtubeSource.url }
+    : null;
+  const tiktokHover = sourceState.status === 'connected' && connectedContext
+    ? tiktokHoverConnectionForTab(
+      sourceState.source.classification,
+      connectedContext.tabId,
+      sourceState.source.url,
+    )
     : null;
   const articleHover = sourceState.status === 'connected' && connectedContext
     ? articleHoverConnectionForTab(
@@ -2586,21 +2911,25 @@ function App() {
   const textDraftAttached = Boolean(
     draftRef.current && connectedContext && annotationDraftBelongsToContext(draftRef.current, connectedContext),
   );
-  const videoDraftAttached = Boolean(youtubeSource
-    ? youtubeDraftRef.current && youtubeClipDraftBelongsToSource(youtubeDraftRef.current, youtubeSource.url)
-    : webVideoSource && webVideoDraftRef.current && webVideoClipDraftBelongsToSource(webVideoDraftRef.current, webVideoSource.url));
+  const videoDraftAttached = Boolean(
+    youtubeSource
+      ? youtubeDraftRef.current && youtubeClipDraftBelongsToSource(youtubeDraftRef.current, youtubeSource.url)
+      : tiktokSource
+        ? tiktokDraftRef.current && tiktokClipDraftBelongsToSource(tiktokDraftRef.current, tiktokSource.url)
+        : webVideoSource && webVideoDraftRef.current && webVideoClipDraftBelongsToSource(webVideoDraftRef.current, webVideoSource.url),
+  );
   const audioDraftAttached = Boolean(
     audioDraftRef.current && audioSource &&
     audioClipDraftBelongsToSource(audioDraftRef.current, audioSource.url, audioSource.canonicalUrl),
   );
   const detachedDraftModes: Record<CreateMode, boolean> = {
     text: draftRef.current !== null && !textDraftAttached,
-    video: (youtubeDraftRef.current !== null || webVideoDraftRef.current !== null) && !videoDraftAttached,
+    video: (youtubeDraftRef.current !== null || tiktokDraftRef.current !== null || webVideoDraftRef.current !== null) && !videoDraftAttached,
     audio: audioDraftRef.current !== null && !audioDraftAttached,
   };
   const savedDraftModes: Record<CreateMode, boolean> = {
     text: draftRef.current !== null || hasCreateModeDraft(createDraftState, 'text'),
-    video: youtubeDraftRef.current !== null || webVideoDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'video'),
+    video: youtubeDraftRef.current !== null || tiktokDraftRef.current !== null || webVideoDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'video'),
     audio: audioDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'audio'),
   };
   const savedDraftLabels = CREATE_MODES
@@ -2637,6 +2966,11 @@ function App() {
     audioPlayers.pageGeneration === modeSelection?.page.generation &&
     audioPlayers.candidates.some((candidate) => candidate.identity === audioDraftState.playerIdentity);
   const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
+    videoPlayerSelected &&
+    videoClipRangeError === null && videoDraftState.commentary.trim().length > 0 &&
+    videoDraftState.commentary.length <= 2_000 && youtubePublishState.status !== 'publishing' &&
+    hostedMediaSession === null;
+  const canPublishTikTok = authState.status === 'signed-in' && tiktokSource !== null &&
     videoPlayerSelected &&
     videoClipRangeError === null && videoDraftState.commentary.trim().length > 0 &&
     videoDraftState.commentary.length <= 2_000 && youtubePublishState.status !== 'publishing' &&
@@ -2691,7 +3025,7 @@ function App() {
   let contextCacheKey: string | null = null;
   if (contextUrl) {
     try {
-      contextCacheKey = `context:${youtubeSource?.normalizedUrl ?? normalizeArticleUrl(contextUrl)}`;
+      contextCacheKey = `context:${youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? normalizeArticleUrl(contextUrl)}`;
     } catch { contextCacheKey = null; }
   }
 
@@ -2709,12 +3043,12 @@ function App() {
 
       {!supabase && currentScreen.kind !== 'root' && <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotated is unavailable</strong><span>Check the extension configuration and try again.</span></div>}
 
-      {supabase && currentScreen.kind === 'annotation' && <AnnotationDetailView key={`annotation:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={() => void beginSignIn()} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} onSocialMutation={() => socialCacheRef.current.clear()} />}
-      {supabase && currentScreen.kind === 'comments' && <AnnotationDetailView key={`comments:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={() => void beginSignIn()} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} focusComments onSocialMutation={() => socialCacheRef.current.clear()} />}
-      {supabase && currentScreen.kind === 'profile' && <ProfileView key={`profile:${currentScreen.profileId}`} supabase={supabase} profileId={currentScreen.profileId} currentUserId={currentUserId} onSignIn={() => void beginSignIn()} navigation={navigationCallbacks} cache={socialCacheRef.current} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} />}
+      {supabase && currentScreen.kind === 'annotation' && <AnnotationDetailView key={`annotation:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={() => void beginSignIn()} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} onSocialMutation={() => socialCacheRef.current.clear()} />}
+      {supabase && currentScreen.kind === 'comments' && <AnnotationDetailView key={`comments:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={() => void beginSignIn()} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} focusComments onSocialMutation={() => socialCacheRef.current.clear()} />}
+      {supabase && currentScreen.kind === 'profile' && <ProfileView key={`profile:${currentScreen.profileId}`} supabase={supabase} profileId={currentScreen.profileId} currentUserId={currentUserId} onSignIn={() => void beginSignIn()} navigation={navigationCallbacks} cache={socialCacheRef.current} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} />}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'feed' && (
-        <div className="root-view"><header className="view-intro"><span className="section-label">Public activity</span><h1>Recent annotations</h1><p>Published notes from across Annotated.</p></header>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
+        <div className="root-view"><header className="view-intro"><span className="section-label">Public activity</span><h1>Recent annotations</h1><p>Published notes from across Annotated.</p></header>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
       )}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'account' && (
@@ -2763,7 +3097,7 @@ function App() {
             <div className="compact-state detached-draft" role="status"><strong>{CREATE_MODE_LABELS[selectedCreateMode]} draft saved</strong><span>This draft belongs to another connected source. Return to that source to continue, or discard it to start here.</span><button className="button button-secondary" type="button" onClick={discardSelectedDetachedDraft}>Discard {CREATE_MODE_LABELS[selectedCreateMode]} draft and start here</button></div>
           ) : selectedCreateMode === 'video' && videoSource ? (
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading" key="create-video">
-              <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>{youtubeSource ? 'YouTube time range' : 'Webpage video range'}</span></div>
+              <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>{youtubeSource ? 'YouTube time range' : tiktokSource ? 'TikTok time range' : 'Webpage video range'}</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected video, set the start, continue watching, then set the end.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
@@ -2778,7 +3112,7 @@ function App() {
                 {videoDraftState.startMs !== null && videoDraftState.endMs !== null && videoClipRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
                 <div className="annotation-field"><label htmlFor="youtube-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="youtube-commentary" value={videoDraftState.commentary} maxLength={2_000} rows={6} required disabled={mediaEditorLocked} onChange={(event) => changeYoutubeCommentary(event.target.value)} /><span aria-live="polite">{videoDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
-                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginSignIn()}>Continue with Google</button> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
+                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <button className="button button-primary" type="button" onClick={() => void beginSignIn()}>Continue with Google</button> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : tiktokSource ? <button className="button button-primary" type="button" onClick={() => void publishTikTokClip()} disabled={!canPublishTikTok}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
               </>}
             </section>
@@ -2811,7 +3145,7 @@ function App() {
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
           )}
           {hostedMediaPanel}
-          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} emptyTitle={youtubeSource ? 'No clips on this video yet' : exclusivePodcast ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource ? 'Clips on this video' : exclusivePodcast ? 'Clips on this episode' : 'On this source'} />}
+          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} emptyTitle={youtubeSource || tiktokSource ? 'No clips on this video yet' : exclusivePodcast ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource || tiktokSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource || tiktokSource ? 'Clips on this video' : exclusivePodcast ? 'Clips on this episode' : 'On this source'} />}
         </div>
       )}
       {pendingModeSwitch && (

@@ -228,6 +228,8 @@ test("route implementations share one renderer and preserve public-only redirect
   assert.match(renderer, /aria-labelledby="media-removed-heading"/);
   assert.match(renderer, /isWebpageVideo \? "Webpage video"/);
   assert.match(renderer, /isYouTubeVideo \? "Open clip on YouTube"/);
+  assert.match(renderer, /isTikTokVideo \? "TikTok source"/);
+  assert.match(renderer, /isTikTokVideo \? "Open clip on TikTok"/);
   assert.match(player, /aria-label="Archived source video excerpt"/);
   assert.match(player, /aria-label="Archived source audio excerpt"/);
   assert.match(player, /role="status"/);

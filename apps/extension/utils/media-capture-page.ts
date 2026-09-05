@@ -35,6 +35,15 @@ export async function prepareMediaCaptureOnPage(
         : null;
     } catch { return null; }
   };
+  const tiktokId = (value: string) => {
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      if (host !== 'tiktok.com' && host !== 'm.tiktok.com') return null;
+      const match = url.pathname.match(/^\/@([A-Za-z0-9._]{2,24})\/video\/(\d{10,25})\/?$/i);
+      return match?.[2] ?? null;
+    } catch { return null; }
+  };
   const articleKey = (value: string) => {
     try {
       const url = new URL(value);
@@ -48,6 +57,8 @@ export async function prepareMediaCaptureOnPage(
   };
   const sourceMatches = () => request.source.kind === 'youtube'
     ? youtubeId(location.href) === request.source.sourceKey
+    : request.source.kind === 'tiktok'
+      ? tiktokId(location.href) === request.source.sourceKey
     : request.source.kind === 'web-video'
       ? articleKey(location.href) === request.source.sourceKey && articleKey(request.source.pageUrl) === request.source.sourceKey
       : comparable(location.href) === comparable(request.source.pageUrl);
@@ -166,7 +177,7 @@ export async function prepareMediaCaptureOnPage(
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
-      const accepted = request.source.kind === 'youtube'
+      const accepted = request.source.kind === 'youtube' || request.source.kind === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
@@ -310,8 +321,19 @@ export async function playMediaForCaptureOnPage(
       return url.href;
     } catch { return null; }
   };
+  const tiktokId = (value: string) => {
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      if (host !== 'tiktok.com' && host !== 'm.tiktok.com') return null;
+      const match = url.pathname.match(/^\/@([A-Za-z0-9._]{2,24})\/video\/(\d{10,25})\/?$/i);
+      return match?.[2] ?? null;
+    } catch { return null; }
+  };
   const sourceMatches = () => source.kind === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
+    : source.kind === 'tiktok'
+      ? tiktokId(location.href) === source.sourceKey
     : source.kind === 'web-video'
       ? articleKey(location.href) === source.sourceKey && articleKey(source.pageUrl) === source.sourceKey
       : comparable(location.href) === comparable(source.pageUrl);
@@ -414,7 +436,7 @@ export async function playMediaForCaptureOnPage(
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
-      const accepted = source.kind === 'youtube'
+      const accepted = source.kind === 'youtube' || source.kind === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
@@ -477,8 +499,19 @@ export function finishMediaCaptureOnPage(
       return url.href;
     } catch { return null; }
   };
+  const tiktokId = (value: string) => {
+    try {
+      const url = new URL(value);
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      if (host !== 'tiktok.com' && host !== 'm.tiktok.com') return null;
+      const match = url.pathname.match(/^\/@([A-Za-z0-9._]{2,24})\/video\/(\d{10,25})\/?$/i);
+      return match?.[2] ?? null;
+    } catch { return null; }
+  };
   const sourceStillMatches = () => source.kind === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
+    : source.kind === 'tiktok'
+      ? tiktokId(location.href) === source.sourceKey
     : source.kind === 'web-video'
       ? articleKey(location.href) === source.sourceKey && articleKey(source.pageUrl) === source.sourceKey
       : comparable(location.href) === comparable(source.pageUrl);
@@ -587,7 +620,7 @@ export function finishMediaCaptureOnPage(
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
-      const accepted = source.kind === 'youtube'
+      const accepted = source.kind === 'youtube' || source.kind === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&

@@ -268,6 +268,7 @@ test('the serialized page snapshot reads schema, og:type, and Apple podcast sign
 
 test('discriminates article, YouTube, supported audio, and unsupported audio states', () => {
   assert.equal(classifyConnectedSource('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'no-audio'), 'youtube');
+  assert.equal(classifyConnectedSource('https://www.tiktok.com/@bbcnews/video/7550123456789012345', 'no-audio'), 'tiktok');
   assert.equal(classifyConnectedSource('https://example.com/article', 'not-audio-page'), 'article');
   assert.equal(classifyConnectedSource('https://example.com/episode', 'supported'), 'audio');
   assert.equal(classifyConnectedSource('https://example.com/episode', 'no-audio'), 'audio-unsupported');

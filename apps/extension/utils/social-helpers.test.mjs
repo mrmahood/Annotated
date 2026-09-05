@@ -54,6 +54,16 @@ test('context source discrimination normalizes supported YouTube videos by video
   assert.equal(classifySourceUrl('https://example.com/watch?v=dQw4w9WgXcQ'), 'article');
 });
 
+test('context source discrimination normalizes supported TikTok videos by watch identity', () => {
+  const plan = buildAnnotationQueryPlan({
+    sourceUrl: 'https://m.tiktok.com/@bbcnews/video/7550123456789012345?is_from_webapp=1',
+  });
+  assert.equal(plan.normalizedUrl, 'https://www.tiktok.com/@bbcnews/video/7550123456789012345');
+  assert.deepEqual(plan.normalizedUrls, ['https://www.tiktok.com/@bbcnews/video/7550123456789012345']);
+  assert.equal(classifySourceUrl('https://www.tiktok.com/@bbcnews/video/7550123456789012345'), 'tiktok');
+  assert.equal(classifySourceUrl('https://www.tiktok.com/foryou'), 'article');
+});
+
 test('profile plans validate UUIDs', () => {
   assert.equal(buildAnnotationQueryPlan({ profileId: PROFILE_ID }).profileId, PROFILE_ID);
   assert.throws(() => buildAnnotationQueryPlan({ profileId: 'not-a-uuid' }));

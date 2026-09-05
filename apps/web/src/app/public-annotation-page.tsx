@@ -37,6 +37,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
     annotation.kind === "video_hosted" ||
     (annotation.kind === "media_removed" && annotation.mediaType === "video");
   const isYouTubeVideo = isVideo && annotation.source.type === "youtube";
+  const isTikTokVideo = isVideo && annotation.source.type === "tiktok";
   const isWebpageVideo = isVideo && annotation.source.type === "article";
   const isAudio = annotation.kind === "audio_legacy" ||
     annotation.kind === "audio_hosted" ||
@@ -92,7 +93,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
 
           <section className="source-attribution" aria-labelledby="source-heading">
             <div className="source-copy">
-              <p className="section-label">{isYouTubeVideo ? "YouTube source" : isWebpageVideo ? "Webpage video" : isAudio ? "Podcast / web audio" : "Original article"}</p>
+              <p className="section-label">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isAudio ? "Podcast / web audio" : "Original article"}</p>
               <h1 id="source-heading">{sourceTitle}</h1>
               {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
                 <p className="source-byline">
@@ -105,7 +106,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
               <p className="source-hostname">{annotation.source.hostname}</p>
             </div>
             <a className="public-button public-button-primary source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
-              {isYouTubeVideo ? "Open clip on YouTube" : isAudio || isWebpageVideo ? "Open original source" : "View original source"}
+              {isYouTubeVideo ? "Open clip on YouTube" : isTikTokVideo ? "Open clip on TikTok" : isAudio || isWebpageVideo ? "Open original source" : "View original source"}
               <span aria-hidden="true">↗</span>
             </a>
           </section>

@@ -103,6 +103,20 @@ import {
   youtubeHoverRegionHandlers,
   type YouTubeHoverConnection,
 } from '../../utils/youtube-hover-link';
+import {
+  cancelTikTokHoverLink,
+  enterTikTokHoverLink,
+  tiktokHoverNestedChipHandlers,
+  tiktokHoverRegionHandlers,
+  type TikTokHoverConnection,
+} from '../../utils/tiktok-hover-link';
+import {
+  TIKTOK_HOVER_PENDING_KEY,
+  TIKTOK_PENDING_CONNECT_HINT,
+  openTikTokSourceFromPanel,
+  readTikTokHoverPending,
+  tiktokHoverPendingMatchesTarget,
+} from '../../utils/tiktok-hover-pending';
 
 export type SessionSocialCache = Map<string, AnnotationPage>;
 
@@ -268,6 +282,16 @@ function youtubeClipHoverTarget(annotation: PublicAnnotation) {
     : null;
 }
 
+function tiktokClipHoverTarget(annotation: PublicAnnotation) {
+  return annotation.kind === 'tiktok'
+    ? {
+        videoId: annotation.source.videoId,
+        startMs: annotation.startMs,
+        endMs: annotation.endMs,
+      }
+    : null;
+}
+
 function articlePassageHoverTarget(annotation: PublicAnnotation) {
   return annotation.kind === 'article'
     ? {
@@ -377,12 +401,38 @@ function handlePageVideoSourceOpenClick(
   });
 }
 
+function handleTikTokSourceOpenClick(
+  event: { preventDefault: () => void },
+  annotation: PublicAnnotation,
+  connection: TikTokHoverConnection | null,
+  href: string,
+  onAwaitingConnection?: (awaiting: boolean) => void,
+) {
+  const target = tiktokClipHoverTarget(annotation);
+  if (!target) return;
+  event.preventDefault();
+  void openTikTokSourceFromPanel({
+    target: {
+      ...target,
+      canonicalUrl: annotation.source.canonicalUrl,
+    },
+    connection,
+    href,
+    openFallback: (openHref) => {
+      window.open(openHref, '_blank', 'noopener,noreferrer');
+    },
+  }).then((outcome) => {
+    onAwaitingConnection?.(outcome.awaitingConnection);
+  });
+}
+
 function handleSourceOpenClick(
   event: { preventDefault: () => void },
   annotation: PublicAnnotation,
   articleHover: ArticleHoverConnection | null,
   audioHover: AudioHoverConnection | null,
   pageVideoHover: PageVideoHoverConnection | null,
+  tiktokHover: TikTokHoverConnection | null,
   href: string,
   onArticleHoverResult?: ArticleHoverResultListener,
   onAwaitingConnection?: (awaiting: boolean) => void,
@@ -404,6 +454,10 @@ function handleSourceOpenClick(
   }
   if (annotation.kind === 'video') {
     handlePageVideoSourceOpenClick(event, annotation, pageVideoHover, href, onAwaitingConnection);
+    return;
+  }
+  if (annotation.kind === 'tiktok') {
+    handleTikTokSourceOpenClick(event, annotation, tiktokHover, href, onAwaitingConnection);
   }
 }
 
@@ -601,10 +655,54 @@ function PageVideoPendingConnectHint({ show }: { show: boolean }) {
   return <p className="page-video-pending-connect-hint">{PAGE_VIDEO_PENDING_CONNECT_HINT}</p>;
 }
 
+function useTikTokPendingConnectHint(annotation: PublicAnnotation | null) {
+  const [awaiting, setAwaiting] = useState(false);
+  const target = annotation ? tiktokClipHoverTarget(annotation) : null;
+  const targetKey = target
+    ? `${target.videoId}\n${target.startMs}\n${target.endMs}`
+    : '';
+
+  useEffect(() => {
+    if (!awaiting || !target) return;
+    let mounted = true;
+    const matchedTarget = target;
+    const sync = async () => {
+      const pending = await readTikTokHoverPending();
+      if (!mounted) return;
+      if (!pending || !tiktokHoverPendingMatchesTarget(pending, matchedTarget)) {
+        setAwaiting(false);
+      }
+    };
+    void sync();
+    const onChange = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+      if (area === 'session' && Object.prototype.hasOwnProperty.call(changes, TIKTOK_HOVER_PENDING_KEY)) {
+        void sync();
+      }
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => {
+      mounted = false;
+      chrome.storage.onChanged.removeListener(onChange);
+    };
+  }, [awaiting, targetKey]);
+
+  return {
+    showHint: awaiting,
+    onAwaitingConnection: (value: boolean) => setAwaiting(value),
+  };
+}
+
+function TikTokPendingConnectHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <p className="tiktok-pending-connect-hint">{TIKTOK_PENDING_CONNECT_HINT}</p>;
+}
+
 function ExcerptTranscript({
   transcript,
   youtubeHover = null,
   clipTarget = null,
+  tiktokHover = null,
+  tiktokTarget = null,
   audioHover = null,
   audioTarget = null,
   pageVideoHover = null,
@@ -613,6 +711,8 @@ function ExcerptTranscript({
   transcript: HostedExcerptTranscript;
   youtubeHover?: YouTubeHoverConnection | null;
   clipTarget?: { videoId: string; startMs: number; endMs: number } | null;
+  tiktokHover?: TikTokHoverConnection | null;
+  tiktokTarget?: { videoId: string; startMs: number; endMs: number } | null;
   audioHover?: AudioHoverConnection | null;
   audioTarget?: { canonicalUrl: string; normalizedUrl: string; startMs: number; endMs: number } | null;
   pageVideoHover?: PageVideoHoverConnection | null;
@@ -641,6 +741,13 @@ function ExcerptTranscript({
                     startMs: segment.startMs,
                     endMs: segment.endMs,
                   })
+                  : tiktokTarget
+                    ? tiktokHoverRegionHandlers(tiktokHover, {
+                      ...tiktokTarget,
+                      strength: 'strong',
+                      startMs: segment.startMs,
+                      endMs: segment.endMs,
+                    })
                   : youtubeHoverRegionHandlers(youtubeHover, clipTarget ? {
                     videoId: clipTarget.videoId,
                     strength: 'strong',
@@ -680,12 +787,12 @@ function Avatar({ name, url, size = 30 }: { name: string; url: string | null; si
 }
 
 function sourceChipLabel(annotation: PublicAnnotation): string {
-  if (annotation.kind === 'youtube' || annotation.kind === 'video') return 'Video';
+  if (annotation.kind === 'youtube' || annotation.kind === 'tiktok' || annotation.kind === 'video') return 'Video';
   if (annotation.kind === 'audio') return 'Audio';
   return 'Text';
 }
 
-function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null }: {
+function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null, tiktokHover = null }: {
   annotation: PublicAnnotation;
   navigation: NavigationCallbacks;
   supabase: SupabaseClient;
@@ -694,6 +801,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   articleHover?: ArticleHoverConnection | null;
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
+  tiktokHover?: TikTokHoverConnection | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hosted, setHosted] = useState<HostedExcerpt | null>(
@@ -706,6 +814,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
   const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
   const { showHint: showPageVideoHint, onAwaitingConnection: onPageVideoAwaitingConnection } = usePageVideoPendingConnectHint(annotation);
+  const { showHint: showTikTokHint, onAwaitingConnection: onTikTokAwaitingConnection } = useTikTokPendingConnectHint(annotation);
   const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
@@ -762,6 +871,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
     </span>
   );
   const clipTarget = youtubeClipHoverTarget(annotation);
+  const tiktokTarget = tiktokClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
   const audioTarget = audioClipHoverTarget(annotation);
   const pageVideoTarget = pageVideoClipHoverTarget(annotation);
@@ -771,6 +881,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
       ? audioHoverRegionHandlers(audioHover, { ...audioTarget, strength: 'soft' })
       : pageVideoTarget
         ? pageVideoHoverRegionHandlers(pageVideoHover, { ...pageVideoTarget, strength: 'soft' })
+        : tiktokTarget
+          ? tiktokHoverRegionHandlers(tiktokHover, { ...tiktokTarget, strength: 'soft' })
         : youtubeHoverRegionHandlers(
           youtubeHover,
           clipTarget ? { ...clipTarget, strength: 'soft' } : null,
@@ -781,6 +893,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
       ? audioHoverNestedChipHandlers(audioHover, audioTarget)
       : pageVideoTarget
         ? pageVideoHoverNestedChipHandlers(pageVideoHover, pageVideoTarget)
+        : tiktokTarget
+          ? tiktokHoverNestedChipHandlers(tiktokHover, tiktokTarget)
         : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
 
   return (
@@ -844,6 +958,15 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                       });
                       return;
                     }
+                    if (tiktokHover && tiktokTarget) {
+                      enterTikTokHoverLink(tiktokHover, {
+                        ...tiktokTarget,
+                        strength: 'strong',
+                        startMs: segment.startMs,
+                        endMs: segment.endMs,
+                      });
+                      return;
+                    }
                     if (!youtubeHover || !clipTarget) return;
                     enterYouTubeHoverLink(youtubeHover, {
                       videoId: clipTarget.videoId,
@@ -867,6 +990,13 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                       });
                       return;
                     }
+                    if (tiktokHover && tiktokTarget) {
+                      enterTikTokHoverLink(tiktokHover, {
+                        ...tiktokTarget,
+                        strength: 'soft',
+                      });
+                      return;
+                    }
                     if (!youtubeHover || !clipTarget) return;
                     enterYouTubeHoverLink(youtubeHover, {
                       ...clipTarget,
@@ -884,10 +1014,11 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           {expanded && hasArticleAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
           )}
-          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSourceOpenClick(event, annotation, articleHover, audioHover, pageVideoHover, sourceUrl, onArticleHoverResult, annotation.kind === 'audio' ? onAudioAwaitingConnection : annotation.kind === 'video' ? onPageVideoAwaitingConnection : onAwaitingConnection)}>Open source ↗</a>
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSourceOpenClick(event, annotation, articleHover, audioHover, pageVideoHover, tiktokHover, sourceUrl, onArticleHoverResult, annotation.kind === 'audio' ? onAudioAwaitingConnection : annotation.kind === 'video' ? onPageVideoAwaitingConnection : annotation.kind === 'tiktok' ? onTikTokAwaitingConnection : onAwaitingConnection)}>Open source ↗</a>
           <ArticlePendingConnectHint show={showHint} />
           <AudioPendingConnectHint show={showAudioHint} />
           <PageVideoPendingConnectHint show={showPageVideoHint} />
+          <TikTokPendingConnectHint show={showTikTokHint} />
           <ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} />
         </div>
       </div>
@@ -918,6 +1049,7 @@ export function AnnotationCollection({
   articleHover = null,
   audioHover = null,
   pageVideoHover = null,
+  tiktokHover = null,
 }: {
   supabase: SupabaseClient;
   cache: SessionSocialCache;
@@ -933,6 +1065,7 @@ export function AnnotationCollection({
   articleHover?: ArticleHoverConnection | null;
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
+  tiktokHover?: TikTokHoverConnection | null;
 }) {
   const [page, setPage] = useState<AnnotationPage | null>(() => cache.get(cacheKey) ?? null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(page ? 'ready' : 'loading');
@@ -945,6 +1078,7 @@ export function AnnotationCollection({
     cancelArticleHoverLink();
     cancelAudioHoverLink();
     cancelPageVideoHoverLink();
+    cancelTikTokHoverLink();
   }, []);
 
   const loadInitial = useCallback(async (force = false) => {
@@ -1014,7 +1148,7 @@ export function AnnotationCollection({
     <section className="social-list-section" aria-label={compactHeading ?? 'Annotations'}>
       {compactHeading && <div className="section-heading"><h2>{compactHeading}</h2><span>{page.total ?? page.annotations.length}</span></div>}
       <div className="social-list">
-        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} />)}
+        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} />)}
       </div>
       {page.hasMore && (
         <button className="button button-secondary load-more" type="button" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -1247,6 +1381,7 @@ export function AnnotationDetailView({
   articleHover = null,
   audioHover = null,
   pageVideoHover = null,
+  tiktokHover = null,
 }: {
   supabase: SupabaseClient;
   annotationId: string;
@@ -1255,13 +1390,14 @@ export function AnnotationDetailView({
   focusComments?: boolean;
   onSocialMutation?: () => void;
   connectedVideoId?: string | null;
-  onPlayConnectedClip?: (annotation: Extract<PublicAnnotation, { kind: 'youtube' }>) => Promise<void>;
+  onPlayConnectedClip?: (annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' }>) => Promise<void>;
   connectedAudioNormalizedUrl?: string | null;
   onPlayConnectedAudioClip?: (annotation: Extract<PublicAnnotation, { kind: 'audio' }>) => Promise<void>;
   youtubeHover?: YouTubeHoverConnection | null;
   articleHover?: ArticleHoverConnection | null;
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
+  tiktokHover?: TikTokHoverConnection | null;
 } & AuthProps) {
   const [annotation, setAnnotation] = useState<PublicAnnotation | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
@@ -1272,6 +1408,7 @@ export function AnnotationDetailView({
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
   const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
   const { showHint: showPageVideoHint, onAwaitingConnection: onPageVideoAwaitingConnection } = usePageVideoPendingConnectHint(annotation);
+  const { showHint: showTikTokHint, onAwaitingConnection: onTikTokAwaitingConnection } = useTikTokPendingConnectHint(annotation);
 
   useEffect(() => {
     let current = true;
@@ -1306,11 +1443,13 @@ export function AnnotationDetailView({
     ? hostedReady.transcript
     : null;
   const hostedRemoved = annotation.kind !== 'article' && annotation.hosted?.status === 'removed';
-  const canPlayConnectedClip = !hostedReady && annotation.kind === 'youtube' &&
+  const canPlayConnectedClip = !hostedReady &&
+    (annotation.kind === 'youtube' || annotation.kind === 'tiktok') &&
     connectedVideoId === annotation.source.videoId;
   const canPlayConnectedAudioClip = !hostedReady && annotation.kind === 'audio' &&
     connectedAudioNormalizedUrl === annotation.source.normalizedUrl;
   const clipTarget = youtubeClipHoverTarget(annotation);
+  const tiktokTarget = tiktokClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
   const audioTarget = audioClipHoverTarget(annotation);
   const pageVideoTarget = pageVideoClipHoverTarget(annotation);
@@ -1320,6 +1459,8 @@ export function AnnotationDetailView({
       ? audioHoverRegionHandlers(audioHover, { ...audioTarget, strength: 'soft' })
       : pageVideoTarget
         ? pageVideoHoverRegionHandlers(pageVideoHover, { ...pageVideoTarget, strength: 'soft' })
+        : tiktokTarget
+          ? tiktokHoverRegionHandlers(tiktokHover, { ...tiktokTarget, strength: 'soft' })
         : youtubeHoverRegionHandlers(
           youtubeHover,
           clipTarget ? { ...clipTarget, strength: 'soft' } : null,
@@ -1330,14 +1471,16 @@ export function AnnotationDetailView({
       ? audioHoverNestedChipHandlers(audioHover, audioTarget)
       : pageVideoTarget
         ? pageVideoHoverNestedChipHandlers(pageVideoHover, pageVideoTarget)
+        : tiktokTarget
+          ? tiktokHoverNestedChipHandlers(tiktokHover, tiktokTarget)
         : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
   const playConnected = async () => {
     if (annotation.kind === 'article' || annotation.kind === 'video' || hostedReady) return;
-    if (annotation.kind === 'youtube' && !onPlayConnectedClip) return;
+    if ((annotation.kind === 'youtube' || annotation.kind === 'tiktok') && !onPlayConnectedClip) return;
     if (annotation.kind === 'audio' && !onPlayConnectedAudioClip) return;
     setPlayState('playing');
     try {
-      if (annotation.kind === 'youtube') await onPlayConnectedClip!(annotation);
+      if (annotation.kind === 'youtube' || annotation.kind === 'tiktok') await onPlayConnectedClip!(annotation);
       else await onPlayConnectedAudioClip!(annotation);
       setPlayState('idle');
     } catch {
@@ -1357,6 +1500,9 @@ export function AnnotationDetailView({
       </> : annotation.kind === 'youtube' ? <>
         <section className="detail-source" {...sourceHover}><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
+      </> : annotation.kind === 'tiktok' ? <>
+        <section className="detail-source" {...sourceHover}><span className="section-label">TikTok source</span><h1>{annotation.source.title ?? 'TikTok video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">tiktok.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleTikTokSourceOpenClick(event, annotation, tiktokHover, sourceOpenUrl, onTikTokAwaitingConnection)}>Open on TikTok ↗</a></div><TikTokPendingConnectHint show={showTikTokHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected TikTok player could not be started. Reconnect the video and try again.</p>}</section>
+        <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </> : annotation.kind === 'video' ? <>
         <section className="detail-source" {...sourceHover}><span className="section-label">Webpage video</span><h1>{annotation.source.title ?? 'Video source'}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row"><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handlePageVideoSourceOpenClick(event, annotation, pageVideoHover, sourceOpenUrl, onPageVideoAwaitingConnection)}>Open original source ↗</a></div><PageVideoPendingConnectHint show={showPageVideoHint} /></section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
@@ -1365,7 +1511,7 @@ export function AnnotationDetailView({
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </>}
       {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} />}
-      {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} audioHover={audioHover} audioTarget={audioTarget} pageVideoHover={pageVideoHover} pageVideoTarget={pageVideoTarget} />}
+      {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} tiktokHover={tiktokHover} tiktokTarget={tiktokTarget} audioHover={audioHover} audioTarget={audioTarget} pageVideoHover={pageVideoHover} pageVideoTarget={pageVideoTarget} />}
       {hostedRemoved && (
         <section className="detail-media-removed" aria-labelledby="detail-media-removed-heading">
           <span className="section-label" id="detail-media-removed-heading">Archived excerpt</span>
@@ -1392,6 +1538,7 @@ export function ProfileView({
   articleHover = null,
   audioHover = null,
   pageVideoHover = null,
+  tiktokHover = null,
 }: {
   supabase: SupabaseClient;
   profileId: string;
@@ -1402,6 +1549,7 @@ export function ProfileView({
   articleHover?: ArticleHoverConnection | null;
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
+  tiktokHover?: TikTokHoverConnection | null;
 } & AuthProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
@@ -1427,7 +1575,7 @@ export function ProfileView({
         <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} onCountChange={(followerCount) => setProfile((current) => current ? { ...current, followerCount } : current)} />
         {publicUrl && <a className="secondary-link" href={publicUrl} target="_blank" rel="noopener noreferrer">Open public profile ↗</a>}
       </header>
-      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
+      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
     </div>
   );
 }

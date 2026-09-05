@@ -1,4 +1,5 @@
 import { normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 
 export const MAX_PLAYER_CANDIDATES = 5;
@@ -26,7 +27,11 @@ export type PlayerActionResult =
 function comparablePageIdentity(mode: PlayerMode, value: string, genericVideo = false): string | null {
   try {
     if (mode === 'video' && !genericVideo) {
-      return getYouTubeVideoIdentity(value).videoId;
+      try {
+        return getYouTubeVideoIdentity(value).videoId;
+      } catch {
+        return getTikTokVideoIdentity(value).videoId;
+      }
     }
     return mode === 'video'
       ? normalizeArticleUrlForPlayer(value)
@@ -286,8 +291,14 @@ export async function actOnTopFramePlayer(
       if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
       if (mode === 'video' && !genericVideo) {
         const host = url.hostname.toLowerCase().replace(/^www\./, '');
-        return (host === 'youtube.com' || host === 'm.youtube.com') && url.pathname === '/watch'
-          ? url.searchParams.get('v') : null;
+        if ((host === 'youtube.com' || host === 'm.youtube.com') && url.pathname === '/watch') {
+          return url.searchParams.get('v');
+        }
+        if (host === 'tiktok.com' || host === 'm.tiktok.com') {
+          const match = url.pathname.match(/^\/@([A-Za-z0-9._]{2,24})\/video\/(\d{10,25})\/?$/i);
+          return match?.[2] ?? null;
+        }
+        return null;
       }
       url.hash = '';
       url.hostname = url.hostname.toLowerCase();

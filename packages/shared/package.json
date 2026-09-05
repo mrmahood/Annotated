@@ -7,6 +7,7 @@
     "./audio-source": "./src/audio-source.ts",
     "./url-normalization": "./src/url-normalization.ts",
     "./youtube": "./src/youtube.ts",
+    "./tiktok": "./src/tiktok.ts",
     "./media-time": "./src/media-time.ts"
   },
   "scripts": {

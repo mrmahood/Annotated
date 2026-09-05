@@ -6,7 +6,7 @@ import {
   takeTrailingNormalizedWindow,
 } from './article-hover-page.ts';
 
-export type SourceOpenKind = 'article' | 'youtube' | 'audio' | 'video';
+export type SourceOpenKind = 'article' | 'youtube' | 'tiktok' | 'audio' | 'video';
 
 export type SourceOpenInput = {
   kind: SourceOpenKind;
@@ -67,6 +67,9 @@ export function buildArticleTextFragmentUrl(
 export function getSourceOpenUrl(input: SourceOpenInput): string {
   if (input.kind === 'youtube') {
     return getYouTubeTimestampUrl(input.canonicalUrl, input.startMs ?? 0);
+  }
+  if (input.kind === 'tiktok') {
+    return articleUrlWithoutHash(input.canonicalUrl) ?? input.canonicalUrl;
   }
   if (input.kind === 'audio') {
     // Sprint 4 hover/pending apply owns in-page player highlight. Open source
