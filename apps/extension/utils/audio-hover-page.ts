@@ -79,7 +79,7 @@ export function normalizeAudioHoverPageUrl(value: string): string | null {
   }
 }
 
-export function scrubberRangePercent(
+export function audioScrubberRangePercent(
   startMs: number,
   endMs: number,
   durationMs: number,
@@ -243,6 +243,18 @@ export function applyAudioHoverHighlightOnPage(
         element.getBoundingClientRect().width > 24;
     };
 
+    const scrubberVisible = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        Number(style.opacity) <= 0 ||
+        element.getClientRects().length === 0
+      ) return false;
+      return rect.width > 16 && rect.height > 2;
+    };
+
     const findScrubber = (root: Element): HTMLElement | null => {
       const selectors = [
         'input[type="range"]',
@@ -251,15 +263,12 @@ export function applyAudioHoverHighlightOnPage(
       ];
       for (const selector of selectors) {
         for (const candidate of root.querySelectorAll(selector)) {
-          if (!(candidate instanceof HTMLElement)) continue;
-          if (visibleArea(candidate) > 0 && candidate.getBoundingClientRect().width > 16) {
-            return candidate;
-          }
+          if (candidate instanceof HTMLElement && scrubberVisible(candidate)) return candidate;
         }
       }
       for (const candidate of root.querySelectorAll('[class], [id]')) {
         if (!(candidate instanceof HTMLElement) || !isScrubber(candidate)) continue;
-        if (visibleArea(candidate) > 0 && candidate.getBoundingClientRect().width > 24) {
+        if (scrubberVisible(candidate) && candidate.getBoundingClientRect().width > 24) {
           return candidate;
         }
       }
@@ -276,15 +285,14 @@ export function applyAudioHoverHighlightOnPage(
       return true;
     };
 
-    const chromeFromMedia = (media: HTMLMediaElement): HTMLElement | null => {
+    const surfaceFromMedia = (media: HTMLMediaElement): HTMLElement | null => {
       const selfVisible = visibleArea(media) > 0 &&
         media.getBoundingClientRect().width > 80 &&
         media.getBoundingClientRect().height > 20;
-      if (selfVisible && (media.controls || media instanceof HTMLAudioElement)) {
-        return media;
-      }
       let node: HTMLElement | null = media.parentElement;
-      let best: HTMLElement | null = selfVisible ? media : null;
+      let best: HTMLElement | null = selfVisible && (media.controls || media instanceof HTMLAudioElement)
+        ? media
+        : selfVisible ? media : null;
       for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
         if (visibleArea(node) <= 0 || !compactChrome(node)) continue;
         const blob = tokenBlob(node);
@@ -319,21 +327,21 @@ export function applyAudioHoverHighlightOnPage(
     };
 
     type Candidate = {
-      chrome: HTMLElement;
+      surface: HTMLElement;
       media: HTMLMediaElement | null;
       score: number;
     };
 
     const candidates: Candidate[] = [];
     const seen = new Set<HTMLElement>();
-    const addCandidate = (chrome: HTMLElement, media: HTMLMediaElement | null, extra = 0) => {
-      if (seen.has(chrome) || looksLikeAdvertising(tokenBlob(chrome))) return;
-      if (visibleArea(chrome) <= 0) return;
-      seen.add(chrome);
-      const blob = tokenBlob(chrome);
+    const addCandidate = (surface: HTMLElement, media: HTMLMediaElement | null, extra = 0) => {
+      if (seen.has(surface) || looksLikeAdvertising(tokenBlob(surface))) return;
+      if (visibleArea(surface) <= 0) return;
+      seen.add(surface);
+      const blob = tokenBlob(surface);
       const named = looksLikePlayerName(blob);
-      const scrubber = findScrubber(chrome);
-      const hasPlay = [...chrome.querySelectorAll('button, [role="button"]')].some(isPlayControl);
+      const scrubber = findScrubber(surface);
+      const hasPlay = [...surface.querySelectorAll('button, [role="button"]')].some(isPlayControl);
       const playing = Boolean(media && !media.paused && !media.ended);
       let score = extra;
       if (playing) score += 100;
@@ -342,8 +350,8 @@ export function applyAudioHoverHighlightOnPage(
       if (hasPlay) score += 20;
       if (named) score += 25;
       if (media instanceof HTMLAudioElement && media.controls && visibleArea(media) > 0) score += 20;
-      if (!compactChrome(chrome) && !playing) score -= 40;
-      candidates.push({ chrome, media, score });
+      if (!compactChrome(surface) && !playing) score -= 40;
+      candidates.push({ surface, media, score });
     };
 
     for (const entry of document.querySelectorAll('audio, video')) {
@@ -353,8 +361,8 @@ export function applyAudioHoverHighlightOnPage(
         const playingAudio = !entry.paused && !entry.ended && entry.videoWidth === 0;
         if (!audioOnly && !playingAudio) continue;
       }
-      const chrome = chromeFromMedia(entry);
-      if (chrome) addCandidate(chrome, entry, 10);
+      const surface = surfaceFromMedia(entry);
+      if (surface) addCandidate(surface, entry, 10);
     }
 
     for (const named of document.querySelectorAll('[aria-label], [role="region"], [role="group"], [id], [class]')) {
@@ -381,7 +389,7 @@ export function applyAudioHoverHighlightOnPage(
       return { ok: false, reason: 'player-unavailable' };
     }
 
-    const player = best.chrome;
+    const player = best.surface;
     const media = best.media;
     const rangeStyle = (startMs: number, endMs: number, durationMs: number) => {
       if (

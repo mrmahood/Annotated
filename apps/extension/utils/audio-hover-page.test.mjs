@@ -4,7 +4,7 @@ import {
   applyAudioHoverHighlightOnPage,
   clearAudioHoverHighlightOnPage,
   normalizeAudioHoverPageUrl,
-  scrubberRangePercent,
+  audioScrubberRangePercent,
   AUDIO_HOVER_ROOT_ID,
 } from './audio-hover-page.ts';
 
@@ -256,12 +256,12 @@ test('audio hover URL helper strips tracking and playback crumbs and rejects You
 });
 
 test('scrubber range helper maps a clip onto the progress bar', () => {
-  assert.deepEqual(scrubberRangePercent(10_000, 20_000, 100_000), {
+  assert.deepEqual(audioScrubberRangePercent(10_000, 20_000, 100_000), {
     leftPercent: 10,
     widthPercent: 10,
   });
-  assert.equal(scrubberRangePercent(20_000, 10_000, 100_000), null);
-  assert.equal(scrubberRangePercent(0, 1_000, 0), null);
+  assert.equal(audioScrubberRangePercent(20_000, 10_000, 100_000), null);
+  assert.equal(audioScrubberRangePercent(0, 1_000, 0), null);
 });
 
 test('page injector paints an idempotent ring, dim, range, and scrolls the player', () => {

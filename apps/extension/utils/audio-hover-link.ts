@@ -281,7 +281,7 @@ export async function clearAudioHoverOnConnectedTab(
   const chrome = resolveChrome(chromeApi);
   if (!chrome || !Number.isInteger(connection.tabId) || connection.tabId < 0) return false;
   try {
-    const stored = await chromeApi.storage.session.get(ACTIVE_TAB_CONTEXT_KEY);
+    const stored = await chrome.storage.session.get(ACTIVE_TAB_CONTEXT_KEY);
     const context = stored[ACTIVE_TAB_CONTEXT_KEY];
     if (isActiveTabContext(context) && context.tabId !== connection.tabId) return false;
     await chrome.scripting.executeScript({

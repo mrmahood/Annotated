@@ -18,7 +18,7 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /aria-expanded=\{expanded\}/);
   assert.match(card, /Open source ↗/);
   assert.match(card, /sourceOpenHref\(annotation\)/);
-  assert.match(card, /handleArticleSourceOpenClick/);
+  assert.match(card, /handleSourceOpenClick/);
   assert.match(source, /getSourceOpenUrl/);
   assert.match(card, /queryPublicHostedExcerpt/);
   assert.match(card, /HostedExcerptPlayer/);
@@ -40,7 +40,7 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /audioHoverNestedChipHandlers/);
   assert.match(card, /audioClipHoverTarget/);
   assert.match(card, /AudioPendingConnectHint/);
-  assert.match(card, /handleAudioSourceOpenClick/);
+  assert.match(source, /handleAudioSourceOpenClick/);
   assert.match(source, /ARTICLE_PENDING_CONNECT_HINT/);
   assert.match(source, /ARTICLE_HOVER_LAST_APPLY_KEY/);
   assert.match(source, /readArticleHoverLastApply/);
