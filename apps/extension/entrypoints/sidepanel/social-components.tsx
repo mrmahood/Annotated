@@ -69,6 +69,20 @@ import {
 } from '../../utils/article-hover-pending';
 import { getSourceOpenUrl } from '../../utils/source-open-url';
 import {
+  audioHoverNestedChipHandlers,
+  audioHoverRegionHandlers,
+  cancelAudioHoverLink,
+  enterAudioHoverLink,
+  type AudioHoverConnection,
+} from '../../utils/audio-hover-link';
+import {
+  AUDIO_HOVER_PENDING_KEY,
+  AUDIO_PENDING_CONNECT_HINT,
+  audioHoverPendingMatchesTarget,
+  openAudioSourceFromPanel,
+  readAudioHoverPending,
+} from '../../utils/audio-hover-pending';
+import {
   cancelYouTubeHoverLink,
   enterYouTubeHoverLink,
   youtubeHoverNestedChipHandlers,
@@ -250,6 +264,17 @@ function articlePassageHoverTarget(annotation: PublicAnnotation) {
     : null;
 }
 
+function audioClipHoverTarget(annotation: PublicAnnotation) {
+  return annotation.kind === 'audio'
+    ? {
+        canonicalUrl: annotation.source.canonicalUrl,
+        normalizedUrl: annotation.source.normalizedUrl,
+        startMs: annotation.startMs,
+        endMs: annotation.endMs,
+      }
+    : null;
+}
+
 function sourceOpenHref(annotation: PublicAnnotation): string {
   return getSourceOpenUrl({
     kind: annotation.kind,
@@ -281,6 +306,53 @@ function handleArticleSourceOpenClick(
     if (outcome.applied) onResult?.(outcome.applied);
     onAwaitingConnection?.(outcome.awaitingConnection);
   });
+}
+
+function handleAudioSourceOpenClick(
+  event: { preventDefault: () => void },
+  annotation: PublicAnnotation,
+  connection: AudioHoverConnection | null,
+  href: string,
+  onAwaitingConnection?: (awaiting: boolean) => void,
+) {
+  const target = audioClipHoverTarget(annotation);
+  if (!target) return;
+  event.preventDefault();
+  void openAudioSourceFromPanel({
+    target,
+    connection,
+    href,
+    openFallback: (openHref) => {
+      window.open(openHref, '_blank', 'noopener,noreferrer');
+    },
+  }).then((outcome) => {
+    onAwaitingConnection?.(outcome.awaitingConnection);
+  });
+}
+
+function handleSourceOpenClick(
+  event: { preventDefault: () => void },
+  annotation: PublicAnnotation,
+  articleHover: ArticleHoverConnection | null,
+  audioHover: AudioHoverConnection | null,
+  href: string,
+  onArticleHoverResult?: ArticleHoverResultListener,
+  onAwaitingConnection?: (awaiting: boolean) => void,
+) {
+  if (annotation.kind === 'article') {
+    handleArticleSourceOpenClick(
+      event,
+      annotation,
+      articleHover,
+      href,
+      onArticleHoverResult,
+      onAwaitingConnection,
+    );
+    return;
+  }
+  if (annotation.kind === 'audio') {
+    handleAudioSourceOpenClick(event, annotation, audioHover, href, onAwaitingConnection);
+  }
 }
 
 function useArticlePassageMiss(
@@ -393,14 +465,60 @@ function ArticlePendingConnectHint({ show }: { show: boolean }) {
   return <p className="article-pending-connect-hint">{ARTICLE_PENDING_CONNECT_HINT}</p>;
 }
 
+function useAudioPendingConnectHint(annotation: PublicAnnotation | null) {
+  const [awaiting, setAwaiting] = useState(false);
+  const target = annotation ? audioClipHoverTarget(annotation) : null;
+  const targetKey = target
+    ? `${target.normalizedUrl}\n${target.canonicalUrl}\n${target.startMs}\n${target.endMs}`
+    : '';
+
+  useEffect(() => {
+    if (!awaiting || !target) return;
+    let mounted = true;
+    const matchedTarget = target;
+    const sync = async () => {
+      const pending = await readAudioHoverPending();
+      if (!mounted) return;
+      if (!pending || !audioHoverPendingMatchesTarget(pending, matchedTarget)) {
+        setAwaiting(false);
+      }
+    };
+    void sync();
+    const onChange = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+      if (area === 'session' && Object.prototype.hasOwnProperty.call(changes, AUDIO_HOVER_PENDING_KEY)) {
+        void sync();
+      }
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => {
+      mounted = false;
+      chrome.storage.onChanged.removeListener(onChange);
+    };
+  }, [awaiting, targetKey]);
+
+  return {
+    showHint: awaiting,
+    onAwaitingConnection: (value: boolean) => setAwaiting(value),
+  };
+}
+
+function AudioPendingConnectHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <p className="audio-pending-connect-hint">{AUDIO_PENDING_CONNECT_HINT}</p>;
+}
+
 function ExcerptTranscript({
   transcript,
   youtubeHover = null,
   clipTarget = null,
+  audioHover = null,
+  audioTarget = null,
 }: {
   transcript: HostedExcerptTranscript;
   youtubeHover?: YouTubeHoverConnection | null;
   clipTarget?: { videoId: string; startMs: number; endMs: number } | null;
+  audioHover?: AudioHoverConnection | null;
+  audioTarget?: { canonicalUrl: string; normalizedUrl: string; startMs: number; endMs: number } | null;
 }) {
   return (
     <section className="detail-transcript" aria-labelledby="detail-transcript-heading">
@@ -411,12 +529,19 @@ function ExcerptTranscript({
           {transcript.segments.map((segment) => (
             <li
               key={`${segment.startMs}:${segment.endMs}`}
-              {...youtubeHoverRegionHandlers(youtubeHover, clipTarget ? {
-                videoId: clipTarget.videoId,
-                strength: 'strong',
-                startMs: segment.startMs,
-                endMs: segment.endMs,
-              } : null)}
+              {...(audioTarget
+                ? audioHoverRegionHandlers(audioHover, {
+                  ...audioTarget,
+                  strength: 'strong',
+                  startMs: segment.startMs,
+                  endMs: segment.endMs,
+                })
+                : youtubeHoverRegionHandlers(youtubeHover, clipTarget ? {
+                  videoId: clipTarget.videoId,
+                  strength: 'strong',
+                  startMs: segment.startMs,
+                  endMs: segment.endMs,
+                } : null))}
             >
               <span>
                 <time dateTime={getDurationDateTime(segment.startMs)}>{formatMediaTime(segment.startMs)}</time>
@@ -455,13 +580,14 @@ function sourceChipLabel(annotation: PublicAnnotation): string {
   return 'Text';
 }
 
-function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null }: {
+function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null, audioHover = null }: {
   annotation: PublicAnnotation;
   navigation: NavigationCallbacks;
   supabase: SupabaseClient;
   getPublicUrl: (path: string) => string | null;
   youtubeHover?: YouTubeHoverConnection | null;
   articleHover?: ArticleHoverConnection | null;
+  audioHover?: AudioHoverConnection | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hosted, setHosted] = useState<HostedExcerpt | null>(
@@ -472,6 +598,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   );
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotation.id, articleHover, annotation);
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
+  const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
   const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
@@ -529,15 +656,20 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   );
   const clipTarget = youtubeClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
+  const audioTarget = audioClipHoverTarget(annotation);
   const cardHover = articleTarget
     ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' }, onArticleHoverResult)
-    : youtubeHoverRegionHandlers(
-      youtubeHover,
-      clipTarget ? { ...clipTarget, strength: 'soft' } : null,
-    );
+    : audioTarget
+      ? audioHoverRegionHandlers(audioHover, { ...audioTarget, strength: 'soft' })
+      : youtubeHoverRegionHandlers(
+        youtubeHover,
+        clipTarget ? { ...clipTarget, strength: 'soft' } : null,
+      );
   const chipHover = articleTarget
     ? articleHoverNestedChipHandlers(articleHover, articleTarget, onArticleHoverResult)
-    : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
+    : audioTarget
+      ? audioHoverNestedChipHandlers(audioHover, audioTarget)
+      : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
 
   return (
     <article className="social-card">
@@ -582,6 +714,15 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                   key={`${segment.startMs}:${segment.endMs}`}
                   className="transcript-peek"
                   onPointerEnter={() => {
+                    if (audioHover && audioTarget) {
+                      enterAudioHoverLink(audioHover, {
+                        ...audioTarget,
+                        strength: 'strong',
+                        startMs: segment.startMs,
+                        endMs: segment.endMs,
+                      });
+                      return;
+                    }
                     if (!youtubeHover || !clipTarget) return;
                     enterYouTubeHoverLink(youtubeHover, {
                       videoId: clipTarget.videoId,
@@ -591,6 +732,13 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                     });
                   }}
                   onPointerLeave={() => {
+                    if (audioHover && audioTarget) {
+                      enterAudioHoverLink(audioHover, {
+                        ...audioTarget,
+                        strength: 'soft',
+                      });
+                      return;
+                    }
                     if (!youtubeHover || !clipTarget) return;
                     enterYouTubeHoverLink(youtubeHover, {
                       ...clipTarget,
@@ -608,8 +756,9 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           {expanded && hasArticleAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
           )}
-          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceUrl, onArticleHoverResult, onAwaitingConnection)}>Open source ↗</a>
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSourceOpenClick(event, annotation, articleHover, audioHover, sourceUrl, onArticleHoverResult, annotation.kind === 'audio' ? onAudioAwaitingConnection : onAwaitingConnection)}>Open source ↗</a>
           <ArticlePendingConnectHint show={showHint} />
+          <AudioPendingConnectHint show={showAudioHint} />
           <ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} />
         </div>
       </div>
@@ -638,6 +787,7 @@ export function AnnotationCollection({
   compactHeading,
   youtubeHover = null,
   articleHover = null,
+  audioHover = null,
 }: {
   supabase: SupabaseClient;
   cache: SessionSocialCache;
@@ -651,6 +801,7 @@ export function AnnotationCollection({
   compactHeading?: string;
   youtubeHover?: YouTubeHoverConnection | null;
   articleHover?: ArticleHoverConnection | null;
+  audioHover?: AudioHoverConnection | null;
 }) {
   const [page, setPage] = useState<AnnotationPage | null>(() => cache.get(cacheKey) ?? null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(page ? 'ready' : 'loading');
@@ -661,6 +812,7 @@ export function AnnotationCollection({
   useEffect(() => () => {
     cancelYouTubeHoverLink();
     cancelArticleHoverLink();
+    cancelAudioHoverLink();
   }, []);
 
   const loadInitial = useCallback(async (force = false) => {
@@ -730,7 +882,7 @@ export function AnnotationCollection({
     <section className="social-list-section" aria-label={compactHeading ?? 'Annotations'}>
       {compactHeading && <div className="section-heading"><h2>{compactHeading}</h2><span>{page.total ?? page.annotations.length}</span></div>}
       <div className="social-list">
-        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} />)}
+        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} />)}
       </div>
       {page.hasMore && (
         <button className="button button-secondary load-more" type="button" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -961,6 +1113,7 @@ export function AnnotationDetailView({
   onPlayConnectedAudioClip,
   youtubeHover = null,
   articleHover = null,
+  audioHover = null,
 }: {
   supabase: SupabaseClient;
   annotationId: string;
@@ -974,6 +1127,7 @@ export function AnnotationDetailView({
   onPlayConnectedAudioClip?: (annotation: Extract<PublicAnnotation, { kind: 'audio' }>) => Promise<void>;
   youtubeHover?: YouTubeHoverConnection | null;
   articleHover?: ArticleHoverConnection | null;
+  audioHover?: AudioHoverConnection | null;
 } & AuthProps) {
   const [annotation, setAnnotation] = useState<PublicAnnotation | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
@@ -982,6 +1136,7 @@ export function AnnotationDetailView({
   const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover, annotation);
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
+  const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
 
   useEffect(() => {
     let current = true;
@@ -1022,15 +1177,20 @@ export function AnnotationDetailView({
     connectedAudioNormalizedUrl === annotation.source.normalizedUrl;
   const clipTarget = youtubeClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
+  const audioTarget = audioClipHoverTarget(annotation);
   const commentaryHover = articleTarget
     ? articleHoverRegionHandlers(articleHover, { ...articleTarget, strength: 'soft' }, onArticleHoverResult)
-    : youtubeHoverRegionHandlers(
-      youtubeHover,
-      clipTarget ? { ...clipTarget, strength: 'soft' } : null,
-    );
+    : audioTarget
+      ? audioHoverRegionHandlers(audioHover, { ...audioTarget, strength: 'soft' })
+      : youtubeHoverRegionHandlers(
+        youtubeHover,
+        clipTarget ? { ...clipTarget, strength: 'soft' } : null,
+      );
   const sourceHover = articleTarget
     ? articleHoverNestedChipHandlers(articleHover, articleTarget, onArticleHoverResult)
-    : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
+    : audioTarget
+      ? audioHoverNestedChipHandlers(audioHover, audioTarget)
+      : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
   const playConnected = async () => {
     if (annotation.kind === 'article' || hostedReady) return;
     if (annotation.kind === 'youtube' && !onPlayConnectedClip) return;
@@ -1058,11 +1218,11 @@ export function AnnotationDetailView({
         <section className="detail-source" {...sourceHover}><span className="section-label">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </> : <>
-        <section className="detail-source"><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open original source ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
-        <section className="detail-clip-range"><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
+        <section className="detail-source" {...sourceHover}><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleAudioSourceOpenClick(event, annotation, audioHover, sourceOpenUrl, onAudioAwaitingConnection)}>Open original source ↗</a></div><AudioPendingConnectHint show={showAudioHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
+        <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </>}
       {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} />}
-      {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} />}
+      {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} audioHover={audioHover} audioTarget={audioTarget} />}
       {hostedRemoved && (
         <section className="detail-media-removed" aria-labelledby="detail-media-removed-heading">
           <span className="section-label" id="detail-media-removed-heading">Archived excerpt</span>
@@ -1087,6 +1247,7 @@ export function ProfileView({
   getPublicUrl,
   youtubeHover = null,
   articleHover = null,
+  audioHover = null,
 }: {
   supabase: SupabaseClient;
   profileId: string;
@@ -1095,6 +1256,7 @@ export function ProfileView({
   getPublicUrl: (path: string) => string | null;
   youtubeHover?: YouTubeHoverConnection | null;
   articleHover?: ArticleHoverConnection | null;
+  audioHover?: AudioHoverConnection | null;
 } & AuthProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
@@ -1120,7 +1282,7 @@ export function ProfileView({
         <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} onCountChange={(followerCount) => setProfile((current) => current ? { ...current, followerCount } : current)} />
         {publicUrl && <a className="secondary-link" href={publicUrl} target="_blank" rel="noopener noreferrer">Open public profile ↗</a>}
       </header>
-      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
+      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
     </div>
   );
 }

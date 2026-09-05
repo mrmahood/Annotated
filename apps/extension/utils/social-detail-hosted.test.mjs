@@ -51,10 +51,14 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /ArticlePassageMissStatus/);
   assert.match(detail, /onArticleHoverResult/);
   assert.match(detail, /handleArticleSourceOpenClick\(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection\)/);
+  assert.match(detail, /handleAudioSourceOpenClick\(event, annotation, audioHover, sourceOpenUrl, onAudioAwaitingConnection\)/);
   assert.match(detail, /ArticlePendingConnectHint/);
+  assert.match(detail, /AudioPendingConnectHint/);
   assert.match(detail, /ARTICLE_PENDING_CONNECT_HINT/);
   assert.match(detail, /openArticleSourceFromPanel/);
+  assert.match(detail, /openAudioSourceFromPanel/);
   assert.match(detail, /articleHoverRegionHandlers\(articleHover, \{ \.\.\.articleTarget, strength: 'soft' \}, onArticleHoverResult\)/);
+  assert.match(detail, /audioHoverRegionHandlers\(audioHover, \{ \.\.\.audioTarget, strength: 'soft' \}\)/);
   assert.match(styles, /\.article-passage-miss/);
   assert.doesNotMatch(detail, /download=/);
   assert.doesNotMatch(detail, /src=\{playbackUrl\}/);
@@ -62,7 +66,8 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.doesNotMatch(styles, /annotation-media-raw|signedUrl/);
 
   assert.match(app, /Uploaded and queued\. Processing is in progress\./);
-  assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\}/);
+  assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\} audioHover=\{audioHover\}/);
   assert.match(app, /articleHoverConnectionForTab/);
+  assert.match(app, /audioHoverConnectionForTab/);
   assert.doesNotMatch(app, /until the media worker ships/);
 });

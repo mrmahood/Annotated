@@ -2,10 +2,11 @@
 
 Status: **owner-approved design brief**. Sprint 1 (tokens, switch, cards)
 and Sprint 2 (YouTube `/watch` hover linking) are implemented and
-owner-accepted on `main`. Sprint 3 (article/text selection) and Sprint 4
-(audio/podcast) hover linking are specify-only follow-ons in this
-document. Approving those sections does not authorize application code,
-migrations, Staging, Production, X OAuth re-enable, or Phase G.
+owner-accepted on `main`. Sprint 3 (article/text selection hover) is
+implemented on `main`. Sprint 4 (audio/podcast hover linking) is
+implemented pending owner Chrome acceptance. Approving those sections
+does not authorize migrations, Staging, Production, X OAuth re-enable,
+or Phase G.
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
 Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
@@ -33,8 +34,9 @@ remaining hover-link follow-ons:
 - restack Feed and web annotation cards as nested, commentary-led threads
   (Sprint 1, **done**);
 - YouTube `/watch` hover linking (Sprint 2, **done**);
-- article / text selection and audio / podcast hover linking (Sprint 3
-  and Sprint 4, specify only).
+- article / text selection hover linking (Sprint 3, **done**);
+- audio / podcast hover linking (Sprint 4, **implemented**; owner Chrome
+  acceptance still required).
 
 The annotation is the product; chrome gets out of the way.
 
@@ -66,8 +68,8 @@ reinterpreted in implementation:
    Sprint 2 is extension ↔ page hover linking (YouTube `/watch` only).
    Sprint 3 is article / text selection hover linking. Sprint 4 is
    audio / podcast hover linking. Hover linking was **not** in Sprint 1.
-   Sprint 1 and Sprint 2 are **done**; Sprint 3 and Sprint 4 remain
-   separately authorized implementation slices.
+   Sprint 1, Sprint 2, and Sprint 3 are **done**; Sprint 4 is
+   implemented and waits on owner Chrome acceptance.
 3. **Demo path.** Primary judge demo path is **YouTube video annotations in
    the extension**.
 4. **Copy and marks.** No existing fonts, logo mark, or copy is sacred.
@@ -323,10 +325,13 @@ use the surf-followed tab context the same way article hover does. Still
 no persistent content scripts. Fail closed when the tab is not the watch
 source.
 
-## 8. Sprint 3 / Sprint 4 — article and audio hover linking (specify only)
+## 8. Sprint 3 / Sprint 4 — article and audio hover linking
 
-Do not implement in this docs change. These slices reuse Sprint 2 visual
-grammar and the same permission model. They remain separately authorized.
+These slices reuse Sprint 2 visual grammar and the same permission model.
+Sprint 3 is implemented on `main`. Sprint 4 is implemented pending owner
+Chrome acceptance. Owner authorization for Sprint 4 (2026-09-05, after
+#73): hover over an Audio card should scroll to and highlight the audio
+player on the annotation’s source page, just like text and video.
 
 ### 8.1 Shared grammar and permissions
 
@@ -344,21 +349,42 @@ grammar and the same permission model. They remain separately authorized.
   ranges or typical audio players. Still fail closed and avoid brittle
   host-specific piercing of player or page internals.
 
-### 8.2 Sprint 3 — article / text selection hover linking (extension)
+### 8.2 Sprint 3 — article / text selection hover linking (implemented)
 
 When the connected tab is the annotation’s article source, hovering
 card/commentary paints the matched text range (or a safe wrapper) with the
 shared outline + dim. Prefer a range highlight or a non-destructive wrapper
 over rewriting page content. If the passage cannot be matched safely, do
-nothing.
+nothing. Open source writes a pending amber target and applies it when the
+surf-followed tab finishes loading.
 
-### 8.3 Sprint 4 — audio / podcast hover linking (extension)
+### 8.3 Sprint 4 — audio / podcast hover linking (implemented)
 
-When the connected tab is the annotation’s audio/podcast source page,
-hovering card/commentary paints the active player / scrubber range with the
-same grammar. Prefer one time-range overlay on a visible scrubber when
-several annotations share a player. If the player or range cannot be
-identified safely, do nothing.
+When the connected / surf-followed tab is the annotation’s podcast/audio
+source page (normalized URL + `source_type = podcast`), hovering the Audio
+card, nested chip, or commentary:
+
+- scrolls the page so the active / primary audio player (or its visible
+  scrubber/chrome) is in view;
+- paints that player with the shared outline + light page dim;
+- prefers one time-range overlay on a visible scrubber when clip start/end
+  and a safe duration are known. If a range overlay is not possible, the
+  player chrome is still highlighted and scrolled.
+
+Identity uses `(normalized_url, source_type)` so a page that also has an
+article annotation does not steal audio hover. Soft hover never seeks or
+plays the host player. Nested chip uses the stronger ring. Leave debounce
+is ~120 ms; Open source / idle clear uses the same long TTL pattern as
+article hover so a 120 ms leave cannot flash-clear a just-applied
+highlight.
+
+Open source from an Audio card writes `annotatedAudioHoverPending` and
+applies scroll + highlight when the opened or already-connected tab is
+ready. Player targeting is generic (`<audio>`, audio-only `<video>`,
+visible player chrome / scrubber / play control). Fail closed when the tab
+is not that annotation’s audio source, identity cannot be confirmed, no
+safe player target exists, or scripting fails. No persistent content
+scripts, no diagnostic UI, no host-specific piercing.
 
 ## 9. Acceptance criteria (Sprint 1)
 
@@ -373,14 +399,15 @@ identified safely, do nothing.
 - No public nav chrome regressions.
 - Accessibility: keyboard-operable switch; expanded regions announced
   reasonably (`aria-expanded` / live region as appropriate).
-- Sprint 1 owner Chrome acceptance is recorded. Sprint 3 and Sprint 4
-  stay specify-only until an implementation PR is separately authorized.
+- Sprint 1 owner Chrome acceptance is recorded. Sprint 3 is implemented
+  on `main`. Sprint 4 waits on owner Chrome verification of scroll +
+  highlight on the source-page audio player.
 
 Sprint 1 and Sprint 2 owner Chrome acceptance are recorded. Automated
-tests should cover Create-mode guards and card expand/collapse where
-behavior is deterministic; they do not replace owner review of
-YouTube-in-extension as the primary demo path, or later article/audio
-hover slices.
+tests should cover Create-mode guards, card expand/collapse, and hover
+wiring where behavior is deterministic; they do not replace owner review
+of YouTube-in-extension as the primary demo path, or article/audio hover
+on live source pages.
 
 ## 10. Out of scope and later options
 
@@ -398,13 +425,11 @@ Later options (not Sprint 1 unless noted):
 
 - Light theme and follow-system, including a settings toggle.
 - User accent presets on that same future settings surface, post-submit.
-- Sprint 3 article/text and Sprint 4 audio/podcast hover linking, as
-  specified in §8. Each still needs its own implementation authorization.
 
 ## 11. Authorization
 
-Approving this document authorizes planning for remaining hover slices
-only. Sprint 1 and Sprint 2 are already implemented and accepted. Sprint 3
-and Sprint 4 each need their own owner-authorized implementation work. Do
-not treat this brief as permission to change capture, hosted-media
-publication, claims, or extension permissions.
+Approving this document authorizes the polish slices described here.
+Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
+Sprint 4 is implemented pending owner Chrome acceptance. Do not treat
+this brief as permission to change capture, hosted-media publication,
+claims, or extension permissions.

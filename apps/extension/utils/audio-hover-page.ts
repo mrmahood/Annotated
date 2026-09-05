@@ -1,0 +1,529 @@
+export const AUDIO_HOVER_ROOT_ID = 'annotated-audio-hover-root';
+
+export type AudioHoverStrength = 'soft' | 'strong';
+
+export type AudioHoverPageRequest = {
+  expectedNormalizedUrl: string;
+  strength: AudioHoverStrength;
+  startMs: number | null;
+  endMs: number | null;
+};
+
+export type AudioHoverPageResult = {
+  ok: boolean;
+  reason?: 'cleared' | 'source-mismatch' | 'player-unavailable' | 'invalid-request';
+};
+
+const AUDIO_HOVER_TRACKING_PARAMETERS = new Set([
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_term',
+  'utm_content',
+  'gclid',
+  'fbclid',
+  'mc_cid',
+  'mc_eid',
+]);
+
+const AUDIO_HOVER_PLAYBACK_PARAMETERS = new Set([
+  't',
+  'time',
+  'timestamp',
+  'start',
+  'start_time',
+  'seek',
+  'position',
+  'playback_position',
+]);
+
+function isPlaybackLocationValue(value: string): boolean {
+  return /^\d+(?:\.\d+)?(?:ms|s)?$/i.test(value) ||
+    /^\d{1,3}:\d{2}(?::\d{2})?$/.test(value) ||
+    /^(?:\d+h)?(?:\d+m)?(?:\d+s)$/i.test(value);
+}
+
+export function normalizeAudioHoverPageUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    const host = url.hostname.toLowerCase();
+    if (
+      ((host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com') &&
+        url.pathname === '/watch') ||
+      host === 'youtu.be'
+    ) {
+      return null;
+    }
+
+    url.hostname = host;
+    url.hash = '';
+    for (const parameter of [...url.searchParams.keys()]) {
+      const key = parameter.toLowerCase();
+      const raw = url.searchParams.get(parameter) ?? '';
+      if (
+        key.startsWith('utm_') ||
+        AUDIO_HOVER_TRACKING_PARAMETERS.has(key) ||
+        (AUDIO_HOVER_PLAYBACK_PARAMETERS.has(key) && isPlaybackLocationValue(raw))
+      ) {
+        url.searchParams.delete(parameter);
+      }
+    }
+    url.searchParams.sort();
+    if (url.pathname.length > 1) {
+      url.pathname = url.pathname.replace(/\/+$/, '');
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+export function audioScrubberRangePercent(
+  startMs: number,
+  endMs: number,
+  durationMs: number,
+): { leftPercent: number; widthPercent: number } | null {
+  if (
+    !Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(durationMs) ||
+    startMs < 0 || endMs <= startMs || durationMs <= 0
+  ) {
+    return null;
+  }
+  const leftPercent = Math.min(100, Math.max(0, (startMs / durationMs) * 100));
+  const rawWidth = ((endMs - startMs) / durationMs) * 100;
+  const widthPercent = Math.min(100 - leftPercent, Math.max(0.4, rawWidth));
+  return { leftPercent, widthPercent };
+}
+
+// Serialized into the explicitly connected top-level tab. Keep every helper
+// inside this function. Do not close over module state or imported bindings.
+export function applyAudioHoverHighlightOnPage(
+  request: AudioHoverPageRequest,
+): AudioHoverPageResult {
+  const rootId = 'annotated-audio-hover-root';
+  const removeRoot = () => {
+    try {
+      document.getElementById(rootId)?.remove();
+    } catch {
+      // Best-effort cleanup must not throw into the page.
+    }
+  };
+
+  try {
+    const trackingParameters = new Set([
+      'utm_source',
+      'utm_medium',
+      'utm_campaign',
+      'utm_term',
+      'utm_content',
+      'gclid',
+      'fbclid',
+      'mc_cid',
+      'mc_eid',
+    ]);
+    const playbackParameters = new Set([
+      't',
+      'time',
+      'timestamp',
+      'start',
+      'start_time',
+      'seek',
+      'position',
+      'playback_position',
+    ]);
+    const isPlaybackValue = (value: string) =>
+      /^\d+(?:\.\d+)?(?:ms|s)?$/i.test(value) ||
+      /^\d{1,3}:\d{2}(?::\d{2})?$/.test(value) ||
+      /^(?:\d+h)?(?:\d+m)?(?:\d+s)$/i.test(value);
+
+    const normalizePageUrl = (value: string): string | null => {
+      try {
+        const url = new URL(value);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+        const host = url.hostname.toLowerCase();
+        if (
+          ((host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com') &&
+            url.pathname === '/watch') ||
+          host === 'youtu.be'
+        ) {
+          return null;
+        }
+        url.hostname = host;
+        url.hash = '';
+        for (const parameter of [...url.searchParams.keys()]) {
+          const key = parameter.toLowerCase();
+          const raw = url.searchParams.get(parameter) ?? '';
+          if (
+            key.startsWith('utm_') ||
+            trackingParameters.has(key) ||
+            (playbackParameters.has(key) && isPlaybackValue(raw))
+          ) {
+            url.searchParams.delete(parameter);
+          }
+        }
+        url.searchParams.sort();
+        if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, '');
+        return url.href;
+      } catch {
+        return null;
+      }
+    };
+
+    if (
+      !request ||
+      typeof request.expectedNormalizedUrl !== 'string' ||
+      !request.expectedNormalizedUrl.trim() ||
+      (request.strength !== 'soft' && request.strength !== 'strong')
+    ) {
+      removeRoot();
+      return { ok: false, reason: 'invalid-request' };
+    }
+
+    if (normalizePageUrl(location.href) !== request.expectedNormalizedUrl) {
+      removeRoot();
+      return { ok: false, reason: 'source-mismatch' };
+    }
+
+    const visibleArea = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        Number(style.opacity) <= 0 ||
+        element.getClientRects().length === 0
+      ) return 0;
+      const width = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
+      const height = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+      return width > 8 && height > 8 ? width * height : 0;
+    };
+
+    const visibleRect = (element: Element) => {
+      if (visibleArea(element) <= 0) return null;
+      return element.getBoundingClientRect();
+    };
+
+    const tokenBlob = (element: Element) => {
+      const className = typeof element.className === 'string' ? element.className : '';
+      return [
+        element.id,
+        className,
+        element.getAttribute('aria-label'),
+        element.getAttribute('aria-labelledby'),
+        element.getAttribute('role'),
+        element.getAttribute('data-testid'),
+        element.getAttribute('title'),
+      ].filter(Boolean).join(' ');
+    };
+
+    const looksLikePlayerName = (value: string) =>
+      /\b(?:audio|podcast|episode|listen)[-_]?(?:player|bar|dock|controls|chrome)?\b|\b(?:media[-_]?player|player[-_]?(?:chrome|controls|bar)|now[-_]?playing)\b/i
+        .test(value);
+
+    const looksLikeAdvertising = (value: string) =>
+      /(?:^|[\s_-])(?:ad|ads|advert|advertisement|advertising|preroll|midroll|postroll|sponsored|vast|vpaid)(?:$|[\s_-])/i
+        .test(value);
+
+    const isPlayControl = (element: Element) => {
+      const label = [
+        element.getAttribute('aria-label'),
+        element.getAttribute('title'),
+        element.textContent,
+      ].filter(Boolean).join(' ');
+      return /(?:^|\b)(?:play|pause|listen)(?:\b|$)/i.test(label);
+    };
+
+    const isScrubber = (element: Element) => {
+      if (element instanceof HTMLInputElement && element.type === 'range') return true;
+      if (element instanceof HTMLProgressElement) return true;
+      if (element.getAttribute('role') === 'slider') return true;
+      const blob = tokenBlob(element);
+      return /\b(?:progress|scrubber|seek(?:bar)?|timeline|track[-_]?bar|playback[-_]?bar)\b/i.test(blob) &&
+        element.getBoundingClientRect().width > 24;
+    };
+
+    const scrubberVisible = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        Number(style.opacity) <= 0 ||
+        element.getClientRects().length === 0
+      ) return false;
+      return rect.width > 16 && rect.height > 2;
+    };
+
+    const findScrubber = (root: Element): HTMLElement | null => {
+      const selectors = [
+        'input[type="range"]',
+        '[role="slider"]',
+        'progress',
+      ];
+      for (const selector of selectors) {
+        for (const candidate of root.querySelectorAll(selector)) {
+          if (candidate instanceof HTMLElement && scrubberVisible(candidate)) return candidate;
+        }
+      }
+      for (const candidate of root.querySelectorAll('[class], [id]')) {
+        if (!(candidate instanceof HTMLElement) || !isScrubber(candidate)) continue;
+        if (scrubberVisible(candidate) && candidate.getBoundingClientRect().width > 24) {
+          return candidate;
+        }
+      }
+      return null;
+    };
+
+    const compactChrome = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 80 || rect.height < 20) return false;
+      if (rect.height > window.innerHeight * 0.55) return false;
+      if (rect.width > window.innerWidth * 0.98 && rect.height > window.innerHeight * 0.4) {
+        return false;
+      }
+      return true;
+    };
+
+    const surfaceFromMedia = (media: HTMLMediaElement): HTMLElement | null => {
+      const selfVisible = visibleArea(media) > 0 &&
+        media.getBoundingClientRect().width > 80 &&
+        media.getBoundingClientRect().height > 20;
+      let node: HTMLElement | null = media.parentElement;
+      let best: HTMLElement | null = selfVisible && (media.controls || media instanceof HTMLAudioElement)
+        ? media
+        : selfVisible ? media : null;
+      for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+        if (visibleArea(node) <= 0 || !compactChrome(node)) continue;
+        const blob = tokenBlob(node);
+        if (looksLikeAdvertising(blob)) continue;
+        const named = looksLikePlayerName(blob);
+        const hasScrubber = Boolean(findScrubber(node));
+        const hasPlay = [...node.querySelectorAll('button, [role="button"]')].some(isPlayControl);
+        if (named || hasScrubber || hasPlay || (best === null && compactChrome(node))) {
+          best = node;
+          if (named && (hasScrubber || hasPlay)) break;
+        }
+      }
+      return best;
+    };
+
+    const mediaDurationMs = (media: HTMLMediaElement | null) => {
+      if (!media || !Number.isFinite(media.duration) || media.duration <= 0) return null;
+      return media.duration * 1_000;
+    };
+
+    const sliderDurationMs = (scrubber: HTMLElement | null) => {
+      if (!scrubber) return null;
+      const rawMax = scrubber.getAttribute('aria-valuemax') ??
+        (scrubber instanceof HTMLInputElement ? scrubber.max : null) ??
+        (scrubber instanceof HTMLProgressElement ? String(scrubber.max) : null);
+      if (rawMax == null || rawMax === '') return null;
+      const value = Number(rawMax);
+      if (!Number.isFinite(value) || value <= 0) return null;
+      if (value >= 10 && value <= 7_200) return value * 1_000;
+      if (value >= 10_000 && value <= 7_200_000) return value;
+      return null;
+    };
+
+    type Candidate = {
+      surface: HTMLElement;
+      media: HTMLMediaElement | null;
+      score: number;
+    };
+
+    const candidates: Candidate[] = [];
+    const seen = new Set<HTMLElement>();
+    const addCandidate = (surface: HTMLElement, media: HTMLMediaElement | null, extra = 0) => {
+      if (seen.has(surface) || looksLikeAdvertising(tokenBlob(surface))) return;
+      if (visibleArea(surface) <= 0) return;
+      seen.add(surface);
+      const blob = tokenBlob(surface);
+      const named = looksLikePlayerName(blob);
+      const scrubber = findScrubber(surface);
+      const hasPlay = [...surface.querySelectorAll('button, [role="button"]')].some(isPlayControl);
+      const playing = Boolean(media && !media.paused && !media.ended);
+      let score = extra;
+      if (playing) score += 100;
+      if (media) score += 50;
+      if (scrubber) score += 30;
+      if (hasPlay) score += 20;
+      if (named) score += 25;
+      if (media instanceof HTMLAudioElement && media.controls && visibleArea(media) > 0) score += 20;
+      if (!compactChrome(surface) && !playing) score -= 40;
+      candidates.push({ surface, media, score });
+    };
+
+    for (const entry of document.querySelectorAll('audio, video')) {
+      if (!(entry instanceof HTMLMediaElement)) continue;
+      if (entry instanceof HTMLVideoElement) {
+        const audioOnly = entry.readyState >= 1 && entry.videoWidth === 0 && entry.videoHeight === 0;
+        const playingAudio = !entry.paused && !entry.ended && entry.videoWidth === 0;
+        if (!audioOnly && !playingAudio) continue;
+      }
+      const surface = surfaceFromMedia(entry);
+      if (surface) addCandidate(surface, entry, 10);
+    }
+
+    for (const named of document.querySelectorAll('[aria-label], [role="region"], [role="group"], [id], [class]')) {
+      if (!(named instanceof HTMLElement) || seen.has(named)) continue;
+      const blob = tokenBlob(named);
+      if (!looksLikePlayerName(blob) || looksLikeAdvertising(blob)) continue;
+      if (visibleArea(named) <= 0 || !compactChrome(named)) continue;
+      const nestedMedia = named.querySelector('audio, video');
+      addCandidate(
+        named,
+        nestedMedia instanceof HTMLMediaElement ? nestedMedia : null,
+        5,
+      );
+    }
+
+    let best: Candidate | null = null;
+    for (const candidate of candidates) {
+      if (candidate.score < 40) continue;
+      if (!best || candidate.score > best.score) best = candidate;
+    }
+
+    if (!best) {
+      removeRoot();
+      return { ok: false, reason: 'player-unavailable' };
+    }
+
+    const player = best.surface;
+    const media = best.media;
+    const rangeStyle = (startMs: number, endMs: number, durationMs: number) => {
+      if (
+        !Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(durationMs) ||
+        startMs < 0 || endMs <= startMs || durationMs <= 0
+      ) return null;
+      const leftPercent = Math.min(100, Math.max(0, (startMs / durationMs) * 100));
+      const rawWidth = ((endMs - startMs) / durationMs) * 100;
+      return {
+        leftPercent,
+        widthPercent: Math.min(100 - leftPercent, Math.max(0.4, rawWidth)),
+      };
+    };
+
+    const strong = request.strength === 'strong';
+    const dimOpacity = strong ? 0.12 : 0.09;
+    const ringWidth = strong ? 3 : 2;
+    const ringColor = strong ? 'rgba(236, 241, 246, 0.92)' : 'rgba(154, 167, 181, 0.78)';
+
+    let root = document.getElementById(rootId);
+    if (!(root instanceof HTMLElement)) {
+      root = document.createElement('div');
+      root.id = rootId;
+      root.setAttribute('data-annotated-hover', '1');
+      root.setAttribute('aria-hidden', 'true');
+      document.documentElement.appendChild(root);
+    }
+    root.dataset.strength = request.strength;
+    root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
+
+    const layer = (selector: string, attribute: string): HTMLElement => {
+      const existing = root.querySelector(selector);
+      if (existing instanceof HTMLElement) return existing;
+      const created = document.createElement('div');
+      created.setAttribute(attribute, '1');
+      root.appendChild(created);
+      return created;
+    };
+    const dim = layer('[data-annotated-hover-dim="1"]', 'data-annotated-hover-dim');
+    const ring = layer('[data-annotated-hover-ring="1"]', 'data-annotated-hover-ring');
+    const range = layer('[data-annotated-hover-range="1"]', 'data-annotated-hover-range');
+
+    const position = () => {
+      const rect = player.getBoundingClientRect();
+      const left = Math.max(0, rect.left);
+      const top = Math.max(0, rect.top);
+      const right = Math.min(window.innerWidth, rect.right);
+      const bottom = Math.min(window.innerHeight, rect.bottom);
+      dim.style.cssText = [
+        'position:fixed',
+        'inset:0',
+        `background:rgba(0,0,0,${dimOpacity})`,
+        `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
+      ].join(';');
+      ring.style.cssText = [
+        'position:fixed',
+        `top:${rect.top}px`,
+        `left:${rect.left}px`,
+        `width:${Math.max(0, rect.width)}px`,
+        `height:${Math.max(0, rect.height)}px`,
+        `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
+        'border-radius:2px',
+      ].join(';');
+
+      const bar = findScrubber(player);
+      const durationMs = mediaDurationMs(media) ?? sliderDurationMs(bar);
+      const cue = durationMs !== null &&
+        typeof request.startMs === 'number' &&
+        typeof request.endMs === 'number'
+        ? rangeStyle(request.startMs, request.endMs, durationMs)
+        : null;
+      const barVisible = bar instanceof HTMLElement &&
+        bar.getClientRects().length > 0 &&
+        bar.getBoundingClientRect().width > 16;
+      if (barVisible && cue) {
+        const barRect = bar.getBoundingClientRect();
+        range.style.cssText = [
+          'position:fixed',
+          `top:${barRect.top}px`,
+          `left:${barRect.left + (barRect.width * cue.leftPercent) / 100}px`,
+          `width:${(barRect.width * cue.widthPercent) / 100}px`,
+          `height:${Math.max(3, barRect.height)}px`,
+          'background:rgba(154,167,181,0.72)',
+          'border-radius:999px',
+        ].join(';');
+        range.hidden = false;
+      } else {
+        range.style.cssText = 'display:none';
+        range.hidden = true;
+      }
+    };
+
+    position();
+    const previous = (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup;
+    if (typeof previous === 'function') previous();
+    const onChange = () => {
+      try { position(); } catch { /* Reposition is best-effort. */ }
+    };
+    window.addEventListener('scroll', onChange, true);
+    window.addEventListener('resize', onChange);
+    (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup = () => {
+      window.removeEventListener('scroll', onChange, true);
+      window.removeEventListener('resize', onChange);
+    };
+
+    try {
+      if (visibleRect(player) && typeof player.scrollIntoView === 'function') {
+        player.scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'smooth',
+        });
+      }
+    } catch {
+      // Scroll is best-effort after a successful paint.
+    }
+
+    return { ok: true };
+  } catch {
+    removeRoot();
+    return { ok: false, reason: 'player-unavailable' };
+  }
+}
+
+// Serialized into the explicitly connected top-level tab. Self-contained.
+export function clearAudioHoverHighlightOnPage(): AudioHoverPageResult {
+  try {
+    const root = document.getElementById('annotated-audio-hover-root');
+    const cleanup = root &&
+      (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup;
+    if (typeof cleanup === 'function') cleanup();
+    root?.remove();
+    return { ok: true, reason: 'cleared' };
+  } catch {
+    return { ok: false };
+  }
+}

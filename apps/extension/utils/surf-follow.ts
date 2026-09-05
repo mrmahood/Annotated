@@ -7,6 +7,7 @@ import {
   type ActiveTabContext,
 } from './active-tab-context.ts';
 import { applyPendingArticleHoverOnTab } from './article-hover-pending.ts';
+import { applyPendingAudioHoverOnTab } from './audio-hover-pending.ts';
 import { ACTIVE_CAPTURE_KEY } from './media-capture-background.ts';
 
 export type SurfFollowTab = {
@@ -132,7 +133,10 @@ export function installSurfFollow(
   } = {},
 ) {
   let followWindowId: number | null = null;
-  const applyPending = options.applyPending ?? ((tab) => applyPendingArticleHoverOnTab(tab));
+  const applyPending = options.applyPending ?? (async (tab) => {
+    await applyPendingArticleHoverOnTab(tab);
+    await applyPendingAudioHoverOnTab(tab);
+  });
 
   const applyPendingIfReady = (changeInfo: SurfFollowChangeInfo, tab: SurfFollowTab) => {
     if (!tabIsReadyForPendingApply(changeInfo, tab) || tab.id == null) return;

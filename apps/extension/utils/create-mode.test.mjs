@@ -224,6 +224,7 @@ test('incidental article audio stays a Web page capability instead of an exclusi
   assert.match(app, /audioIdentity: detection\.source/);
   assert.match(app, /preferText = sourceState\.source\.classification === 'Web page' &&/);
   assert.match(app, /articleHoverConnectionForTab/);
+  assert.match(app, /audioHoverConnectionForTab/);
   assert.doesNotMatch(app, /lookupExistingSourceType|EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
   assert.doesNotMatch(publishing, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
   assert.doesNotMatch(app, /detection\.status === 'supported'[\s\S]{0,180}\.\.\.detection\.source/);

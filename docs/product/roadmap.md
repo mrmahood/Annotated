@@ -7,8 +7,8 @@ F6 owner-authorized Staging acceptance is recorded 2026-09-04. Production was
 not accessed; GCP media dispatcher and reconciler schedules remain paused.
 Updated 2026-09-05. Sprint 1 UI polish and Sprint 2 YouTube hover
 linking are merged and owner-accepted on `main`; Sprint 3 (article/text)
-and Sprint 4 (audio/podcast) hover follow-ons are named under Near-term
-after Phase F. D1 and D2 completed their
+hover is implemented on `main`. Sprint 4 (audio/podcast) hover is
+implemented pending owner Chrome acceptance. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -573,12 +573,12 @@ Production launch and hardening remain separately authorized.
   brief is `docs/design/ui-polish-brief.md`. Sprint 1 and Sprint 2 are
   **done** (implemented, merged, and owner-accepted on `main`). All media
   hover highlights (YouTube, article/text, and audio/podcast) live on this
-  roadmap. Sprint 3 and Sprint 4 remain separately authorized
-  implementation slices. Visual grammar reuses Sprint 2 (outline + light
-  page dim, ~120 ms leave debounce). The YouTube shadow-DOM / fullscreen
-  limitation does not apply the same way to article ranges or audio
-  players; those slices still fail closed and must not chase brittle
-  host-specific piercing.
+  roadmap. Sprint 3 is implemented on `main`. Sprint 4 is implemented
+  pending owner Chrome acceptance. Visual grammar reuses Sprint 2
+  (outline + light page dim, ~120 ms leave debounce). The YouTube
+  shadow-DOM / fullscreen limitation does not apply the same way to
+  article ranges or audio players; those slices still fail closed and
+  must not chase brittle host-specific piercing.
   - **Sprint 1 (done).** Dark-first tokens, the Create-mode segmented
     switch, and nested annotation cards (extension Feed + public web).
     Merged as PR #56.
@@ -603,11 +603,17 @@ Production launch and hardening remain separately authorized.
     while surfing. Amber is the Open source source of truth. Persistent
     content scripts remain forbidden. See
     `docs/design/ui-polish-brief.md` §5.3.
-  - **Sprint 4 — audio / podcast hover linking** (extension; separately
-    authorized). When the connected tab is the annotation’s
-    audio/podcast source page, hovering card/commentary paints the
-    active player / scrubber range with the same grammar. Fail closed
-    off-source. Same permissions.
+  - **Sprint 4 — audio / podcast hover linking** (extension;
+    implemented; owner Chrome acceptance still required). When the
+    connected tab is the annotation’s audio/podcast source page
+    (normalized URL + podcast `source_type`), hovering card/commentary
+    scrolls to and paints the active player / scrubber with outline +
+    light page dim. Prefer a time-range overlay when clip bounds and a
+    visible scrubber are known; otherwise highlight the player chrome.
+    Soft hover does not seek or play. Open source writes a pending
+    highlight applied on tab complete / surf-follow. Fail closed
+    off-source, on identity mismatch, or when no safe player target
+    exists. Same permissions; no persistent content scripts.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.

@@ -161,7 +161,7 @@ test('Open source helper stays URL-only and adds no persistent content scripts',
   assert.doesNotMatch(config, /content_scripts|defineContentScript/);
   assert.doesNotMatch(helper, /chrome\.|host_permissions|defineContentScript|executeScript/);
   assert.match(social, /getSourceOpenUrl/);
-  assert.match(social, /sourceOpenHref|handleArticleSourceOpenClick/);
+  assert.match(social, /sourceOpenHref|handleArticleSourceOpenClick|handleAudioSourceOpenClick/);
   assert.doesNotMatch(helper, /return buildArticleTextFragmentUrl/);
   assert.match(social, /View original source/);
   assert.match(social, /Open on YouTube/);
