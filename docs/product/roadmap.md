@@ -14,9 +14,13 @@ Chrome acceptance on a readable HTML5 webpage-video fixture. Generic
 webpage-video publication (`video_clip` + article source identity)
 remains available but is a niche HTML5 path; owner-authorized Sprint 6
 locks hosted capture, Feed cards, and hover to **TikTok watch URLs**
-(`source_type = tiktok`, not article). Brightcove / inaccessible
+(`source_type = tiktok`, not article) and is implemented on `main`
+(squash-merged PR #78). Owner Chrome and Staging acceptance for TikTok
+are still required. After TikTok Sprint 6, the next platform priority
+is **Spotify podcast / episode audio** for hosted audio annotation
+capture (planning only in this docs change). Brightcove / inaccessible
 cross-origin news-site embeds remain a later increment. X OAuth is out
-of this sprint. D1 and D2 completed their
+of Sprint 6. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -587,13 +591,15 @@ Production launch and hardening remain separately authorized.
   generic page-video) live on this roadmap. Sprint 3 is implemented on
   `main`. Sprint 4 and Sprint 5 are implemented pending owner Chrome
   acceptance. Sprint 6 (TikTok hosted capture/publish + Feed Video
-  cards + hover) is implemented pending owner Chrome and Staging
-  acceptance. Visual grammar reuses Sprint 2 (outline + light page dim,
-  ~120 ms leave debounce). Sprint 2 remains YouTube `/watch` only;
-  generic page-video is Sprint 5 and does not replace that path.
-  TikTok uses a first-class YouTube-parallel identity (`tiktok`), not
-  the article/webpage-video RPC. Those later slices still fail closed
-  and must not chase brittle host-specific piercing.
+  cards + hover) is implemented on `main` (squash-merged PR #78)
+  pending owner Chrome and Staging acceptance. After TikTok Sprint 6,
+  Spotify podcast / episode audio is the next platform priority.
+  Visual grammar reuses Sprint 2 (outline + light page dim, ~120 ms
+  leave debounce). Sprint 2 remains YouTube `/watch` only; generic
+  page-video is Sprint 5 and does not replace that path. TikTok uses a
+  first-class YouTube-parallel identity (`tiktok`), not the
+  article/webpage-video RPC. Those later slices still fail closed and
+  must not chase brittle host-specific piercing.
   - **Sprint 1 (done).** Dark-first tokens, the Create-mode segmented
     switch, and nested annotation cards (extension Feed + public web).
     Merged as PR #56.
@@ -648,11 +654,12 @@ Production launch and hardening remain separately authorized.
     persistent content scripts; no host-specific selectors. Brightcove
     / cross-origin adapters remain separate.
   - **Sprint 6 — TikTok hosted capture, publish, Feed cards, and hover**
-    (extension + web + additive Staging RPC; implemented; owner Chrome
-    and Staging acceptance still required). After concluding readable
-    HTML5 webpage-video is too rare for real demos, and after confirming
-    TikTok is the post-YouTube watch leader with serious news inventory,
-    Matt authorized locking Sprint 6 to TikTok (2026-09-05). Mirror the
+    (extension + web + additive Staging RPC; implemented on `main` via
+    squash-merged PR #78; owner Chrome and Staging acceptance still
+    required). After concluding readable HTML5 webpage-video is too
+    rare for real demos, and after confirming TikTok is the
+    post-YouTube watch leader with serious news inventory, Matt
+    authorized locking Sprint 6 to TikTok (2026-09-05). Mirror the
     YouTube path: stable watch URL
     `https://www.tiktok.com/@handle/video/<id>` (mobile/share variants
     normalize to that); Create → Video on a connected TikTok watch tab;
@@ -671,6 +678,23 @@ Production launch and hardening remain separately authorized.
     No X OAuth and no Brightcove/Fox adapter in this increment.
     Staging migration: `20260905221500_begin_hosted_tiktok_annotation`.
     Do not touch Production. Do not unpause Cloud Run.
+  - **After Sprint 6 — Spotify podcast / episode audio** (planning
+    only; not implemented in this docs change). Owner authorization
+    (2026-09-05): Matt said after TikTok, put Spotify podcast audio on
+    the roadmap for audio annotation capture. Next platform priority
+    after TikTok Sprint 6 is first-class **Spotify episode** identity
+    for hosted audio annotation capture + publish, and later hover
+    parity with existing podcast/audio hover when the connected tab is
+    a Spotify episode page. Treat it like YouTube/TikTok watch URLs
+    and existing `podcast` audio clips, not generic webpage HTML5
+    audio. Expected hardness: the Spotify web player is often opaque
+    / login-gated; fail closed until a bounded adapter exists. DRM and
+    stream-URL scraping are out of scope — prefer the proven
+    `tabCapture → offscreen → MediaRecorder` path plus a stable
+    episode URL identity like other hosted paths. Do not implement
+    Create UI, migrations, capture, or hover in this increment. Fox /
+    Brightcove news-site video adapters stay a separate later
+    vertical.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.
