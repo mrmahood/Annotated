@@ -1,6 +1,12 @@
 export const PROCESSED_MEDIA_BUCKET = "annotation-media";
 export const MEDIA_SIGNING_TTL_SECONDS = 120;
 export const MEDIA_PLAYBACK_CACHE_CONTROL = "private, no-store";
+export const MEDIA_PLAYBACK_CORS_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, HEAD, OPTIONS",
+  "access-control-allow-headers": "Accept",
+  "access-control-expose-headers": "Location",
+} as const;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const VIDEO_MAX_BYTES = 16 * 1024 * 1024;
@@ -126,11 +132,52 @@ export function getTrustedSignedMediaUrl(value: unknown, supabaseUrl: string): s
   }
 }
 
+export function mediaPlaybackHeaders(extra?: HeadersInit): Headers {
+  const headers = new Headers({
+    "cache-control": MEDIA_PLAYBACK_CACHE_CONTROL,
+    "referrer-policy": "no-referrer",
+    ...MEDIA_PLAYBACK_CORS_HEADERS,
+  });
+  if (extra) {
+    new Headers(extra).forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
+  return headers;
+}
+
+export function wantsJsonPlaybackDelivery(request: Request): boolean {
+  const url = new URL(request.url);
+  if (url.searchParams.get("delivery") === "json") return true;
+  const accept = request.headers.get("accept") ?? "";
+  return accept.toLowerCase().includes("application/json");
+}
+
+export function mediaPlaybackSuccessResponse(
+  signedUrl: string,
+  options: { jsonDelivery: boolean; head?: boolean },
+): Response {
+  if (options.jsonDelivery) {
+    return new Response(options.head ? null : JSON.stringify({ signedUrl }), {
+      status: 200,
+      headers: mediaPlaybackHeaders({ "content-type": "application/json" }),
+    });
+  }
+  return new Response(null, {
+    status: 307,
+    headers: mediaPlaybackHeaders({ location: signedUrl }),
+  });
+}
+
+export function mediaPlaybackOptionsResponse(): Response {
+  return new Response(null, { status: 204, headers: mediaPlaybackHeaders() });
+}
+
 export function mediaPlaybackErrorResponse(error: unknown, head = false): Response {
   const bounded = error instanceof MediaPlaybackError
     ? error
     : new MediaPlaybackError("MEDIA_UNAVAILABLE", 503);
-  const headers = new Headers({ "cache-control": MEDIA_PLAYBACK_CACHE_CONTROL });
+  const headers = mediaPlaybackHeaders();
   if (head) return new Response(null, { status: bounded.status, headers });
   headers.set("content-type", "application/json");
   return new Response(JSON.stringify({ error: bounded.code }), {
