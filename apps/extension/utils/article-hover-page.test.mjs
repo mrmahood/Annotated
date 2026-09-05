@@ -250,7 +250,12 @@ test('page injector paints an idempotent outline and dim on a unique passage', (
     assert.ok(root);
     assert.equal(root.dataset.strength, 'soft');
     assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.09\)/);
-    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /box-shadow:0 0 0 2px/);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /box-shadow:0 0 0 2px rgba\(212, 160, 20, 0\.85\)/);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /background:rgba\(255, 214, 74, 0\.55\)/);
+    assert.match(
+      documentElement.querySelector('#annotated-article-hover-style').textContent,
+      /background-color:rgba\(255, 214, 74, 0\.55\)/,
+    );
     assert.equal(highlights.has(ARTICLE_HOVER_HIGHLIGHT_NAME), true);
 
     const second = applyArticleHoverHighlightOnPage({
@@ -262,6 +267,12 @@ test('page injector paints an idempotent outline and dim on a unique passage', (
     assert.equal(documentElement.querySelectorAll('#annotated-article-hover-root').length, 1);
     assert.equal(root.dataset.strength, 'strong');
     assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.12\)/);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /box-shadow:0 0 0 3px rgba\(180, 130, 0, 0\.95\)/);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /background:rgba\(255, 214, 74, 0\.72\)/);
+    assert.match(
+      documentElement.querySelector('#annotated-article-hover-style').textContent,
+      /background-color:rgba\(255, 214, 74, 0\.72\)/,
+    );
 
     assert.deepEqual(clearArticleHoverHighlightOnPage(), { ok: true, reason: 'cleared' });
     assert.equal(documentElement.querySelector('#annotated-article-hover-root'), null);
