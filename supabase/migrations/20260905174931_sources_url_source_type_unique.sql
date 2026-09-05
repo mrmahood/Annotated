@@ -813,13 +813,13 @@ end;
 $$;
 
 comment on function public.begin_hosted_audio_annotation(
-  text, text, text, text, text, integer, integer, text
+  text, text, text, text, text, text, integer, integer, text
 ) is
   'Atomically creates a private draft podcast annotation, target, generated route identity, and capture-pending hosted-media row for auth.uid(). Inserts or reuses only the podcast source for (normalized_url, source_type).';
 
 revoke all on function public.begin_hosted_audio_annotation(
-  text, text, text, text, text, integer, integer, text
+  text, text, text, text, text, text, integer, integer, text
 ) from public, anon, authenticated;
 grant execute on function public.begin_hosted_audio_annotation(
-  text, text, text, text, text, integer, integer, text
+  text, text, text, text, text, text, integer, integer, text
 ) to authenticated;
