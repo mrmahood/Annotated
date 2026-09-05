@@ -38,11 +38,57 @@ function mediaContentType(response: Response): string {
   return response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function discardBody(response: Response): Promise<void> {
   try {
     await response.body?.cancel();
   } catch {
     // The playback body must never be buffered into a Blob for the player.
+  }
+}
+
+function withJsonDelivery(playbackUrl: string): string {
+  const url = new URL(playbackUrl);
+  url.searchParams.set('delivery', 'json');
+  return url.href;
+}
+
+async function resolveJsonPlaybackSrc(
+  fetchImpl: typeof fetch,
+  playbackUrl: string,
+  supabaseUrl: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  let response: Response;
+  try {
+    response = await fetchImpl(withJsonDelivery(playbackUrl), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      credentials: 'omit',
+      // Stay on the playback origin so a 307 cannot pull the mp4 body into the extension.
+      redirect: 'manual',
+      cache: 'no-store',
+      signal,
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok || mediaContentType(response) !== 'application/json') {
+    await discardBody(response);
+    return null;
+  }
+
+  try {
+    const body: unknown = await response.json();
+    return isRecord(body)
+      ? getTrustedSignedPlaybackUrl(body.signedUrl, supabaseUrl)
+      : null;
+  } catch {
+    return null;
   }
 }
 
@@ -83,6 +129,14 @@ export async function resolveHostedPlaybackSrc(input: {
   }
 
   const fetchImpl = input.fetchImpl ?? fetch;
+  const jsonSrc = await resolveJsonPlaybackSrc(
+    fetchImpl,
+    input.playbackUrl,
+    input.supabaseUrl,
+    input.signal,
+  );
+  if (jsonSrc) return jsonSrc;
+
   let response = await fetchPlaybackResponse(fetchImpl, input.playbackUrl, 'GET', input.signal);
   if (!response || (REDIRECT_STATUSES.has(response.status) && !redirectLocation(response))) {
     const head = await fetchPlaybackResponse(fetchImpl, input.playbackUrl, 'HEAD', input.signal);

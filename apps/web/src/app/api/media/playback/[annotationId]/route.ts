@@ -1,12 +1,14 @@
 import {
-  MEDIA_PLAYBACK_CACHE_CONTROL,
   MEDIA_SIGNING_TTL_SECONDS,
   MediaPlaybackError,
   PROCESSED_MEDIA_BUCKET,
   getTrustedSignedMediaUrl,
   isPlaybackUuid,
   mediaPlaybackErrorResponse,
+  mediaPlaybackOptionsResponse,
+  mediaPlaybackSuccessResponse,
   parseMediaDelivery,
+  wantsJsonPlaybackDelivery,
 } from "@/lib/media-playback";
 import {
   HostedMediaApiError,
@@ -18,7 +20,11 @@ type PlaybackRouteContext = {
   params: Promise<{ annotationId: string }>;
 };
 
-async function authorizePlayback(context: PlaybackRouteContext, head: boolean) {
+async function authorizePlayback(
+  request: Request,
+  context: PlaybackRouteContext,
+  head: boolean,
+) {
   const startedAt = performance.now();
   let annotationId = "invalid";
   try {
@@ -50,13 +56,9 @@ async function authorizePlayback(context: PlaybackRouteContext, head: boolean) {
       code: "SIGNED",
       latencyMs: Math.round(performance.now() - startedAt),
     });
-    return new Response(null, {
-      status: 307,
-      headers: {
-        location: signedUrl,
-        "cache-control": MEDIA_PLAYBACK_CACHE_CONTROL,
-        "referrer-policy": "no-referrer",
-      },
+    return mediaPlaybackSuccessResponse(signedUrl, {
+      jsonDelivery: wantsJsonPlaybackDelivery(request),
+      head,
     });
   } catch (error) {
     const bounded = error instanceof HostedMediaApiError && error.code === "SERVER_MISCONFIGURED"
@@ -74,10 +76,14 @@ async function authorizePlayback(context: PlaybackRouteContext, head: boolean) {
   }
 }
 
-export function GET(_request: Request, context: PlaybackRouteContext) {
-  return authorizePlayback(context, false);
+export function OPTIONS() {
+  return mediaPlaybackOptionsResponse();
 }
 
-export function HEAD(_request: Request, context: PlaybackRouteContext) {
-  return authorizePlayback(context, true);
+export function GET(request: Request, context: PlaybackRouteContext) {
+  return authorizePlayback(request, context, false);
+}
+
+export function HEAD(request: Request, context: PlaybackRouteContext) {
+  return authorizePlayback(request, context, true);
 }
