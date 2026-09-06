@@ -135,4 +135,6 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(source, /beginHostedSpotifyAnnotation/);
   assert.match(source, /Spotify episode/);
   assert.match(source, /kind: 'spotify'/);
+  assert.match(source, /Start the preview, or sign in if it is gated/);
+  assert.doesNotMatch(source, /Sign in to Spotify in this tab to capture an episode/);
 });

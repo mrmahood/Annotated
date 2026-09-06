@@ -380,7 +380,7 @@ function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
       text: { status: 'available' },
       video: { status: 'unavailable', reason: 'Video mode supports watch pages, not Spotify episodes.' },
       audio: sourceState.source.pageBlock === 'login'
-        ? { status: 'unavailable', reason: 'Sign in to Spotify in this tab to capture an episode.' }
+        ? { status: 'unavailable', reason: 'This Spotify tab is not playing an episode. Start the preview, or sign in if it is gated.' }
         : { status: 'available' },
     };
   }
@@ -1717,7 +1717,7 @@ function App() {
       !audioDraftState.commentary.trim() || !audioDraftState.playerIdentity
     ) return;
     if (spotifyIdentity.pageBlock === 'login') {
-      setAudioPublishState({ status: 'error', message: 'Sign in to Spotify in this tab, then try again.' });
+      setAudioPublishState({ status: 'error', message: 'This Spotify tab is not playing an episode. Start the preview or sign in if it is gated, then try again.' });
       return;
     }
     const rangeError = getNewMediaPublicationRangeError(

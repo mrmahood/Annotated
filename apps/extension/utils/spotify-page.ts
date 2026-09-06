@@ -184,6 +184,9 @@ export async function extractSpotifyPageMetadata() {
       '[data-testid="now-playing-bar"], [data-testid="player-controls"], [data-testid="playback-progressbar"]',
     );
     const bodyText = clean(document.body?.innerText).slice(0, 2_000);
+    // Logged-out limited previews are a valid capture surface when the
+    // tab is already playing. A login CTA next to a now-playing bar is
+    // not a wall.
     if (nowPlaying) return false;
     return Boolean(loginButton) ||
       /log in to spotify|sign up to listen|continue with google/i.test(bodyText);

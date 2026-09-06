@@ -505,8 +505,11 @@ News-site opaque embeds (Brightcove/Fox) stay later. No X OAuth.
 
 Implemented on this branch. First-class `source_type = spotify`,
 Create → Audio, Feed chip **Spotify**, and now-playing-bar hover.
-See `docs/product/spotify-episode-capture.md`. DRM / stream-URL
-scraping stay out of scope. Fox / Brightcove remain later.
+Capture is tabCapture of what the connected tab can already play
+(logged-in listen or a logged-out limited preview that is already
+audible). Public playback is the hosted derivative, not a Spotify
+embed. See `docs/product/spotify-episode-capture.md`. DRM /
+stream-URL scraping stay out of scope. Fox / Brightcove remain later.
 
 ## 9. Acceptance criteria (Sprint 1)
 

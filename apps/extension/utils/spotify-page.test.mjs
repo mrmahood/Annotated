@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   isSpotifyNowPlayingIdentity,
@@ -79,6 +80,12 @@ test('player discovery accepts one now-playing identity and rejects HTML5 audio 
       durationMs: 1_000,
     }],
   }).status, 'none');
+});
+
+test('login-wall detection yields to a now-playing bar so logged-out previews stay capturable', async () => {
+  const source = await readFile(new URL('./spotify-page.ts', import.meta.url), 'utf8');
+  assert.match(source, /if \(nowPlaying\) return false;/);
+  assert.match(source, /Logged-out limited previews are a valid capture surface/);
 });
 
 test('player state fails closed on unreadable or inverted times', () => {

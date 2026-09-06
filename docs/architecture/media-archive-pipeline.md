@@ -163,7 +163,11 @@ Processing path; they are not article-backed webpage-video rows.
 Spotify episode pages use a first-class `source_type = spotify` begin
 RPC (`begin_hosted_spotify_annotation`) for hosted **audio** clips.
 They are not generic `podcast` / HTML5-audio rows. Capture is
-audio-only tabCapture; DRM and stream-URL scraping stay out of scope.
+audio-only tabCapture of what the connected tab can already play
+(logged-in listening or a logged-out limited preview that is already
+audible). Public playback is Annotated's hosted derivative, not a
+live Spotify embed of the full episode. DRM and stream-URL scraping
+stay out of scope.
 Inaccessible cross-origin / Brightcove adapters remain a separate
 increment and continue to fail closed.
 

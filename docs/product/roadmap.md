@@ -690,11 +690,15 @@ Production launch and hardening remain separately authorized.
     reuse of generic `podcast`. Stable episode URL identity
     (`https://open.spotify.com/episode/<id>` and common variants).
     Create → Audio on a connected episode tab; 1–90 s; proven
-    `tabCapture → offscreen → MediaRecorder` audio-only path. Feed
-    card `kind: spotify`. Hover highlights the now-playing bar.
-    Fail closed on home, search, show-only, login walls, DRM, and
-    unreadable / off-start player time. DRM and stream-URL scraping
-    stay out of scope. Fox / Brightcove stay a later vertical.
+    `tabCapture → offscreen → MediaRecorder` audio-only path of
+    what that tab can already play (logged-in listen or a logged-out
+    limited preview that is already audible). Public playback is
+    Annotated's hosted derivative, not a live Spotify embed.
+    Feed card `kind: spotify`. Hover highlights the now-playing bar.
+    Fail closed on home, search, show-only, login walls that cannot
+    play, DRM, and unreadable / off-start player time. DRM and
+    stream-URL scraping stay out of scope. Fox / Brightcove stay a
+    later vertical.
     Staging migration: `20260906031846_begin_hosted_spotify_annotation`.
     Owner apply/verify notes: `docs/product/spotify-episode-capture.md`.
     Do not touch Production. Do not unpause Cloud Run.
