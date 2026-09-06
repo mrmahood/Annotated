@@ -1222,6 +1222,15 @@ function App() {
     });
     const result = execution[0]?.result;
     if (!result?.ok || result.identity !== identity) {
+      if (spotifyIdentity && mode === 'audio' && result && !result.ok) {
+        throw new Error(
+          result.reason === 'playback-failed'
+            ? 'The Spotify player could not seek to the clip start.'
+            : result.reason === 'player-not-ready'
+              ? 'The Spotify now-playing time could not be read.'
+              : 'The selected player changed. Choose it again.',
+        );
+      }
       if (playerTokenIsCurrent(token)) {
         dispatchCreateDraft({
           type: 'patch-media', mode,
@@ -2159,10 +2168,19 @@ function App() {
       await runSelectedPlayerAction(token, 'play', audioDraftState.startMs / 1_000);
       if (playerTokenIsCurrent(token)) {
         dispatchCreateDraft({ type: 'set-player-read-state', mode: 'audio', state: 'idle' });
+        if (connectedSpotifySource(sourceState.source)) {
+          setAudioPublishState({ status: 'idle' });
+        }
       }
-    } catch {
+    } catch (error) {
       if (playerTokenIsCurrent(token)) {
         dispatchCreateDraft({ type: 'set-player-read-state', mode: 'audio', state: 'error' });
+        if (connectedSpotifySource(sourceState.source)) {
+          setAudioPublishState({
+            status: 'error',
+            message: error instanceof Error ? error.message : 'The Spotify player could not seek to the clip start.',
+          });
+        }
       }
     }
   }, [audioDraftState.playerIdentity, audioDraftState.startMs, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState]);
@@ -3454,7 +3472,7 @@ function App() {
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
               <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>{spotifySource ? 'Spotify episode' : exclusivePodcast ? 'Podcast / web audio' : 'Page audio'}</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
-                <p className="create-help">{spotifySource ? 'Play the connected Spotify episode and seek to the start before publishing. Then Set start / Set end or type times such as 1:00 and 2:30.' : 'Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.'}</p>
+                <p className="create-help">{spotifySource ? 'Play the connected Spotify episode, then Set start / Set end or type times such as 1:00 and 2:30. Preview / Jump to start and Publish seek the now-playing bar to the clip start.' : 'Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.'}</p>
                 <PlayerSelector mode="audio" discovery={audioPlayers} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
                 <ClipRangeFields
                   idPrefix="audio"
@@ -3473,7 +3491,7 @@ function App() {
                 <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>{audioDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
                 {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview / Jump to start</button>}
                 {showAudioRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
-                {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.</p>}
+                {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
                 <div className="annotation-field"><label htmlFor="audio-clip-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="audio-clip-commentary" value={audioDraftState.commentary} maxLength={2_000} rows={6} required disabled={mediaEditorLocked} onChange={(event) => changeAudioCommentary(event.target.value)} /><span aria-live="polite">{audioDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}

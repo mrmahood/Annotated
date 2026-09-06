@@ -136,5 +136,7 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(source, /Spotify episode/);
   assert.match(source, /kind: 'spotify'/);
   assert.match(source, /Start the preview, or sign in if it is gated/);
+  assert.match(source, /Preview \/ Jump to start and Publish seek the now-playing bar to the clip start/);
+  assert.match(source, /The Spotify player could not seek to the clip start/);
   assert.doesNotMatch(source, /Sign in to Spotify in this tab to capture an episode/);
 });

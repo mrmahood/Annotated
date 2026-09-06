@@ -286,7 +286,126 @@ export async function prepareMediaCaptureOnPage(
         !Number.isSafeInteger(request.endMs) || durationMs < 1_000 || durationMs > 90_000) {
       return { ok: false, code: 'RANGE_INVALID', message: 'The selected range must be between 1 and 90 seconds.' };
     }
-    const now = readSpotifyNowPlaying();
+    const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    const assignRange = (input: HTMLInputElement, next: number) => {
+      const value = String(next);
+      const previous = input.value;
+      try {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(input, value);
+        else input.value = value;
+      } catch {
+        input.value = value;
+      }
+      const tracker = (input as HTMLInputElement & { _valueTracker?: { setValue?: (current: string) => void } })._valueTracker;
+      if (tracker && typeof tracker.setValue === 'function') {
+        try { tracker.setValue(previous); } catch { /* React 19 may omit the tracker. */ }
+      }
+      try {
+        input.dispatchEvent(new InputEvent('input', {
+          bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: value,
+        }));
+      } catch {
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const clickBarAtRatio = (surface: HTMLElement, ratio: number) => {
+      const rect = surface.getBoundingClientRect();
+      if (rect.width < 8 || rect.height < 1) return false;
+      const x = rect.left + rect.width * Math.min(1, Math.max(0, ratio));
+      const y = rect.top + rect.height / 2;
+      const target = document.elementFromPoint(x, y);
+      const node = target instanceof HTMLElement ? target : surface;
+      const point = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window, buttons: 1 };
+      try {
+        if (typeof PointerEvent === 'function') {
+          node.dispatchEvent(new PointerEvent('pointerdown', { ...point, pointerId: 1, pointerType: 'mouse' }));
+          node.dispatchEvent(new PointerEvent('pointerup', { ...point, pointerId: 1, pointerType: 'mouse' }));
+        }
+        node.dispatchEvent(new MouseEvent('mousedown', point));
+        node.dispatchEvent(new MouseEvent('mouseup', point));
+        node.dispatchEvent(new MouseEvent('click', point));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const seekNowPlaying = async (start: number) => {
+      let now = readSpotifyNowPlaying();
+      if (now.position === null) return now;
+      if (Math.abs(now.position - start) <= 2) return now;
+      let attempted = false;
+      const bar = document.querySelector('[data-testid="playback-progressbar"]');
+      const input = (
+        bar?.querySelector('input[type="range"]') ??
+        document.querySelector('[data-testid="playback-progressbar"] input[type="range"]')
+      );
+      if (input instanceof HTMLInputElement) {
+        const lo = Number.isFinite(Number(input.min)) ? Number(input.min) : 0;
+        const hi = Number(input.max);
+        if (Number.isFinite(hi) && hi > lo) {
+          const span = hi - lo;
+          const duration = now.duration;
+          const currentRaw = Number(input.value);
+          const targetMs = start * 1_000;
+          const clockMs = now.position * 1_000;
+          let raw: number;
+          if (span <= 100.0001) {
+            raw = duration !== null && duration > 0 ? lo + (start / duration) * span : lo;
+          } else if (Number.isFinite(currentRaw) && span > 1_000) {
+            const offset = clockMs - currentRaw;
+            raw = Math.abs(offset) <= 2_500 ? targetMs : currentRaw + (targetMs - clockMs);
+          } else if (duration !== null && Math.abs(span - duration) <= Math.max(1, duration * 0.05)) {
+            raw = lo + start;
+          } else if (span > 1_000) {
+            raw = lo + start * 1_000;
+          } else {
+            raw = lo + start;
+          }
+          try {
+            assignRange(input, Math.min(hi, Math.max(lo, raw)));
+            attempted = true;
+          } catch { /* Click / share-timestamp fallbacks below. */ }
+        }
+      }
+      now = readSpotifyNowPlaying();
+      if (now.position === null || Math.abs(now.position - start) > 2) {
+        const surface = (bar instanceof HTMLElement ? bar : null)
+          ?? document.querySelector('[data-testid="progress-bar-background"]');
+        const durationForClick = now.duration
+          ?? (input instanceof HTMLInputElement && Number(input.max) > 1_000 ? Number(input.max) / 1_000 : null);
+        if (surface instanceof HTMLElement && durationForClick !== null && durationForClick > 0
+            && clickBarAtRatio(surface, start / durationForClick)) {
+          attempted = true;
+        }
+      }
+      now = readSpotifyNowPlaying();
+      if (now.position === null || Math.abs(now.position - start) > 2) {
+        try {
+          const url = new URL(location.href);
+          if (url.hostname.toLowerCase() === 'open.spotify.com') {
+            const stamp = String(Math.round(start * 1_000));
+            if (url.searchParams.get('t') !== stamp && typeof history !== 'undefined'
+                && typeof history.replaceState === 'function') {
+              url.searchParams.set('t', stamp);
+              history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+              window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+              attempted = true;
+            }
+          }
+        } catch { /* Fail closed after the poll if the playhead did not move. */ }
+      }
+      if (!attempted) return now;
+      const deadline = Date.now() + 3_000;
+      while (Date.now() < deadline) {
+        now = readSpotifyNowPlaying();
+        if (now.position !== null && Math.abs(now.position - start) <= 2) return now;
+        await wait(50);
+      }
+      return readSpotifyNowPlaying();
+    };
+    const now = await seekNowPlaying(request.startMs / 1_000);
     if (now.position === null) {
       return { ok: false, code: 'PLAYER_NOT_READY', message: 'The Spotify now-playing time could not be read.' };
     }
@@ -294,7 +413,7 @@ export async function prepareMediaCaptureOnPage(
       return {
         ok: false,
         code: 'PLAYER_NOT_READY',
-        message: 'Seek the Spotify player to the clip start, then try again.',
+        message: 'The Spotify player could not seek to the clip start.',
       };
     }
     return {
@@ -559,20 +678,142 @@ export async function playMediaForCaptureOnPage(
     if (spotifyEpisodeId(location.href) !== source.sourceKey) {
       return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'connected-source-changed' };
     }
-    const position = parseSpotifyClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent));
-    if (position === null) {
+    const readClock = () => ({
+      position: parseSpotifyClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent)),
+      duration: parseSpotifyClock(clean(document.querySelector('[data-testid="playback-duration"]')?.textContent)),
+    });
+    const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    const startSeconds = startMs / 1_000;
+    let now = readClock();
+    if (now.position === null) {
       return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'player-unavailable' };
     }
-    if (Math.abs(position * 1_000 - startMs) > 2_000) {
-      return { ok: false, acknowledgedAtMs, currentTimeMs: Math.round(position * 1_000), message: 'playback-failed' };
+    if (Math.abs(now.position - startSeconds) > 2) {
+      let attempted = false;
+      const bar = document.querySelector('[data-testid="playback-progressbar"]');
+      const input = (
+        bar?.querySelector('input[type="range"]') ??
+        document.querySelector('[data-testid="playback-progressbar"] input[type="range"]')
+      );
+      const assignRange = (node: HTMLInputElement, next: number) => {
+        const value = String(next);
+        const previous = node.value;
+        try {
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+          if (setter) setter.call(node, value);
+          else node.value = value;
+        } catch {
+          node.value = value;
+        }
+        const tracker = (node as HTMLInputElement & { _valueTracker?: { setValue?: (current: string) => void } })._valueTracker;
+        if (tracker && typeof tracker.setValue === 'function') {
+          try { tracker.setValue(previous); } catch { /* React 19 may omit the tracker. */ }
+        }
+        try {
+          node.dispatchEvent(new InputEvent('input', {
+            bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: value,
+          }));
+        } catch {
+          node.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        node.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      if (input instanceof HTMLInputElement) {
+        const lo = Number.isFinite(Number(input.min)) ? Number(input.min) : 0;
+        const hi = Number(input.max);
+        if (Number.isFinite(hi) && hi > lo) {
+          const span = hi - lo;
+          const currentRaw = Number(input.value);
+          const targetMs = startSeconds * 1_000;
+          const clockMs = now.position * 1_000;
+          let raw: number;
+          if (span <= 100.0001) {
+            raw = now.duration !== null && now.duration > 0 ? lo + (startSeconds / now.duration) * span : lo;
+          } else if (Number.isFinite(currentRaw) && span > 1_000) {
+            const offset = clockMs - currentRaw;
+            raw = Math.abs(offset) <= 2_500 ? targetMs : currentRaw + (targetMs - clockMs);
+          } else if (span > 1_000) {
+            raw = lo + startSeconds * 1_000;
+          } else {
+            raw = lo + startSeconds;
+          }
+          try {
+            assignRange(input, Math.min(hi, Math.max(lo, raw)));
+            attempted = true;
+          } catch { /* Click / share-timestamp fallbacks below. */ }
+        }
+      }
+      now = readClock();
+      if (now.position === null || Math.abs(now.position - startSeconds) > 2) {
+        const surface = (bar instanceof HTMLElement ? bar : null)
+          ?? document.querySelector('[data-testid="progress-bar-background"]');
+        const rect = surface instanceof HTMLElement ? surface.getBoundingClientRect() : null;
+        const durationForClick = now.duration
+          ?? (input instanceof HTMLInputElement && Number(input.max) > 1_000 ? Number(input.max) / 1_000 : null);
+        if (surface instanceof HTMLElement && rect && rect.width >= 8 && durationForClick !== null && durationForClick > 0) {
+          const ratio = startSeconds / durationForClick;
+          const x = rect.left + rect.width * Math.min(1, Math.max(0, ratio));
+          const y = rect.top + rect.height / 2;
+          const target = document.elementFromPoint(x, y);
+          const node = target instanceof HTMLElement ? target : surface;
+          const point = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window, buttons: 1 };
+          try {
+            if (typeof PointerEvent === 'function') {
+              node.dispatchEvent(new PointerEvent('pointerdown', { ...point, pointerId: 1, pointerType: 'mouse' }));
+              node.dispatchEvent(new PointerEvent('pointerup', { ...point, pointerId: 1, pointerType: 'mouse' }));
+            }
+            node.dispatchEvent(new MouseEvent('mousedown', point));
+            node.dispatchEvent(new MouseEvent('mouseup', point));
+            node.dispatchEvent(new MouseEvent('click', point));
+            attempted = true;
+          } catch { /* Share-timestamp fallback below. */ }
+        }
+      }
+      now = readClock();
+      if (now.position === null || Math.abs(now.position - startSeconds) > 2) {
+        try {
+          const url = new URL(location.href);
+          if (url.hostname.toLowerCase() === 'open.spotify.com') {
+            const stamp = String(Math.round(startSeconds * 1_000));
+            if (url.searchParams.get('t') !== stamp && typeof history !== 'undefined'
+                && typeof history.replaceState === 'function') {
+              url.searchParams.set('t', stamp);
+              history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+              window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+              attempted = true;
+            }
+          }
+        } catch { /* Fail closed after the poll if the playhead did not move. */ }
+      }
+      if (!attempted) {
+        return {
+          ok: false,
+          acknowledgedAtMs: Date.now(),
+          currentTimeMs: now.position === null ? null : Math.round(now.position * 1_000),
+          message: now.position === null ? 'player-unavailable' : 'playback-failed',
+        };
+      }
+      const deadline = Date.now() + 3_000;
+      while (Date.now() < deadline) {
+        now = readClock();
+        if (now.position !== null && Math.abs(now.position - startSeconds) <= 2) break;
+        await wait(50);
+      }
+    }
+    now = readClock();
+    if (now.position === null) {
+      return { ok: false, acknowledgedAtMs: Date.now(), currentTimeMs: null, message: 'player-unavailable' };
+    }
+    if (Math.abs(now.position - startSeconds) > 2) {
+      return { ok: false, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(now.position * 1_000), message: 'playback-failed' };
     }
     const playButton = document.querySelector<HTMLElement>('[data-testid="control-button-playpause"]');
     const playLabel = clean(playButton?.getAttribute('aria-label'));
     if (playButton && /play/i.test(playLabel) && !/pause/i.test(playLabel)) {
       try { playButton.click(); }
-      catch { return { ok: false, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(position * 1_000), message: 'playback-failed' }; }
+      catch { return { ok: false, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(now.position * 1_000), message: 'playback-failed' }; }
     }
-    return { ok: true, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(position * 1_000) };
+    return { ok: true, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(now.position * 1_000) };
   }
   if (!sourceMatches()) return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'connected-source-changed' };
   const media = selectMedia();

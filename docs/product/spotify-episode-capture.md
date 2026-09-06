@@ -25,9 +25,9 @@ Why this is the cleaner fit (TikTok Sprint 6 precedent):
   YouTube / TikTok / podcast), **not** a live Spotify embed of the
   full episode. Annotated listeners do not need a Spotify login.
 - DRM / stream-URL scraping is out of scope. Capture is only what
-  the connected tab can already play. The adapter fail-closes unless
-  now-playing clocks are readable and the player is within 2 s of the
-  requested start.
+  the connected tab can already play. Preview / Jump and Publish
+  drive the now-playing bar to the clip start, then fail closed
+  unless clocks are readable and the playhead is within 2 s.
 
 Hover on the now-playing bar is included in this increment (natural
 audio/TikTok parallel).
@@ -51,8 +51,9 @@ Rejected as Spotify episode identity or capture:
 - True login/signup walls where the tab cannot play
 - `spotify.link`, `spotify:episode:`, `play.spotify.com`
 - Unreadable now-playing time
-- Player more than 2 seconds off the requested start (no brittle
-  progress-bar seek)
+- Seek is impossible (no now-playing bar / slider, true DRM or
+  login wall). After a successful seek the playhead must be within
+  2 s of the requested start.
 
 ## Staging apply (owner only)
 
@@ -75,30 +76,28 @@ Owner applies Staging only (Dashboard SQL editor or linked CLI). Do
 
 Rebuild/reload the extension after pulling this branch. Chrome →
 `chrome://extensions` → Annotated → Reload. Then reopen the side
-panel on the episode tab. A stale service worker can keep the
-post-#86 “begin 200, capture did not start” failure.
+panel on the episode tab.
 
 1. Open the owner repro episode:
    `https://open.spotify.com/episode/6EMoFpxEsLelogfZz8eAC2`
    Logged-out free preview is valid. Leave the “Preview of Spotify…
    Sign up free” banner as-is. Press play until the tab is audible
    and Create shows **Using Spotify now playing**.
-2. Set start / Set end (or type times) for a 1–90 s range. Example
-   from the 2026-09-05 repro: start `00:08`, end `01:30`.
-3. **Seek the Spotify player to the clip start** (or use Preview /
-   Jump to start only after the player is already within 2 s).
-   Publish while the playhead is ~50 s away must **not** say
-   “The connected media capture could not start.” It must say
-   **Seek the Spotify player to the clip start, then try again.**
-4. Seek to the start, then **Publish clip** or **Recapture** on the
-   existing draft. Expected: tabCapture starts (side panel leaves
-   “Creating draft…” / preparing and shows capturing → upload →
-   **Processing**). Draft stays draft until the worker finishes.
-   Public playback is the hosted derivative, not a Spotify embed.
-   Do not unpause Cloud Run; one-shot the dispatcher if needed.
-5. Repeat once logged-in if you have a session. Same capture path.
+2. Set START `05:00` and END `06:00` (or `00:08`–`01:30`). Leave
+   the Spotify bar wherever it is (for example ~`5:59`).
+3. Click **Preview / Jump to start**. The now-playing playhead
+   must move to the clip start (within ~2 s). It must not stay
+   put. If seek is impossible, the red error must say
+   **The Spotify player could not seek to the clip start.**
+   — not a silent no-op.
+4. Click **Publish clip** (or Recapture) while the playhead is
+   away from start. Expected: the extension seeks, then
+   tabCapture starts → upload → **Processing**. Do not require
+   manual scrubbing.
+5. Repeat once logged-in if you have a session. Same seek path.
 6. Fail closed: home, search, show page, a login wall that cannot
-   play, DRM, unreadable time, YouTube/TikTok/podcast still work.
+   play, DRM, unreadable time. YouTube/TikTok/podcast Jump still
+   uses the HTML5/player currentTime path.
 7. Hover: Feed card on a connected episode tab outlines the
    now-playing bar.
 
