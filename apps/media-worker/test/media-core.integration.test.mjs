@@ -88,6 +88,70 @@ integration('packet timestamps recover duration for a live MediaRecorder-shaped 
   assert.ok(facts.durationMs >= 2_000 && facts.durationMs <= 2_120);
 }));
 
+integration('packet span recovers a Spotify-shaped audio WebM whose container duration is the media-clock end', async () => withTempDirectory(async (directory) => {
+  const inputPath = path.join(directory, 'spotify-clock.webm');
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=60.024',
+    '-c:a', 'libopus', '-b:a', '128k', '-output_ts_offset', '300', '-f', 'webm', inputPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  const container = JSON.parse((await runExecutable(tools.ffprobePath, [
+    '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', inputPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' })).stdout);
+  assert.ok(Number(container.format.duration) > 300);
+
+  const probe = await probeFile(tools.ffprobePath, inputPath);
+  assert.equal(probe.format.duration_source, 'packet_timestamps');
+  const facts = validateRawProbe({
+    mediaType: 'audio', probe, expectedByteSize: (await stat(inputPath)).size,
+    requestedDurationMs: 60_000, leadInMs: 5.5,
+  });
+  assert.ok(facts.durationMs >= 59_985.5 && facts.durationMs <= 62_005.5);
+
+  const captureMetadata = await audioMetadataForDuration(60_000);
+  captureMetadata.timing.requested_start_ms = 300_000;
+  captureMetadata.timing.requested_end_ms = 360_000;
+  captureMetadata.timing.lead_in_ms = 5.5;
+  captureMetadata.timing.recorder_elapsed_ms = 60_024;
+  captureMetadata.timing.player_start_ms = 300_000;
+  captureMetadata.timing.player_end_ms = 360_000;
+  const result = await createLocalDerivative({
+    ...tools,
+    mediaType: 'audio',
+    inputPath,
+    outputPath: path.join(directory, 'excerpt.m4a'),
+    captureMetadata,
+    requestedDurationMs: 60_000,
+  });
+  assert.ok(result.output.durationMs >= 59_900 && result.output.durationMs <= 60_100);
+}));
+
+integration('packet span still rejects an audio WebM that is actually shorter or longer than the selected range', async () => withTempDirectory(async (directory) => {
+  const shortPath = path.join(directory, 'short.webm');
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=1.0',
+    '-c:a', 'libopus', '-f', 'webm', shortPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  const shortProbe = await probeFile(tools.ffprobePath, shortPath);
+  assert.throws(() => validateRawProbe({
+    mediaType: 'audio', probe: shortProbe, expectedByteSize: (await stat(shortPath)).size,
+    requestedDurationMs: 60_000, leadInMs: 5.5,
+  }), (error) => error.code === 'duration_out_of_bounds');
+
+  const longPath = path.join(directory, 'long.webm');
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=93',
+    '-c:a', 'libopus', '-f', 'webm', longPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  const longProbe = await probeFile(tools.ffprobePath, longPath);
+  assert.throws(() => validateRawProbe({
+    mediaType: 'audio', probe: longProbe, expectedByteSize: (await stat(longPath)).size,
+    requestedDurationMs: 90_000, leadInMs: 0,
+  }), (error) => error.code === 'duration_out_of_bounds');
+}));
+
 integration('real unsupported and missing-stream fixtures fail closed before transcode', async () => {
   const unsupportedAudio = await probeFile(tools.ffprobePath, path.join(generatedFixtureRoot, 'unsupported-vorbis-audio.webm'));
   assert.throws(() => validateRawProbe({
