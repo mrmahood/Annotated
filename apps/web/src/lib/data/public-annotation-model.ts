@@ -3,6 +3,7 @@ import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-tim
 import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
 import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from "@annotated/shared/youtube";
 import { getTikTokVideoIdentity, isTikTokVideoUrl } from "@annotated/shared/tiktok";
+import { getSpotifyEpisodeIdentity, isSpotifyEpisodeUrl } from "@annotated/shared/spotify";
 import { parsePublicAnnotationAudio } from "../audio-commentary";
 import { formatHostname, getHttpUrl, getOptionalText, isUuid } from "../public-content";
 import {
@@ -60,7 +61,9 @@ type YouTubeVideoSource = PublicAnnotationBase["source"] & { type: "youtube"; vi
 type TikTokVideoSource = PublicAnnotationBase["source"] & { type: "tiktok"; videoId: string };
 type WebpageVideoSource = PublicAnnotationBase["source"] & { type: "article"; videoId: null };
 type VideoSource = YouTubeVideoSource | TikTokVideoSource | WebpageVideoSource;
-type AudioSource = PublicAnnotationBase["source"] & { type: "podcast"; videoId: null };
+type PodcastAudioSource = PublicAnnotationBase["source"] & { type: "podcast"; videoId: null };
+type SpotifyAudioSource = PublicAnnotationBase["source"] & { type: "spotify"; videoId: null; episodeId: string };
+type AudioSource = PodcastAudioSource | SpotifyAudioSource;
 
 export type PublicAnnotation = PublicAnnotationBase & (
   | {
@@ -376,9 +379,35 @@ export function mapPublicAnnotationDetail(
 
   if (annotationValue.annotation_type === "audio_clip" && sourceValue.source_type === "podcast" && targetValue.target_type === "time_range") {
     try {
+      if (isSpotifyEpisodeUrl(canonicalUrl.href)) return null;
       const identity = getAudioSourceIdentity(canonicalUrl.href);
       if (identity.normalizedUrl !== getOptionalText(sourceValue.normalized_url)) return null;
-      const source: AudioSource = { ...common.source, type: "podcast", videoId: null };
+      const source: PodcastAudioSource = { ...common.source, type: "podcast", videoId: null };
+      if (mediaState === null) return transcriptValue === null
+        ? { ...common, kind: "audio_legacy", selectedText: null, startMs, endMs, source }
+        : null;
+      if (isRemovedMedia(mediaState, annotationId, "audio")) return transcriptValue === null
+        ? { ...common, kind: "media_removed", mediaType: "audio", selectedText: null, startMs, endMs, source }
+        : null;
+      const media = parseReadyMedia(mediaState, annotationId, "audio", targetDurationMs);
+      if (!media || media.mimeType !== "audio/mp4") return null;
+      const transcript = media ? parseTranscript(transcriptValue, annotationId, media.durationMs) : null;
+      return media && transcript
+        ? { ...common, kind: "audio_hosted", selectedText: null, startMs, endMs, source, media, transcript }
+        : null;
+    } catch { return null; }
+  }
+
+  if (annotationValue.annotation_type === "audio_clip" && sourceValue.source_type === "spotify" && targetValue.target_type === "time_range") {
+    try {
+      const identity = getSpotifyEpisodeIdentity(canonicalUrl.href);
+      if (identity.normalizedUrl !== getOptionalText(sourceValue.normalized_url)) return null;
+      const source: SpotifyAudioSource = {
+        ...common.source,
+        type: "spotify",
+        videoId: null,
+        episodeId: identity.episodeId,
+      };
       if (mediaState === null) return transcriptValue === null
         ? { ...common, kind: "audio_legacy", selectedText: null, startMs, endMs, source }
         : null;

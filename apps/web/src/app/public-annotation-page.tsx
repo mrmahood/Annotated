@@ -42,6 +42,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
   const isAudio = annotation.kind === "audio_legacy" ||
     annotation.kind === "audio_hosted" ||
     (annotation.kind === "media_removed" && annotation.mediaType === "audio");
+  const isSpotifyEpisode = isAudio && annotation.source.type === "spotify";
   const isHosted = annotation.kind === "video_hosted" || annotation.kind === "audio_hosted";
   let sourceUrl = annotation.source.canonicalUrl;
   if (isYouTubeVideo) {
@@ -93,7 +94,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
 
           <section className="source-attribution" aria-labelledby="source-heading">
             <div className="source-copy">
-              <p className="section-label">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isAudio ? "Podcast / web audio" : "Original article"}</p>
+              <p className="section-label">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isSpotifyEpisode ? "Spotify episode" : isAudio ? "Podcast / web audio" : "Original article"}</p>
               <h1 id="source-heading">{sourceTitle}</h1>
               {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
                 <p className="source-byline">
@@ -106,7 +107,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
               <p className="source-hostname">{annotation.source.hostname}</p>
             </div>
             <a className="public-button public-button-primary source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
-              {isYouTubeVideo ? "Open clip on YouTube" : isTikTokVideo ? "Open clip on TikTok" : isAudio || isWebpageVideo ? "Open original source" : "View original source"}
+              {isYouTubeVideo ? "Open clip on YouTube" : isTikTokVideo ? "Open clip on TikTok" : isSpotifyEpisode ? "Open clip on Spotify" : isAudio || isWebpageVideo ? "Open original source" : "View original source"}
               <span aria-hidden="true">↗</span>
             </a>
           </section>

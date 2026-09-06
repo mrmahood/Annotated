@@ -372,7 +372,7 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
   let stream: MediaStream | null = null;
   try {
     const tabConstraint = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: message.streamId } } as unknown as MediaTrackConstraints;
-    const expectVideo = message.prepared.sourceKind !== 'audio';
+    const expectVideo = message.prepared.sourceKind !== 'audio' && message.prepared.sourceKind !== 'spotify';
     stream = await navigator.mediaDevices.getUserMedia({
       audio: tabConstraint,
       video: expectVideo ? tabConstraint : false,

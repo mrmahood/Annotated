@@ -9,6 +9,7 @@ import { getTypedClipFieldError } from '../../utils/clip-range-entry';
 import { ClipRangeFields, useTypedClipRange } from './clip-range-fields';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
+import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
   AUDIO_CLIP_DRAFT_STORAGE_KEY,
@@ -29,6 +30,7 @@ import {
   videoPlayerSourceKey,
   type PageSource,
   type SourceState,
+  type SpotifyPageSource,
 } from '../../utils/connected-source';
 import { beginHostedAudioClipAnnotation } from '../../utils/audio-publishing';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
@@ -168,6 +170,28 @@ import {
   type TikTokHoverConnection,
 } from '../../utils/tiktok-hover-link';
 import {
+  SPOTIFY_CLIP_DRAFT_STORAGE_KEY,
+  deserializeSpotifyClipDraft,
+  serializeSpotifyClipDraft,
+  spotifyClipDraftBelongsToSource,
+  type SpotifyClipDraft,
+} from '../../utils/spotify-draft';
+import { beginHostedSpotifyAnnotation } from '../../utils/spotify-publishing';
+import {
+  actOnSpotifyPlayer,
+  extractSpotifyPageMetadata,
+  readSpotifyPlayerDiscovery,
+  validateSpotifyPageMetadata,
+  validateSpotifyPlayerDiscovery,
+} from '../../utils/spotify-page';
+import { applyPendingSpotifyHoverOnConnection } from '../../utils/spotify-hover-pending';
+import {
+  spotifyHoverConnectionForTab,
+  clearSpotifyHoverOnConnectedTab,
+  leaveSpotifyHoverLink,
+  type SpotifyHoverConnection,
+} from '../../utils/spotify-hover-link';
+import {
   MEDIA_CAPTURE_CANCEL,
   MEDIA_CAPTURE_EVENT,
   MEDIA_CAPTURE_RETRY,
@@ -299,6 +323,10 @@ function connectedAudioSource(source: PageSource): AudioPageSource | null {
   return null;
 }
 
+function connectedSpotifySource(source: PageSource): SpotifyPageSource | null {
+  return source.classification === 'Spotify' ? source : null;
+}
+
 function audioCapabilityForConnectedSource(
   sourceState: Extract<SourceState, { status: 'connected' }>,
 ): ModeCapability {
@@ -346,6 +374,15 @@ function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
       audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not TikTok video.' },
     };
   }
+  if (sourceState.source.classification === 'Spotify') {
+    return {
+      text: { status: 'available' },
+      video: { status: 'unavailable', reason: 'Video mode supports watch pages, not Spotify episodes.' },
+      audio: sourceState.source.pageBlock === 'login'
+        ? { status: 'unavailable', reason: 'Sign in to Spotify in this tab to capture an episode.' }
+        : { status: 'available' },
+    };
+  }
   if (sourceState.source.classification === 'Podcast / web audio') {
     return {
       text: { status: 'available' },
@@ -375,7 +412,11 @@ function getCreatePageSourceKey(url: string): string | null {
     try {
       return getTikTokVideoIdentity(url).normalizedUrl;
     } catch {
-      try { return normalizeArticleUrl(url); } catch { return null; }
+      try {
+        return getSpotifyEpisodeIdentity(url).normalizedUrl;
+      } catch {
+        try { return normalizeArticleUrl(url); } catch { return null; }
+      }
     }
   }
 }
@@ -469,7 +510,7 @@ function SourceSummary({ state }: { state: SourceState }) {
   return (
     <div className="source-summary">
       <span className="source-type">{state.source.classification}</span>
-      <div><span className="section-label">Connected source</span><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'TikTok' && state.source.author && <p>{state.source.author}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}<p>{state.source.hostname}</p></div>
+      <div><span className="section-label">Connected source</span><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'TikTok' && state.source.author && <p>{state.source.author}</p>}{state.source.classification === 'Spotify' && (state.source.showName || state.source.author) && <p>{state.source.showName ?? state.source.author}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}<p>{state.source.hostname}</p></div>
     </div>
   );
 }
@@ -593,6 +634,7 @@ function App() {
   const tiktokDraftRef = useRef<TikTokClipDraft | null>(null);
   const webVideoDraftRef = useRef<WebVideoClipDraft | null>(null);
   const audioDraftRef = useRef<AudioClipDraft | null>(null);
+  const spotifyDraftRef = useRef<SpotifyClipDraft | null>(null);
   const createPageRef = useRef<CreatePageGeneration | null>(null);
   const createDraftStateRef = useRef<CreateDraftState>(createDraftState);
   const modeSelectionRef = useRef<ModeSelectionState | null>(modeSelection);
@@ -607,6 +649,7 @@ function App() {
   const audioHoverRef = useRef<AudioHoverConnection | null>(null);
   const pageVideoHoverRef = useRef<PageVideoHoverConnection | null>(null);
   const tiktokHoverRef = useRef<TikTokHoverConnection | null>(null);
+  const spotifyHoverRef = useRef<SpotifyHoverConnection | null>(null);
   const audioRecorder = useAudioRecorder();
 
   const commentary = createDraftState.text.commentary;
@@ -772,18 +815,43 @@ function App() {
         text,
       );
       audioDraftRef.current = draft;
+      spotifyDraftRef.current = null;
       void chrome.storage.session
         .set({ [AUDIO_CLIP_DRAFT_STORAGE_KEY]: draft })
+        .then(() => chrome.storage.session.remove(SPOTIFY_CLIP_DRAFT_STORAGE_KEY))
         .catch(() => console.warn('Unable to save the audio clip draft.'));
     } catch { /* Invalid transient input is never persisted. */ }
   }, []);
 
+  const persistSpotifyDraft = useCallback((
+    sourceUrl: string,
+    startMs: number | null,
+    endMs: number | null,
+    text: string,
+  ) => {
+    try {
+      const draft = serializeSpotifyClipDraft(sourceUrl, startMs, endMs, text);
+      spotifyDraftRef.current = draft;
+      audioDraftRef.current = null;
+      void chrome.storage.session
+        .set({ [SPOTIFY_CLIP_DRAFT_STORAGE_KEY]: draft })
+        .then(() => chrome.storage.session.remove(AUDIO_CLIP_DRAFT_STORAGE_KEY))
+        .catch(() => console.warn('Unable to save the Spotify clip draft.'));
+    } catch {
+      // Invalid transient input is never persisted.
+    }
+  }, []);
+
   const clearAudioDraft = useCallback(async () => {
     audioDraftRef.current = null;
+    spotifyDraftRef.current = null;
     dispatchCreateDraft({ type: 'reset-mode', mode: 'audio' });
     setAudioPublishState({ status: 'idle' });
     try {
-      await chrome.storage.session.remove(AUDIO_CLIP_DRAFT_STORAGE_KEY);
+      await chrome.storage.session.remove([
+        AUDIO_CLIP_DRAFT_STORAGE_KEY,
+        SPOTIFY_CLIP_DRAFT_STORAGE_KEY,
+      ]);
     } catch { console.warn('Unable to clear the audio clip draft.'); }
   }, []);
 
@@ -1122,10 +1190,17 @@ function App() {
     if (!context) throw new Error(RECONNECT_MESSAGE);
     const genericVideo = mode === 'video' && !isHostedWatchSource(sourceState.source);
     const audioIdentity = connectedAudioSource(sourceState.source);
-    if (mode === 'audio' && !audioIdentity) throw new Error(RECONNECT_MESSAGE);
+    const spotifyIdentity = connectedSpotifySource(sourceState.source);
+    if (mode === 'audio' && !audioIdentity && !spotifyIdentity) throw new Error(RECONNECT_MESSAGE);
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
-    const execution = await chrome.scripting.executeScript({
+    const execution = spotifyIdentity && mode === 'audio'
+      ? await chrome.scripting.executeScript({
+        target: { tabId: context.tabId, frameIds: [0] },
+        func: actOnSpotifyPlayer,
+        args: [identity, spotifyIdentity.episodeId, action, startSeconds],
+      })
+      : await chrome.scripting.executeScript({
       target: { tabId: context.tabId, frameIds: [0] },
       // The page's own world is required to traverse readable same-origin frames.
       // Only bounded generic-video identity/time data crosses this call boundary.
@@ -1167,7 +1242,8 @@ function App() {
       ? 'video'
       : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
     const audioIdentity = connectedAudioSource(sourceState.source);
-    if (!mode || (mode === 'audio' && !audioIdentity)) return;
+    const spotifyIdentity = connectedSpotifySource(sourceState.source);
+    if (!mode || (mode === 'audio' && !audioIdentity && !spotifyIdentity)) return;
     const draft = mode === 'video' ? videoDraftState : audioDraftState;
     let token: PlayerActionToken;
     try { token = getPlayerActionToken(mode, draft.playerIdentity); } catch { return; }
@@ -1178,7 +1254,7 @@ function App() {
       const patch = {
         sourceKey: mode === 'video'
           ? videoPlayerSourceKey(sourceState.source)
-          : audioIdentity?.normalizedUrl ?? '',
+          : spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? '',
         playerIdentity: draft.playerIdentity,
         playerTimeMs: player.currentTimeMs,
         durationMs: player.durationMs,
@@ -1210,6 +1286,13 @@ function App() {
           action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
           videoDraftState.commentary,
         );
+      } else if (mode === 'audio' && spotifyIdentity) {
+        persistSpotifyDraft(
+          spotifyIdentity.url,
+          action === 'start' ? player.currentTimeMs : audioDraftState.startMs,
+          action === 'end' ? player.currentTimeMs : audioDraftState.endMs,
+          audioDraftState.commentary,
+        );
       } else if (mode === 'audio' && audioIdentity) {
         persistAudioDraft(
           audioIdentity,
@@ -1223,7 +1306,7 @@ function App() {
         dispatchCreateDraft({ type: 'set-player-read-state', mode, state: 'error' });
       }
     }
-  }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, persistAudioDraft, persistTikTokDraft, persistWebVideoDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
+  }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, persistAudioDraft, persistSpotifyDraft, persistTikTokDraft, persistWebVideoDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
 
   const changeYoutubeCommentary = (value: string) => {
     const sourceKey = sourceState.status === 'connected'
@@ -1243,9 +1326,14 @@ function App() {
     const audioIdentity = sourceState.status === 'connected'
       ? connectedAudioSource(sourceState.source)
       : null;
-    const sourceKey = audioIdentity?.normalizedUrl ?? audioDraftState.sourceKey;
+    const spotifyIdentity = sourceState.status === 'connected'
+      ? connectedSpotifySource(sourceState.source)
+      : null;
+    const sourceKey = spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? audioDraftState.sourceKey;
     dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { commentary: value, sourceKey } });
-    if (audioIdentity) {
+    if (spotifyIdentity) {
+      persistSpotifyDraft(spotifyIdentity.url, audioDraftState.startMs, audioDraftState.endMs, value);
+    } else if (audioIdentity) {
       persistAudioDraft(audioIdentity, audioDraftState.startMs, audioDraftState.endMs, value);
     }
   };
@@ -1338,7 +1426,7 @@ function App() {
     const session: HostedMediaSession = {
       operation,
       sourceUrl: source.pageUrl,
-      mediaType: source.kind === 'audio' ? 'audio' : 'video',
+      mediaType: source.kind === 'audio' || source.kind === 'spotify' ? 'audio' : 'video',
       startMs,
       endMs,
       createdAt: Date.now(),
@@ -1617,6 +1705,84 @@ function App() {
     }
   }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoDraftState]);
 
+  const publishSpotifyClip = useCallback(async () => {
+    const spotifyIdentity = sourceState.status === 'connected'
+      ? connectedSpotifySource(sourceState.source)
+      : null;
+    if (
+      !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
+      sourceState.status !== 'connected' || !spotifyIdentity ||
+      audioDraftState.startMs === null || audioDraftState.endMs === null ||
+      !audioDraftState.commentary.trim() || !audioDraftState.playerIdentity
+    ) return;
+    if (spotifyIdentity.pageBlock === 'login') {
+      setAudioPublishState({ status: 'error', message: 'Sign in to Spotify in this tab, then try again.' });
+      return;
+    }
+    const rangeError = getNewMediaPublicationRangeError(
+      audioDraftState.startMs,
+      audioDraftState.endMs,
+      audioDraftState.durationMs,
+    );
+    if (rangeError || audioDraftState.commentary.length > 2_000) {
+      setAudioPublishState({ status: 'error', message: rangeError ?? 'Commentary cannot exceed 2,000 characters.' });
+      return;
+    }
+    let token: PlayerActionToken;
+    try { token = getPlayerActionToken('audio', audioDraftState.playerIdentity); }
+    catch { return; }
+    publishInFlightRef.current = true;
+    hostedBeginModeRef.current = 'audio';
+    setHostedBeginMode('audio');
+    setAudioPublishState({ status: 'publishing' });
+    try {
+      const player = await runSelectedPlayerAction(token, 'read', null);
+      if (!playerTokenIsCurrent(token)) throw new Error('The Audio draft changed. Review it and try again.');
+      const actionRangeError = getNewMediaPublicationRangeError(
+        audioDraftState.startMs, audioDraftState.endMs, player.durationMs,
+      );
+      if (actionRangeError) throw new Error(actionRangeError);
+      const operation = await beginHostedSpotifyAnnotation(supabase, {
+        sourceUrl: spotifyIdentity.url,
+        title: spotifyIdentity.title,
+        author: spotifyIdentity.author,
+        showName: spotifyIdentity.showName,
+        startMs: audioDraftState.startMs,
+        endMs: audioDraftState.endMs,
+        commentaryText: audioDraftState.commentary,
+        mediaDurationMs: player.durationMs,
+      });
+      if (!playerTokenIsCurrent(token)) {
+        await cancelStaleHostedBegin(
+          operation,
+          sourceState.source.url,
+          'audio',
+          audioDraftState.startMs,
+          audioDraftState.endMs,
+        );
+        throw new Error('The Audio page, player, or draft changed. The hosted draft was cancelled; review it and try again.');
+      }
+      await startHostedCapture(operation, {
+        kind: 'spotify',
+        pageUrl: sourceState.source.url,
+        sourceKey: spotifyIdentity.episodeId,
+        playerIdentity: audioDraftState.playerIdentity,
+      }, audioDraftState.startMs, audioDraftState.endMs);
+      setAudioPublishState({ status: 'idle' });
+    } catch (error) {
+      setAudioPublishState({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'The Spotify clip could not be published.',
+      });
+    } finally {
+      publishInFlightRef.current = false;
+      if (hostedBeginModeRef.current === 'audio') {
+        hostedBeginModeRef.current = null;
+        setHostedBeginMode(null);
+      }
+    }
+  }, [audioDraftState, authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
+
   const publishAudioClip = useCallback(async () => {
     const audioIdentity = sourceState.status === 'connected'
       ? connectedAudioSource(sourceState.source)
@@ -1862,6 +2028,35 @@ function App() {
       }, session.startMs, session.endMs);
     } else if (
       session.mediaType === 'audio' &&
+      connectedSpotifySource(sourceState.source)
+    ) {
+      const spotifyIdentity = connectedSpotifySource(sourceState.source)!;
+      let originalEpisodeId: string | null = null;
+      try { originalEpisodeId = getSpotifyEpisodeIdentity(session.sourceUrl).episodeId; } catch { /* Invalid persisted source. */ }
+      if (originalEpisodeId !== spotifyIdentity.episodeId) {
+        setMediaCaptureState({
+          status: 'error',
+          captureId: null,
+          code: 'connected-source-changed',
+          message: 'Reconnect the original episode before recapturing this draft.',
+        });
+        return;
+      }
+      if (!audioDraftState.playerIdentity) {
+        setMediaCaptureState({ status: 'error', captureId: null, code: 'connected-source-changed', message: 'Choose the original audio player before recapturing this draft.' });
+        return;
+      }
+      const token = getPlayerActionToken('audio', audioDraftState.playerIdentity);
+      await runSelectedPlayerAction(token, 'read', null);
+      if (!playerTokenIsCurrent(token)) return;
+      await startHostedCapture(session.operation, {
+        kind: 'spotify',
+        pageUrl: sourceState.source.url,
+        sourceKey: spotifyIdentity.episodeId,
+        playerIdentity: audioDraftState.playerIdentity,
+      }, session.startMs, session.endMs);
+    } else if (
+      session.mediaType === 'audio' &&
       connectedAudioSource(sourceState.source)
     ) {
       const audioIdentity = connectedAudioSource(sourceState.source)!;
@@ -1905,12 +2100,21 @@ function App() {
   }, [getPlayerActionToken, runSelectedPlayerAction, sourceState, videoDraftState.playerIdentity]);
 
   const playConnectedAudioClip = useCallback(async (
-    annotation: Extract<PublicAnnotation, { kind: 'audio' }>,
+    annotation: Extract<PublicAnnotation, { kind: 'audio' | 'spotify' }>,
   ) => {
     const audioIdentity = sourceState.status === 'connected'
       ? connectedAudioSource(sourceState.source)
       : null;
-    if (
+    const spotifyIdentity = sourceState.status === 'connected'
+      ? connectedSpotifySource(sourceState.source)
+      : null;
+    if (annotation.kind === 'spotify') {
+      if (
+        sourceState.status !== 'connected' ||
+        !spotifyIdentity ||
+        spotifyIdentity.episodeId !== annotation.source.episodeId
+      ) throw new Error('The connected Spotify episode does not match this clip.');
+    } else if (
       sourceState.status !== 'connected' ||
       !audioIdentity ||
       audioIdentity.normalizedUrl !== annotation.source.normalizedUrl
@@ -1943,7 +2147,7 @@ function App() {
   const previewAudioDraft = useCallback(async () => {
     if (
       audioDraftState.startMs === null || sourceState.status !== 'connected' ||
-      !connectedAudioSource(sourceState.source)
+      (!connectedAudioSource(sourceState.source) && !connectedSpotifySource(sourceState.source))
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
@@ -2016,6 +2220,27 @@ function App() {
     });
     return () => { current = false; };
   }, [sourceState]);
+
+  useEffect(() => {
+    const spotifyIdentity = sourceState.status === 'connected'
+      ? connectedSpotifySource(sourceState.source)
+      : null;
+    if (
+      draftRestorationStatus !== 'ready' || sourceState.status !== 'connected' ||
+      !spotifyIdentity
+    ) return;
+    const draft = spotifyDraftRef.current;
+    if (draft && spotifyClipDraftBelongsToSource(draft, spotifyIdentity.url)) {
+      dispatchCreateDraft({
+        type: 'restore-media',
+        mode: 'audio',
+        sourceKey: draft.source.episodeId,
+        startMs: draft.startMs,
+        endMs: draft.endMs,
+        commentary: draft.commentary,
+      });
+    }
+  }, [draftRestorationStatus, sourceState]);
 
   useEffect(() => {
     const audioIdentity = sourceState.status === 'connected'
@@ -2119,6 +2344,43 @@ function App() {
   }, [sourceState]);
 
   useEffect(() => {
+    if (
+      sourceState.status !== 'connected' ||
+      sourceState.source.classification !== 'Spotify' ||
+      sourceState.source.metadataResolved
+    ) return;
+    const context = connectedContextRef.current;
+    const episodeId = sourceState.source.episodeId;
+    if (!context) return;
+    let current = true;
+    void chrome.scripting.executeScript({
+      target: { tabId: context.tabId, frameIds: [0] },
+      func: extractSpotifyPageMetadata,
+    }).then((execution) => {
+      const metadata = validateSpotifyPageMetadata(sourceState.source.url, execution[0]?.result);
+      if (!current) return;
+      setSourceState((state) => {
+        if (
+          state.status !== 'connected' || state.source.classification !== 'Spotify' ||
+          state.source.episodeId !== episodeId
+        ) return state;
+        return {
+          status: 'connected',
+          source: metadata
+            ? { ...state.source, ...metadata, metadataResolved: true }
+            : { ...state.source, metadataResolved: true },
+        };
+      });
+    }).catch(() => {
+      if (!current) return;
+      setSourceState((state) => state.status === 'connected' && state.source.classification === 'Spotify' && state.source.episodeId === episodeId
+        ? { status: 'connected', source: { ...state.source, metadataResolved: true } }
+        : state);
+    });
+    return () => { current = false; };
+  }, [sourceState]);
+
+  useEffect(() => {
     authMountedRef.current = true;
     if (!supabase) {
       setAuthState({ status: 'error', message: import.meta.env.DEV ? 'Supabase is not configured. Check apps/extension/.env.local.' : 'Authentication is temporarily unavailable.' });
@@ -2184,6 +2446,7 @@ function App() {
         TIKTOK_CLIP_DRAFT_STORAGE_KEY,
         WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY,
         AUDIO_CLIP_DRAFT_STORAGE_KEY,
+        SPOTIFY_CLIP_DRAFT_STORAGE_KEY,
         CREATE_MODE_SELECTION_STORAGE_KEY,
       ]),
       chrome.storage.local.get(HOSTED_MEDIA_SESSION_KEY),
@@ -2306,6 +2569,29 @@ function App() {
         ) {
           void chrome.storage.session.remove(AUDIO_CLIP_DRAFT_STORAGE_KEY);
         }
+        const storedSpotifyDraftValue = stored[SPOTIFY_CLIP_DRAFT_STORAGE_KEY];
+        const spotifyDraft = deserializeSpotifyClipDraft(storedSpotifyDraftValue);
+        spotifyDraftRef.current = spotifyDraft;
+        if (
+          restorationRevision === draftRevisionRef.current && spotifyDraft && context &&
+          spotifyClipDraftBelongsToSource(spotifyDraft, context.url)
+        ) {
+          spotifyDraftRef.current = spotifyDraft;
+          audioDraftRef.current = null;
+          dispatchCreateDraft({
+            type: 'restore-media',
+            mode: 'audio',
+            sourceKey: spotifyDraft.source.episodeId,
+            startMs: spotifyDraft.startMs,
+            endMs: spotifyDraft.endMs,
+            commentary: spotifyDraft.commentary,
+          });
+        } else if (
+          restorationRevision === draftRevisionRef.current &&
+          storedSpotifyDraftValue !== undefined && spotifyDraft === null
+        ) {
+          void chrome.storage.session.remove(SPOTIFY_CLIP_DRAFT_STORAGE_KEY);
+        }
         const hostedSession = localStored[HOSTED_MEDIA_SESSION_KEY];
         if (isHostedMediaSession(hostedSession)) {
           hostedMediaSessionRef.current = hostedSession;
@@ -2378,14 +2664,25 @@ function App() {
     }
     const pageUrl = sourceState.source.url;
     const pageGeneration = page.generation;
-    const genericVideo = !isHostedWatchSource(sourceState.source);
+    const spotifyIdentity = connectedSpotifySource(sourceState.source);
+    const genericVideo = !isHostedWatchSource(sourceState.source) && !spotifyIdentity;
     const videoSourceKey = videoPlayerSourceKey(sourceState.source);
-    const probes: Array<{ mode: PlayerMode; genericVideo: boolean; sourceKey: string }> = [
-      { mode: 'video', genericVideo, sourceKey: videoSourceKey },
-    ];
+    const probes: Array<{
+      mode: PlayerMode;
+      genericVideo: boolean;
+      sourceKey: string;
+      reader: 'top' | 'spotify';
+    }> = [];
+    if (!spotifyIdentity) {
+      probes.push({ mode: 'video', genericVideo, sourceKey: videoSourceKey, reader: 'top' });
+    } else {
+      setVideoPlayers(EMPTY_PLAYER_DISCOVERY);
+    }
     const audioIdentity = connectedAudioSource(sourceState.source);
-    if (audioIdentity) {
-      probes.push({ mode: 'audio', genericVideo: false, sourceKey: audioIdentity.normalizedUrl });
+    if (spotifyIdentity) {
+      probes.push({ mode: 'audio', genericVideo: false, sourceKey: spotifyIdentity.episodeId, reader: 'spotify' });
+    } else if (audioIdentity) {
+      probes.push({ mode: 'audio', genericVideo: false, sourceKey: audioIdentity.normalizedUrl, reader: 'top' });
     } else {
       setAudioPlayers(EMPTY_PLAYER_DISCOVERY);
     }
@@ -2395,11 +2692,13 @@ function App() {
         target: { tabId: context.tabId, frameIds: [0] },
         // Generic video needs the page origin to traverse readable same-origin frames.
         world: probe.genericVideo ? 'MAIN' : 'ISOLATED',
-        func: readTopFramePlayerDiscovery,
-        args: [probe.mode, probe.genericVideo],
+        func: probe.reader === 'spotify' ? readSpotifyPlayerDiscovery : readTopFramePlayerDiscovery,
+        args: probe.reader === 'spotify' ? [] : [probe.mode, probe.genericVideo],
       }).then((execution) => {
         if (!current || createPageRef.current?.generation !== pageGeneration) return;
-        const discovery = validatePlayerDiscovery(pageUrl, probe.mode, execution[0]?.result, probe.genericVideo);
+        const discovery = probe.reader === 'spotify'
+          ? validateSpotifyPlayerDiscovery(pageUrl, execution[0]?.result)
+          : validatePlayerDiscovery(pageUrl, probe.mode, execution[0]?.result, probe.genericVideo);
         const state: PlayerDiscoveryState = { ...discovery, pageGeneration };
         if (probe.mode === 'video') {
           setVideoPlayers(state);
@@ -2641,6 +2940,25 @@ function App() {
   }, [sourceState]);
 
   useEffect(() => {
+    const context = connectedContextRef.current;
+    const next = sourceState.status === 'connected'
+      ? spotifyHoverConnectionForTab(
+        sourceState.source.classification,
+        context?.tabId,
+        sourceState.source.url,
+      )
+      : null;
+    const previous = spotifyHoverRef.current;
+    spotifyHoverRef.current = next;
+    if (previous && (!next || previous.tabId !== next.tabId || previous.tabUrl !== next.tabUrl)) {
+      void clearSpotifyHoverOnConnectedTab(previous);
+    }
+    if (next) {
+      void applyPendingSpotifyHoverOnConnection(next);
+    }
+  }, [sourceState]);
+
+  useEffect(() => {
     const onBlur = () => {
       const articleConnection = articleHoverRef.current;
       if (articleConnection) leaveArticleHoverLink(articleConnection);
@@ -2650,6 +2968,8 @@ function App() {
       if (pageVideoConnection) leavePageVideoHoverLink(pageVideoConnection);
       const tiktokConnection = tiktokHoverRef.current;
       if (tiktokConnection) leaveTikTokHoverLink(tiktokConnection);
+      const spotifyConnection = spotifyHoverRef.current;
+      if (spotifyConnection) leaveSpotifyHoverLink(spotifyConnection);
     };
     window.addEventListener('blur', onBlur);
     return () => window.removeEventListener('blur', onBlur);
@@ -2684,9 +3004,13 @@ function App() {
     const audioIdentity = sourceState.status === 'connected'
       ? connectedAudioSource(sourceState.source)
       : null;
-    const sourceKey = audioIdentity?.normalizedUrl ?? audioDraftState.sourceKey;
+    const spotifyIdentity = sourceState.status === 'connected'
+      ? connectedSpotifySource(sourceState.source)
+      : null;
+    const sourceKey = spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? audioDraftState.sourceKey;
     dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { startMs, endMs, sourceKey } });
-    if (audioIdentity) persistAudioDraft(audioIdentity, startMs, endMs, audioDraftState.commentary);
+    if (spotifyIdentity) persistSpotifyDraft(spotifyIdentity.url, startMs, endMs, audioDraftState.commentary);
+    else if (audioIdentity) persistAudioDraft(audioIdentity, startMs, endMs, audioDraftState.commentary);
   };
 
   const videoRangeEntry = useTypedClipRange(
@@ -2808,13 +3132,16 @@ function App() {
   const tiktokSource = sourceState.status === 'connected' && sourceState.source.classification === 'TikTok'
     ? sourceState.source
     : null;
+  const spotifySource = sourceState.status === 'connected' && sourceState.source.classification === 'Spotify'
+    ? sourceState.source
+    : null;
   const webVideoSource = sourceState.status === 'connected' && !isHostedWatchSource(sourceState.source) &&
     sourceState.source.videoDetectionResolved && sourceState.source.videoAvailable
     ? sourceState.source
     : null;
   const videoSource = youtubeSource ?? tiktokSource ?? webVideoSource;
   const audioSource = sourceState.status === 'connected'
-    ? connectedAudioSource(sourceState.source)
+    ? connectedAudioSource(sourceState.source) ?? connectedSpotifySource(sourceState.source)
     : null;
   const exclusivePodcast = sourceState.status === 'connected' && (
     sourceState.source.classification === 'Podcast / web audio' ||
@@ -2826,6 +3153,13 @@ function App() {
     : null;
   const tiktokHover = sourceState.status === 'connected' && connectedContext
     ? tiktokHoverConnectionForTab(
+      sourceState.source.classification,
+      connectedContext.tabId,
+      sourceState.source.url,
+    )
+    : null;
+  const spotifyHover = sourceState.status === 'connected' && connectedContext
+    ? spotifyHoverConnectionForTab(
       sourceState.source.classification,
       connectedContext.tabId,
       sourceState.source.url,
@@ -2864,18 +3198,21 @@ function App() {
         : webVideoSource && webVideoDraftRef.current && webVideoClipDraftBelongsToSource(webVideoDraftRef.current, webVideoSource.url),
   );
   const audioDraftAttached = Boolean(
-    audioDraftRef.current && audioSource &&
-    audioClipDraftBelongsToSource(audioDraftRef.current, audioSource.url, audioSource.canonicalUrl),
+    spotifySource
+      ? spotifyDraftRef.current && spotifyClipDraftBelongsToSource(spotifyDraftRef.current, spotifySource.url)
+      : audioDraftRef.current && audioSource &&
+        'canonicalUrl' in audioSource &&
+        audioClipDraftBelongsToSource(audioDraftRef.current, audioSource.url, audioSource.canonicalUrl),
   );
   const detachedDraftModes: Record<CreateMode, boolean> = {
     text: draftRef.current !== null && !textDraftAttached,
     video: (youtubeDraftRef.current !== null || tiktokDraftRef.current !== null || webVideoDraftRef.current !== null) && !videoDraftAttached,
-    audio: audioDraftRef.current !== null && !audioDraftAttached,
+    audio: (audioDraftRef.current !== null || spotifyDraftRef.current !== null) && !audioDraftAttached,
   };
   const savedDraftModes: Record<CreateMode, boolean> = {
     text: draftRef.current !== null || hasCreateModeDraft(createDraftState, 'text'),
     video: youtubeDraftRef.current !== null || tiktokDraftRef.current !== null || webVideoDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'video'),
-    audio: audioDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'audio'),
+    audio: audioDraftRef.current !== null || spotifyDraftRef.current !== null || hasCreateModeDraft(createDraftState, 'audio'),
   };
   const savedDraftLabels = CREATE_MODES
     .filter((mode) => savedDraftModes[mode])
@@ -2963,10 +3300,11 @@ function App() {
     hostedMediaSession === null;
   const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
     audioPlayerSelected && audioRangeEntry.allowsPublish &&
-    audioDraftState.durationMs !== null && audioClipRangeError === null &&
+    (spotifySource !== null || audioDraftState.durationMs !== null) && audioClipRangeError === null &&
     audioDraftState.commentary.trim().length > 0 &&
     audioDraftState.commentary.length <= 2_000 && audioPublishState.status !== 'publishing' &&
-    hostedMediaSession === null;
+    hostedMediaSession === null &&
+    !(spotifySource && spotifySource.pageBlock === 'login');
   const hostedMediaPanel = hostedMediaSession ? (
     <div className="compact-state hosted-media-progress" role="status">
       <strong>
@@ -3006,7 +3344,7 @@ function App() {
   let contextCacheKey: string | null = null;
   if (contextUrl) {
     try {
-      contextCacheKey = `context:${youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? normalizeArticleUrl(contextUrl)}`;
+      contextCacheKey = `context:${youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? spotifySource?.normalizedUrl ?? normalizeArticleUrl(contextUrl)}`;
     } catch { contextCacheKey = null; }
   }
 
@@ -3024,12 +3362,12 @@ function App() {
 
       {!supabase && currentScreen.kind !== 'root' && <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotated is unavailable</strong><span>Check the extension configuration and try again.</span></div>}
 
-      {supabase && currentScreen.kind === 'annotation' && <AnnotationDetailView key={`annotation:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} onSocialMutation={() => socialCacheRef.current.clear()} />}
-      {supabase && currentScreen.kind === 'comments' && <AnnotationDetailView key={`comments:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} focusComments onSocialMutation={() => socialCacheRef.current.clear()} />}
-      {supabase && currentScreen.kind === 'profile' && <ProfileView key={`profile:${currentScreen.profileId}`} supabase={supabase} profileId={currentScreen.profileId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} cache={socialCacheRef.current} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} />}
+      {supabase && currentScreen.kind === 'annotation' && <AnnotationDetailView key={`annotation:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} onSocialMutation={() => socialCacheRef.current.clear()} />}
+      {supabase && currentScreen.kind === 'comments' && <AnnotationDetailView key={`comments:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} focusComments onSocialMutation={() => socialCacheRef.current.clear()} />}
+      {supabase && currentScreen.kind === 'profile' && <ProfileView key={`profile:${currentScreen.profileId}`} supabase={supabase} profileId={currentScreen.profileId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} cache={socialCacheRef.current} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} />}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'feed' && (
-        <div className="root-view"><header className="view-intro"><span className="section-label">Public activity</span><h1>Recent annotations</h1><p>Published notes from across Annotated.</p></header>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
+        <div className="root-view"><header className="view-intro"><span className="section-label">Public activity</span><h1>Recent annotations</h1><p>Published notes from across Annotated.</p></header>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
       )}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'account' && (
@@ -3107,9 +3445,9 @@ function App() {
             </section>
           ) : selectedCreateMode === 'audio' && audioSource ? (
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
-              <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>{exclusivePodcast ? 'Podcast / web audio' : 'Page audio'}</span></div>
+              <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>{spotifySource ? 'Spotify episode' : exclusivePodcast ? 'Podcast / web audio' : 'Page audio'}</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
-                <p className="create-help">Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.</p>
+                <p className="create-help">{spotifySource ? 'Play the connected Spotify episode and seek to the start before publishing. Then Set start / Set end or type times such as 1:00 and 2:30.' : 'Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.'}</p>
                 <PlayerSelector mode="audio" discovery={audioPlayers} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
                 <ClipRangeFields
                   idPrefix="audio"
@@ -3130,7 +3468,7 @@ function App() {
                 {showAudioRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
                 {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.</p>}
                 <div className="annotation-field"><label htmlFor="audio-clip-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="audio-clip-commentary" value={audioDraftState.commentary} maxLength={2_000} rows={6} required disabled={mediaEditorLocked} onChange={(event) => changeAudioCommentary(event.target.value)} /><span aria-live="polite">{audioDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
-                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAudioClip()} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
+                <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
               </>}
             </section>
@@ -3142,7 +3480,7 @@ function App() {
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
           )}
           {hostedMediaPanel}
-          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} emptyTitle={youtubeSource || tiktokSource ? 'No clips on this video yet' : exclusivePodcast ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource || tiktokSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource || tiktokSource ? 'Clips on this video' : exclusivePodcast ? 'Clips on this episode' : 'On this source'} />}
+          {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? spotifySource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle={youtubeSource || tiktokSource ? 'No clips on this video yet' : exclusivePodcast || spotifySource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource || tiktokSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast || spotifySource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource || tiktokSource ? 'Clips on this video' : exclusivePodcast || spotifySource ? 'Clips on this episode' : 'On this source'} />}
         </div>
       )}
       {pendingModeSwitch && (

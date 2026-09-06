@@ -5,6 +5,7 @@ import {
 import { applyPendingArticleHoverOnTab } from '../utils/article-hover-pending';
 import { applyPendingAudioHoverOnTab } from '../utils/audio-hover-pending';
 import { applyPendingPageVideoHoverOnTab } from '../utils/page-video-hover-pending';
+import { applyPendingSpotifyHoverOnTab } from '../utils/spotify-hover-pending';
 import { installMediaCapture } from '../utils/media-capture-background';
 import {
   followBrowsingTab,
@@ -24,6 +25,7 @@ export default defineBackground(() => {
       await applyPendingArticleHoverOnTab(tab);
       await applyPendingAudioHoverOnTab(tab);
       await applyPendingPageVideoHoverOnTab(tab);
+      await applyPendingSpotifyHoverOnTab(tab);
     },
   });
 
@@ -53,6 +55,7 @@ export default defineBackground(() => {
           await applyPendingArticleHoverOnTab(pendingTab);
           await applyPendingAudioHoverOnTab(pendingTab);
           await applyPendingPageVideoHoverOnTab(pendingTab);
+          await applyPendingSpotifyHoverOnTab(pendingTab);
         }
       })
       .catch((error: unknown) => {

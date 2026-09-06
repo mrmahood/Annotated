@@ -34,11 +34,15 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /articlePassageHoverTarget/);
   assert.match(card, /onArticleHoverResult/);
   assert.match(card, /ArticlePassageMissStatus/);
-  assert.match(card, /handleSourceOpenClick\(event, annotation, articleHover, audioHover, pageVideoHover, tiktokHover, sourceUrl, onArticleHoverResult, annotation\.kind === 'audio' \? onAudioAwaitingConnection : annotation\.kind === 'video' \? onPageVideoAwaitingConnection : annotation\.kind === 'tiktok' \? onTikTokAwaitingConnection : onAwaitingConnection\)/);
+  assert.match(card, /handleSourceOpenClick\(event, annotation, articleHover, audioHover, pageVideoHover, tiktokHover, spotifyHover, sourceUrl, onArticleHoverResult, annotation\.kind === 'audio' \? onAudioAwaitingConnection : annotation\.kind === 'video' \? onPageVideoAwaitingConnection : annotation\.kind === 'tiktok' \? onTikTokAwaitingConnection : annotation\.kind === 'spotify' \? onSpotifyAwaitingConnection : onAwaitingConnection\)/);
   assert.match(card, /tiktokHoverRegionHandlers/);
   assert.match(card, /tiktokHoverNestedChipHandlers/);
   assert.match(card, /tiktokClipHoverTarget/);
   assert.match(card, /TikTokPendingConnectHint/);
+  assert.match(card, /spotifyHoverRegionHandlers/);
+  assert.match(card, /spotifyHoverNestedChipHandlers/);
+  assert.match(card, /spotifyClipHoverTarget/);
+  assert.match(card, /SpotifyPendingConnectHint/);
   assert.match(card, /ArticlePendingConnectHint/);
   assert.match(card, /audioHoverRegionHandlers/);
   assert.match(card, /audioHoverNestedChipHandlers/);

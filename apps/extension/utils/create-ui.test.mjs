@@ -103,7 +103,7 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   assert.match(source, /kind: 'web-video'/);
   assert.match(source, /publishWebpageVideoClip/);
   assert.match(source, /canPublishWebpageVideo/);
-  assert.match(source, /mediaType: source\.kind === 'audio' \? 'audio' : 'video'/);
+  assert.match(source, /mediaType: source\.kind === 'audio' \|\| source\.kind === 'spotify' \? 'audio' : 'video'/);
   assert.doesNotMatch(source, /Publishing not enabled/);
   assert.doesNotMatch(source, /separately authorized article-backed hosted-video server contract/);
   assert.doesNotMatch(source, /beginHostedYouTubeAnnotation\(supabase, \{[\s\S]{0,500}webVideoSource/);
@@ -130,5 +130,8 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(fields, /htmlFor=\{startId\}/);
   assert.match(style, /\.clip-time-grid input \{/);
   assert.match(style, /\.clip-field-error/);
-  assert.doesNotMatch(source, /spotify|Spotify/);
+  assert.match(source, /getSpotifyEpisodeIdentity/);
+  assert.match(source, /beginHostedSpotifyAnnotation/);
+  assert.match(source, /Spotify episode/);
+  assert.match(source, /kind: 'spotify'/);
 });

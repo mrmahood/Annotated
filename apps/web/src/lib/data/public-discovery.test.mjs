@@ -25,5 +25,7 @@ test("feed discovery projects webpage video_clip rows on the article source as V
   assert.match(source, /annotationType === "video_clip" && sourceType === "youtube"/);
   assert.match(source, /annotationType === "video_clip" && sourceType === "tiktok"/);
   assert.match(source, /kind: "tiktok"/);
+  assert.match(source, /annotationType === "audio_clip" && sourceType === "spotify"/);
+  assert.match(source, /kind: "spotify"/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });

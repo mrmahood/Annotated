@@ -1,7 +1,9 @@
 import { isTikTokVideoUrl, getTikTokVideoIdentity } from '@annotated/shared/tiktok';
+import { getSpotifyEpisodeIdentity, isSpotifyEpisodeUrl } from '@annotated/shared/spotify';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 import { isYouTubeVideoUrl, getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import type { AudioPageSource } from './audio-page.ts';
+import { normalizeSpotifyEpisodeTitle } from './spotify-page.ts';
 import { normalizeTikTokVideoTitle } from './tiktok-page.ts';
 import { normalizeYouTubeVideoTitle } from './youtube-page.ts';
 
@@ -43,12 +45,31 @@ export type TikTokPageSource = {
   metadataResolved: boolean;
 };
 
+export type SpotifyPageSource = {
+  title: string;
+  hostname: 'open.spotify.com';
+  url: string;
+  classification: 'Spotify';
+  episodeId: string;
+  normalizedUrl: string;
+  canonicalUrl: string;
+  author: string | null;
+  showName: string | null;
+  metadataResolved: boolean;
+  pageBlock: null | 'login' | 'unreadable-time';
+};
+
 export type AudioVideoPageSource = AudioPageSource & {
   videoDetectionResolved: boolean;
   videoAvailable: boolean;
 };
 
-export type PageSource = ArticlePageSource | YouTubePageSource | TikTokPageSource | AudioVideoPageSource;
+export type PageSource =
+  | ArticlePageSource
+  | YouTubePageSource
+  | TikTokPageSource
+  | SpotifyPageSource
+  | AudioVideoPageSource;
 
 export type SourceState =
   | { status: 'loading' }
@@ -111,6 +132,22 @@ export function getSourceState(title: string, value: string): SourceState {
           ...getTikTokVideoIdentity(tabUrl),
           author: null,
           metadataResolved: false,
+        },
+      };
+    }
+    if (isSpotifyEpisodeUrl(tabUrl)) {
+      return {
+        status: 'connected',
+        source: {
+          title: normalizeSpotifyEpisodeTitle(title) || 'Spotify episode',
+          hostname: 'open.spotify.com',
+          url: tabUrl,
+          classification: 'Spotify',
+          ...getSpotifyEpisodeIdentity(tabUrl),
+          author: null,
+          showName: null,
+          metadataResolved: false,
+          pageBlock: null,
         },
       };
     }

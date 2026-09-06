@@ -492,6 +492,40 @@ test('TikTok watch capture uses video identity and accepts a prepared tiktok pag
   }), true);
 });
 
+test('Spotify episode capture uses episode identity and now-playing player identity', () => {
+  const spotifySource = {
+    kind: 'spotify',
+    pageUrl: 'https://open.spotify.com/episode/7makk4oTQel546B0P8lOOJ?si=share',
+    sourceKey: '7makk4oTQel546B0P8lOOJ',
+    playerIdentity: 'spotify-now-playing:1:abcd1234',
+  };
+  const spotifyRequest = { ...request, source: spotifySource };
+  assert.equal(isCaptureStartRequest(spotifyRequest), true);
+  assert.equal(sourceIdentityMatchesUrl(spotifySource, spotifySource.pageUrl), true);
+  assert.equal(sourceIdentityMatchesUrl(spotifySource, 'https://open.spotify.com/intl-en/episode/7makk4oTQel546B0P8lOOJ'), true);
+  assert.equal(sourceIdentityMatchesUrl(spotifySource, 'https://open.spotify.com/show/4rOoJ6Egrf8K2IrywzwOMk'), false);
+  assert.equal(isCaptureStartRequest({
+    ...spotifyRequest,
+    source: { ...spotifySource, playerIdentity: 'audio:1:abcd1234' },
+  }), false);
+  const prepared = {
+    sourceKind: 'spotify',
+    requestedStartMs: 5_000,
+    requestedEndMs: 20_000,
+    requestedDurationMs: 15_000,
+    playerCurrentTimeBeforeRecordingMs: 5_000,
+    mediaDurationMs: 70_000,
+    pageUrl: 'https://open.spotify.com/episode/7makk4oTQel546B0P8lOOJ',
+    geometry: {
+      viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+      boundingClientRect: null, videoWidth: null, videoHeight: null,
+      objectFit: null, objectPosition: null, fullscreen: false,
+      fullscreenElement: null, scrollX: 0, scrollY: 0, frameMapping: null,
+    },
+  };
+  assert.equal(isCapturePreparedPage(prepared), true);
+});
+
 test('generic webpage video capture binds normalized article and frame/player identity', () => {
   const webSource = {
     kind: 'web-video',

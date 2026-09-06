@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getHistoricalStoredTargetRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from '@annotated/shared/youtube';
 import { getTikTokVideoIdentity, isTikTokVideoUrl } from '@annotated/shared/tiktok';
+import { getSpotifyEpisodeIdentity, isSpotifyEpisodeUrl } from '@annotated/shared/spotify';
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import {
   parseAnnotationAudio,
@@ -84,6 +85,14 @@ export type PublicAnnotation = PublicAnnotationBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationBase['source'] & { type: 'podcast'; videoId: null };
+      hosted: HostedExcerpt | null;
+    }
+  | {
+      kind: 'spotify';
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationBase['source'] & { type: 'spotify'; videoId: null; episodeId: string };
       hosted: HostedExcerpt | null;
     }
 );
@@ -272,7 +281,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
     Number.isSafeInteger(endMs) &&
     getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
-    if (isYouTubeVideoUrl(canonicalUrl) || isTikTokVideoUrl(canonicalUrl)) return null;
+    if (isYouTubeVideoUrl(canonicalUrl) || isTikTokVideoUrl(canonicalUrl) || isSpotifyEpisodeUrl(canonicalUrl)) return null;
     return {
       ...common,
       kind: 'video',
@@ -291,6 +300,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
     getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
     try {
+      if (isSpotifyEpisodeUrl(canonicalUrl)) return null;
       const identity = getAudioSourceIdentity(canonicalUrl);
       if (identity.normalizedUrl !== storedNormalizedUrl) return null;
       return {
@@ -300,6 +310,27 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
         startMs: startMs as number,
         endMs: endMs as number,
         source: { ...common.source, type: 'podcast', videoId: null },
+        hosted: null,
+      };
+    } catch { return null; }
+  }
+
+  if (
+    annotationType === 'audio_clip' && sourceType === 'spotify' &&
+    targetType === 'time_range' && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getSpotifyEpisodeIdentity(canonicalUrl);
+      if (identity.normalizedUrl !== storedNormalizedUrl) return null;
+      return {
+        ...common,
+        kind: 'spotify',
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: 'spotify', videoId: null, episodeId: identity.episodeId },
         hosted: null,
       };
     } catch { return null; }
@@ -392,7 +423,7 @@ export async function queryAnnotations(
 
 async function loadHostedExcerpt(
   supabase: SupabaseClient,
-  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' | 'audio' | 'video' }>,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' | 'audio' | 'spotify' | 'video' }>,
 ): Promise<HostedExcerpt | null> {
   try {
     const { data: mediaState, error: mediaError } = await supabase
@@ -415,7 +446,7 @@ async function loadHostedExcerpt(
       mediaState,
       transcript,
       annotation.id,
-      annotation.kind === 'audio' ? 'audio' : 'video',
+      annotation.kind === 'audio' || annotation.kind === 'spotify' ? 'audio' : 'video',
       annotation.endMs - annotation.startMs,
     );
   } catch {
@@ -425,7 +456,7 @@ async function loadHostedExcerpt(
 
 export async function queryPublicHostedExcerpt(
   supabase: SupabaseClient,
-  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' | 'audio' | 'video' }>,
+  annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' | 'audio' | 'spotify' | 'video' }>,
 ): Promise<HostedExcerpt | null> {
   return loadHostedExcerpt(supabase, annotation);
 }
@@ -447,7 +478,7 @@ export async function queryAnnotation(
   if (!annotation) throw new Error('The annotation response was malformed.');
   const counts = await queryCommentCounts(supabase, [annotation.id]);
   annotation.commentCount = counts.get(annotation.id) ?? 0;
-  if (annotation.kind === 'youtube' || annotation.kind === 'tiktok' || annotation.kind === 'audio' || annotation.kind === 'video') {
+  if (annotation.kind === 'youtube' || annotation.kind === 'tiktok' || annotation.kind === 'audio' || annotation.kind === 'spotify' || annotation.kind === 'video') {
     annotation.hosted = await loadHostedExcerpt(supabase, annotation);
   }
   return annotation;

@@ -6,7 +6,7 @@ import {
   takeTrailingNormalizedWindow,
 } from './article-hover-page.ts';
 
-export type SourceOpenKind = 'article' | 'youtube' | 'tiktok' | 'audio' | 'video';
+export type SourceOpenKind = 'article' | 'youtube' | 'tiktok' | 'audio' | 'spotify' | 'video';
 
 export type SourceOpenInput = {
   kind: SourceOpenKind;
@@ -71,8 +71,8 @@ export function getSourceOpenUrl(input: SourceOpenInput): string {
   if (input.kind === 'tiktok') {
     return articleUrlWithoutHash(input.canonicalUrl) ?? input.canonicalUrl;
   }
-  if (input.kind === 'audio') {
-    // Sprint 4 hover/pending apply owns in-page player highlight. Open source
+  if (input.kind === 'audio' || input.kind === 'spotify') {
+    // Hover/pending apply owns in-page player highlight. Open source
     // still loads the episode URL only — it does not seek or mutate playback.
     return input.canonicalUrl;
   }

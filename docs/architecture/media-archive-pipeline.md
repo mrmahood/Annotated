@@ -160,6 +160,10 @@ hosted capture → upload → Processing → ready path as YouTube/audio.
 TikTok watch pages use a first-class `source_type = tiktok` begin RPC
 (`begin_hosted_tiktok_annotation`) and the same capture → upload →
 Processing path; they are not article-backed webpage-video rows.
+Spotify episode pages use a first-class `source_type = spotify` begin
+RPC (`begin_hosted_spotify_annotation`) for hosted **audio** clips.
+They are not generic `podcast` / HTML5-audio rows. Capture is
+audio-only tabCapture; DRM and stream-URL scraping stay out of scope.
 Inaccessible cross-origin / Brightcove adapters remain a separate
 increment and continue to fail closed.
 

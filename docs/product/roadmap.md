@@ -18,7 +18,8 @@ locks hosted capture, Feed cards, and hover to **TikTok watch URLs**
 (squash-merged PR #78). Owner Chrome and Staging acceptance for TikTok
 are still required. After TikTok Sprint 6, the next platform priority
 is **Spotify podcast / episode audio** for hosted audio annotation
-capture (planning only in this docs change). A separate Create UX
+capture; Create/publish identity and hover are implemented on this
+branch pending owner Chrome and Staging acceptance. A separate Create UX
 follow-on is **typed clip range entry** (keep Set start / Set end, and
 also type start/end such as `1:00`–`2:30`); implemented on this branch.
 Brightcove / inaccessible
@@ -683,23 +684,20 @@ Production launch and hardening remain separately authorized.
     No X OAuth and no Brightcove/Fox adapter in this increment.
     Staging migration: `20260905221500_begin_hosted_tiktok_annotation`.
     Do not touch Production. Do not unpause Cloud Run.
-  - **After Sprint 6 — Spotify podcast / episode audio** (planning
-    only; not implemented in this docs change). Owner authorization
-    (2026-09-05): Matt said after TikTok, put Spotify podcast audio on
-    the roadmap for audio annotation capture. Next platform priority
-    after TikTok Sprint 6 is first-class **Spotify episode** identity
-    for hosted audio annotation capture + publish, and later hover
-    parity with existing podcast/audio hover when the connected tab is
-    a Spotify episode page. Treat it like YouTube/TikTok watch URLs
-    and existing `podcast` audio clips, not generic webpage HTML5
-    audio. Expected hardness: the Spotify web player is often opaque
-    / login-gated; fail closed until a bounded adapter exists. DRM and
-    stream-URL scraping are out of scope — prefer the proven
-    `tabCapture → offscreen → MediaRecorder` path plus a stable
-    episode URL identity like other hosted paths. Do not implement
-    Create UI, migrations, capture, or hover in this increment. Fox /
-    Brightcove news-site video adapters stay a separate later
-    vertical.
+  - **After Sprint 6 — Spotify podcast / episode audio** (implemented
+    on this branch). Owner authorization (2026-09-05/06): first-class
+    `source_type = spotify` and `begin_hosted_spotify_annotation`, not
+    reuse of generic `podcast`. Stable episode URL identity
+    (`https://open.spotify.com/episode/<id>` and common variants).
+    Create → Audio on a connected episode tab; 1–90 s; proven
+    `tabCapture → offscreen → MediaRecorder` audio-only path. Feed
+    card `kind: spotify`. Hover highlights the now-playing bar.
+    Fail closed on home, search, show-only, login walls, DRM, and
+    unreadable / off-start player time. DRM and stream-URL scraping
+    stay out of scope. Fox / Brightcove stay a later vertical.
+    Staging migration: `20260906031846_begin_hosted_spotify_annotation`.
+    Owner apply/verify notes: `docs/product/spotify-episode-capture.md`.
+    Do not touch Production. Do not unpause Cloud Run.
 - **Typed clip range entry** (Create UX follow-on for Video and Audio;
   implemented on this branch). Owner side note (2026-09-05): in
   addition to **Set start** and **Set end**, the user can **type**
@@ -709,8 +707,8 @@ Production launch and hardening remain separately authorized.
   the connected clip’s bounds and the product max (hosted ranges
   1,000–90,000 ms; duration 1–90 s). Set start / Set end remain
   alternate paths and stay in sync with the typed fields. Applies to
-  YouTube, TikTok, podcast / audio, and webpage video/audio as those
-  paths exist. Does not implement Spotify capture.
+  YouTube, TikTok, Spotify episode, podcast / audio, and webpage
+  video/audio as those paths exist.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit. Owner-authorized 2026-09-05/06. This
   increment turns the existing E2b/E2c/Gate 3 Staging capability back on

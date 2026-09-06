@@ -160,6 +160,14 @@ test('YouTube Open source keeps the existing timestamp URL; audio and page-video
     }),
     'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
   );
+  assert.equal(
+    getSourceOpenUrl({
+      kind: 'spotify',
+      canonicalUrl: 'https://open.spotify.com/episode/7makk4oTQel546B0P8lOOJ',
+      startMs: 8_000,
+    }),
+    'https://open.spotify.com/episode/7makk4oTQel546B0P8lOOJ',
+  );
 });
 
 test('Open source helper stays URL-only and adds no persistent content scripts', async () => {
