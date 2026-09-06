@@ -12,9 +12,9 @@ and Staging acceptance. After TikTok Sprint 6, Spotify podcast /
 episode audio is the next platform follow-on (roadmap planning
 only). Typed clip range entry (type start/end such as `1:00`–`2:30`
 in addition to Set start / Set end) is a separate Create UX
-follow-on on the roadmap. Approving those sections does not
-authorize migrations, Staging, Production, X OAuth re-enable,
-Phase G, Spotify capture, or typed-range UI.
+follow-on; it is implemented on this branch. Approving the polish
+sections does not authorize migrations, Staging, Production, X OAuth
+re-enable, Phase G, or Spotify capture.
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
 Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
@@ -185,12 +185,11 @@ later hover-link fades. No spring/bounce presets.
   capture/upload. The confirm UI is the mode-switch dialog in `App.tsx`.
 - Independent per-mode drafts, recommended vs selected vs available, and
   honest restart/recovery are Phase E behavior and stay.
-- Hosted Video / Audio range entry today is **Set start** / **Set end**
-  at the current playback position. A later Create UX follow-on (see
-  `docs/product/roadmap.md`; not this brief’s implementation slice)
-  must also let the user type start and end timestamps (`m:ss` /
-  `h:mm:ss`, e.g. `1:00`–`2:30`), validate 1–90 s and clip bounds, and
-  keep Set start / Set end in sync with those fields.
+- Hosted Video / Audio range entry is **Set start** / **Set end** at
+  the current playback position, plus typed start and end fields
+  (`m:ss` / `h:mm:ss`, e.g. `1:00`–`2:30`) that validate 1–90 s and
+  clip bounds and stay in sync with the buttons. See
+  `docs/product/roadmap.md`.
 
 ### 5.2 Annotation cards
 
@@ -559,8 +558,8 @@ Out of this brief’s implementation slices:
 - Spotify podcast / episode capture, publication, migrations, or
   hover. After TikTok Sprint 6 those belong on the product roadmap,
   not in this brief’s implementation slices.
-- Typed clip range entry (type start/end in addition to Set start /
-  Set end). Roadmap Create UX follow-on only; do not implement here.
+- Typed clip range entry is implemented as a separate Create UX
+  increment, not as part of the hover sprints.
 
 Later options (not Sprint 1 unless noted):
 

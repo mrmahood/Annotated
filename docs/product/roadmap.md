@@ -20,7 +20,7 @@ are still required. After TikTok Sprint 6, the next platform priority
 is **Spotify podcast / episode audio** for hosted audio annotation
 capture (planning only in this docs change). A separate Create UX
 follow-on is **typed clip range entry** (keep Set start / Set end, and
-also type start/end such as `1:00`–`2:30`); not implemented here.
+also type start/end such as `1:00`–`2:30`); implemented on this branch.
 Brightcove / inaccessible
 cross-origin news-site embeds remain a later increment. X OAuth is out
 of Sprint 6. D1 and D2 completed their
@@ -699,18 +699,16 @@ Production launch and hardening remain separately authorized.
     Brightcove news-site video adapters stay a separate later
     vertical.
 - **Typed clip range entry** (Create UX follow-on for Video and Audio;
-  planning only; not implemented in this docs change). Owner side note
-  (2026-09-05): in addition to **Set start** and **Set end**, the user
-  must be able to **type** start and stop times (examples: start
-  `1:00`, end `2:30`). Keep the existing Set start / Set end buttons.
-  Add direct text fields that accept common human formats such as
-  `m:ss` and `h:mm:ss`. Validate against the connected clip’s bounds
-  and the product max (hosted ranges 1,000–90,000 ms; duration 1–90 s).
-  Set start / Set end remain alternate paths and stay in sync with the
-  typed fields. Applies to YouTube, TikTok, podcast / Spotify, and
-  webpage video/audio as those paths exist. This item does not replace
-  Spotify-after-TikTok sequencing and does not authorize Create UI in
-  this PR.
+  implemented on this branch). Owner side note (2026-09-05): in
+  addition to **Set start** and **Set end**, the user can **type**
+  start and stop times (examples: start `1:00`, end `2:30`). Keep the
+  existing Set start / Set end buttons. Direct text fields accept
+  common human formats such as `m:ss` and `h:mm:ss`. Validate against
+  the connected clip’s bounds and the product max (hosted ranges
+  1,000–90,000 ms; duration 1–90 s). Set start / Set end remain
+  alternate paths and stay in sync with the typed fields. Applies to
+  YouTube, TikTok, podcast / audio, and webpage video/audio as those
+  paths exist. Does not implement Spotify capture.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit (after F; ideally with UI polish). This is
   outside Phase F code and remains separately authorized.
