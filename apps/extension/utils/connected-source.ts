@@ -90,6 +90,12 @@ export function isHostedWatchSource(source: PageSource): source is YouTubePageSo
   return source.classification === 'YouTube' || source.classification === 'TikTok';
 }
 
+export function isWebpageVideoCapableSource(
+  source: PageSource,
+): source is ArticlePageSource | AudioVideoPageSource {
+  return source.classification === 'Web page' || source.classification === 'Podcast / web audio';
+}
+
 export function videoPlayerSourceKey(source: PageSource): string {
   return isHostedWatchSource(source) ? source.videoId : normalizeArticleUrl(source.url);
 }

@@ -27,6 +27,7 @@ import {
   getSourceState,
   hostedVideoBeginRpc,
   isHostedWatchSource,
+  isWebpageVideoCapableSource,
   videoPlayerSourceKey,
   type PageSource,
   type SourceState,
@@ -794,7 +795,7 @@ function App() {
     const source = sourceState.status === 'connected' ? sourceState.source : null;
     if (source?.classification === 'YouTube' && youtubeDraftRef.current) await clearYoutubeDraft();
     else if (source?.classification === 'TikTok' && tiktokDraftRef.current) await clearTikTokDraft();
-    else if (source && !isHostedWatchSource(source) && webVideoDraftRef.current) await clearWebVideoDraft();
+    else if (source && isWebpageVideoCapableSource(source) && webVideoDraftRef.current) await clearWebVideoDraft();
     else if (youtubeDraftRef.current) await clearYoutubeDraft();
     else if (tiktokDraftRef.current) await clearTikTokDraft();
     else await clearWebVideoDraft();
@@ -1188,7 +1189,7 @@ function App() {
     if (sourceState.status !== 'connected') throw new Error('Choose a player first.');
     const context = connectedContextRef.current;
     if (!context) throw new Error(RECONNECT_MESSAGE);
-    const genericVideo = mode === 'video' && !isHostedWatchSource(sourceState.source);
+    const genericVideo = mode === 'video' && isWebpageVideoCapableSource(sourceState.source);
     const audioIdentity = connectedAudioSource(sourceState.source);
     const spotifyIdentity = connectedSpotifySource(sourceState.source);
     if (mode === 'audio' && !audioIdentity && !spotifyIdentity) throw new Error(RECONNECT_MESSAGE);
@@ -1629,7 +1630,7 @@ function App() {
       videoDraftState.startMs === null || videoDraftState.endMs === null ||
       !videoDraftState.commentary.trim() || !videoDraftState.playerIdentity
     ) return;
-    if (isHostedWatchSource(sourceState.source)) return;
+    if (!isWebpageVideoCapableSource(sourceState.source)) return;
     if (hostedVideoBeginRpc(sourceState.source.url) !== 'begin_hosted_webpage_video_annotation') {
       setYoutubePublishState({
         status: 'error',
@@ -1997,7 +1998,7 @@ function App() {
       }, session.startMs, session.endMs);
     } else if (
       session.mediaType === 'video' &&
-      !isHostedWatchSource(sourceState.source) &&
+      isWebpageVideoCapableSource(sourceState.source) &&
       sourceState.source.videoAvailable
     ) {
       let originalPageIdentity: string | null = null;
@@ -2665,7 +2666,7 @@ function App() {
     const pageUrl = sourceState.source.url;
     const pageGeneration = page.generation;
     const spotifyIdentity = connectedSpotifySource(sourceState.source);
-    const genericVideo = !isHostedWatchSource(sourceState.source) && !spotifyIdentity;
+    const genericVideo = isWebpageVideoCapableSource(sourceState.source);
     const videoSourceKey = videoPlayerSourceKey(sourceState.source);
     const probes: Array<{
       mode: PlayerMode;
@@ -2688,13 +2689,19 @@ function App() {
     }
     let current = true;
     for (const probe of probes) {
-      void chrome.scripting.executeScript({
-        target: { tabId: context.tabId, frameIds: [0] },
-        // Generic video needs the page origin to traverse readable same-origin frames.
-        world: probe.genericVideo ? 'MAIN' : 'ISOLATED',
-        func: probe.reader === 'spotify' ? readSpotifyPlayerDiscovery : readTopFramePlayerDiscovery,
-        args: probe.reader === 'spotify' ? [] : [probe.mode, probe.genericVideo],
-      }).then((execution) => {
+      const execution = probe.reader === 'spotify'
+        ? chrome.scripting.executeScript({
+          target: { tabId: context.tabId, frameIds: [0] },
+          func: readSpotifyPlayerDiscovery,
+        })
+        : chrome.scripting.executeScript({
+          target: { tabId: context.tabId, frameIds: [0] },
+          // Generic video needs the page origin to traverse readable same-origin frames.
+          world: probe.genericVideo ? 'MAIN' : 'ISOLATED',
+          func: readTopFramePlayerDiscovery,
+          args: [probe.mode, probe.genericVideo],
+        });
+      void execution.then((execution) => {
         if (!current || createPageRef.current?.generation !== pageGeneration) return;
         const discovery = probe.reader === 'spotify'
           ? validateSpotifyPlayerDiscovery(pageUrl, execution[0]?.result)
@@ -2703,7 +2710,7 @@ function App() {
         if (probe.mode === 'video') {
           setVideoPlayers(state);
           if (probe.genericVideo) setSourceState((currentState) =>
-            currentState.status === 'connected' && !isHostedWatchSource(currentState.source) &&
+            currentState.status === 'connected' && isWebpageVideoCapableSource(currentState.source) &&
             currentState.source.url === pageUrl &&
             (currentState.source.videoDetectionResolved !== true ||
               currentState.source.videoAvailable !== playerDiscoveryMakesModeAvailable(discovery))
@@ -2729,7 +2736,7 @@ function App() {
         if (probe.mode === 'video') {
           setVideoPlayers(state);
           if (probe.genericVideo) setSourceState((currentState) =>
-            currentState.status === 'connected' && !isHostedWatchSource(currentState.source) && currentState.source.url === pageUrl
+            currentState.status === 'connected' && isWebpageVideoCapableSource(currentState.source) && currentState.source.url === pageUrl
               ? { status: 'connected', source: { ...currentState.source, videoDetectionResolved: true, videoAvailable: false } }
               : currentState);
         } else setAudioPlayers(state);
@@ -3135,7 +3142,7 @@ function App() {
   const spotifySource = sourceState.status === 'connected' && sourceState.source.classification === 'Spotify'
     ? sourceState.source
     : null;
-  const webVideoSource = sourceState.status === 'connected' && !isHostedWatchSource(sourceState.source) &&
+  const webVideoSource = sourceState.status === 'connected' && isWebpageVideoCapableSource(sourceState.source) &&
     sourceState.source.videoDetectionResolved && sourceState.source.videoAvailable
     ? sourceState.source
     : null;

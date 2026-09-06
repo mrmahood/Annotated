@@ -1,5 +1,5 @@
 import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
-import type { PlayerActionResult, PlayerDiscovery } from './player-discovery.ts';
+import type { PlayerActionResult, PlayerCandidate, PlayerDiscovery } from './player-discovery.ts';
 
 export const SPOTIFY_NOW_PLAYING_IDENTITY_PREFIX = 'spotify-now-playing:1:';
 const SPOTIFY_NOW_PLAYING_IDENTITY = /^spotify-now-playing:1:[0-9a-f]{8}$/;
@@ -113,7 +113,7 @@ export function validateSpotifyPlayerDiscovery(
   }
   if (row.overflow === true) return { status: 'overflow', candidates: [] };
   if (!Array.isArray(row.candidates)) return { status: 'none', candidates: [] };
-  const candidates = [];
+  const candidates: PlayerCandidate[] = [];
   for (const valueCandidate of row.candidates) {
     if (typeof valueCandidate !== 'object' || valueCandidate === null) continue;
     const candidate = valueCandidate as Record<string, unknown>;
@@ -129,7 +129,14 @@ export function validateSpotifyPlayerDiscovery(
       !nullableFiniteInteger(candidate.currentTimeMs) ||
       !nullableFiniteInteger(candidate.durationMs)
     ) continue;
-    candidates.push(candidate as PlayerDiscovery extends { candidates: infer T } ? T[number] : never);
+    candidates.push({
+      identity: candidate.identity,
+      kind: 'audio',
+      label: candidate.label,
+      status: candidate.status as PlayerCandidate['status'],
+      currentTimeMs: candidate.currentTimeMs as number | null,
+      durationMs: candidate.durationMs as number | null,
+    });
   }
   if (candidates.length > 1) return { status: 'overflow', candidates: [] };
   return candidates.length === 1 ? { status: 'ready', candidates } : { status: 'none', candidates: [] };

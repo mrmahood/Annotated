@@ -4,6 +4,7 @@ import {
   getSourceState,
   hostedVideoBeginRpc,
   isHostedWatchSource,
+  isWebpageVideoCapableSource,
   videoPlayerSourceKey,
 } from './connected-source.ts';
 
@@ -23,6 +24,7 @@ test('TikTok watch URLs classify as TikTok, not Web page', () => {
   assert.equal(state.source.handle, 'abcnews');
   assert.equal(state.source.normalizedUrl, ABC_NEWS);
   assert.equal(isHostedWatchSource(state.source), true);
+  assert.equal(isWebpageVideoCapableSource(state.source), false);
   assert.equal(videoPlayerSourceKey(state.source), '7682104834304036110');
 });
 
@@ -65,6 +67,7 @@ test('Spotify episode URLs classify as Spotify, not generic webpage audio', () =
   assert.equal(state.source.episodeId, '7makk4oTQel546B0P8lOOJ');
   assert.equal(state.source.normalizedUrl, SPOTIFY);
   assert.equal(isHostedWatchSource(state.source), false);
+  assert.equal(isWebpageVideoCapableSource(state.source), false);
 });
 
 test('Spotify home, search, and show-only URLs stay generic Web page', () => {
@@ -86,4 +89,5 @@ test('non-TikTok HTML5 pages stay Web page for generic webpage-video publish', (
   assert.equal(state.source.hostname, 'www.example.test');
   assert.equal(hostedVideoBeginRpc(HTML5_PAGE), 'begin_hosted_webpage_video_annotation');
   assert.equal(isHostedWatchSource(state.source), false);
+  assert.equal(isWebpageVideoCapableSource(state.source), true);
 });

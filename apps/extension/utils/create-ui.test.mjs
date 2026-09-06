@@ -89,12 +89,13 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /from '\.\.\/\.\.\/utils\/connected-source'/);
   assert.match(source, /getSourceState,/);
+  assert.match(source, /isWebpageVideoCapableSource,/);
   assert.match(source, /hostedVideoBeginRpc\(sourceState\.source\.url\) !== 'begin_hosted_webpage_video_annotation'/);
-  assert.match(source, /const genericVideo = !isHostedWatchSource\(sourceState\.source\)/);
+  assert.match(source, /const genericVideo = isWebpageVideoCapableSource\(sourceState\.source\)/);
   assert.match(source, /beginHostedTikTokAnnotation/);
   assert.match(source, /kind: 'tiktok'/);
   assert.match(source, /publishTikTokClip/);
-  assert.match(source, /args: \[probe\.mode, probe\.genericVideo\]/);
+  assert.match(source, /\[probe\.mode, probe\.genericVideo\]/);
   assert.match(source, /videoDetectionResolved: true, videoAvailable: playerDiscoveryMakesModeAvailable\(discovery\)/);
   assert.match(source, /world: probe\.genericVideo \? 'MAIN' : 'ISOLATED'/);
   assert.match(source, /world: genericVideo \? 'MAIN' : 'ISOLATED'/);
