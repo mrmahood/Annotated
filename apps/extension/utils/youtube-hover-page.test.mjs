@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   applyYouTubeHoverHighlightOnPage,
@@ -8,6 +9,20 @@ import {
 } from './youtube-hover-page.ts';
 
 const WATCH = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+const PLAYER_RECT = { left: 40, top: 20, right: 680, bottom: 380, width: 640, height: 360 };
+
+function parseBox(cssText) {
+  const numberAt = (property) => {
+    const match = cssText.match(new RegExp(`${property}:(-?\\d+(?:\\.\\d+)?)px`));
+    return match ? Number(match[1]) : null;
+  };
+  return {
+    top: numberAt('top'),
+    left: numberAt('left'),
+    width: numberAt('width'),
+    height: numberAt('height'),
+  };
+}
 
 function withPage(callback, overrides = {}) {
   const names = ['location', 'document', 'window', 'HTMLElement', 'HTMLVideoElement', 'getComputedStyle'];
@@ -69,7 +84,7 @@ function withPage(callback, overrides = {}) {
       return null;
     }
     getBoundingClientRect() {
-      return this.rect ?? { left: 40, top: 20, right: 680, bottom: 380, width: 640, height: 360 };
+      return this.rect ?? overrides.playerRect ?? PLAYER_RECT;
     }
     getClientRects() { return [{}]; }
   }
@@ -100,12 +115,22 @@ function withPage(callback, overrides = {}) {
     });
   }
 
+  const playerRect = overrides.playerRect ?? PLAYER_RECT;
   const player = overrides.noPlayer ? null : new ElementStub('div', 'movie_player');
+  if (player) player.rect = playerRect;
   const video = overrides.noPlayer ? null : new VideoStub();
+  if (video) video.rect = playerRect;
   const bar = overrides.noPlayer ? null : new ElementStub('div');
   if (bar) {
     bar.className = 'ytp-progress-bar';
-    bar.rect = { left: 40, top: 360, right: 680, bottom: 368, width: 640, height: 8 };
+    bar.rect = {
+      left: playerRect.left,
+      top: playerRect.bottom - 20,
+      right: playerRect.right,
+      bottom: playerRect.bottom - 12,
+      width: playerRect.width,
+      height: 8,
+    };
   }
   if (player && video) player.appendChild(video);
   if (player && bar) player.appendChild(bar);
@@ -133,8 +158,8 @@ function withPage(callback, overrides = {}) {
       },
     },
     window: {
-      innerWidth: 1280,
-      innerHeight: 720,
+      innerWidth: overrides.innerWidth ?? 1280,
+      innerHeight: overrides.innerHeight ?? 720,
       addEventListener: (name, fn) => { listeners[name]?.push(fn); },
       removeEventListener: (name, fn) => {
         if (!listeners[name]) return;
@@ -179,8 +204,15 @@ test('page injector paints an idempotent ring and dim on the matched watch playe
     const root = documentElement.querySelector('#annotated-yt-hover-root');
     assert.ok(root);
     assert.equal(root.dataset.strength, 'soft');
-    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.09\)/);
-    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /box-shadow:0 0 0 2px/);
+    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.1\)/);
+    const softRing = root.querySelector('[data-annotated-hover-ring="1"]');
+    const softBox = parseBox(softRing.style.cssText);
+    assert.equal(softBox.left, PLAYER_RECT.left + 5);
+    assert.equal(softBox.top, PLAYER_RECT.top + 5);
+    assert.equal(softBox.width, PLAYER_RECT.width - 10);
+    assert.equal(softBox.height, PLAYER_RECT.height - 10);
+    assert.match(softRing.style.cssText, /rgba\(255, 184, 40/);
+    assert.match(softRing.style.cssText, /box-shadow:0 0 0 3px/);
     assert.match(root.querySelector('[data-annotated-hover-range="1"]').style.cssText, /width:10\.6/);
 
     const second = applyYouTubeHoverHighlightOnPage({
@@ -193,12 +225,62 @@ test('page injector paints an idempotent ring and dim on the matched watch playe
     assert.equal(second.ok, true);
     assert.equal(documentElement.querySelectorAll('#annotated-yt-hover-root').length, 1);
     assert.equal(root.dataset.strength, 'strong');
-    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.12\)/);
+    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /rgba\(0,0,0,0\.14\)/);
+    const strongRing = root.querySelector('[data-annotated-hover-ring="1"]');
+    const strongBox = parseBox(strongRing.style.cssText);
+    assert.equal(strongBox.left, PLAYER_RECT.left + 6);
+    assert.equal(strongBox.top, PLAYER_RECT.top + 6);
+    assert.equal(strongBox.width, PLAYER_RECT.width - 12);
+    assert.equal(strongBox.height, PLAYER_RECT.height - 12);
+    assert.match(strongRing.style.cssText, /rgba\(255, 196, 56/);
+    assert.match(strongRing.style.cssText, /box-shadow:0 0 0 4px/);
     assert.equal(video.currentTime, 2.5);
 
     assert.deepEqual(clearYouTubeHoverHighlightOnPage(), { ok: true, reason: 'cleared' });
     assert.equal(documentElement.querySelector('#annotated-yt-hover-root'), null);
   });
+});
+
+test('inset amber ring stays inside a flush laptop-width player on all four sides', () => {
+  const flush = { left: 0, top: 56, right: 800, bottom: 506, width: 800, height: 450 };
+  withPage(({ documentElement }) => {
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'soft',
+      startMs: null,
+      endMs: null,
+      seekMs: null,
+    }).ok, true);
+    const ring = documentElement.querySelector('[data-annotated-hover-ring="1"]');
+    const box = parseBox(ring.style.cssText);
+    assert.equal(box.left, 5);
+    assert.equal(box.top, 61);
+    assert.equal(box.width, 790);
+    assert.equal(box.height, 440);
+    assert.ok(box.left > 0);
+    assert.ok(box.top > flush.top);
+    assert.ok(box.left + box.width < 800);
+    assert.ok(box.top + box.height < flush.bottom);
+    assert.match(ring.style.cssText, /rgba\(255, 184, 40/);
+    assert.match(ring.style.cssText, /rgba\(20, 16, 8/);
+    assert.doesNotMatch(ring.style.cssText, /154, 167, 181/);
+  }, { playerRect: flush, innerWidth: 800, innerHeight: 600 });
+});
+
+test('YouTube hover ring tokens stay locked to the TikTok amber inset grammar', async () => {
+  const youtube = await readFile(new URL('./youtube-hover-page.ts', import.meta.url), 'utf8');
+  const tiktok = await readFile(new URL('./tiktok-hover-page.ts', import.meta.url), 'utf8');
+  for (const source of [youtube, tiktok]) {
+    assert.match(source, /rgba\(255, 196, 56, 0\.96\)/);
+    assert.match(source, /rgba\(255, 184, 40, 0\.92\)/);
+    assert.match(source, /rgba\(20, 16, 8, 0\.72\)/);
+    assert.match(source, /const dimOpacity = strong \? 0\.14 : 0\.1;/);
+    assert.match(source, /const ringWidth = strong \? 4 : 3;/);
+    assert.match(source, /const ringInset = strong \? 6 : 5;/);
+    assert.match(source, /box-shadow:0 0 0 \$\{ringWidth\}px \$\{ringColor\},0 0 0 \$\{ringWidth \+ 2\}px \$\{ringContrast\}/);
+    assert.doesNotMatch(source, /rgba\(236, 241, 246/);
+    assert.doesNotMatch(source, /rgba\(154, 167, 181, 0\.78\)/);
+  }
 });
 
 test('page injector fails closed off-source and when no player is present', () => {

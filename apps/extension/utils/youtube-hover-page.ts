@@ -141,10 +141,15 @@ export function applyYouTubeHoverHighlightOnPage(
       };
     };
 
+    // Same inset amber grammar as TikTok Feed hover. Keep these tokens
+    // duplicated here: this function is serialized into the tab and must
+    // stay self-contained.
     const strong = request.strength === 'strong';
-    const dimOpacity = strong ? 0.12 : 0.09;
-    const ringWidth = strong ? 3 : 2;
-    const ringColor = strong ? 'rgba(236, 241, 246, 0.92)' : 'rgba(154, 167, 181, 0.78)';
+    const dimOpacity = strong ? 0.14 : 0.1;
+    const ringWidth = strong ? 4 : 3;
+    const ringInset = strong ? 6 : 5;
+    const ringColor = strong ? 'rgba(255, 196, 56, 0.96)' : 'rgba(255, 184, 40, 0.92)';
+    const ringContrast = 'rgba(20, 16, 8, 0.72)';
 
     let root = document.getElementById(rootId);
     if (!(root instanceof HTMLElement)) {
@@ -181,14 +186,16 @@ export function applyYouTubeHoverHighlightOnPage(
         `background:rgba(0,0,0,${dimOpacity})`,
         `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
       ].join(';');
+      const insetX = Math.min(ringInset, Math.max(0, (rect.width - 24) / 2));
+      const insetY = Math.min(ringInset, Math.max(0, (rect.height - 24) / 2));
       ring.style.cssText = [
         'position:fixed',
-        `top:${rect.top}px`,
-        `left:${rect.left}px`,
-        `width:${Math.max(0, rect.width)}px`,
-        `height:${Math.max(0, rect.height)}px`,
-        `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
-        'border-radius:2px',
+        `top:${rect.top + insetY}px`,
+        `left:${rect.left + insetX}px`,
+        `width:${Math.max(0, rect.width - insetX * 2)}px`,
+        `height:${Math.max(0, rect.height - insetY * 2)}px`,
+        `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
+        'border-radius:4px',
       ].join(';');
 
       const bar = player.querySelector('.ytp-progress-bar, .ytp-progress-bar-container, .ytp-chrome-bottom');
