@@ -134,8 +134,9 @@ integration('packet span still rejects an audio WebM that is actually shorter or
     '-c:a', 'libopus', '-f', 'webm', shortPath,
   ], { stage: 'probing', failureCode: 'fixture_failed' });
   const shortProbe = await probeFile(tools.ffprobePath, shortPath);
+  const shortSize = (await stat(shortPath)).size;
   assert.throws(() => validateRawProbe({
-    mediaType: 'audio', probe: shortProbe, expectedByteSize: (await stat(shortPath)).size,
+    mediaType: 'audio', probe: shortProbe, expectedByteSize: shortSize,
     requestedDurationMs: 60_000, leadInMs: 5.5,
   }), (error) => error.code === 'duration_out_of_bounds');
 
@@ -146,8 +147,9 @@ integration('packet span still rejects an audio WebM that is actually shorter or
     '-c:a', 'libopus', '-f', 'webm', longPath,
   ], { stage: 'probing', failureCode: 'fixture_failed' });
   const longProbe = await probeFile(tools.ffprobePath, longPath);
+  const longSize = (await stat(longPath)).size;
   assert.throws(() => validateRawProbe({
-    mediaType: 'audio', probe: longProbe, expectedByteSize: (await stat(longPath)).size,
+    mediaType: 'audio', probe: longProbe, expectedByteSize: longSize,
     requestedDurationMs: 90_000, leadInMs: 0,
   }), (error) => error.code === 'duration_out_of_bounds');
 }));
