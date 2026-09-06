@@ -7,6 +7,14 @@ export const VIDEO_FINAL_MAX_BYTES = 16 * 1024 * 1024;
 export const AUDIO_FINAL_MAX_BYTES = 8 * 1024 * 1024;
 export const MAX_FINAL_DURATION_MS = 90_000;
 const PROBE_DURATION_TOLERANCE_MS = 20;
+// Chrome tabCapture + MediaRecorder audio WebM may stamp packets on the source
+// media clock (Spotify currentTime ≈ 300 s) and write format.duration as the last
+// timestamp (~360 s) instead of the ~60 s span. Treat disagreements larger than
+// the existing raw overshoot ceiling as a wrong duration quantity, not jitter.
+export const WEBM_DURATION_DISAGREEMENT_MS = 2_000;
+// Packet timelines that start at least 1 s after 0 are media-clock offsets, not
+// ordinary MediaRecorder priming (a few milliseconds around the origin).
+const PACKET_TIMELINE_OFFSET_MS = 1_000;
 // AAC-LC at 48 kHz uses 1024 samples per frame ≈ 21.333 ms. Chrome MV3 tabCapture
 // + MediaRecorder + ffmpeg `-ss` after `-i` plus `-t` can emit a few extra frames
 // and container-duration rounding on real ≤90 s clips. PRs #46–#48 admitted one
@@ -45,7 +53,8 @@ export function packetDurationMs(output) {
   if (lines.length < 1 || lines.length > 25_000) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet timing count is invalid.');
   }
-  let maximumSeconds = 0;
+  let minimumStartSeconds = Number.POSITIVE_INFINITY;
+  let maximumEndSeconds = Number.NEGATIVE_INFINITY;
   for (const line of lines) {
     const [ptsText, durationText, ...extra] = line.split(',');
     const pts = Number(ptsText);
@@ -54,13 +63,31 @@ export function packetDurationMs(output) {
         !Number.isFinite(duration) || duration < 0 || duration > 2) {
       mediaCoreFailure('probing', 'probe_failed', 'Packet timing value is invalid.');
     }
-    maximumSeconds = Math.max(maximumSeconds, pts + duration);
+    minimumStartSeconds = Math.min(minimumStartSeconds, pts);
+    maximumEndSeconds = Math.max(maximumEndSeconds, pts + duration);
   }
-  const value = maximumSeconds * 1_000;
+  if (!Number.isFinite(minimumStartSeconds) || !Number.isFinite(maximumEndSeconds)) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
+  }
+  const originSeconds = minimumStartSeconds * 1_000 >= PACKET_TIMELINE_OFFSET_MS ? minimumStartSeconds : 0;
+  const value = (maximumEndSeconds - originSeconds) * 1_000;
   if (!Number.isFinite(value) || value <= 0) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
   }
   return value;
+}
+
+export function selectWebmDurationMs(formatDurationMs, packetMs) {
+  if (!Number.isFinite(packetMs) || packetMs <= 0) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
+  }
+  if (!Number.isFinite(formatDurationMs) || formatDurationMs <= 0) {
+    return { durationMs: packetMs, source: 'packet_timestamps' };
+  }
+  if (Math.abs(formatDurationMs - packetMs) > WEBM_DURATION_DISAGREEMENT_MS) {
+    return { durationMs: packetMs, source: 'packet_timestamps' };
+  }
+  return { durationMs: formatDurationMs, source: 'container' };
 }
 
 export async function probeFile(ffprobePath, inputPath, timeoutMs = 30_000) {
@@ -77,7 +104,7 @@ export async function probeFile(ffprobePath, inputPath, timeoutMs = 30_000) {
   const formatDuration = Number(probe?.format?.duration) * 1_000;
   const webm = typeof probe?.format?.format_name === 'string' &&
     probe.format.format_name.split(',').includes('webm');
-  if ((!Number.isFinite(formatDuration) || formatDuration <= 0) && webm) {
+  if (webm) {
     const packets = await runExecutable(ffprobePath, ffprobePacketDurationArguments(inputPath), {
       timeoutMs,
       stage: 'probing',
@@ -86,8 +113,14 @@ export async function probeFile(ffprobePath, inputPath, timeoutMs = 30_000) {
     if (packets.stdoutTruncated) {
       mediaCoreFailure('probing', 'probe_failed', 'Packet timing output exceeded its bound.');
     }
-    probe.format.duration = (packetDurationMs(packets.stdout) / 1_000).toFixed(6);
-    probe.format.duration_source = 'packet_timestamps';
+    const selected = selectWebmDurationMs(formatDuration, packetDurationMs(packets.stdout));
+    if (selected.source === 'packet_timestamps') {
+      if (!probe.format || typeof probe.format !== 'object') {
+        mediaCoreFailure('probing', 'probe_failed', 'Media container is missing.');
+      }
+      probe.format.duration = (selected.durationMs / 1_000).toFixed(6);
+      probe.format.duration_source = selected.source;
+    }
   }
   return probe;
 }

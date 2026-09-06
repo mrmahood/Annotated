@@ -7,7 +7,9 @@ import { validateCaptureMetadataV2 } from '../src/media/capture-metadata.mjs';
 import { calculateVideoCrop } from '../src/media/geometry.mjs';
 import {
   DERIVATIVE_DURATION_TOLERANCE_MS,
+  WEBM_DURATION_DISAGREEMENT_MS,
   packetDurationMs,
+  selectWebmDurationMs,
   validateDerivativeProbe,
   validateRawProbe,
 } from '../src/media/probe.mjs';
@@ -221,9 +223,49 @@ test('raw probe rejects input truncated before the selected range ends', () => {
 test('packet timestamps provide a bounded MediaRecorder WebM duration fallback', () => {
   assert.equal(packetDurationMs('0.000000,N/A\n89.976000,0.016000\n'), 89_992);
   assert.equal(packetDurationMs('-0.007000,0.020000,\n2.000000,0.020000\n'), 2_020);
+  assert.equal(packetDurationMs('299.993000,0.020000\n360.014000,0.020000\n'), 60_041);
   assert.throws(() => packetDurationMs('0.000000,N/A'), errorCode('probe_failed'));
   assert.throws(() => packetDurationMs('0.000000,3.000000\n'), errorCode('probe_failed'));
   assert.throws(() => packetDurationMs('not-a-time,N/A\n'), errorCode('probe_failed'));
+});
+
+test('WebM container duration yields to packet span when they disagree by more than two seconds', () => {
+  assert.equal(WEBM_DURATION_DISAGREEMENT_MS, 2_000);
+  assert.deepEqual(selectWebmDurationMs(360_032, 60_041), {
+    durationMs: 60_041, source: 'packet_timestamps',
+  });
+  assert.deepEqual(selectWebmDurationMs(1_008, 60_041), {
+    durationMs: 60_041, source: 'packet_timestamps',
+  });
+  assert.deepEqual(selectWebmDurationMs(Number.NaN, 60_041), {
+    durationMs: 60_041, source: 'packet_timestamps',
+  });
+  assert.deepEqual(selectWebmDurationMs(60_032, 60_041), {
+    durationMs: 60_032, source: 'container',
+  });
+  assert.throws(() => selectWebmDurationMs(60_032, 0), errorCode('probe_failed'));
+});
+
+test('raw probe still rejects a real undershoot and a last-timestamp overshoot', () => {
+  const audio = structuredClone(probeByName.get('audio-only.webm').probe);
+  audio.format.duration = '1.000000';
+  assert.throws(() => validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 60_000, leadInMs: 5.5,
+  }), errorCode('duration_out_of_bounds'));
+
+  audio.format.duration = '360.032000';
+  assert.throws(() => validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 60_000, leadInMs: 5.5,
+  }), errorCode('duration_out_of_bounds'));
+
+  audio.format.duration = '60.024000';
+  const facts = validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 60_000, leadInMs: 5.5,
+  });
+  assert.equal(facts.durationMs, 60_024);
 });
 
 test('derivative validation rejects a probe above 90 seconds', () => {
