@@ -116,7 +116,12 @@ export function AnnotationCard({
             )}
           </button>
           {expanded && clipMedia && (
-            <HostedMediaPlayer annotationId={annotation.id} media={clipMedia} compact />
+            <HostedMediaPlayer
+              annotationId={annotation.id}
+              media={clipMedia}
+              sourceType={annotation.source.type}
+              compact
+            />
           )}
           <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
             Open source <span aria-hidden="true">↗</span>

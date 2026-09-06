@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { CSSProperties, FormEvent, SyntheticEvent } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import { formatMediaTime } from '@annotated/shared/media-time';
+import { hostedVideoPlayerLayout } from '@annotated/shared/hosted-video-layout';
 import {
   ANNOTATION_AUDIO_BUCKET,
   formatAudioDuration,
@@ -149,20 +150,35 @@ function getDurationDateTime(durationMs: number): string {
   return `PT${durationMs / 1_000}S`;
 }
 
+function hostedVideoShellStyle(aspectRatio: string | null) {
+  return aspectRatio
+    ? { '--hosted-video-aspect': aspectRatio } as CSSProperties
+    : undefined;
+}
+
 function HostedExcerptPlayer({
   annotationId,
   media,
   getPublicUrl,
   compact = false,
+  sourceType = null,
 }: {
   annotationId: string;
   media: HostedExcerptMedia;
   getPublicUrl: (path: string) => string | null;
   compact?: boolean;
+  sourceType?: string | null;
 }) {
   const [attempt, setAttempt] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
   const [mediaSrc, setMediaSrc] = useState<string | null>(null);
+  const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null);
+  const layout = hostedVideoPlayerLayout({
+    mimeType: media.mimeType,
+    width: media.width ?? measured?.width ?? null,
+    height: media.height ?? measured?.height ?? null,
+    sourceType,
+  });
   let playbackUrl: string | null = null;
   try {
     playbackUrl = getPublicUrl(getMediaPlaybackPath(annotationId, attempt));
@@ -209,6 +225,19 @@ function HostedExcerptPlayer({
     if (attempt === 0) setAttempt(1);
     else setUnavailable(true);
   };
+  const onLoadedMetadata = (event: SyntheticEvent<HTMLMediaElement>) => {
+    setUnavailable(false);
+    const element = event.currentTarget;
+    if (
+      media.width == null &&
+      media.height == null &&
+      element instanceof HTMLVideoElement &&
+      element.videoWidth > 0 &&
+      element.videoHeight > 0
+    ) {
+      setMeasured({ width: element.videoWidth, height: element.videoHeight });
+    }
+  };
   const player = mediaSrc && media.mimeType === 'video/mp4' ? (
     <video
       key={`${annotationId}:${attempt}`}
@@ -216,8 +245,10 @@ function HostedExcerptPlayer({
       controlsList="nodownload"
       preload="metadata"
       src={mediaSrc}
+      width={media.width ?? undefined}
+      height={media.height ?? undefined}
       onError={onError}
-      onLoadedMetadata={() => setUnavailable(false)}
+      onLoadedMetadata={onLoadedMetadata}
       aria-label="Archived source video excerpt"
     >
       Your browser cannot play this video excerpt.
@@ -230,7 +261,7 @@ function HostedExcerptPlayer({
       preload="metadata"
       src={mediaSrc}
       onError={onError}
-      onLoadedMetadata={() => setUnavailable(false)}
+      onLoadedMetadata={onLoadedMetadata}
       aria-label="Archived source audio excerpt"
     >
       Your browser cannot play this audio excerpt.
@@ -243,7 +274,11 @@ function HostedExcerptPlayer({
 
   if (compact) {
     return (
-      <div className="card-hosted-media">
+      <div
+        className="card-hosted-media"
+        data-orientation={layout.orientation}
+        style={hostedVideoShellStyle(layout.aspectRatio)}
+      >
         {player}
         {mediaSrc && unavailable && (
           <p className="inline-error" role="status">
@@ -255,7 +290,12 @@ function HostedExcerptPlayer({
   }
 
   return (
-    <section className="detail-hosted-media" aria-labelledby="detail-hosted-media-heading">
+    <section
+      className="detail-hosted-media"
+      aria-labelledby="detail-hosted-media-heading"
+      data-orientation={layout.orientation}
+      style={hostedVideoShellStyle(layout.aspectRatio)}
+    >
       <div className="detail-hosted-heading">
         <span className="section-label" id="detail-hosted-media-heading">
           {media.mimeType === 'video/mp4' ? 'Video excerpt' : 'Audio excerpt'}
@@ -930,6 +970,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
               annotationId={annotation.id}
               media={hostedReady.media}
               getPublicUrl={getPublicUrl}
+              sourceType={annotation.kind}
               compact
             />
           )}
@@ -1510,7 +1551,7 @@ export function AnnotationDetailView({
         <section className="detail-source" {...sourceHover}><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleAudioSourceOpenClick(event, annotation, audioHover, sourceOpenUrl, onAudioAwaitingConnection)}>Open original source ↗</a></div><AudioPendingConnectHint show={showAudioHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </>}
-      {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} />}
+      {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} sourceType={annotation.kind} />}
       {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} tiktokHover={tiktokHover} tiktokTarget={tiktokTarget} audioHover={audioHover} audioTarget={audioTarget} pageVideoHover={pageVideoHover} pageVideoTarget={pageVideoTarget} />}
       {hostedRemoved && (
         <section className="detail-media-removed" aria-labelledby="detail-media-removed-heading">

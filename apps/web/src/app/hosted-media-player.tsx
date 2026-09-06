@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties, type SyntheticEvent } from "react";
 import { formatMediaTime } from "@annotated/shared/media-time";
+import { hostedVideoPlayerLayout } from "@annotated/shared/hosted-video-layout";
 import { getMediaPlaybackPath } from "@/lib/media-playback";
 
 type HostedMediaPlayerProps = {
@@ -13,21 +14,48 @@ type HostedMediaPlayerProps = {
     height: number | null;
   };
   compact?: boolean;
+  sourceType?: string | null;
 };
+
+function hostedVideoShellStyle(aspectRatio: string | null): CSSProperties | undefined {
+  return aspectRatio
+    ? { "--hosted-video-aspect": aspectRatio } as CSSProperties
+    : undefined;
+}
 
 export function HostedMediaPlayer({
   annotationId,
   media,
   compact = false,
+  sourceType = null,
 }: HostedMediaPlayerProps) {
   const [attempt, setAttempt] = useState(0);
   const [unavailable, setUnavailable] = useState(false);
+  const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null);
   const playbackPath = getMediaPlaybackPath(annotationId, attempt);
+  const layout = hostedVideoPlayerLayout({
+    mimeType: media.mimeType,
+    width: media.width ?? measured?.width ?? null,
+    height: media.height ?? measured?.height ?? null,
+    sourceType,
+  });
   const onError = () => {
     if (attempt === 0) setAttempt(1);
     else setUnavailable(true);
   };
-  const onLoadedMetadata = () => setUnavailable(false);
+  const onLoadedMetadata = (event: SyntheticEvent<HTMLMediaElement>) => {
+    setUnavailable(false);
+    const element = event.currentTarget;
+    if (
+      media.width == null &&
+      media.height == null &&
+      element instanceof HTMLVideoElement &&
+      element.videoWidth > 0 &&
+      element.videoHeight > 0
+    ) {
+      setMeasured({ width: element.videoWidth, height: element.videoHeight });
+    }
+  };
   const headingId = `hosted-media-heading-${annotationId}`;
   const player = media.mimeType === "video/mp4" ? (
     <video
@@ -67,7 +95,11 @@ export function HostedMediaPlayer({
 
   if (compact) {
     return (
-      <div className="card-hosted-media">
+      <div
+        className="card-hosted-media"
+        data-orientation={layout.orientation}
+        style={hostedVideoShellStyle(layout.aspectRatio)}
+      >
         {player}
         {unavailableMessage}
       </div>
@@ -75,7 +107,12 @@ export function HostedMediaPlayer({
   }
 
   return (
-    <section className="hosted-media-section" aria-labelledby={headingId}>
+    <section
+      className="hosted-media-section"
+      aria-labelledby={headingId}
+      data-orientation={layout.orientation}
+      style={hostedVideoShellStyle(layout.aspectRatio)}
+    >
       <div className="hosted-media-heading-row">
         <div>
           <p className="section-label">Archived excerpt</p>

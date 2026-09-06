@@ -295,6 +295,8 @@ test('HostedExcerptPlayer resolves a signed src before attaching media', async (
   assert.match(player, /redirect: 'manual'|resolveHostedPlaybackSrc\(\{/);
   assert.match(player, /src=\{mediaSrc\}/);
   assert.match(player, /controlsList="nodownload"/);
+  assert.match(player, /hostedVideoPlayerLayout/);
+  assert.match(player, /data-orientation=\{layout\.orientation\}/);
   assert.match(player, /setAttempt\(1\)/);
   assert.doesNotMatch(player, /src=\{playbackUrl\}/);
   assert.doesNotMatch(player, /createObjectURL|arrayBuffer|blob\(/);
