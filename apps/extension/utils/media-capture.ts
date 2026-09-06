@@ -103,9 +103,15 @@ function viewportSample(geometry: CaptureGeometry): CaptureViewport {
   };
 }
 
+export function isAudioOnlyCaptureSourceKind(
+  value: CaptureSourceIdentity['kind'] | CapturePreparedPage['sourceKind'],
+): value is 'audio' | 'spotify' {
+  return value === 'audio' || value === 'spotify';
+}
+
 export function buildCaptureMetadataV2(input: CaptureMetadataV2Input): CaptureMetadata {
   const start = input.prepared.geometry;
-  const video = input.prepared.sourceKind !== 'audio';
+  const video = !isAudioOnlyCaptureSourceKind(input.prepared.sourceKind);
   if (video && (
     !input.endGeometry || !start.boundingClientRect || !input.endGeometry.boundingClientRect ||
     start.videoWidth === null || start.videoHeight === null ||

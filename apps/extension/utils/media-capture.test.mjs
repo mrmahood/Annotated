@@ -8,6 +8,7 @@ import {
   captureRequestMatchesConnectedTab,
   executeHostedMediaUpload,
   getCaptureRangeError,
+  isAudioOnlyCaptureSourceKind,
   isCapturePreparedPage,
   isCaptureStartRequest,
   isCurrentCaptureId,
@@ -102,6 +103,12 @@ test('concurrent status reconciliation cannot clear a newly preparing shared med
       sourceKey: 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789',
       playerIdentity: 'audio:1:f8443fef',
     },
+    {
+      kind: 'spotify',
+      pageUrl: 'https://open.spotify.com/episode/6EMoFpxEsLelogfZz8eAC2',
+      sourceKey: '6EMoFpxEsLelogfZz8eAC2',
+      playerIdentity: 'spotify-now-playing:1:abcd1234',
+    },
   ]) {
     let onMessage;
     let releasePersistence;
@@ -110,7 +117,7 @@ test('concurrent status reconciliation cannot clear a newly preparing shared med
     const persistenceGate = new Promise((resolve) => { releasePersistence = resolve; });
     const persistenceStartedGate = new Promise((resolve) => { persistenceStarted = resolve; });
     const captureRequest = { ...request, source: captureSource };
-    const geometry = captureSource.kind === 'audio'
+    const geometry = captureSource.kind === 'audio' || captureSource.kind === 'spotify'
       ? {
           viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
           boundingClientRect: null, videoWidth: null, videoHeight: null,
@@ -524,6 +531,31 @@ test('Spotify episode capture uses episode identity and now-playing player ident
     },
   };
   assert.equal(isCapturePreparedPage(prepared), true);
+  assert.equal(isAudioOnlyCaptureSourceKind(prepared.sourceKind), true);
+  assert.equal(isOffscreenStartMessage({
+    target: 'offscreen',
+    type: 'annotated.mediaCapture.offscreenStart.v1',
+    captureId: request.captureId,
+    streamId: 'stream',
+    request: spotifyRequest,
+    prepared,
+  }), true);
+  const metadata = buildCaptureMetadataV2({
+    prepared,
+    endGeometry: null,
+    selectedMimeType: 'audio/webm;codecs=opus',
+    tracks: [],
+    audioTrackCount: 1,
+    videoTrackCount: 0,
+    loopbackEnabled: true,
+    leadInMs: 20,
+    recorderElapsedMs: 15_020,
+    playerStartMs: 5_000,
+    playerEndMs: 20_000,
+  });
+  assert.equal(metadata.version, 2);
+  assert.equal('viewport' in metadata, false);
+  assert.equal('video_element' in metadata, false);
 });
 
 test('generic webpage video capture binds normalized article and frame/player identity', () => {
@@ -589,6 +621,10 @@ test('capture metadata v2 requires video end geometry and uses monotonic lead-in
     tracks: [], audioTrackCount: 1, videoTrackCount: 1, loopbackEnabled: true,
     leadInMs: 37, recorderElapsedMs: 15_037, playerStartMs: 5_000, playerEndMs: 20_000,
   };
+  assert.equal(isAudioOnlyCaptureSourceKind('youtube'), false);
+  assert.equal(isAudioOnlyCaptureSourceKind('tiktok'), false);
+  assert.equal(isAudioOnlyCaptureSourceKind('audio'), true);
+  assert.equal(isAudioOnlyCaptureSourceKind('spotify'), true);
   const result = buildCaptureMetadataV2(input);
   assert.equal(result.version, 2);
   assert.equal(result.timing.lead_in_clock, 'offscreen_monotonic');
@@ -688,6 +724,9 @@ test('production manifest and capture source keep the required security shape', 
   assert.doesNotMatch(offscreen, /xhr\.open\('POST', signedUrl\)/);
   assert.match(offscreen, /xhr\.upload\.addEventListener\('progress'/);
   assert.match(offscreen, /getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
+  assert.match(offscreen, /isAudioOnlyCaptureSourceKind\(upload\.prepared\.sourceKind\) \? 'audio\/webm' : 'video\/webm'/);
+  assert.match(offscreen, /expectVideo = !isAudioOnlyCaptureSourceKind\(message\.prepared\.sourceKind\)/);
+  assert.match(offscreen, /!isAudioOnlyCaptureSourceKind\(upload\.prepared\.sourceKind\) &&/);
   assert.match(offscreen, /new AudioContext\(\)/);
   assert.match(offscreen, /audioContext\.close\(\)/);
   assert.match(offscreen, /retained\.xhr\?\.abort\(\)/);

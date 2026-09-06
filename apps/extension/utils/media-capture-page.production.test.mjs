@@ -150,3 +150,103 @@ test('reports player readiness, navigation, and exact range boundaries', async (
     assert.equal((await withFakeVideo(() => prepareMediaCaptureOnPage({ source, startMs, endMs }), { duration: 120 })).code, 'RANGE_INVALID');
   }
 });
+
+const spotifyUrl = 'https://open.spotify.com/episode/6EMoFpxEsLelogfZz8eAC2';
+const spotifySource = {
+  kind: 'spotify',
+  pageUrl: spotifyUrl,
+  sourceKey: '6EMoFpxEsLelogfZz8eAC2',
+  playerIdentity: 'spotify-now-playing:1:abcd1234',
+};
+
+async function withFakeSpotify(callback, overrides = {}) {
+  const names = ['location', 'document', 'window', 'HTMLElement'];
+  const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  class FakeElement {
+    constructor(text, label) {
+      this.textContent = text ?? '';
+      this.label = label ?? '';
+    }
+    getAttribute(name) { return name === 'aria-label' ? this.label : null; }
+    getBoundingClientRect() {
+      return { x: 0, y: 640, width: 1280, height: 80, top: 640, right: 1280, bottom: 720, left: 0 };
+    }
+    click() { this.clicked = true; }
+  }
+  const bar = new FakeElement();
+  const position = new FakeElement(overrides.position ?? '0:08');
+  const duration = new FakeElement(overrides.duration ?? '1:00:06');
+  const playButton = new FakeElement('', overrides.playLabel ?? 'Pause');
+  const nodes = {
+    'now-playing-bar': bar,
+    'playback-position': position,
+    'playback-duration': duration,
+    'control-button-playpause': playButton,
+  };
+  const values = {
+    location: { href: overrides.url ?? spotifyUrl },
+    document: {
+      querySelector(selector) {
+        if (selector.includes('now-playing-bar')) return bar;
+        if (selector.includes('playback-position')) return position;
+        if (selector.includes('playback-duration')) return duration;
+        if (selector.includes('control-button-playpause')) return playButton;
+        return nodes[selector] ?? null;
+      },
+    },
+    window: { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1, scrollX: 0, scrollY: 0 },
+    HTMLElement: FakeElement,
+  };
+  try {
+    for (const [name, value] of Object.entries(values)) {
+      Object.defineProperty(globalThis, name, { configurable: true, value });
+    }
+    return await callback({ playButton });
+  } finally {
+    for (const name of names) {
+      const descriptor = previous.get(name);
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  }
+}
+
+test('Spotify prepare uses now-playing clocks and keeps the 2s start gate', async () => {
+  const prepared = await withFakeSpotify(() => prepareMediaCaptureOnPage({
+    source: spotifySource, startMs: 8_000, endMs: 90_000,
+  }));
+  assert.equal(prepared.ok, true);
+  assert.equal(prepared.prepared.sourceKind, 'spotify');
+  assert.equal(prepared.prepared.playerCurrentTimeBeforeRecordingMs, 8_000);
+  assert.equal(prepared.prepared.mediaDurationMs, 3_606_000);
+  const offStart = await withFakeSpotify(() => prepareMediaCaptureOnPage({
+    source: spotifySource, startMs: 8_000, endMs: 90_000,
+  }), { position: '0:57' });
+  assert.equal(offStart.ok, false);
+  assert.equal(offStart.code, 'PLAYER_NOT_READY');
+  assert.match(offStart.message, /Seek the Spotify player to the clip start/);
+  const unreadable = await withFakeSpotify(() => prepareMediaCaptureOnPage({
+    source: spotifySource, startMs: 8_000, endMs: 90_000,
+  }), { position: '' });
+  assert.equal(unreadable.ok, false);
+  assert.equal(unreadable.code, 'PLAYER_NOT_READY');
+  assert.match(unreadable.message, /now-playing time could not be read/);
+});
+
+test('Spotify play acknowledgement stays on the now-playing path', async () => {
+  await withFakeSpotify(async ({ playButton }) => {
+    const playback = await playMediaForCaptureOnPage(spotifySource, 8_000);
+    assert.equal(playback.ok, true);
+    assert.equal(playback.currentTimeMs, 8_000);
+    assert.equal(playButton.clicked, undefined);
+    const finished = finishMediaCaptureOnPage(spotifySource, true);
+    assert.equal(finished.sourceMatches, true);
+    assert.equal(finished.currentTimeMs, 8_000);
+    assert.equal(playButton.clicked, true);
+  });
+  const tooFar = await withFakeSpotify(() => playMediaForCaptureOnPage(spotifySource, 8_000), {
+    position: '0:57',
+  });
+  assert.equal(tooFar.ok, false);
+  assert.equal(tooFar.message, 'playback-failed');
+});

@@ -73,29 +73,33 @@ Owner applies Staging only (Dashboard SQL editor or linked CLI). Do
 
 ## Manual test notes (Matt)
 
-Rebuild/reload the extension after pulling this branch.
+Rebuild/reload the extension after pulling this branch. Chrome →
+`chrome://extensions` → Annotated → Reload. Then reopen the side
+panel on the episode tab. A stale service worker can keep the
+post-#86 “begin 200, capture did not start” failure.
 
-1. Open a public episode, for example:
-   `https://open.spotify.com/episode/7makk4oTQel546B0P8lOOJ`
-   Variants that should classify the same: `?si=`, `/embed/`,
-   `/intl-en/`.
-2. **Logged-out preview (if Spotify offers one):** play until the
-   tab is audible and now-playing clocks are readable. That is a
-   valid capture surface. Do not require sign-in.
-3. **Logged-in listen:** also valid. Connect the tab. Create should
-   classify **Spotify** (not generic webpage audio). Audio mode
-   available; Video unavailable.
-4. Play until now-playing clocks are readable. Set start / Set end or
-   type times. Range must be 1–90 s.
-5. **Seek Spotify to the clip start** before Publish. The adapter
-   fail-closes if the player is more than 2 s off.
-6. Publish → tabCapture → Processing. Draft stays draft until the
-   worker finishes. Public playback is the hosted derivative, not a
-   Spotify embed. Do not unpause Cloud Run; one-shot the dispatcher
-   if needed.
-7. Fail closed: home, search, show page, a login wall that cannot
-   play, DRM, unreadable time.
-8. Hover: Feed card on a connected episode tab outlines the
+1. Open the owner repro episode:
+   `https://open.spotify.com/episode/6EMoFpxEsLelogfZz8eAC2`
+   Logged-out free preview is valid. Leave the “Preview of Spotify…
+   Sign up free” banner as-is. Press play until the tab is audible
+   and Create shows **Using Spotify now playing**.
+2. Set start / Set end (or type times) for a 1–90 s range. Example
+   from the 2026-09-05 repro: start `00:08`, end `01:30`.
+3. **Seek the Spotify player to the clip start** (or use Preview /
+   Jump to start only after the player is already within 2 s).
+   Publish while the playhead is ~50 s away must **not** say
+   “The connected media capture could not start.” It must say
+   **Seek the Spotify player to the clip start, then try again.**
+4. Seek to the start, then **Publish clip** or **Recapture** on the
+   existing draft. Expected: tabCapture starts (side panel leaves
+   “Creating draft…” / preparing and shows capturing → upload →
+   **Processing**). Draft stays draft until the worker finishes.
+   Public playback is the hosted derivative, not a Spotify embed.
+   Do not unpause Cloud Run; one-shot the dispatcher if needed.
+5. Repeat once logged-in if you have a session. Same capture path.
+6. Fail closed: home, search, show page, a login wall that cannot
+   play, DRM, unreadable time, YouTube/TikTok/podcast still work.
+7. Hover: Feed card on a connected episode tab outlines the
    now-playing bar.
 
 Never report Chrome acceptance as passed unless the owner performed it
