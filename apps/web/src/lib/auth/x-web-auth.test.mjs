@@ -261,6 +261,23 @@ test('callback rejects disabled, missing, malformed, future, expired, and alread
   assert.deepEqual(readXWebAuthCallback(params, undefined, NOW, ENABLED), { kind: 'invalid' });
 });
 
+test('web sign-in surfaces include X next to Google without rewriting the OAuth boundary', async () => {
+  const [header, comments, follow, votes, actions] = await Promise.all([
+    readFile(new URL('../../app/site-header-auth.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../app/a/[annotationId]/comments-section.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../app/follow-button.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../app/vote-controls.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../app/provider-sign-in-actions.tsx', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(header, /provider="x"/);
+  assert.match(comments, /ProviderSignInActions/);
+  assert.match(follow, /ProviderSignInActions/);
+  assert.match(votes, /ProviderSignInActions/);
+  assert.match(actions, /provider="x"/);
+  assert.match(actions, /provider="google"/);
+});
+
 test('X start and callback routes use the shared exact-path cookie lifecycle', async () => {
   const [startRoute, callbackRoute] = await Promise.all([
     readFile(new URL('../../app/auth/x/start/route.ts', import.meta.url), 'utf8'),

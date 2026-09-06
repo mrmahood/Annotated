@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { followProfile, unfollowProfile } from "@/lib/data/social-mutations";
 import { createClient } from "@/lib/supabase/client";
-import { ProviderSignInButton } from "./provider-sign-in-button";
+import { ProviderSignInActions } from "./provider-sign-in-actions";
 
 export function FollowButton({
   profileId,
@@ -59,10 +59,10 @@ export function FollowButton({
     <div className="follow-control">
       <span className="follower-count">{countLabel}</span>
       {currentUserId === profileId ? null : !currentUserId ? (
-        <ProviderSignInButton
-          provider="google"
+        <ProviderSignInActions
           returnTo={returnTo}
-          label="Sign in to follow"
+          googleLabel="Sign in to follow"
+          xLabel="Continue with X"
           className="public-button public-button-secondary"
         />
       ) : following === null ? (

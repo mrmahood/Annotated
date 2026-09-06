@@ -42,7 +42,8 @@ controlled removal:
 - Public appeal portal or automatic derivative restore after media withdrawal.
 - Extension UI polish / minimalist redesign (sequenced after Phase F).
 - Re-enabling X OAuth (sequenced before mid-September bounty submit, outside
-  Phase F code).
+  Phase F code; owner-authorized 2026-09-05/06 as a later increment — see
+  `docs/product/x-oauth-staging-reenable.md`).
 - Production deployment, DNS/TLS cutover, or enabling paused worker schedules
   except for an explicitly authorized bounded Staging acceptance run.
 - Cross-origin / Brightcove player adapters. Generic webpage-video

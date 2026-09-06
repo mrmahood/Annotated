@@ -5,7 +5,7 @@ E3, and the bounded live-X Gate 3 are complete, merged, accepted, and rolled
 back in Staging. Phase F F0–F5 implementation is merged on protected `main`;
 F6 owner-authorized Staging acceptance is recorded 2026-09-04. Production was
 not accessed; GCP media dispatcher and reconciler schedules remain paused.
-Updated 2026-09-05. Sprint 1 UI polish and Sprint 2 YouTube hover
+Updated 2026-09-06. Sprint 1 UI polish and Sprint 2 YouTube hover
 linking are merged and owner-accepted on `main`; Sprint 3 (article/text)
 hover is implemented on `main`. Sprint 4 (audio/podcast) hover is
 implemented pending owner Chrome acceptance. Sprint 5 (generic
@@ -23,7 +23,8 @@ follow-on is **typed clip range entry** (keep Set start / Set end, and
 also type start/end such as `1:00`–`2:30`); implemented on this branch.
 Brightcove / inaccessible
 cross-origin news-site embeds remain a later increment. X OAuth is out
-of Sprint 6. D1 and D2 completed their
+of Sprint 6. Staging-only X OAuth re-enable for the bounty submit is
+implemented in this increment; Production remains separately authorized. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -482,8 +483,9 @@ increment.
   boundary and identity-array verification without changing production
   permissions. Gate 3 exercised both capabilities only against the exact
   Supabase Staging project, then removed their opt-ins and disabled the Staging
-  provider. X is again neither visible nor executable, and identities are never
-  merged based only on display name.
+  provider. The later bounty increment re-enables that Staging-project
+  capability; see `docs/product/x-oauth-staging-reenable.md`. Identities are
+  never merged based only on display name.
 - Retain the accepted capture, private upload, draft-first, processing-status,
   permission, no-host-permission, and article-publication boundaries while the
   Create experience is reorganized.
@@ -710,8 +712,14 @@ Production launch and hardening remain separately authorized.
   YouTube, TikTok, podcast / audio, and webpage video/audio as those
   paths exist. Does not implement Spotify capture.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
-  the mid-September bounty submit (after F; ideally with UI polish). This is
-  outside Phase F code and remains separately authorized.
+  the mid-September bounty submit. Owner-authorized 2026-09-05/06. This
+  increment turns the existing E2b/E2c/Gate 3 Staging capability back on
+  when the app points at exact Staging project `nkkunkwirvfwhmpwonqz`.
+  Production and Local stay fail-closed. The OAuth start/callback,
+  attempt-cookie, and identity-policy boundaries are unchanged. Owner
+  checklist for the Staging provider, X Developer Portal, and callback
+  URLs: `docs/product/x-oauth-staging-reenable.md`. Production X remains
+  separately authorized.
 - **Exact Storage cleanup-to-zero** for F6-deferred derivative objects when
   dispatcher/reconciler schedules are temporarily authorized, then re-paused.
   Production remains untouched.
@@ -791,8 +799,9 @@ audio-upload acceptance, required PR CI `33318786049`, and post-merge `main` CI
 extension live-X Staging acceptance, PR CI `33578556343`, squash merge
 `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and post-merge `main` CI
 `33579104948`; exact disposable-user/grant cleanup and reversible capability/
-provider rollback then passed. X is currently disabled on both user surfaces and
-in Supabase Staging. Cross-origin player adapters, later implementation,
+provider rollback then passed. X user-facing Staging re-enable is implemented in this increment;
+the Supabase Staging provider and X Developer Portal remain owner
+manual steps in `docs/product/x-oauth-staging-reenable.md`. Cross-origin player adapters, later implementation,
 schedule enablement, Production access, and deployment remain separately
 authorized. Generic webpage-video publication remains the niche
 HTML5/article-backed path. Sprint 6 TikTok hosted capture/publish is

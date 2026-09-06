@@ -174,7 +174,7 @@ test('classifies user-cancelled identity flows as recoverable cancellation', () 
   assert.equal(isAuthCancellation(new Error('Network request failed')), false);
 });
 
-test('keeps X closed while exposing provider-neutral metadata and identity checks', () => {
+test('keeps X fail-closed by default while exposing provider-neutral metadata and identity checks', () => {
   assert.deepEqual(ENABLED_EXTENSION_AUTH_PROVIDERS, ['google']);
   assert.equal(AUTH_PROVIDER_METADATA.google.label, 'Google');
   assert.equal(AUTH_PROVIDER_METADATA.x.label, 'X');

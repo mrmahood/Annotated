@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent, SyntheticEvent } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  EXTENSION_AUTH_CAPABILITIES,
+  type AuthProvider,
+} from '../../utils/auth-boundary';
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import { formatMediaTime } from '@annotated/shared/media-time';
@@ -129,8 +133,33 @@ type NavigationCallbacks = {
 
 type AuthProps = {
   currentUserId: string | null;
-  onSignIn: () => void;
+  onSignIn: (provider?: AuthProvider) => void;
 };
+
+function SignInButtons({
+  onSignIn,
+  primary = false,
+}: {
+  onSignIn: (provider?: AuthProvider) => void;
+  primary?: boolean;
+}) {
+  return (
+    <div className="account-sign-in-actions">
+      <button
+        className={primary ? 'button button-primary button-small' : 'button button-secondary button-small'}
+        type="button"
+        onClick={() => onSignIn('google')}
+      >
+        Continue with Google
+      </button>
+      {EXTENSION_AUTH_CAPABILITIES.x ? (
+        <button className="button button-secondary button-small" type="button" onClick={() => onSignIn('x')}>
+          Continue with X
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 function getAudioPublicUrl(supabase: SupabaseClient, storagePath: string) {
   const publicUrl = supabase.storage
@@ -1230,7 +1259,7 @@ function FollowControl({ supabase, profile, currentUserId, onSignIn, onCountChan
   if (self) return <span className="social-count">{count.toLocaleString()} followers</span>;
 
   const mutate = async (nextFollowing: boolean) => {
-    if (!currentUserId) { onSignIn(); return; }
+    if (!currentUserId) return;
     if (status === 'working') return;
     setStatus('working');
     setError(null);
@@ -1253,7 +1282,7 @@ function FollowControl({ supabase, profile, currentUserId, onSignIn, onCountChan
     <div className="follow-control">
       <span className="social-count">{count.toLocaleString()} followers</span>
       {!currentUserId ? (
-        <button className="button button-secondary button-small" type="button" onClick={onSignIn}>Continue with Google</button>
+        <SignInButtons onSignIn={onSignIn} />
       ) : confirming ? (
         <span className="inline-confirm" role="group" aria-label="Confirm unfollow">
           <span>Unfollow?</span>
@@ -1303,7 +1332,7 @@ function Comments({ supabase, annotationId, currentUserId, onSignIn, onProfile, 
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!currentUserId) { onSignIn(); return; }
+    if (!currentUserId) return;
     if (posting || !body.trim() || body.length > COMMENT_BODY_LIMIT) return;
     const submittedBody = body;
     setPosting(true);
@@ -1391,7 +1420,7 @@ function Comments({ supabase, annotationId, currentUserId, onSignIn, onProfile, 
       <div className="comment-composer">
         <h3>Add a comment</h3>
         {!currentUserId ? (
-          <div className="signed-out-action"><span>Sign in to participate.</span><button className="button button-primary button-small" type="button" onClick={onSignIn}>Continue with Google</button></div>
+          <div className="signed-out-action"><span>Sign in to participate.</span><SignInButtons onSignIn={onSignIn} primary /></div>
         ) : (
           <form onSubmit={(event) => void submit(event)}>
             <label htmlFor={`comment-${annotationId}`}>Comment</label>
