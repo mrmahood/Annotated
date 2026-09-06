@@ -35,7 +35,7 @@
 * { box-sizing: border-box; }
 html { background: var(--background); }
 body { min-width: 300px; margin: 0; color: var(--text-primary); background: var(--background); font-size: 13px; }
-button, textarea { font: inherit; }
+button, textarea, input { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
 button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -186,10 +186,17 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .annotation-field textarea, .comment-composer textarea { width: 100%; resize: vertical; padding: 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-small); color: var(--text-primary); background: var(--control-background); font-size: 12px; line-height: 1.5; }
 .annotation-field > span { text-align: right; }
 .clip-time-grid { display: grid; grid-template-columns: repeat(3, 1fr); margin: 12px 0; border: 1px solid var(--border-strong); background: var(--background-elevated); }
+.clip-time-grid-editable { align-items: start; }
 .clip-time-grid div { min-width: 0; padding: 9px; }
 .clip-time-grid div + div { border-left: 1px solid var(--border); }
 .clip-time-grid dt { color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; letter-spacing: .08em; }
+.clip-time-grid dt label { color: inherit; font: inherit; letter-spacing: inherit; }
 .clip-time-grid dd { margin: 5px 0 0; color: var(--text-evidence); font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.clip-time-grid input { width: 100%; min-width: 0; padding: 0 0 3px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; color: var(--text-evidence); background: transparent; font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.clip-time-grid input::placeholder { color: var(--text-disabled); }
+.clip-time-grid input[aria-invalid="true"] { border-bottom-color: var(--destructive); }
+.clip-time-grid input:disabled { color: var(--text-disabled); }
+.clip-field-error { margin: 6px 0 0; font-size: 10px; }
 .player-readout { margin: -4px 0 10px; color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
 .clip-control-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .clip-control-row .text-button { grid-column: 1 / -1; justify-self: start; }
@@ -313,6 +320,8 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   .create-actions { grid-template-columns: 1fr; }
   .clip-control-row { grid-template-columns: 1fr; }
   .clip-control-row .text-button { grid-column: auto; }
+  .clip-time-grid-editable { grid-template-columns: 1fr; }
+  .clip-time-grid-editable div + div { border-left: 0; border-top: 1px solid var(--border); }
   .mode-switch-dialog { width: calc(100vw - 20px); padding: 13px; }
   .mode-switch-dialog-actions { grid-template-columns: 1fr; }
   .detail-creator { flex-direction: column; }

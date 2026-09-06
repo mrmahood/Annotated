@@ -45,6 +45,7 @@ test('the switcher and editor actions have explicit 390 and 340 pixel contracts'
   assert.match(style, /\.create-mode-segment \{ min-height: 32px;/);
   assert.match(style, /\.create-mode-segmented \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
   assert.match(style, /\.clip-control-row \{ grid-template-columns: 1fr; \}/);
+  assert.match(style, /\.clip-time-grid-editable \{ grid-template-columns: 1fr; \}/);
   assert.match(style, /\.create-actions \{ grid-template-columns: 1fr; \}/);
   assert.match(style, /--accent:/);
   assert.match(style, /--motion-duration: 180ms/);
@@ -67,10 +68,14 @@ test('player selection is a bounded native radio group and gates every clip acti
   assert.match(source, /getPlayerActionToken\('audio'/);
   assert.match(source, /runSelectedPlayerAction\(token,/);
   assert.match(source, /playerTokenIsCurrent\(token\)/);
-  assert.match(source, /videoRangeDisplay\.start/);
-  assert.match(source, /videoRangeDisplay\.end/);
   assert.match(source, /videoRangeDisplay\.length/);
   assert.match(source, /audioRangeDisplay\.length/);
+  assert.match(source, /<ClipRangeFields/);
+  assert.match(source, /idPrefix="video"/);
+  assert.match(source, /idPrefix="audio"/);
+  assert.match(source, /Set start/);
+  assert.match(source, /Set end/);
+  assert.match(source, /type times such as 1:00 and 2:30/);
   assert.match(style, /\.player-option-label[^}]*overflow-wrap: anywhere/);
 });
 
@@ -103,4 +108,27 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   assert.doesNotMatch(source, /separately authorized article-backed hosted-video server contract/);
   assert.doesNotMatch(source, /beginHostedYouTubeAnnotation\(supabase, \{[\s\S]{0,500}webVideoSource/);
   assert.doesNotMatch(source, /Brightcove|brightcove|cross-origin adapter/);
+});
+
+test('Create Video and Audio keep Set start / Set end and add typed clip fields', async () => {
+  const [source, fields, style] = await Promise.all([
+    readFile(APP_URL, 'utf8'),
+    readFile(new URL('../entrypoints/sidepanel/clip-range-fields.tsx', import.meta.url), 'utf8'),
+    readFile(STYLE_URL, 'utf8'),
+  ]);
+  assert.match(source, /useTypedClipRange/);
+  assert.match(source, /commitVideoRange/);
+  assert.match(source, /commitAudioRange/);
+  assert.match(source, /videoRangeEntry\.allowsPublish/);
+  assert.match(source, /audioRangeEntry\.allowsPublish/);
+  assert.match(source, />Set start</);
+  assert.match(source, />Set end</);
+  assert.match(fields, /id=\{startId\}/);
+  assert.match(fields, /id=\{endId\}/);
+  assert.match(fields, /placeholder="1:00"/);
+  assert.match(fields, /placeholder="2:30"/);
+  assert.match(fields, /htmlFor=\{startId\}/);
+  assert.match(style, /\.clip-time-grid input \{/);
+  assert.match(style, /\.clip-field-error/);
+  assert.doesNotMatch(source, /spotify|Spotify/);
 });
