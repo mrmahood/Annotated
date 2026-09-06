@@ -306,7 +306,7 @@ export function isCapturePreparedPage(value: unknown): value is CapturePreparedP
     typeof frameMapping.origin === 'string' && /^https?:\/\//.test(frameMapping.origin) &&
     ['viewportWidth','viewportHeight','borderLeft','borderRight','borderTop','borderBottom']
       .every((key) => finite(frameMapping[key])));
-  return (value.sourceKind === 'youtube' || value.sourceKind === 'web-video' || value.sourceKind === 'audio') &&
+  return (value.sourceKind === 'youtube' || value.sourceKind === 'tiktok' || value.sourceKind === 'web-video' || value.sourceKind === 'audio') &&
     isInteger(value.requestedStartMs) && isInteger(value.requestedEndMs) &&
     value.requestedDurationMs === value.requestedEndMs - value.requestedStartMs &&
     getCaptureRangeError(value.requestedStartMs, value.requestedEndMs) === null &&

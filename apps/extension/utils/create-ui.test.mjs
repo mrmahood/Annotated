@@ -82,6 +82,9 @@ test('processing copy describes queued work instead of a missing worker', async 
 
 test('generic webpage video publishes through the article-backed hosted begin path', async () => {
   const source = await readFile(APP_URL, 'utf8');
+  assert.match(source, /from '\.\.\/\.\.\/utils\/connected-source'/);
+  assert.match(source, /getSourceState,/);
+  assert.match(source, /hostedVideoBeginRpc\(sourceState\.source\.url\) !== 'begin_hosted_webpage_video_annotation'/);
   assert.match(source, /const genericVideo = !isHostedWatchSource\(sourceState\.source\)/);
   assert.match(source, /beginHostedTikTokAnnotation/);
   assert.match(source, /kind: 'tiktok'/);
