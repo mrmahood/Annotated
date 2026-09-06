@@ -7,8 +7,14 @@ implemented on `main`. Sprint 4 (audio/podcast hover linking) is
 implemented pending owner Chrome acceptance. Sprint 5 (generic
 page-video hover linking) is implemented pending owner Chrome
 acceptance. Sprint 6 (TikTok hosted capture/publish + hover) is
-implemented pending owner Chrome and Staging acceptance. Approving those sections does not authorize migrations,
-Staging, Production, X OAuth re-enable, or Phase G.
+implemented on `main` (squash-merged PR #78) pending owner Chrome
+and Staging acceptance. After TikTok Sprint 6, Spotify podcast /
+episode audio is the next platform follow-on (roadmap planning
+only). Typed clip range entry (type start/end such as `1:00`–`2:30`
+in addition to Set start / Set end) is a separate Create UX
+follow-on on the roadmap. Approving those sections does not
+authorize migrations, Staging, Production, X OAuth re-enable,
+Phase G, Spotify capture, or typed-range UI.
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
 Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
@@ -42,7 +48,11 @@ remaining hover-link follow-ons:
 - generic page-video hover linking (Sprint 5, **implemented**; owner
   Chrome acceptance still required). YouTube `/watch` remains Sprint 2;
 - TikTok hosted capture, Feed Video/TikTok cards, and hover (Sprint 6,
-  **implemented**; owner Chrome and Staging acceptance still required).
+  **implemented** on `main` via PR #78; owner Chrome and Staging
+  acceptance still required);
+- after Sprint 6, Spotify podcast / episode audio capture + later
+  hover parity when the connected tab is a Spotify episode page
+  (roadmap only; not this brief’s implementation slice).
 
 The annotation is the product; chrome gets out of the way.
 
@@ -78,8 +88,10 @@ reinterpreted in implementation:
    **not** in Sprint 1. Sprint 1, Sprint 2, and Sprint 3 are **done**;
    Sprint 4 and Sprint 5 are implemented and wait on owner Chrome
    acceptance. Sprint 6 is TikTok hosted watch (YouTube-parallel
-   identity, not article/webpage-video). Sprint 2 remains YouTube
-   `/watch` only.
+   identity, not article/webpage-video), implemented on `main` via
+   PR #78. After TikTok Sprint 6, Spotify podcast / episode audio
+   is the next platform follow-on (roadmap only). Sprint 2 remains
+   YouTube `/watch` only.
 3. **Demo path.** Primary judge demo path is **YouTube video annotations in
    the extension**.
 4. **Copy and marks.** No existing fonts, logo mark, or copy is sacred.
@@ -173,6 +185,12 @@ later hover-link fades. No spring/bounce presets.
   capture/upload. The confirm UI is the mode-switch dialog in `App.tsx`.
 - Independent per-mode drafts, recommended vs selected vs available, and
   honest restart/recovery are Phase E behavior and stay.
+- Hosted Video / Audio range entry today is **Set start** / **Set end**
+  at the current playback position. A later Create UX follow-on (see
+  `docs/product/roadmap.md`; not this brief’s implementation slice)
+  must also let the user type start and end timestamps (`m:ss` /
+  `h:mm:ss`, e.g. `1:00`–`2:30`), validate 1–90 s and clip bounds, and
+  keep Set start / Set end in sync with those fields.
 
 ### 5.2 Annotation cards
 
@@ -481,6 +499,19 @@ Known v1 limits — fail closed:
 Webpage HTML5 publish remains the niche article-backed path.
 News-site opaque embeds (Brightcove/Fox) stay later. No X OAuth.
 
+### 8.6 After Sprint 6 — Spotify podcast / episode hover (later)
+
+Sprint 6 TikTok is implemented on `main` (squash-merged PR #78);
+owner Chrome and Staging acceptance are still required. After that,
+later hover parity for **Spotify episode pages** should reuse Sprint
+4 podcast/audio grammar when the connected tab is the annotation’s
+Spotify episode URL — first-class episode identity, not generic
+webpage HTML5 audio. Fail closed on login walls and opaque player
+chrome until a bounded adapter exists. DRM / stream-URL scraping
+stay out of scope. This brief does not authorize Spotify Create UI,
+capture, or migrations; see `docs/product/roadmap.md`. Fox /
+Brightcove news-site adapters remain a separate later vertical.
+
 ## 9. Acceptance criteria (Sprint 1)
 
 - Dark tokens applied consistently in the extension sidepanel and the web
@@ -525,6 +556,11 @@ Out of this brief’s implementation slices:
 - Persistent content scripts, diagnostic UI, or brittle host-specific
   piercing for any hover sprint. `host_permissions` are owner-authorized
   only as documented in §5.3.
+- Spotify podcast / episode capture, publication, migrations, or
+  hover. After TikTok Sprint 6 those belong on the product roadmap,
+  not in this brief’s implementation slices.
+- Typed clip range entry (type start/end in addition to Set start /
+  Set end). Roadmap Create UX follow-on only; do not implement here.
 
 Later options (not Sprint 1 unless noted):
 
@@ -536,9 +572,13 @@ Later options (not Sprint 1 unless noted):
 Approving this document authorizes the polish slices described here.
 Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
 Sprint 4 and Sprint 5 are implemented pending owner Chrome acceptance.
-Sprint 6 is implemented pending owner Chrome and Staging acceptance.
-Do not treat this brief as permission to change capture, hosted-media
-publication, claims, or extension permissions beyond the later
-owner-authorized webpage-video publication increment and the
-owner-authorized Sprint 6 TikTok increment. Brightcove /
-cross-origin adapters remain out of Sprint 5 and Sprint 6.
+Sprint 6 is implemented on `main` (PR #78) pending owner Chrome and
+Staging acceptance. After that, Spotify podcast / episode audio is
+the next platform follow-on and is not authorized here. Typed
+start/end clip fields are a separate Create UX follow-on and are
+not authorized here. Do not treat this brief as permission to
+change capture, hosted-media publication, claims, or extension
+permissions beyond the later owner-authorized webpage-video
+publication increment and the owner-authorized Sprint 6 TikTok
+increment. Brightcove / cross-origin adapters remain out of Sprint
+5 and Sprint 6.
