@@ -12,18 +12,10 @@ export type HostedVideoPlayerLayout = {
   aspectRatio: string | null;
 };
 
-function hasPositiveDimensions(
-  width: unknown,
-  height: unknown,
-): width is number {
-  return (
-    typeof width === 'number' &&
-    typeof height === 'number' &&
-    Number.isFinite(width) &&
-    Number.isFinite(height) &&
-    width > 0 &&
-    height > 0
-  );
+function readPositiveDimension(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : null;
 }
 
 export function hostedVideoPlayerLayout(
@@ -33,10 +25,12 @@ export function hostedVideoPlayerLayout(
     return { orientation: 'landscape', aspectRatio: null };
   }
 
-  if (hasPositiveDimensions(input.width, input.height)) {
+  const width = readPositiveDimension(input.width);
+  const height = readPositiveDimension(input.height);
+  if (width !== null && height !== null) {
     return {
-      orientation: input.height > input.width ? 'portrait' : 'landscape',
-      aspectRatio: `${input.width} / ${input.height}`,
+      orientation: height > width ? 'portrait' : 'landscape',
+      aspectRatio: `${width} / ${height}`,
     };
   }
 
