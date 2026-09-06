@@ -37,21 +37,25 @@ export function parseMediaTime(value: string): ParsedMediaTime {
   if (!trimmed) return { status: 'empty' };
   const hourMatch = COMPLETE_HOUR_TIME.exec(trimmed);
   if (hourMatch) {
-    const hours = Number.parseInt(hourMatch[1], 10);
-    const minutes = Number.parseInt(hourMatch[2], 10);
-    const seconds = Number.parseInt(hourMatch[3], 10);
+    const hours = Number.parseInt(hourMatch[1] ?? '', 10);
+    const minutes = Number.parseInt(hourMatch[2] ?? '', 10);
+    const seconds = Number.parseInt(hourMatch[3] ?? '', 10);
     const milliseconds = (((hours * 60 + minutes) * 60) + seconds) * 1_000
       + fractionToMilliseconds(hourMatch[4]);
-    if (!Number.isSafeInteger(milliseconds)) return { status: 'invalid' };
+    if (![hours, minutes, seconds].every(Number.isFinite) || !Number.isSafeInteger(milliseconds)) {
+      return { status: 'invalid' };
+    }
     return { status: 'ok', milliseconds };
   }
   const minuteMatch = COMPLETE_MINUTE_TIME.exec(trimmed);
   if (minuteMatch) {
-    const minutes = Number.parseInt(minuteMatch[1], 10);
-    const seconds = Number.parseInt(minuteMatch[2], 10);
+    const minutes = Number.parseInt(minuteMatch[1] ?? '', 10);
+    const seconds = Number.parseInt(minuteMatch[2] ?? '', 10);
     const milliseconds = (minutes * 60 + seconds) * 1_000
       + fractionToMilliseconds(minuteMatch[3]);
-    if (!Number.isSafeInteger(milliseconds)) return { status: 'invalid' };
+    if (![minutes, seconds].every(Number.isFinite) || !Number.isSafeInteger(milliseconds)) {
+      return { status: 'invalid' };
+    }
     return { status: 'ok', milliseconds };
   }
   return INCOMPLETE_TYPED_TIME.test(trimmed)
