@@ -32,6 +32,11 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   ]);
 
   assert.match(detail, /function HostedExcerptPlayer/);
+  assert.match(detail, /hostedVideoPlayerLayout/);
+  assert.match(detail, /data-orientation=\{layout\.orientation\}/);
+  assert.match(detail, /sourceType=\{annotation\.kind\}/);
+  assert.match(styles, /\.detail-hosted-media\[data-orientation="portrait"\] video/);
+  assert.match(styles, /aspect-ratio: var\(--hosted-video-aspect, 9 \/ 16\)/);
   assert.match(detail, /getMediaPlaybackPath\(annotationId, attempt\)/);
   assert.match(detail, /getPublicUrl\(getMediaPlaybackPath/);
   assert.match(detail, /resolveHostedPlaybackSrc/);

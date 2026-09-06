@@ -70,6 +70,9 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(styles, /\.commentary-lead/);
   assert.match(styles, /\.nested-source/);
   assert.match(styles, /\.open-source-link/);
+  assert.match(styles, /\.card-hosted-media\[data-orientation="portrait"\] video/);
+  assert.match(styles, /aspect-ratio: var\(--hosted-video-aspect, 9 \/ 16\)/);
+  assert.match(styles, /max-height: none/);
   assert.match(styles, /\.create-mode-segmented/);
   assert.match(styles, /--accent:/);
   assert.match(styles, /--motion-duration: 180ms/);

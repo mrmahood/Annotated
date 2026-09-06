@@ -8,7 +8,8 @@
     "./url-normalization": "./src/url-normalization.ts",
     "./youtube": "./src/youtube.ts",
     "./tiktok": "./src/tiktok.ts",
-    "./media-time": "./src/media-time.ts"
+    "./media-time": "./src/media-time.ts",
+    "./hosted-video-layout": "./src/hosted-video-layout.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.mjs"

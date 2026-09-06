@@ -190,6 +190,9 @@ test("the signing route accepts no caller path and logs only allow-listed fields
   assert.match(player, /attempt === 0/);
   assert.match(player, /compact = false/);
   assert.match(player, /className="card-hosted-media"/);
+  assert.match(player, /hostedVideoPlayerLayout/);
+  assert.match(player, /data-orientation=\{layout\.orientation\}/);
+  assert.match(player, /sourceType/);
   assert.doesNotMatch(player, /download=/);
   assert.match(loader, /get_public_annotation_media_state/);
   assert.match(loader, /get_public_annotation_transcript/);

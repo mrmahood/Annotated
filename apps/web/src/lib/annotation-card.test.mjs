@@ -17,7 +17,11 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(card, /View annotation/);
   assert.match(card, /import \{ HostedMediaPlayer \} from "\.\/hosted-media-player"/);
   assert.match(card, /expanded && clipMedia &&/);
-  assert.match(card, /<HostedMediaPlayer annotationId=\{annotation\.id\} media=\{clipMedia\} compact \/>/);
+  assert.match(card, /<HostedMediaPlayer/);
+  assert.match(card, /annotationId=\{annotation\.id\}/);
+  assert.match(card, /media=\{clipMedia\}/);
+  assert.match(card, /sourceType=\{annotation\.source\.type\}/);
+  assert.match(card, /compact/);
   assert.match(card, /kind === "youtube" \|\| kind === "tiktok" \|\| kind === "video"/);
   assert.match(card, /annotation\.kind === "audio" \? "audio\/mp4"/);
   assert.match(card, /kind === "youtube" \|\| annotation\.kind === "tiktok" \|\| annotation\.kind === "video" \|\| annotation\.kind === "audio"/);
@@ -34,6 +38,10 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(styles, /\.card-nested-source/);
   assert.match(styles, /\.card-hosted-media/);
   assert.match(styles, /\.card-hosted-media audio/);
+  assert.match(styles, /\.card-hosted-media\[data-orientation="portrait"\] video/);
+  assert.match(styles, /aspect-ratio: var\(--hosted-video-aspect, 9 \/ 16\)/);
+  assert.match(styles, /max-height: none/);
+  assert.doesNotMatch(styles, /\.card-hosted-media\[data-orientation="portrait"\] video[^}]*max-height: 220px/);
   assert.match(styles, /\.open-source-link/);
   assert.match(styles, /\.site-header/);
   assert.match(styles, /\.site-wordmark/);

@@ -125,7 +125,11 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
           )}
 
           {isHosted && (
-            <HostedMediaPlayer annotationId={annotation.id} media={annotation.media} />
+            <HostedMediaPlayer
+              annotationId={annotation.id}
+              media={annotation.media}
+              sourceType={annotation.source.type}
+            />
           )}
 
           {annotation.kind === "media_removed" && (

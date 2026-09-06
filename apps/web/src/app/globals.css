@@ -323,6 +323,15 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .card-clip-range.expanded { font-size: 1rem; }
 .card-hosted-media { display: grid; gap: 8px; }
 .card-hosted-media video { display: block; width: 100%; height: auto; max-height: 220px; background: #000; }
+.card-hosted-media[data-orientation="portrait"] { justify-items: center; }
+.card-hosted-media[data-orientation="portrait"] video {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  max-height: none;
+  aspect-ratio: var(--hosted-video-aspect, 9 / 16);
+  object-fit: contain;
+}
 .card-hosted-media audio { display: block; width: 100%; height: 38px; color-scheme: dark; }
 .card-hosted-media .hosted-media-error { margin: 0; }
 .open-source-link { width: max-content; color: var(--text-muted); font-size: 0.73rem; font-weight: 550; text-decoration: none; }
@@ -413,6 +422,13 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .hosted-media-heading-row h2, .media-removed-section h2, .transcript-section h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
 .hosted-media-heading-row > span, .transcript-segments span { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem; }
 .hosted-media-section video { display: block; width: min(100%, 720px); height: auto; max-height: 520px; margin-top: 14px; background: #000; }
+.hosted-media-section[data-orientation="portrait"] video {
+  width: min(100%, 360px);
+  max-height: none;
+  margin-inline: auto;
+  aspect-ratio: var(--hosted-video-aspect, 9 / 16);
+  object-fit: contain;
+}
 .hosted-media-section audio { display: block; width: min(100%, 720px); height: 38px; margin-top: 14px; color-scheme: dark; }
 .hosted-media-error { max-width: 720px; margin: 10px 0 0; }
 .media-removed-section { background: var(--background-elevated); }
