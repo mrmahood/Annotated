@@ -263,7 +263,10 @@ export function installMediaCapture(chrome: ExtensionChrome) {
         streamId,
         request,
         prepared: prepared.prepared,
-      }) as CaptureSnapshot;
+      }) as CaptureSnapshot | undefined;
+      if (!started || typeof started !== 'object' || !('status' in started)) {
+        throw new Error('The offscreen recorder did not accept the capture start.');
+      }
       if (started.status === 'error') {
         await clearActiveIfCurrent(captureId);
         emit(started);
@@ -291,20 +294,32 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       });
       return { ok: true, snapshot: started };
     } catch (error) {
-      await cancelActive(
-        /permission|denied/i.test(errorText(error)) ? 'tab-capture-denied' : 'unexpected',
-        `Capture could not start: ${errorText(error)}`,
-      );
+      try {
+        await cancelActive(
+          /permission|denied/i.test(errorText(error)) ? 'tab-capture-denied' : 'unexpected',
+          `Capture could not start: ${errorText(error)}`,
+        );
+      } catch { /* Cancellation is best-effort; the start failure is authoritative. */ }
       const snapshot = typeof error === 'object' && error && 'status' in error
         ? error as CaptureSnapshot
         : failure('unexpected', `Capture could not start: ${errorText(error)}`, captureId);
+      emit(snapshot, request.operation);
       return { ok: false, snapshot };
     }
   }
 
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
     if (isMediaCaptureStartMessage(message)) {
-      void begin(message.request).then(sendResponse);
+      void begin(message.request).then(sendResponse, (error: unknown) => {
+        sendResponse({
+          ok: false,
+          snapshot: failure(
+            'unexpected',
+            `Capture could not start: ${errorText(error)}`,
+            message.request.captureId,
+          ),
+        });
+      });
       return true;
     }
     if (isMediaCaptureCancelMessage(message)) {

@@ -8,6 +8,7 @@ import {
   MEDIA_CAPTURE_OFFSCREEN_START,
   MEDIA_CAPTURE_OFFSCREEN_STATUS,
   buildCaptureMetadataV2,
+  isAudioOnlyCaptureSourceKind,
   isOffscreenStartMessage,
   executeHostedMediaUpload,
   selectCaptureMimeType,
@@ -233,7 +234,7 @@ async function authorize(upload: RetainedUpload): Promise<string> {
     body: JSON.stringify({
       annotationId: upload.request.operation.annotationId,
       mediaId: upload.request.operation.mediaId,
-      mimeType: upload.prepared.sourceKind === 'audio' ? 'audio/webm' : 'video/webm',
+      mimeType: isAudioOnlyCaptureSourceKind(upload.prepared.sourceKind) ? 'audio/webm' : 'video/webm',
       byteSize: upload.blob.size,
       startMs: upload.prepared.requestedStartMs,
       endMs: upload.prepared.requestedEndMs,
@@ -372,7 +373,7 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
   let stream: MediaStream | null = null;
   try {
     const tabConstraint = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: message.streamId } } as unknown as MediaTrackConstraints;
-    const expectVideo = message.prepared.sourceKind !== 'audio' && message.prepared.sourceKind !== 'spotify';
+    const expectVideo = !isAudioOnlyCaptureSourceKind(message.prepared.sourceKind);
     stream = await navigator.mediaDevices.getUserMedia({
       audio: tabConstraint,
       video: expectVideo ? tabConstraint : false,
@@ -477,7 +478,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       upload.captureId === row.captureId) {
     upload.playerEndMs = typeof row.playerEndMs === 'number' ? row.playerEndMs : null;
     upload.endGeometry = typeof row.geometry === 'object' ? row.geometry as CaptureGeometry : null;
-    if (upload.prepared.sourceKind !== 'audio' &&
+    if (!isAudioOnlyCaptureSourceKind(upload.prepared.sourceKind) &&
         (!upload.endGeometry || !upload.endGeometry.boundingClientRect)) {
       retained = null;
       sendSnapshot({
