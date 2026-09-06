@@ -23,8 +23,9 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(card, /sourceType=\{annotation\.source\.type\}/);
   assert.match(card, /compact/);
   assert.match(card, /kind === "youtube" \|\| kind === "tiktok" \|\| kind === "video"/);
-  assert.match(card, /annotation\.kind === "audio" \? "audio\/mp4"/);
-  assert.match(card, /kind === "youtube" \|\| annotation\.kind === "tiktok" \|\| annotation\.kind === "video" \|\| annotation\.kind === "audio"/);
+  assert.match(card, /annotation\.kind === "audio" \|\| annotation\.kind === "spotify" \? "audio\/mp4"/);
+  assert.match(card, /kind === "youtube" \|\| annotation\.kind === "tiktok" \|\| annotation\.kind === "video" \|\| annotation\.kind === "audio" \|\| annotation\.kind === "spotify"/);
+  assert.match(card, /kind === "spotify"\) return "Spotify"/);
   assert.match(card, /"audio\/mp4"/);
   assert.doesNotMatch(card, /section-label/);
   assert.doesNotMatch(card, />Commentary</);

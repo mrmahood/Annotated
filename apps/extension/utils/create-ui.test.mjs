@@ -89,12 +89,13 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /from '\.\.\/\.\.\/utils\/connected-source'/);
   assert.match(source, /getSourceState,/);
+  assert.match(source, /isWebpageVideoCapableSource,/);
   assert.match(source, /hostedVideoBeginRpc\(sourceState\.source\.url\) !== 'begin_hosted_webpage_video_annotation'/);
-  assert.match(source, /const genericVideo = !isHostedWatchSource\(sourceState\.source\)/);
+  assert.match(source, /const genericVideo = isWebpageVideoCapableSource\(sourceState\.source\)/);
   assert.match(source, /beginHostedTikTokAnnotation/);
   assert.match(source, /kind: 'tiktok'/);
   assert.match(source, /publishTikTokClip/);
-  assert.match(source, /args: \[probe\.mode, probe\.genericVideo\]/);
+  assert.match(source, /\[probe\.mode, probe\.genericVideo\]/);
   assert.match(source, /videoDetectionResolved: true, videoAvailable: playerDiscoveryMakesModeAvailable\(discovery\)/);
   assert.match(source, /world: probe\.genericVideo \? 'MAIN' : 'ISOLATED'/);
   assert.match(source, /world: genericVideo \? 'MAIN' : 'ISOLATED'/);
@@ -103,7 +104,7 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   assert.match(source, /kind: 'web-video'/);
   assert.match(source, /publishWebpageVideoClip/);
   assert.match(source, /canPublishWebpageVideo/);
-  assert.match(source, /mediaType: source\.kind === 'audio' \? 'audio' : 'video'/);
+  assert.match(source, /mediaType: source\.kind === 'audio' \|\| source\.kind === 'spotify' \? 'audio' : 'video'/);
   assert.doesNotMatch(source, /Publishing not enabled/);
   assert.doesNotMatch(source, /separately authorized article-backed hosted-video server contract/);
   assert.doesNotMatch(source, /beginHostedYouTubeAnnotation\(supabase, \{[\s\S]{0,500}webVideoSource/);
@@ -130,5 +131,10 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(fields, /htmlFor=\{startId\}/);
   assert.match(style, /\.clip-time-grid input \{/);
   assert.match(style, /\.clip-field-error/);
-  assert.doesNotMatch(source, /spotify|Spotify/);
+  assert.match(source, /getSpotifyEpisodeIdentity/);
+  assert.match(source, /beginHostedSpotifyAnnotation/);
+  assert.match(source, /Spotify episode/);
+  assert.match(source, /kind: 'spotify'/);
+  assert.match(source, /Start the preview, or sign in if it is gated/);
+  assert.doesNotMatch(source, /Sign in to Spotify in this tab to capture an episode/);
 });

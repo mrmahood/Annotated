@@ -4,6 +4,7 @@ import {
   getSourceState,
   hostedVideoBeginRpc,
   isHostedWatchSource,
+  isWebpageVideoCapableSource,
   videoPlayerSourceKey,
 } from './connected-source.ts';
 
@@ -12,6 +13,7 @@ const ABC_TITLE = '(32)ABC News (@abcnews) | TikTok';
 const BBC_WATCH = 'https://www.tiktok.com/@bbcnews/video/7550123456789012345';
 const YOUTUBE = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 const HTML5_PAGE = 'https://www.example.test/news/clip';
+const SPOTIFY = 'https://open.spotify.com/episode/7makk4oTQel546B0P8lOOJ';
 
 test('TikTok watch URLs classify as TikTok, not Web page', () => {
   const state = getSourceState(ABC_TITLE, ABC_NEWS);
@@ -22,6 +24,7 @@ test('TikTok watch URLs classify as TikTok, not Web page', () => {
   assert.equal(state.source.handle, 'abcnews');
   assert.equal(state.source.normalizedUrl, ABC_NEWS);
   assert.equal(isHostedWatchSource(state.source), true);
+  assert.equal(isWebpageVideoCapableSource(state.source), false);
   assert.equal(videoPlayerSourceKey(state.source), '7682104834304036110');
 });
 
@@ -56,6 +59,29 @@ test('YouTube watch URLs stay on the YouTube hosted begin path', () => {
   assert.equal(hostedVideoBeginRpc(YOUTUBE), 'begin_hosted_youtube_annotation');
 });
 
+test('Spotify episode URLs classify as Spotify, not generic webpage audio', () => {
+  const state = getSourceState('The Daily | Spotify', `${SPOTIFY}?si=share`);
+  assert.equal(state.status, 'connected');
+  assert.equal(state.source.classification, 'Spotify');
+  assert.equal(state.source.hostname, 'open.spotify.com');
+  assert.equal(state.source.episodeId, '7makk4oTQel546B0P8lOOJ');
+  assert.equal(state.source.normalizedUrl, SPOTIFY);
+  assert.equal(isHostedWatchSource(state.source), false);
+  assert.equal(isWebpageVideoCapableSource(state.source), false);
+});
+
+test('Spotify home, search, and show-only URLs stay generic Web page', () => {
+  for (const url of [
+    'https://open.spotify.com/',
+    'https://open.spotify.com/search/news',
+    'https://open.spotify.com/show/4rOoJ6Egrf8K2IrywzwOMk',
+  ]) {
+    const state = getSourceState('Spotify', url);
+    assert.equal(state.status, 'connected', url);
+    assert.equal(state.source.classification, 'Web page', url);
+  }
+});
+
 test('non-TikTok HTML5 pages stay Web page for generic webpage-video publish', () => {
   const state = getSourceState('News clip', HTML5_PAGE);
   assert.equal(state.status, 'connected');
@@ -63,4 +89,5 @@ test('non-TikTok HTML5 pages stay Web page for generic webpage-video publish', (
   assert.equal(state.source.hostname, 'www.example.test');
   assert.equal(hostedVideoBeginRpc(HTML5_PAGE), 'begin_hosted_webpage_video_annotation');
   assert.equal(isHostedWatchSource(state.source), false);
+  assert.equal(isWebpageVideoCapableSource(state.source), true);
 });

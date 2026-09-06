@@ -233,6 +233,85 @@ export async function prepareMediaCaptureOnPage(
     };
   };
 
+  const spotifyEpisodeId = (value: string) => {
+    try {
+      const url = new URL(value);
+      if (url.hostname.toLowerCase() !== 'open.spotify.com') return null;
+      const match = url.pathname.match(
+        /^(?:\/intl-[a-z]{2}(?:-[a-z0-9]{2,8})?)?(?:\/embed)?\/episode\/([A-Za-z0-9]{22})(?:\/|$)/i,
+      );
+      return match?.[1] ?? null;
+    } catch { return null; }
+  };
+  const parseSpotifyClock = (value: string) => {
+    const text = value.replace(/\s+/g, '').trim();
+    const match = text.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = match[1] ? Number(match[1]) : 0;
+    const minutes = Number(match[2]);
+    const seconds = Number(match[3]);
+    if (![hours, minutes, seconds].every((part) => Number.isFinite(part))) return null;
+    if (minutes > 59 || seconds > 59) return null;
+    return hours * 3_600 + minutes * 60 + seconds;
+  };
+  const readSpotifyNowPlaying = () => {
+    const clean = (value: string | null | undefined) => value?.replace(/\s+/g, ' ').trim() ?? '';
+    return {
+      position: parseSpotifyClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent)),
+      duration: parseSpotifyClock(clean(document.querySelector('[data-testid="playback-duration"]')?.textContent)),
+    };
+  };
+  const spotifyGeometry = (): CaptureGeometry => {
+    const bar = document.querySelector('[data-testid="now-playing-bar"]');
+    const rect = bar instanceof HTMLElement ? bar.getBoundingClientRect() : null;
+    return {
+      viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+      boundingClientRect: rect ? {
+        x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+        top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left,
+      } : null,
+      videoWidth: null, videoHeight: null, objectFit: null, objectPosition: null,
+      fullscreen: false, fullscreenElement: null,
+      scrollX: window.scrollX, scrollY: window.scrollY, frameMapping: null,
+    };
+  };
+
+  if (request.source.kind === 'spotify') {
+    if (spotifyEpisodeId(location.href) !== request.source.sourceKey) {
+      return { ok: false, code: 'SOURCE_CHANGED', message: 'The connected source changed before capture started.' };
+    }
+    const durationMs = request.endMs - request.startMs;
+    if (!Number.isSafeInteger(request.startMs) || request.startMs < 0 ||
+        !Number.isSafeInteger(request.endMs) || durationMs < 1_000 || durationMs > 90_000) {
+      return { ok: false, code: 'RANGE_INVALID', message: 'The selected range must be between 1 and 90 seconds.' };
+    }
+    const now = readSpotifyNowPlaying();
+    if (now.position === null) {
+      return { ok: false, code: 'PLAYER_NOT_READY', message: 'The Spotify now-playing time could not be read.' };
+    }
+    if (Math.abs(now.position * 1_000 - request.startMs) > 2_000) {
+      return {
+        ok: false,
+        code: 'PLAYER_NOT_READY',
+        message: 'Seek the Spotify player to the clip start, then try again.',
+      };
+    }
+    return {
+      ok: true,
+      prepared: {
+        sourceKind: 'spotify',
+        requestedStartMs: request.startMs,
+        requestedEndMs: request.endMs,
+        requestedDurationMs: durationMs,
+        playerCurrentTimeBeforeRecordingMs: Math.round(now.position * 1_000),
+        mediaDurationMs: now.duration === null ? null : Math.round(now.duration * 1_000),
+        pageUrl: location.href,
+        geometry: spotifyGeometry(),
+      },
+    };
+  }
+
   if (!sourceMatches()) {
     return { ok: false, code: 'SOURCE_CHANGED', message: 'The connected source changed before capture started.' };
   }
@@ -454,6 +533,47 @@ export async function playMediaForCaptureOnPage(
     return matches.length === 1 ? matches[0]! : null;
   };
   const acknowledgedAtMs = Date.now();
+  if (source.kind === 'spotify') {
+    const spotifyEpisodeId = (value: string) => {
+      try {
+        const url = new URL(value);
+        if (url.hostname.toLowerCase() !== 'open.spotify.com') return null;
+        const match = url.pathname.match(
+          /^(?:\/intl-[a-z]{2}(?:-[a-z0-9]{2,8})?)?(?:\/embed)?\/episode\/([A-Za-z0-9]{22})(?:\/|$)/i,
+        );
+        return match?.[1] ?? null;
+      } catch { return null; }
+    };
+    const parseSpotifyClock = (value: string) => {
+      const text = value.replace(/\s+/g, '').trim();
+      const match = text.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+      if (!match) return null;
+      const hours = match[1] ? Number(match[1]) : 0;
+      const minutes = Number(match[2]);
+      const seconds = Number(match[3]);
+      if (![hours, minutes, seconds].every((part) => Number.isFinite(part))) return null;
+      if (minutes > 59 || seconds > 59) return null;
+      return hours * 3_600 + minutes * 60 + seconds;
+    };
+    const clean = (value: string | null | undefined) => value?.replace(/\s+/g, ' ').trim() ?? '';
+    if (spotifyEpisodeId(location.href) !== source.sourceKey) {
+      return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'connected-source-changed' };
+    }
+    const position = parseSpotifyClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent));
+    if (position === null) {
+      return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'player-unavailable' };
+    }
+    if (Math.abs(position * 1_000 - startMs) > 2_000) {
+      return { ok: false, acknowledgedAtMs, currentTimeMs: Math.round(position * 1_000), message: 'playback-failed' };
+    }
+    const playButton = document.querySelector<HTMLElement>('[data-testid="control-button-playpause"]');
+    const playLabel = clean(playButton?.getAttribute('aria-label'));
+    if (playButton && /play/i.test(playLabel) && !/pause/i.test(playLabel)) {
+      try { playButton.click(); }
+      catch { return { ok: false, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(position * 1_000), message: 'playback-failed' }; }
+    }
+    return { ok: true, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(position * 1_000) };
+  }
   if (!sourceMatches()) return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'connected-source-changed' };
   const media = selectMedia();
   if (!media) return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'player-unavailable' };
@@ -663,6 +783,56 @@ export function finishMediaCaptureOnPage(
         borderTop: mapping.borderTop, borderBottom: mapping.borderBottom } : null,
     };
   };
+  if (source.kind === 'spotify') {
+    const spotifyEpisodeId = (value: string) => {
+      try {
+        const url = new URL(value);
+        if (url.hostname.toLowerCase() !== 'open.spotify.com') return null;
+        const match = url.pathname.match(
+          /^(?:\/intl-[a-z]{2}(?:-[a-z0-9]{2,8})?)?(?:\/embed)?\/episode\/([A-Za-z0-9]{22})(?:\/|$)/i,
+        );
+        return match?.[1] ?? null;
+      } catch { return null; }
+    };
+    const parseSpotifyClock = (value: string) => {
+      const text = value.replace(/\s+/g, '').trim();
+      const match = text.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+      if (!match) return null;
+      const hours = match[1] ? Number(match[1]) : 0;
+      const minutes = Number(match[2]);
+      const seconds = Number(match[3]);
+      if (![hours, minutes, seconds].every((part) => Number.isFinite(part))) return null;
+      if (minutes > 59 || seconds > 59) return null;
+      return hours * 3_600 + minutes * 60 + seconds;
+    };
+    const clean = (value: string | null | undefined) => value?.replace(/\s+/g, ' ').trim() ?? '';
+    const matches = spotifyEpisodeId(location.href) === source.sourceKey;
+    const position = parseSpotifyClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent));
+    if (pausePlayer) {
+      const playButton = document.querySelector<HTMLElement>('[data-testid="control-button-playpause"]');
+      const playLabel = clean(playButton?.getAttribute('aria-label'));
+      if (playButton && /pause/i.test(playLabel)) {
+        try { playButton.click(); } catch { /* Best-effort pause. */ }
+      }
+    }
+    const bar = document.querySelector('[data-testid="now-playing-bar"]');
+    const rect = bar instanceof HTMLElement ? bar.getBoundingClientRect() : null;
+    return {
+      currentTimeMs: position === null ? null : Math.round(position * 1_000),
+      sourceMatches: matches,
+      geometry: {
+        viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        boundingClientRect: rect ? {
+          x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+          top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left,
+        } : null,
+        videoWidth: null, videoHeight: null, objectFit: null, objectPosition: null,
+        fullscreen: false, fullscreenElement: null,
+        scrollX: window.scrollX, scrollY: window.scrollY, frameMapping: null,
+      },
+    };
+  }
   if (!sourceStillMatches()) return { currentTimeMs: null, sourceMatches: false, geometry: null };
   const selected = selectMedia();
   if (!selected) return { currentTimeMs: null, sourceMatches: true, geometry: null };

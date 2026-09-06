@@ -112,7 +112,7 @@ export function articleHoverConnectionForTab(
   tabId: number | null | undefined,
   tabUrl: string | null | undefined,
 ): ArticleHoverConnection | null {
-  if (classification === 'YouTube' || classification === 'TikTok') return null;
+  if (classification === 'YouTube' || classification === 'TikTok' || classification === 'Spotify') return null;
   if (classification !== 'Web page' && classification !== 'Podcast / web audio') {
     return null;
   }

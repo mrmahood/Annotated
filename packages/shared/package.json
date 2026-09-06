@@ -8,6 +8,7 @@
     "./url-normalization": "./src/url-normalization.ts",
     "./youtube": "./src/youtube.ts",
     "./tiktok": "./src/tiktok.ts",
+    "./spotify": "./src/spotify.ts",
     "./media-time": "./src/media-time.ts",
     "./hosted-video-layout": "./src/hosted-video-layout.ts"
   },

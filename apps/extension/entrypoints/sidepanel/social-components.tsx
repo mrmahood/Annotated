@@ -122,6 +122,20 @@ import {
   readTikTokHoverPending,
   tiktokHoverPendingMatchesTarget,
 } from '../../utils/tiktok-hover-pending';
+import {
+  cancelSpotifyHoverLink,
+  enterSpotifyHoverLink,
+  spotifyHoverNestedChipHandlers,
+  spotifyHoverRegionHandlers,
+  type SpotifyHoverConnection,
+} from '../../utils/spotify-hover-link';
+import {
+  SPOTIFY_HOVER_PENDING_KEY,
+  SPOTIFY_PENDING_CONNECT_HINT,
+  openSpotifySourceFromPanel,
+  readSpotifyHoverPending,
+  spotifyHoverPendingMatchesTarget,
+} from '../../utils/spotify-hover-pending';
 
 export type SessionSocialCache = Map<string, AnnotationPage>;
 
@@ -382,6 +396,16 @@ function audioClipHoverTarget(annotation: PublicAnnotation) {
     : null;
 }
 
+function spotifyClipHoverTarget(annotation: PublicAnnotation) {
+  return annotation.kind === 'spotify'
+    ? {
+        episodeId: annotation.source.episodeId,
+        startMs: annotation.startMs,
+        endMs: annotation.endMs,
+      }
+    : null;
+}
+
 function pageVideoClipHoverTarget(annotation: PublicAnnotation) {
   return annotation.kind === 'video'
     ? {
@@ -495,6 +519,31 @@ function handleTikTokSourceOpenClick(
   });
 }
 
+function handleSpotifySourceOpenClick(
+  event: { preventDefault: () => void },
+  annotation: PublicAnnotation,
+  connection: SpotifyHoverConnection | null,
+  href: string,
+  onAwaitingConnection?: (awaiting: boolean) => void,
+) {
+  const target = spotifyClipHoverTarget(annotation);
+  if (!target) return;
+  event.preventDefault();
+  void openSpotifySourceFromPanel({
+    target: {
+      ...target,
+      canonicalUrl: annotation.source.canonicalUrl,
+    },
+    connection,
+    href,
+    openFallback: (openHref) => {
+      window.open(openHref, '_blank', 'noopener,noreferrer');
+    },
+  }).then((outcome) => {
+    onAwaitingConnection?.(outcome.awaitingConnection);
+  });
+}
+
 function handleSourceOpenClick(
   event: { preventDefault: () => void },
   annotation: PublicAnnotation,
@@ -502,6 +551,7 @@ function handleSourceOpenClick(
   audioHover: AudioHoverConnection | null,
   pageVideoHover: PageVideoHoverConnection | null,
   tiktokHover: TikTokHoverConnection | null,
+  spotifyHover: SpotifyHoverConnection | null,
   href: string,
   onArticleHoverResult?: ArticleHoverResultListener,
   onAwaitingConnection?: (awaiting: boolean) => void,
@@ -527,6 +577,10 @@ function handleSourceOpenClick(
   }
   if (annotation.kind === 'tiktok') {
     handleTikTokSourceOpenClick(event, annotation, tiktokHover, href, onAwaitingConnection);
+    return;
+  }
+  if (annotation.kind === 'spotify') {
+    handleSpotifySourceOpenClick(event, annotation, spotifyHover, href, onAwaitingConnection);
   }
 }
 
@@ -766,12 +820,56 @@ function TikTokPendingConnectHint({ show }: { show: boolean }) {
   return <p className="tiktok-pending-connect-hint">{TIKTOK_PENDING_CONNECT_HINT}</p>;
 }
 
+function useSpotifyPendingConnectHint(annotation: PublicAnnotation | null) {
+  const [awaiting, setAwaiting] = useState(false);
+  const target = annotation ? spotifyClipHoverTarget(annotation) : null;
+  const targetKey = target
+    ? `${target.episodeId}\n${target.startMs}\n${target.endMs}`
+    : '';
+
+  useEffect(() => {
+    if (!awaiting || !target) return;
+    let mounted = true;
+    const matchedTarget = target;
+    const sync = async () => {
+      const pending = await readSpotifyHoverPending();
+      if (!mounted) return;
+      if (!pending || !spotifyHoverPendingMatchesTarget(pending, matchedTarget)) {
+        setAwaiting(false);
+      }
+    };
+    void sync();
+    const onChange = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+      if (area === 'session' && Object.prototype.hasOwnProperty.call(changes, SPOTIFY_HOVER_PENDING_KEY)) {
+        void sync();
+      }
+    };
+    chrome.storage.onChanged.addListener(onChange);
+    return () => {
+      mounted = false;
+      chrome.storage.onChanged.removeListener(onChange);
+    };
+  }, [awaiting, targetKey]);
+
+  return {
+    showHint: awaiting,
+    onAwaitingConnection: (value: boolean) => setAwaiting(value),
+  };
+}
+
+function SpotifyPendingConnectHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return <p className="spotify-pending-connect-hint">{SPOTIFY_PENDING_CONNECT_HINT}</p>;
+}
+
 function ExcerptTranscript({
   transcript,
   youtubeHover = null,
   clipTarget = null,
   tiktokHover = null,
   tiktokTarget = null,
+  spotifyHover = null,
+  spotifyTarget = null,
   audioHover = null,
   audioTarget = null,
   pageVideoHover = null,
@@ -782,6 +880,8 @@ function ExcerptTranscript({
   clipTarget?: { videoId: string; startMs: number; endMs: number } | null;
   tiktokHover?: TikTokHoverConnection | null;
   tiktokTarget?: { videoId: string; startMs: number; endMs: number } | null;
+  spotifyHover?: SpotifyHoverConnection | null;
+  spotifyTarget?: { episodeId: string; startMs: number; endMs: number } | null;
   audioHover?: AudioHoverConnection | null;
   audioTarget?: { canonicalUrl: string; normalizedUrl: string; startMs: number; endMs: number } | null;
   pageVideoHover?: PageVideoHoverConnection | null;
@@ -813,6 +913,13 @@ function ExcerptTranscript({
                   : tiktokTarget
                     ? tiktokHoverRegionHandlers(tiktokHover, {
                       ...tiktokTarget,
+                      strength: 'strong',
+                      startMs: segment.startMs,
+                      endMs: segment.endMs,
+                    })
+                  : spotifyTarget
+                    ? spotifyHoverRegionHandlers(spotifyHover, {
+                      ...spotifyTarget,
                       strength: 'strong',
                       startMs: segment.startMs,
                       endMs: segment.endMs,
@@ -857,11 +964,12 @@ function Avatar({ name, url, size = 30 }: { name: string; url: string | null; si
 
 function sourceChipLabel(annotation: PublicAnnotation): string {
   if (annotation.kind === 'youtube' || annotation.kind === 'tiktok' || annotation.kind === 'video') return 'Video';
+  if (annotation.kind === 'spotify') return 'Spotify';
   if (annotation.kind === 'audio') return 'Audio';
   return 'Text';
 }
 
-function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null, tiktokHover = null }: {
+function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null, tiktokHover = null, spotifyHover = null }: {
   annotation: PublicAnnotation;
   navigation: NavigationCallbacks;
   supabase: SupabaseClient;
@@ -871,6 +979,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
   tiktokHover?: TikTokHoverConnection | null;
+  spotifyHover?: SpotifyHoverConnection | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hosted, setHosted] = useState<HostedExcerpt | null>(
@@ -884,6 +993,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
   const { showHint: showPageVideoHint, onAwaitingConnection: onPageVideoAwaitingConnection } = usePageVideoPendingConnectHint(annotation);
   const { showHint: showTikTokHint, onAwaitingConnection: onTikTokAwaitingConnection } = useTikTokPendingConnectHint(annotation);
+  const { showHint: showSpotifyHint, onAwaitingConnection: onSpotifyAwaitingConnection } = useSpotifyPendingConnectHint(annotation);
   const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
@@ -941,6 +1051,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   );
   const clipTarget = youtubeClipHoverTarget(annotation);
   const tiktokTarget = tiktokClipHoverTarget(annotation);
+  const spotifyTarget = spotifyClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
   const audioTarget = audioClipHoverTarget(annotation);
   const pageVideoTarget = pageVideoClipHoverTarget(annotation);
@@ -952,6 +1063,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
         ? pageVideoHoverRegionHandlers(pageVideoHover, { ...pageVideoTarget, strength: 'soft' })
         : tiktokTarget
           ? tiktokHoverRegionHandlers(tiktokHover, { ...tiktokTarget, strength: 'soft' })
+        : spotifyTarget
+          ? spotifyHoverRegionHandlers(spotifyHover, { ...spotifyTarget, strength: 'soft' })
         : youtubeHoverRegionHandlers(
           youtubeHover,
           clipTarget ? { ...clipTarget, strength: 'soft' } : null,
@@ -964,6 +1077,8 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
         ? pageVideoHoverNestedChipHandlers(pageVideoHover, pageVideoTarget)
         : tiktokTarget
           ? tiktokHoverNestedChipHandlers(tiktokHover, tiktokTarget)
+        : spotifyTarget
+          ? spotifyHoverNestedChipHandlers(spotifyHover, spotifyTarget)
         : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
 
   return (
@@ -1037,6 +1152,15 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                       });
                       return;
                     }
+                    if (spotifyHover && spotifyTarget) {
+                      enterSpotifyHoverLink(spotifyHover, {
+                        ...spotifyTarget,
+                        strength: 'strong',
+                        startMs: segment.startMs,
+                        endMs: segment.endMs,
+                      });
+                      return;
+                    }
                     if (!youtubeHover || !clipTarget) return;
                     enterYouTubeHoverLink(youtubeHover, {
                       videoId: clipTarget.videoId,
@@ -1067,6 +1191,13 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
                       });
                       return;
                     }
+                    if (spotifyHover && spotifyTarget) {
+                      enterSpotifyHoverLink(spotifyHover, {
+                        ...spotifyTarget,
+                        strength: 'soft',
+                      });
+                      return;
+                    }
                     if (!youtubeHover || !clipTarget) return;
                     enterYouTubeHoverLink(youtubeHover, {
                       ...clipTarget,
@@ -1084,11 +1215,12 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           {expanded && hasArticleAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
           )}
-          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSourceOpenClick(event, annotation, articleHover, audioHover, pageVideoHover, tiktokHover, sourceUrl, onArticleHoverResult, annotation.kind === 'audio' ? onAudioAwaitingConnection : annotation.kind === 'video' ? onPageVideoAwaitingConnection : annotation.kind === 'tiktok' ? onTikTokAwaitingConnection : onAwaitingConnection)}>Open source ↗</a>
+          <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSourceOpenClick(event, annotation, articleHover, audioHover, pageVideoHover, tiktokHover, spotifyHover, sourceUrl, onArticleHoverResult, annotation.kind === 'audio' ? onAudioAwaitingConnection : annotation.kind === 'video' ? onPageVideoAwaitingConnection : annotation.kind === 'tiktok' ? onTikTokAwaitingConnection : annotation.kind === 'spotify' ? onSpotifyAwaitingConnection : onAwaitingConnection)}>Open source ↗</a>
           <ArticlePendingConnectHint show={showHint} />
           <AudioPendingConnectHint show={showAudioHint} />
           <PageVideoPendingConnectHint show={showPageVideoHint} />
           <TikTokPendingConnectHint show={showTikTokHint} />
+          <SpotifyPendingConnectHint show={showSpotifyHint} />
           <ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} />
         </div>
       </div>
@@ -1120,6 +1252,7 @@ export function AnnotationCollection({
   audioHover = null,
   pageVideoHover = null,
   tiktokHover = null,
+  spotifyHover = null,
 }: {
   supabase: SupabaseClient;
   cache: SessionSocialCache;
@@ -1136,6 +1269,7 @@ export function AnnotationCollection({
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
   tiktokHover?: TikTokHoverConnection | null;
+  spotifyHover?: SpotifyHoverConnection | null;
 }) {
   const [page, setPage] = useState<AnnotationPage | null>(() => cache.get(cacheKey) ?? null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(page ? 'ready' : 'loading');
@@ -1149,6 +1283,7 @@ export function AnnotationCollection({
     cancelAudioHoverLink();
     cancelPageVideoHoverLink();
     cancelTikTokHoverLink();
+    cancelSpotifyHoverLink();
   }, []);
 
   const loadInitial = useCallback(async (force = false) => {
@@ -1218,7 +1353,7 @@ export function AnnotationCollection({
     <section className="social-list-section" aria-label={compactHeading ?? 'Annotations'}>
       {compactHeading && <div className="section-heading"><h2>{compactHeading}</h2><span>{page.total ?? page.annotations.length}</span></div>}
       <div className="social-list">
-        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} />)}
+        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} />)}
       </div>
       {page.hasMore && (
         <button className="button button-secondary load-more" type="button" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -1452,6 +1587,7 @@ export function AnnotationDetailView({
   audioHover = null,
   pageVideoHover = null,
   tiktokHover = null,
+  spotifyHover = null,
 }: {
   supabase: SupabaseClient;
   annotationId: string;
@@ -1462,12 +1598,13 @@ export function AnnotationDetailView({
   connectedVideoId?: string | null;
   onPlayConnectedClip?: (annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' }>) => Promise<void>;
   connectedAudioNormalizedUrl?: string | null;
-  onPlayConnectedAudioClip?: (annotation: Extract<PublicAnnotation, { kind: 'audio' }>) => Promise<void>;
+  onPlayConnectedAudioClip?: (annotation: Extract<PublicAnnotation, { kind: 'audio' | 'spotify' }>) => Promise<void>;
   youtubeHover?: YouTubeHoverConnection | null;
   articleHover?: ArticleHoverConnection | null;
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
   tiktokHover?: TikTokHoverConnection | null;
+  spotifyHover?: SpotifyHoverConnection | null;
 } & AuthProps) {
   const [annotation, setAnnotation] = useState<PublicAnnotation | null>(null);
   const [profile, setProfile] = useState<PublicProfile | null>(null);
@@ -1479,6 +1616,7 @@ export function AnnotationDetailView({
   const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
   const { showHint: showPageVideoHint, onAwaitingConnection: onPageVideoAwaitingConnection } = usePageVideoPendingConnectHint(annotation);
   const { showHint: showTikTokHint, onAwaitingConnection: onTikTokAwaitingConnection } = useTikTokPendingConnectHint(annotation);
+  const { showHint: showSpotifyHint, onAwaitingConnection: onSpotifyAwaitingConnection } = useSpotifyPendingConnectHint(annotation);
 
   useEffect(() => {
     let current = true;
@@ -1516,10 +1654,11 @@ export function AnnotationDetailView({
   const canPlayConnectedClip = !hostedReady &&
     (annotation.kind === 'youtube' || annotation.kind === 'tiktok') &&
     connectedVideoId === annotation.source.videoId;
-  const canPlayConnectedAudioClip = !hostedReady && annotation.kind === 'audio' &&
+  const canPlayConnectedAudioClip = !hostedReady && (annotation.kind === 'audio' || annotation.kind === 'spotify') &&
     connectedAudioNormalizedUrl === annotation.source.normalizedUrl;
   const clipTarget = youtubeClipHoverTarget(annotation);
   const tiktokTarget = tiktokClipHoverTarget(annotation);
+  const spotifyTarget = spotifyClipHoverTarget(annotation);
   const articleTarget = articlePassageHoverTarget(annotation);
   const audioTarget = audioClipHoverTarget(annotation);
   const pageVideoTarget = pageVideoClipHoverTarget(annotation);
@@ -1531,6 +1670,8 @@ export function AnnotationDetailView({
         ? pageVideoHoverRegionHandlers(pageVideoHover, { ...pageVideoTarget, strength: 'soft' })
         : tiktokTarget
           ? tiktokHoverRegionHandlers(tiktokHover, { ...tiktokTarget, strength: 'soft' })
+        : spotifyTarget
+          ? spotifyHoverRegionHandlers(spotifyHover, { ...spotifyTarget, strength: 'soft' })
         : youtubeHoverRegionHandlers(
           youtubeHover,
           clipTarget ? { ...clipTarget, strength: 'soft' } : null,
@@ -1543,11 +1684,13 @@ export function AnnotationDetailView({
         ? pageVideoHoverNestedChipHandlers(pageVideoHover, pageVideoTarget)
         : tiktokTarget
           ? tiktokHoverNestedChipHandlers(tiktokHover, tiktokTarget)
+        : spotifyTarget
+          ? spotifyHoverNestedChipHandlers(spotifyHover, spotifyTarget)
         : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
   const playConnected = async () => {
     if (annotation.kind === 'article' || annotation.kind === 'video' || hostedReady) return;
     if ((annotation.kind === 'youtube' || annotation.kind === 'tiktok') && !onPlayConnectedClip) return;
-    if (annotation.kind === 'audio' && !onPlayConnectedAudioClip) return;
+    if ((annotation.kind === 'audio' || annotation.kind === 'spotify') && !onPlayConnectedAudioClip) return;
     setPlayState('playing');
     try {
       if (annotation.kind === 'youtube' || annotation.kind === 'tiktok') await onPlayConnectedClip!(annotation);
@@ -1576,12 +1719,15 @@ export function AnnotationDetailView({
       </> : annotation.kind === 'video' ? <>
         <section className="detail-source" {...sourceHover}><span className="section-label">Webpage video</span><h1>{annotation.source.title ?? 'Video source'}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row"><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handlePageVideoSourceOpenClick(event, annotation, pageVideoHover, sourceOpenUrl, onPageVideoAwaitingConnection)}>Open original source ↗</a></div><PageVideoPendingConnectHint show={showPageVideoHint} /></section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
+      </> : annotation.kind === 'spotify' ? <>
+        <section className="detail-source" {...sourceHover}><span className="section-label">Spotify episode</span><h1>{annotation.source.title ?? 'Spotify episode'}</h1>{(annotation.source.showName || annotation.source.author) && <p>{[annotation.source.showName, annotation.source.author].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">open.spotify.com</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSpotifySourceOpenClick(event, annotation, spotifyHover, sourceOpenUrl, onSpotifyAwaitingConnection)}>Open on Spotify ↗</a></div><SpotifyPendingConnectHint show={showSpotifyHint} />{playState === 'error' && <p className="inline-error" role="alert">Seek the Spotify player to the clip start, then try again.</p>}</section>
+        <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </> : <>
         <section className="detail-source" {...sourceHover}><span className="section-label">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleAudioSourceOpenClick(event, annotation, audioHover, sourceOpenUrl, onAudioAwaitingConnection)}>Open original source ↗</a></div><AudioPendingConnectHint show={showAudioHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="section-label">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </>}
       {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} sourceType={annotation.kind} />}
-      {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} tiktokHover={tiktokHover} tiktokTarget={tiktokTarget} audioHover={audioHover} audioTarget={audioTarget} pageVideoHover={pageVideoHover} pageVideoTarget={pageVideoTarget} />}
+      {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} tiktokHover={tiktokHover} tiktokTarget={tiktokTarget} spotifyHover={spotifyHover} spotifyTarget={spotifyTarget} audioHover={audioHover} audioTarget={audioTarget} pageVideoHover={pageVideoHover} pageVideoTarget={pageVideoTarget} />}
       {hostedRemoved && (
         <section className="detail-media-removed" aria-labelledby="detail-media-removed-heading">
           <span className="section-label" id="detail-media-removed-heading">Archived excerpt</span>
@@ -1609,6 +1755,7 @@ export function ProfileView({
   audioHover = null,
   pageVideoHover = null,
   tiktokHover = null,
+  spotifyHover = null,
 }: {
   supabase: SupabaseClient;
   profileId: string;
@@ -1620,6 +1767,7 @@ export function ProfileView({
   audioHover?: AudioHoverConnection | null;
   pageVideoHover?: PageVideoHoverConnection | null;
   tiktokHover?: TikTokHoverConnection | null;
+  spotifyHover?: SpotifyHoverConnection | null;
 } & AuthProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
@@ -1645,7 +1793,7 @@ export function ProfileView({
         <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} onCountChange={(followerCount) => setProfile((current) => current ? { ...current, followerCount } : current)} />
         {publicUrl && <a className="secondary-link" href={publicUrl} target="_blank" rel="noopener noreferrer">Open public profile ↗</a>}
       </header>
-      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
+      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
     </div>
   );
 }

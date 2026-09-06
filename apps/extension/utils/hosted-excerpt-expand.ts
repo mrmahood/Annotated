@@ -9,7 +9,7 @@ export type HostedExcerptCardStatus = 'idle' | 'loading' | 'ready' | 'unavailabl
 export function hostedExcerptExpandSessionKey(input: {
   expanded: boolean;
   annotationId: string;
-  kind: 'article' | 'youtube' | 'tiktok' | 'audio' | 'video';
+  kind: 'article' | 'youtube' | 'tiktok' | 'audio' | 'spotify' | 'video';
 }): string | null {
   if (!input.expanded || input.kind === 'article') return null;
   return `${input.annotationId}:${input.kind}`;

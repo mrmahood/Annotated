@@ -9,6 +9,7 @@ import {
 import { applyPendingArticleHoverOnTab } from './article-hover-pending.ts';
 import { applyPendingAudioHoverOnTab } from './audio-hover-pending.ts';
 import { applyPendingPageVideoHoverOnTab } from './page-video-hover-pending.ts';
+import { applyPendingSpotifyHoverOnTab } from './spotify-hover-pending.ts';
 import { ACTIVE_CAPTURE_KEY } from './media-capture-background.ts';
 
 export type SurfFollowTab = {
@@ -138,6 +139,7 @@ export function installSurfFollow(
     await applyPendingArticleHoverOnTab(tab);
     await applyPendingAudioHoverOnTab(tab);
     await applyPendingPageVideoHoverOnTab(tab);
+    await applyPendingSpotifyHoverOnTab(tab);
   });
 
   const applyPendingIfReady = (changeInfo: SurfFollowChangeInfo, tab: SurfFollowTab) => {

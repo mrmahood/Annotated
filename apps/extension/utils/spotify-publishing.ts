@@ -1,24 +1,21 @@
-import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
-import { isSpotifyEpisodeUrl } from '@annotated/shared/spotify';
+import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isUuid } from './social-helpers.ts';
 import type { HostedMediaOperation } from './media-capture.ts';
 
-export type AudioClipAnnotationInput = {
+export type SpotifyAnnotationInput = {
   sourceUrl: string;
-  canonicalUrl: string;
   title: string;
   author: string | null;
-  publisher: string | null;
   showName: string | null;
   startMs: number;
   endMs: number;
   commentaryText: string;
-  mediaDurationMs: number;
+  mediaDurationMs?: number | null;
 };
 
-export function parseHostedAudioBeginResponse(data: unknown): HostedMediaOperation {
+export function parseHostedSpotifyBeginResponse(data: unknown): HostedMediaOperation {
   const row = Array.isArray(data) && data.length === 1 ? data[0] : data;
   if (
     typeof row !== 'object' || row === null ||
@@ -37,9 +34,9 @@ export function parseHostedAudioBeginResponse(data: unknown): HostedMediaOperati
   };
 }
 
-export async function beginHostedAudioClipAnnotation(
+export async function beginHostedSpotifyAnnotation(
   supabase: SupabaseClient,
-  input: AudioClipAnnotationInput,
+  input: SpotifyAnnotationInput,
 ): Promise<HostedMediaOperation> {
   const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] =
     await Promise.all([supabase.auth.getSession(), supabase.auth.getUser()]);
@@ -49,10 +46,7 @@ export async function beginHostedAudioClipAnnotation(
     userData.user.id !== sessionUser.id || !isUuid(sessionUser.id)
   ) throw new Error('The authenticated session is unavailable.');
 
-  if (isSpotifyEpisodeUrl(input.sourceUrl) || isSpotifyEpisodeUrl(input.canonicalUrl)) {
-    throw new Error('Podcast audio clips cannot use a Spotify episode URL. Use the Spotify hosted begin path.');
-  }
-  const identity = getAudioSourceIdentity(input.sourceUrl, input.canonicalUrl);
+  const identity = getSpotifyEpisodeIdentity(input.sourceUrl);
   const rangeError = getNewMediaPublicationRangeError(
     input.startMs,
     input.endMs,
@@ -63,12 +57,12 @@ export async function beginHostedAudioClipAnnotation(
     throw new Error('Commentary must contain between 1 and 2,000 characters.');
   }
 
-  const { data, error } = await supabase.rpc('begin_hosted_audio_annotation', {
+  const { data, error } = await supabase.rpc('begin_hosted_spotify_annotation', {
     p_normalized_url: identity.normalizedUrl,
     p_canonical_url: identity.canonicalUrl,
+    p_episode_id: identity.episodeId,
     p_episode_title: input.title,
     p_author: input.author,
-    p_publisher: input.publisher,
     p_show_name: input.showName,
     p_start_ms: input.startMs,
     p_end_ms: input.endMs,
@@ -76,7 +70,7 @@ export async function beginHostedAudioClipAnnotation(
   });
   if (error) {
     const raw = typeof error.message === 'string' ? error.message.trim() : '';
-    throw new Error(raw || 'The audio clip could not be published.');
+    throw new Error(raw || 'The Spotify clip could not be published.');
   }
-  return parseHostedAudioBeginResponse(data);
+  return parseHostedSpotifyBeginResponse(data);
 }

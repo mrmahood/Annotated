@@ -9,12 +9,12 @@ page-video hover linking) is implemented pending owner Chrome
 acceptance. Sprint 6 (TikTok hosted capture/publish + hover) is
 implemented on `main` (squash-merged PR #78) pending owner Chrome
 and Staging acceptance. After TikTok Sprint 6, Spotify podcast /
-episode audio is the next platform follow-on (roadmap planning
-only). Typed clip range entry (type start/end such as `1:00`–`2:30`
-in addition to Set start / Set end) is a separate Create UX
-follow-on; it is implemented on this branch. Approving the polish
-sections does not authorize migrations, Staging, Production, Phase G,
-or Spotify capture. X OAuth Staging re-enable is a separate
+episode audio capture + hover is implemented on this branch
+(`docs/product/spotify-episode-capture.md`). Typed clip range entry
+(type start/end such as `1:00`–`2:30` in addition to Set start /
+Set end) is a separate Create UX follow-on; it is implemented on
+this branch. Approving the polish sections does not authorize
+Staging apply, Production, or Phase G. X OAuth Staging re-enable is a separate
 owner-authorized increment (`docs/product/x-oauth-staging-reenable.md`).
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
@@ -51,9 +51,9 @@ remaining hover-link follow-ons:
 - TikTok hosted capture, Feed Video/TikTok cards, and hover (Sprint 6,
   **implemented** on `main` via PR #78; owner Chrome and Staging
   acceptance still required);
-- after Sprint 6, Spotify podcast / episode audio capture + later
-  hover parity when the connected tab is a Spotify episode page
-  (roadmap only; not this brief’s implementation slice).
+- after Sprint 6, Spotify podcast / episode audio capture + hover
+  (implemented on this branch; see
+  `docs/product/spotify-episode-capture.md`).
 
 The annotation is the product; chrome gets out of the way.
 
@@ -501,18 +501,15 @@ Known v1 limits — fail closed:
 Webpage HTML5 publish remains the niche article-backed path.
 News-site opaque embeds (Brightcove/Fox) stay later. No X OAuth.
 
-### 8.6 After Sprint 6 — Spotify podcast / episode hover (later)
+### 8.6 After Sprint 6 — Spotify podcast / episode capture + hover
 
-Sprint 6 TikTok is implemented on `main` (squash-merged PR #78);
-owner Chrome and Staging acceptance are still required. After that,
-later hover parity for **Spotify episode pages** should reuse Sprint
-4 podcast/audio grammar when the connected tab is the annotation’s
-Spotify episode URL — first-class episode identity, not generic
-webpage HTML5 audio. Fail closed on login walls and opaque player
-chrome until a bounded adapter exists. DRM / stream-URL scraping
-stay out of scope. This brief does not authorize Spotify Create UI,
-capture, or migrations; see `docs/product/roadmap.md`. Fox /
-Brightcove news-site adapters remain a separate later vertical.
+Implemented on this branch. First-class `source_type = spotify`,
+Create → Audio, Feed chip **Spotify**, and now-playing-bar hover.
+Capture is tabCapture of what the connected tab can already play
+(logged-in listen or a logged-out limited preview that is already
+audible). Public playback is the hosted derivative, not a Spotify
+embed. See `docs/product/spotify-episode-capture.md`. DRM /
+stream-URL scraping stay out of scope. Fox / Brightcove remain later.
 
 ## 9. Acceptance criteria (Sprint 1)
 
@@ -559,9 +556,8 @@ Out of this brief’s implementation slices:
 - Persistent content scripts, diagnostic UI, or brittle host-specific
   piercing for any hover sprint. `host_permissions` are owner-authorized
   only as documented in §5.3.
-- Spotify podcast / episode capture, publication, migrations, or
-  hover. After TikTok Sprint 6 those belong on the product roadmap,
-  not in this brief’s implementation slices.
+- Spotify Production apply or Cloud Run unpause. Staging apply for
+  `20260906031846_begin_hosted_spotify_annotation` is owner-only.
 - Typed clip range entry is implemented as a separate Create UX
   increment, not as part of the hover sprints.
 
@@ -576,8 +572,8 @@ Approving this document authorizes the polish slices described here.
 Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
 Sprint 4 and Sprint 5 are implemented pending owner Chrome acceptance.
 Sprint 6 is implemented on `main` (PR #78) pending owner Chrome and
-Staging acceptance. After that, Spotify podcast / episode audio is
-the next platform follow-on and is not authorized here. Typed
+Staging acceptance. Spotify episode capture + hover is implemented
+on this branch pending owner Chrome and Staging acceptance. Typed
 start/end clip fields are a separate Create UX follow-on and are
 not authorized here. Do not treat this brief as permission to
 change capture, hosted-media publication, claims, or extension

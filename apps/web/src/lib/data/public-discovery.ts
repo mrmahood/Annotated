@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
 import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from "@annotated/shared/youtube";
 import { getTikTokVideoIdentity, isTikTokVideoUrl } from "@annotated/shared/tiktok";
+import { getSpotifyEpisodeIdentity, isSpotifyEpisodeUrl } from "@annotated/shared/spotify";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
 import {
@@ -77,6 +78,13 @@ export type PublicAnnotationCardData = PublicAnnotationCardBase & (
       startMs: number;
       endMs: number;
       source: PublicAnnotationCardBase["source"] & { type: "podcast"; videoId: null };
+    }
+  | {
+      kind: "spotify";
+      selectedText: null;
+      startMs: number;
+      endMs: number;
+      source: PublicAnnotationCardBase["source"] & { type: "spotify"; videoId: null; episodeId: string };
     }
 );
 
@@ -224,7 +232,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
     getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
     try {
-      if (isYouTubeVideoUrl(canonicalUrl.href) || isTikTokVideoUrl(canonicalUrl.href)) return null;
+      if (isYouTubeVideoUrl(canonicalUrl.href) || isTikTokVideoUrl(canonicalUrl.href) || isSpotifyEpisodeUrl(canonicalUrl.href)) return null;
       const normalizedUrl = normalizeArticleUrl(canonicalUrl.href);
       if (normalizedUrl !== getOptionalText(source.normalized_url)) return null;
       return {
@@ -247,6 +255,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
     getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
   ) {
     try {
+      if (isSpotifyEpisodeUrl(canonicalUrl.href)) return null;
       const identity = getAudioSourceIdentity(canonicalUrl.href);
       if (identity.normalizedUrl !== getOptionalText(source.normalized_url)) return null;
       return {
@@ -256,6 +265,26 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
         startMs: startMs as number,
         endMs: endMs as number,
         source: { ...common.source, type: "podcast", videoId: null },
+      };
+    } catch { return null; }
+  }
+
+  if (
+    annotationType === "audio_clip" && sourceType === "spotify" &&
+    targetType === "time_range" && Number.isSafeInteger(startMs) &&
+    Number.isSafeInteger(endMs) &&
+    getHistoricalStoredTargetRangeError(startMs as number, endMs as number) === null
+  ) {
+    try {
+      const identity = getSpotifyEpisodeIdentity(canonicalUrl.href);
+      if (identity.normalizedUrl !== getOptionalText(source.normalized_url)) return null;
+      return {
+        ...common,
+        kind: "spotify",
+        selectedText: null,
+        startMs: startMs as number,
+        endMs: endMs as number,
+        source: { ...common.source, type: "spotify", videoId: null, episodeId: identity.episodeId },
       };
     } catch { return null; }
   }

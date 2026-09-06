@@ -6,11 +6,13 @@ test("public detail mapping accepts article-backed webpage video_clip rows", asy
   const source = await readFile(new URL("./public-annotation-model.ts", import.meta.url), "utf8");
   assert.match(source, /sourceValue\.source_type === "youtube"/);
   assert.match(source, /sourceValue\.source_type === "tiktok"/);
+  assert.match(source, /sourceValue\.source_type === "spotify"/);
   assert.match(source, /sourceValue\.source_type === "article" && targetValue\.target_type === "time_range"/);
   assert.match(source, /isYouTubeVideoUrl\(canonicalUrl\.href\) \|\| isTikTokVideoUrl\(canonicalUrl\.href\)/);
   assert.match(source, /normalizeArticleUrl\(canonicalUrl\.href\)/);
   assert.match(source, /type: "article"; videoId: null/);
   assert.match(source, /kind: "video_hosted"/);
+  assert.match(source, /isSpotifyEpisodeUrl\(canonicalUrl\.href\)/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });
 
@@ -24,6 +26,8 @@ test("public detail page labels webpage video separately from YouTube", async ()
   assert.match(page, /isTikTokVideo/);
   assert.match(page, /"Webpage video"/);
   assert.match(page, /"TikTok source"/);
+  assert.match(page, /"Spotify episode"/);
+  assert.match(page, /"Open clip on Spotify"/);
   assert.match(page, /isYouTubeVideo \? "Open clip on YouTube"/);
   assert.match(page, /isTikTokVideo \? "Open clip on TikTok"/);
   assert.match(page, /if \(isYouTubeVideo\) \{\s*sourceUrl = getYouTubeTimestampUrl/);

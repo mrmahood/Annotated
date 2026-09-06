@@ -1,4 +1,5 @@
 import { normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 
@@ -18,7 +19,7 @@ export const MEDIA_CAPTURE_OFFSCREEN_EVENT = 'annotated.mediaCapture.offscreenEv
 export const MEDIA_CAPTURE_OFFSCREEN_NEEDS_END = 'annotated.mediaCapture.offscreenNeedsEnd.v1';
 
 export type CaptureSourceIdentity = {
-  kind: 'youtube' | 'tiktok' | 'web-video' | 'audio';
+  kind: 'youtube' | 'tiktok' | 'web-video' | 'audio' | 'spotify';
   pageUrl: string;
   sourceKey: string;
   playerIdentity: string;
@@ -46,7 +47,7 @@ export type CaptureGeometry = {
   };
 };
 export type CapturePreparedPage = {
-  sourceKind: 'youtube' | 'tiktok' | 'web-video' | 'audio'; requestedStartMs: number; requestedEndMs: number;
+  sourceKind: 'youtube' | 'tiktok' | 'web-video' | 'audio' | 'spotify'; requestedStartMs: number; requestedEndMs: number;
   requestedDurationMs: number; playerCurrentTimeBeforeRecordingMs: number;
   mediaDurationMs: number | null; pageUrl: string; geometry: CaptureGeometry;
 };
@@ -239,6 +240,14 @@ export function sourceIdentityMatchesUrl(source: CaptureSourceIdentity, value: s
       return normalizeArticleUrl(actual.href) === source.sourceKey &&
         normalizeArticleUrl(source.pageUrl) === source.sourceKey;
     }
+    if (source.kind === 'spotify') {
+      try {
+        return getSpotifyEpisodeIdentity(actual.href).episodeId === source.sourceKey &&
+          getSpotifyEpisodeIdentity(source.pageUrl).episodeId === source.sourceKey;
+      } catch {
+        return false;
+      }
+    }
     return normalizeAudioSourceUrl(actual.href) === source.sourceKey &&
       normalizeAudioSourceUrl(source.pageUrl) === source.sourceKey;
   } catch { return false; }
@@ -261,7 +270,7 @@ export function isHostedMediaOperation(value: unknown): value is HostedMediaOper
 export function isCaptureStartRequest(value: unknown): value is CaptureStartRequest {
   if (!isRecord(value) || !isRecord(value.source)) return false;
   return isCaptureId(value.captureId) && isInteger(value.tabId) && value.tabId >= 0 &&
-    (value.source.kind === 'youtube' || value.source.kind === 'tiktok' || value.source.kind === 'web-video' || value.source.kind === 'audio') &&
+    (value.source.kind === 'youtube' || value.source.kind === 'tiktok' || value.source.kind === 'web-video' || value.source.kind === 'audio' || value.source.kind === 'spotify') &&
     typeof value.source.pageUrl === 'string' && value.source.pageUrl.length > 0 &&
     typeof value.source.sourceKey === 'string' && value.source.sourceKey.length > 0 &&
     typeof value.source.playerIdentity === 'string' && (
@@ -269,6 +278,8 @@ export function isCaptureStartRequest(value: unknown): value is CaptureStartRequ
         ? /^video:[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
         : value.source.kind === 'web-video'
           ? /^web-video:(?:top|[1-9][0-9]*(?:\.[1-9][0-9]*)*):[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
+        : value.source.kind === 'spotify'
+          ? /^spotify-now-playing:1:[0-9a-f]{8}$/.test(value.source.playerIdentity)
         : /^(?:audio|audio-only-video):[1-5]:[0-9a-f]{8}$/.test(value.source.playerIdentity)
     ) &&
     getCaptureRangeError(value.startMs, value.endMs) === null &&
@@ -306,7 +317,7 @@ export function isCapturePreparedPage(value: unknown): value is CapturePreparedP
     typeof frameMapping.origin === 'string' && /^https?:\/\//.test(frameMapping.origin) &&
     ['viewportWidth','viewportHeight','borderLeft','borderRight','borderTop','borderBottom']
       .every((key) => finite(frameMapping[key])));
-  return (value.sourceKind === 'youtube' || value.sourceKind === 'tiktok' || value.sourceKind === 'web-video' || value.sourceKind === 'audio') &&
+  return (value.sourceKind === 'youtube' || value.sourceKind === 'tiktok' || value.sourceKind === 'web-video' || value.sourceKind === 'audio' || value.sourceKind === 'spotify') &&
     isInteger(value.requestedStartMs) && isInteger(value.requestedEndMs) &&
     value.requestedDurationMs === value.requestedEndMs - value.requestedStartMs &&
     getCaptureRangeError(value.requestedStartMs, value.requestedEndMs) === null &&

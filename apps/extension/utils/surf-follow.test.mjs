@@ -194,6 +194,7 @@ test('surf-follow wiring uses tabs listeners and does not add persistent content
   assert.match(background, /applyPendingArticleHoverOnTab/);
   assert.match(background, /applyPendingAudioHoverOnTab/);
   assert.match(background, /applyPendingPageVideoHoverOnTab/);
+  assert.match(background, /applyPendingSpotifyHoverOnTab/);
   assert.doesNotMatch(background, /defineContentScript|content_scripts/);
 
   assert.match(follow, /tabs\.onActivated/);
@@ -202,5 +203,6 @@ test('surf-follow wiring uses tabs listeners and does not add persistent content
   assert.match(follow, /applyPendingArticleHoverOnTab/);
   assert.match(follow, /applyPendingAudioHoverOnTab/);
   assert.match(follow, /applyPendingPageVideoHoverOnTab/);
+  assert.match(follow, /applyPendingSpotifyHoverOnTab/);
   assert.doesNotMatch(follow, /defineContentScript|content_scripts/);
 });
