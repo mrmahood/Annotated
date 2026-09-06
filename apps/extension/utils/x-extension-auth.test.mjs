@@ -5,6 +5,7 @@ import {
   DEFAULT_EXTENSION_AUTH_CAPABILITIES,
   ENABLED_EXTENSION_AUTH_PROVIDERS,
   LIVE_X_EXTENSION_OPT_IN_VALUE,
+  LIVE_X_EXTENSION_OPT_OUT_VALUE,
   LIVE_X_STAGING_SUPABASE_URL,
   ExtensionAuthError,
   createExtensionAuthController,
@@ -24,22 +25,25 @@ const X_ENABLED_FOR_TEST = resolveExtensionAuthCapabilities({
   supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
 });
 
-test('extension X requires the exact opt-in and exact Staging Supabase project', () => {
+test('extension X is enabled for the exact Staging Supabase project', () => {
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
+  }), X_ENABLED_FOR_TEST);
   assert.deepEqual(resolveExtensionAuthCapabilities({
     xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
     supabaseUrl: LIVE_X_STAGING_SUPABASE_URL,
   }), X_ENABLED_FOR_TEST);
   assert.deepEqual(resolveExtensionAuthCapabilities({
-    xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
     supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/`,
   }), X_ENABLED_FOR_TEST);
 
   for (const environment of [
     {},
-    { xOptIn: 'true', supabaseUrl: LIVE_X_STAGING_SUPABASE_URL },
+    { xOptIn: LIVE_X_EXTENSION_OPT_OUT_VALUE, supabaseUrl: LIVE_X_STAGING_SUPABASE_URL },
     { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'https://production-ref.supabase.co' },
     { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'http://nkkunkwirvfwhmpwonqz.supabase.co' },
     { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/auth/v1` },
+    { supabaseUrl: 'https://vnxjktpdzmykmqrqwvks.supabase.co' },
   ]) {
     assert.deepEqual(resolveExtensionAuthCapabilities(environment), { google: true, x: false });
   }
@@ -280,8 +284,14 @@ test('one X attempt blocks concurrency and a stale or replayed callback cannot s
 test('extension auth source contains no manual identity-linking or metadata-merge path', () => {
   const authSource = readFileSync(new URL('./auth-boundary.ts', import.meta.url), 'utf8');
   const appSource = readFileSync(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
-  const source = [authSource, appSource].join('\n');
+  const socialSource = readFileSync(
+    new URL('../entrypoints/sidepanel/social-components.tsx', import.meta.url),
+    'utf8',
+  );
+  const source = [authSource, appSource, socialSource].join('\n');
   assert.doesNotMatch(source, /linkIdentity|unlinkIdentity|mergeIdentit/i);
-  assert.match(appSource, /EXTENSION_AUTH_CAPABILITIES\.x\s*\?\s*<button/);
-  assert.match(appSource, /beginSignIn\('x'\)/);
+  assert.match(appSource, /EXTENSION_AUTH_CAPABILITIES\.x\s*\?\s*\(?\s*<button/);
+  assert.match(appSource, /onSignIn\('x'\)/);
+  assert.match(socialSource, /EXTENSION_AUTH_CAPABILITIES\.x\s*\?\s*\(?\s*<button/);
+  assert.match(socialSource, /onSignIn\('x'\)/);
 });

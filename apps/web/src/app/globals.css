@@ -399,6 +399,12 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .follow-control .form-error { flex-basis: 100%; }
 .inline-auth-action { display: grid; gap: 7px; }
 .inline-auth-action .form-error { max-width: 320px; }
+.provider-sign-in-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 .passage-section { border-block: 1px solid var(--border); background: var(--background-elevated); }
 .clip-range-section { display: grid; gap: 8px; border-block: 1px solid var(--border); background: var(--background-elevated); }
 .clip-range-section strong { color: var(--text-evidence); font-family: var(--font-mono); font-size: clamp(1.35rem, 4vw, 2rem); font-variant-numeric: tabular-nums; }
@@ -576,6 +582,13 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .profile-avatar { width: 56px; height: 56px; }
   .comment-form-footer, .comment-sign-in { align-items: stretch; flex-direction: column; }
   .comment-form-footer .public-button, .comment-sign-in .public-button { width: 100%; }
+  .comment-sign-in .provider-sign-in-actions,
+  .follow-control .provider-sign-in-actions,
+  .vote-heading-row .provider-sign-in-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
   .vote-heading-row { align-items: stretch; flex-direction: column; }
   .vote-heading-row .public-button { width: 100%; }
   .vote-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -46,9 +46,10 @@ PR #39 as `ecee20531c8983c7bf97a80446e0fa66b0b21e78`, and passed post-merge
 Staging acceptance through PR #41, required CI run `33578556343`, squash commit
 `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and post-merge `main` CI run
 `33579104948`. Exact disposable-user/grant cleanup and reversible capability and
-provider rollback passed; X is again disabled on both user surfaces and in
-Supabase Staging. Production was not accessed and later work remains separately
-authorized.
+provider rollback passed. Staging-only X OAuth re-enable for the bounty
+submit is a later authorized increment
+(`docs/product/x-oauth-staging-reenable.md`). Production was not accessed
+and Production X remains separately authorized.
 
 The bounded Phase C execution plan is
 `docs/architecture/phase-c-media-worker-plan.md`.
@@ -862,7 +863,9 @@ for `whisper-1`; D2 cost $0.
 ### E. Create experience and authentication
 
 Status: implementation, bounded live-X Staging acceptance, and reversible
-rollback complete through Gate 3.
+rollback complete through Gate 3. Staging-only bounty re-enable of the
+existing X capability is documented in
+`docs/product/x-oauth-staging-reenable.md`.
 E1a's local capability/data
 contract, page-generation/revision rules, independent draft state, and
 regressions pass the focused and complete extension test suites, TypeScript
@@ -934,8 +937,10 @@ squash-merged as `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and passed
 post-merge `main` CI run `33579104948`. Cleanup deleted only the zero-owned-data
 disposable X user, revoked only its X grant, disabled both capability opt-ins,
 and disabled the Supabase Staging X provider while retaining masked credentials
-and preserving Google, Site URL, redirects, and the X app. X is again absent
-from both user surfaces; Production and schedules were untouched. The supplied
+and preserving Google, Site URL, redirects, and the X app. Gate 3 left X
+absent on both user surfaces until the later Staging bounty re-enable
+documented in `docs/product/x-oauth-staging-reenable.md`. Production and
+schedules were untouched. The supplied
 proprietary Brightcove player correctly remained unavailable under the accepted
 fail-closed boundary; proprietary and other inaccessible cross-origin player
 adapters remain separately authorized.
@@ -963,8 +968,10 @@ increment boundaries, and acceptance plan are in
   disabled-by-default capability. E2c adds the equivalent bounded extension
   handling and identity-array verification with no production permission change.
   Gate 3 exercised both only under exact Staging gates, then disabled their
-  opt-ins and the Staging provider. X is again invisible and non-executable, and
-  the identity policy never merges users from display name alone.
+  opt-ins and the Staging provider. The later bounty increment re-enables the
+  same Staging-project capability; see
+  `docs/product/x-oauth-staging-reenable.md`. The identity policy never merges
+  users from display name alone.
 - Preserve the accepted tabCapture/offscreen Blob ownership, exact permissions,
   private upload, authoritative status, restart, article, and no-secret
   boundaries. Rollback hides the reorganized Create entry without deleting or

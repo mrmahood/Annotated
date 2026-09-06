@@ -1,7 +1,9 @@
 # Phase E Create and authentication plan
 
 Status: implementation, live-X Staging acceptance, and reversible rollback
-closeout, updated 2026-09-02.
+closeout, updated 2026-09-06. Staging-only bounty re-enable of the existing
+X capability is a later authorized increment; see
+`docs/product/x-oauth-staging-reenable.md`.
 Phase D is complete. E1a was
 subsequently authorized; its implementation and deterministic Local validation
 are complete and merged, including focused and complete extension tests,
@@ -770,10 +772,12 @@ Dashboard, X console, redirects, Staging, and Production are separate approvals.
    Supabase safely recognizes verified identity; otherwise no app merge and use
    disposable acceptance users.
 7. **First-publish handle confirmation:** defer; retain generated handles.
-8. **Live X config (Staging resolved):** Gate 3 completed bounded Staging
-   configuration, acceptance, exact cleanup, and reversible rollback. X is again
-   disabled on both surfaces and at the Staging provider; Production remains a
-   later explicit authorization.
+8. **Live X config (Staging re-enable authorized 2026-09-05/06):** Gate 3
+   completed bounded Staging configuration, acceptance, exact cleanup, and
+   reversible rollback. This bounty increment turns the existing web and
+   extension Staging-project capability back on. Owner provider, X app, and
+   callback steps are in `docs/product/x-oauth-staging-reenable.md`.
+   Production remains a later explicit authorization.
 9. **X scopes/data:** add none; reverify current `users.email`, `tweet.read`,
    `users.read`, `offline.access`; do not store provider tokens/assume email.
 10. **Local/vendor split:** fake clients and bounded callbacks in Local/CI; only

@@ -20,6 +20,7 @@ export const LIVE_X_STAGING_PROJECT_REF = 'nkkunkwirvfwhmpwonqz';
 export const LIVE_X_STAGING_SUPABASE_URL =
   `https://${LIVE_X_STAGING_PROJECT_REF}.supabase.co`;
 export const LIVE_X_EXTENSION_OPT_IN_VALUE = '1';
+export const LIVE_X_EXTENSION_OPT_OUT_VALUE = '0';
 
 type ExtensionAuthCapabilityEnvironment = {
   xOptIn?: string;
@@ -49,8 +50,10 @@ export function resolveExtensionAuthCapabilities(
 ): ExtensionAuthCapabilities {
   return Object.freeze({
     google: DEFAULT_EXTENSION_AUTH_CAPABILITIES.google,
-    x: environment.xOptIn === LIVE_X_EXTENSION_OPT_IN_VALUE &&
-      isExactStagingSupabaseUrl(environment.supabaseUrl),
+    // Staging-only: exact Staging URL enables X. Exact "0" hides it.
+    // Production and Local URLs stay fail-closed even if an opt-in is set.
+    x: isExactStagingSupabaseUrl(environment.supabaseUrl) &&
+      environment.xOptIn !== LIVE_X_EXTENSION_OPT_OUT_VALUE,
   });
 }
 

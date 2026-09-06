@@ -26,7 +26,7 @@ test('rejects absolute and protocol-relative next paths', () => {
   assert.equal(getSafeNextPath(null), '/');
 });
 
-test('provider-neutral metadata keeps X explicitly disabled for E2b delivery', () => {
+test('provider-neutral metadata keeps X fail-closed unless Staging capabilities are supplied', () => {
   assert.deepEqual(ENABLED_WEB_AUTH_PROVIDERS, ['google']);
   assert.deepEqual(DEFAULT_WEB_AUTH_CAPABILITIES, { google: true, x: false });
   assert.equal(AUTH_PROVIDER_METADATA.google.label, 'Google');

@@ -13,8 +13,9 @@ episode audio is the next platform follow-on (roadmap planning
 only). Typed clip range entry (type start/end such as `1:00`–`2:30`
 in addition to Set start / Set end) is a separate Create UX
 follow-on; it is implemented on this branch. Approving the polish
-sections does not authorize migrations, Staging, Production, X OAuth
-re-enable, Phase G, or Spotify capture.
+sections does not authorize migrations, Staging, Production, Phase G,
+or Spotify capture. X OAuth Staging re-enable is a separate
+owner-authorized increment (`docs/product/x-oauth-staging-reenable.md`).
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
 Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
@@ -59,7 +60,9 @@ The annotation is the product; chrome gets out of the way.
 ### 1.2 Non-goals (this brief’s implementation slices)
 
 - `/ops` operator console and any broad admin UI.
-- X OAuth re-enable.
+- X OAuth re-enable inside a polish sprint (it is a separate
+  owner-authorized increment; see
+  `docs/product/x-oauth-staging-reenable.md`).
 - Production / Phase G styling or launch work.
 - User-selectable accent-color picker or accent presets.
 - Rebuilding Feed information architecture beyond the card nest.
@@ -548,8 +551,9 @@ video hover on live source pages.
 
 Out of this brief’s implementation slices:
 
-- `/ops` console, X OAuth re-enable, Production / Phase G, user
-  accent-color picker, broad admin UI.
+- `/ops` console, Production / Phase G, user
+  accent-color picker, broad admin UI. X OAuth Staging re-enable is a
+  separate increment, not a polish sprint.
 - Multi-operator admin UI, claimant email, rebuilding Feed IA beyond the
   card nest.
 - Persistent content scripts, diagnostic UI, or brittle host-specific
