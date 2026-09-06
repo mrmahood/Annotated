@@ -66,7 +66,15 @@ jobs:
           echo "ANNOTATED_FFMPEG_BIN=$tool_root/extracted/bin" >> "$GITHUB_ENV"
 
       - name: Start isolated Local database
-        run: pnpm exec supabase db start
+        run: |
+          set -euo pipefail
+          # A stale bind on 54322 has failed otherwise-green PRs on a fresh runner.
+          if ! pnpm exec supabase db start; then
+            echo "Local database start failed; stopping leftovers and retrying once."
+            pnpm exec supabase stop --no-backup || true
+            sleep 3
+            pnpm exec supabase db start
+          fi
 
       - name: Lint Local database
         run: pnpm exec supabase db lint --level error
