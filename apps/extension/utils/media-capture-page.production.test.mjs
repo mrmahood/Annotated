@@ -159,8 +159,17 @@ const spotifySource = {
   playerIdentity: 'spotify-now-playing:1:abcd1234',
 };
 
+function formatFakeClock(totalSeconds) {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const rest = seconds % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+  return `${minutes}:${String(rest).padStart(2, '0')}`;
+}
+
 async function withFakeSpotify(callback, overrides = {}) {
-  const names = ['location', 'document', 'window', 'HTMLElement'];
+  const names = ['location', 'document', 'window', 'HTMLElement', 'HTMLInputElement'];
   const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   class FakeElement {
     constructor(text, label) {
@@ -172,17 +181,34 @@ async function withFakeSpotify(callback, overrides = {}) {
       return { x: 0, y: 640, width: 1280, height: 80, top: 640, right: 1280, bottom: 720, left: 0 };
     }
     click() { this.clicked = true; }
+    querySelector(selector) {
+      if (selector.includes('input')) return overrides.noSlider ? null : slider;
+      return null;
+    }
+  }
+  class FakeInput {
+    constructor() {
+      this.min = String(overrides.sliderMin ?? 0);
+      this.max = String(overrides.sliderMax ?? 3_606_000);
+      this.type = 'range';
+      this.value = String(overrides.sliderValue ?? ((overrides.positionSeconds ?? 8) * 1_000));
+    }
+    dispatchEvent(event) {
+      if (event.type === 'input' || event.type === 'change') {
+        const seconds = overrides.previewOriginSeconds != null
+          ? overrides.previewOriginSeconds + Number(this.value) / 1_000
+          : Number(this.value) / 1_000;
+        position.textContent = formatFakeClock(seconds);
+      }
+      return true;
+    }
   }
   const bar = new FakeElement();
+  const progress = new FakeElement();
   const position = new FakeElement(overrides.position ?? '0:08');
   const duration = new FakeElement(overrides.duration ?? '1:00:06');
   const playButton = new FakeElement('', overrides.playLabel ?? 'Pause');
-  const nodes = {
-    'now-playing-bar': bar,
-    'playback-position': position,
-    'playback-duration': duration,
-    'control-button-playpause': playButton,
-  };
+  const slider = overrides.noSlider ? null : new FakeInput();
   const values = {
     location: { href: overrides.url ?? spotifyUrl },
     document: {
@@ -191,17 +217,23 @@ async function withFakeSpotify(callback, overrides = {}) {
         if (selector.includes('playback-position')) return position;
         if (selector.includes('playback-duration')) return duration;
         if (selector.includes('control-button-playpause')) return playButton;
-        return nodes[selector] ?? null;
+        if (selector.includes('playback-progressbar') && selector.includes('input')) {
+          return overrides.noSlider ? null : slider;
+        }
+        if (selector.includes('playback-progressbar')) return overrides.noSlider ? null : progress;
+        return null;
       },
+      elementFromPoint() { return progress; },
     },
-    window: { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1, scrollX: 0, scrollY: 0 },
+    window: { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1, scrollX: 0, scrollY: 0, setTimeout },
     HTMLElement: FakeElement,
+    HTMLInputElement: FakeInput,
   };
   try {
     for (const [name, value] of Object.entries(values)) {
       Object.defineProperty(globalThis, name, { configurable: true, value });
     }
-    return await callback({ playButton });
+    return await callback({ playButton, slider, position });
   } finally {
     for (const name of names) {
       const descriptor = previous.get(name);
@@ -211,7 +243,7 @@ async function withFakeSpotify(callback, overrides = {}) {
   }
 }
 
-test('Spotify prepare uses now-playing clocks and keeps the 2s start gate', async () => {
+test('Spotify prepare seeks the now-playing bar to the clip start', async () => {
   const prepared = await withFakeSpotify(() => prepareMediaCaptureOnPage({
     source: spotifySource, startMs: 8_000, endMs: 90_000,
   }));
@@ -219,21 +251,37 @@ test('Spotify prepare uses now-playing clocks and keeps the 2s start gate', asyn
   assert.equal(prepared.prepared.sourceKind, 'spotify');
   assert.equal(prepared.prepared.playerCurrentTimeBeforeRecordingMs, 8_000);
   assert.equal(prepared.prepared.mediaDurationMs, 3_606_000);
-  const offStart = await withFakeSpotify(() => prepareMediaCaptureOnPage({
+  const jumped = await withFakeSpotify(() => prepareMediaCaptureOnPage({
     source: spotifySource, startMs: 8_000, endMs: 90_000,
-  }), { position: '0:57' });
-  assert.equal(offStart.ok, false);
-  assert.equal(offStart.code, 'PLAYER_NOT_READY');
-  assert.match(offStart.message, /Seek the Spotify player to the clip start/);
+  }), { position: '0:57', positionSeconds: 57 });
+  assert.equal(jumped.ok, true);
+  assert.equal(jumped.prepared.playerCurrentTimeBeforeRecordingMs, 8_000);
+  const stuck = await withFakeSpotify(() => prepareMediaCaptureOnPage({
+    source: spotifySource, startMs: 8_000, endMs: 90_000,
+  }), { position: '0:57', positionSeconds: 57, noSlider: true });
+  assert.equal(stuck.ok, false);
+  assert.equal(stuck.code, 'PLAYER_NOT_READY');
+  assert.match(stuck.message, /could not seek to the clip start/);
   const unreadable = await withFakeSpotify(() => prepareMediaCaptureOnPage({
     source: spotifySource, startMs: 8_000, endMs: 90_000,
   }), { position: '' });
   assert.equal(unreadable.ok, false);
   assert.equal(unreadable.code, 'PLAYER_NOT_READY');
   assert.match(unreadable.message, /now-playing time could not be read/);
+  const previewWindow = await withFakeSpotify(() => prepareMediaCaptureOnPage({
+    source: spotifySource, startMs: 300_000, endMs: 360_000,
+  }), {
+    position: '5:59',
+    positionSeconds: 359,
+    sliderMax: 90_000,
+    sliderValue: 59_000,
+    previewOriginSeconds: 300,
+  });
+  assert.equal(previewWindow.ok, true);
+  assert.equal(previewWindow.prepared.playerCurrentTimeBeforeRecordingMs, 300_000);
 });
 
-test('Spotify play acknowledgement stays on the now-playing path', async () => {
+test('Spotify play acknowledgement seeks then stays on the now-playing path', async () => {
   await withFakeSpotify(async ({ playButton }) => {
     const playback = await playMediaForCaptureOnPage(spotifySource, 8_000);
     assert.equal(playback.ok, true);
@@ -244,8 +292,13 @@ test('Spotify play acknowledgement stays on the now-playing path', async () => {
     assert.equal(finished.currentTimeMs, 8_000);
     assert.equal(playButton.clicked, true);
   });
+  const jumped = await withFakeSpotify(() => playMediaForCaptureOnPage(spotifySource, 8_000), {
+    position: '0:57', positionSeconds: 57,
+  });
+  assert.equal(jumped.ok, true);
+  assert.equal(jumped.currentTimeMs, 8_000);
   const tooFar = await withFakeSpotify(() => playMediaForCaptureOnPage(spotifySource, 8_000), {
-    position: '0:57',
+    position: '0:57', positionSeconds: 57, noSlider: true,
   });
   assert.equal(tooFar.ok, false);
   assert.equal(tooFar.message, 'playback-failed');

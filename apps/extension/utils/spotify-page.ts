@@ -388,29 +388,162 @@ export async function actOnSpotifyPlayer(
   if (episodeId !== expectedEpisodeId) return { ok: false, reason: 'source-mismatch' };
   const identity = `spotify-now-playing:1:${digest(episodeId)}`;
   if (identity !== expectedIdentity) return { ok: false, reason: 'player-mismatch' };
-  const position = parseClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent));
-  const duration = parseClock(clean(document.querySelector('[data-testid="playback-duration"]')?.textContent));
-  if (position === null) return { ok: false, reason: 'player-not-ready' };
-  if (action === 'play') {
-    if (duration !== null && startSeconds! > duration + 0.25) {
-      return { ok: false, reason: 'player-not-ready' };
+  const readClock = () => ({
+    position: parseClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent)),
+    duration: parseClock(clean(document.querySelector('[data-testid="playback-duration"]')?.textContent)),
+  });
+  const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+  const assignRange = (input: HTMLInputElement, next: number) => {
+    const value = String(next);
+    const previous = input.value;
+    try {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (setter) setter.call(input, value);
+      else input.value = value;
+    } catch {
+      input.value = value;
     }
-    if (Math.abs(position - startSeconds!) > 2) {
-      return { ok: false, reason: 'playback-failed' };
+    const tracker = (input as HTMLInputElement & { _valueTracker?: { setValue?: (current: string) => void } })._valueTracker;
+    if (tracker && typeof tracker.setValue === 'function') {
+      try { tracker.setValue(previous); } catch { /* React 19 may omit the tracker. */ }
     }
+    try {
+      input.dispatchEvent(new InputEvent('input', {
+        bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: value,
+      }));
+    } catch {
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const clickBarAtRatio = (surface: HTMLElement, ratio: number) => {
+    const rect = surface.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 1) return false;
+    const x = rect.left + rect.width * Math.min(1, Math.max(0, ratio));
+    const y = rect.top + rect.height / 2;
+    const target = document.elementFromPoint(x, y);
+    const node = target instanceof HTMLElement ? target : surface;
+    const point = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window, buttons: 1 };
+    try {
+      if (typeof PointerEvent === 'function') {
+        node.dispatchEvent(new PointerEvent('pointerdown', { ...point, pointerId: 1, pointerType: 'mouse' }));
+        node.dispatchEvent(new PointerEvent('pointerup', { ...point, pointerId: 1, pointerType: 'mouse' }));
+      }
+      node.dispatchEvent(new MouseEvent('mousedown', point));
+      node.dispatchEvent(new MouseEvent('mouseup', point));
+      node.dispatchEvent(new MouseEvent('click', point));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const seekNowPlaying = async (start: number) => {
+    let now = readClock();
+    if (now.position === null) return { ok: false as const, reason: 'player-not-ready' as const };
+    if (now.duration !== null && start > now.duration + 0.25) {
+      return { ok: false as const, reason: 'player-not-ready' as const };
+    }
+    if (Math.abs(now.position - start) <= 2) return { ok: true as const, ...now };
+    let attempted = false;
+    const bar = document.querySelector('[data-testid="playback-progressbar"]');
+    const input = (
+      bar?.querySelector('input[type="range"]') ??
+      document.querySelector('[data-testid="playback-progressbar"] input[type="range"]')
+    );
+    if (input instanceof HTMLInputElement) {
+      const lo = Number.isFinite(Number(input.min)) ? Number(input.min) : 0;
+      const hi = Number(input.max);
+      if (Number.isFinite(hi) && hi > lo) {
+        const span = hi - lo;
+        const duration = now.duration;
+        const currentRaw = Number(input.value);
+        const targetMs = start * 1_000;
+        const clockMs = now.position * 1_000;
+        let raw: number;
+        if (span <= 100.0001) {
+          if (duration === null || duration <= 0) return { ok: false as const, reason: 'playback-failed' as const };
+          raw = lo + (start / duration) * span;
+        } else if (Number.isFinite(currentRaw) && span > 1_000) {
+          const offset = clockMs - currentRaw;
+          raw = Math.abs(offset) <= 2_500 ? targetMs : currentRaw + (targetMs - clockMs);
+        } else if (duration !== null && Math.abs(span - duration) <= Math.max(1, duration * 0.05)) {
+          raw = lo + start;
+        } else if (span > 1_000) {
+          raw = lo + start * 1_000;
+        } else {
+          raw = lo + start;
+        }
+        try {
+          assignRange(input, Math.min(hi, Math.max(lo, raw)));
+          attempted = true;
+        } catch { /* Click / share-timestamp fallbacks below. */ }
+      }
+    }
+    now = readClock();
+    if (now.position === null || Math.abs(now.position - start) > 2) {
+      const surface = (bar instanceof HTMLElement ? bar : null)
+        ?? document.querySelector('[data-testid="progress-bar-background"]');
+      const durationForClick = now.duration
+        ?? (input instanceof HTMLInputElement && Number(input.max) > 1_000 ? Number(input.max) / 1_000 : null);
+      if (surface instanceof HTMLElement && durationForClick !== null && durationForClick > 0
+          && clickBarAtRatio(surface, start / durationForClick)) {
+        attempted = true;
+      }
+    }
+    now = readClock();
+    if (now.position === null || Math.abs(now.position - start) > 2) {
+      try {
+        const url = new URL(location.href);
+        if (url.hostname.toLowerCase() === 'open.spotify.com') {
+          const stamp = String(Math.round(start * 1_000));
+          if (url.searchParams.get('t') !== stamp && typeof history !== 'undefined'
+              && typeof history.replaceState === 'function') {
+            url.searchParams.set('t', stamp);
+            history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+            window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+            attempted = true;
+          }
+        }
+      } catch { /* Fail closed after the poll if the playhead did not move. */ }
+    }
+    if (!attempted) return { ok: false as const, reason: 'playback-failed' as const };
+    const deadline = Date.now() + 3_000;
+    while (Date.now() < deadline) {
+      now = readClock();
+      if (now.position !== null && Math.abs(now.position - start) <= 2) return { ok: true as const, ...now };
+      await wait(50);
+    }
+    now = readClock();
+    if (now.position !== null && Math.abs(now.position - start) <= 2) return { ok: true as const, ...now };
+    return { ok: false as const, reason: 'playback-failed' as const };
+  };
+  const pressPlayIfPaused = () => {
     const playButton = document.querySelector<HTMLElement>('[data-testid="control-button-playpause"]');
     const playLabel = clean(playButton?.getAttribute('aria-label'));
     if (playButton && /play/i.test(playLabel) && !/pause/i.test(playLabel)) {
       try { playButton.click(); }
-      catch { return { ok: false, reason: 'playback-failed' }; }
+      catch { return false; }
     }
+    return true;
+  };
+  if (action === 'play') {
+    const sought = await seekNowPlaying(startSeconds!);
+    if (!sought.ok) return { ok: false, reason: sought.reason };
+    if (!pressPlayIfPaused()) return { ok: false, reason: 'playback-failed' };
+    const next = readClock();
+    return {
+      ok: true,
+      identity: expectedIdentity,
+      currentTimeMs: Math.round((next.position ?? sought.position ?? startSeconds!) * 1_000),
+      durationMs: next.duration === null ? null : Math.round(next.duration * 1_000),
+    };
   }
-  const nextPosition = parseClock(clean(document.querySelector('[data-testid="playback-position"]')?.textContent))
-    ?? position;
+  const now = readClock();
+  if (now.position === null) return { ok: false, reason: 'player-not-ready' };
   return {
     ok: true,
     identity: expectedIdentity,
-    currentTimeMs: Math.round(nextPosition * 1_000),
-    durationMs: duration === null ? null : Math.round(duration * 1_000),
+    currentTimeMs: Math.round(now.position * 1_000),
+    durationMs: now.duration === null ? null : Math.round(now.duration * 1_000),
   };
 }
