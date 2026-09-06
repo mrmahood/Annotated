@@ -74,7 +74,7 @@ export function applyTikTokHoverHighlightOnPage(
       return { ok: false, reason: 'source-mismatch' };
     }
 
-    const visibleArea = (element: Element) => {
+    const isLaidOut = (element: Element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       if (
@@ -82,38 +82,162 @@ export function applyTikTokHoverHighlightOnPage(
         style.visibility === 'hidden' ||
         Number(style.opacity) <= 0 ||
         element.getClientRects().length === 0
-      ) return 0;
+      ) return false;
+      return rect.width > 32 && rect.height > 32;
+    };
+
+    const visibleArea = (element: Element) => {
+      if (!isLaidOut(element)) return 0;
+      const rect = element.getBoundingClientRect();
       const width = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
       const height = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
       return width > 32 && height > 32 ? width * height : 0;
     };
 
-    const findPlayer = (): HTMLElement | null => {
-      const named = [
-        '[data-e2e="browse-video"]',
-        '[data-e2e="video-player"]',
-        '#main-content-video_detail',
-        '.xgplayer',
-      ];
-      for (const selector of named) {
-        const candidate = document.querySelector(selector);
-        if (candidate instanceof HTMLElement && visibleArea(candidate) > 0) return candidate;
+    const tokenBlob = (element: Element) => {
+      const className = typeof element.className === 'string' ? element.className : '';
+      return [
+        element.id,
+        className,
+        element.getAttribute('data-e2e'),
+        element.getAttribute('aria-label'),
+      ].filter(Boolean).join(' ');
+    };
+
+    const isNavOrUnrelatedChrome = (element: Element) => {
+      const blob = tokenBlob(element);
+      if (
+        /(?:^|[\s_-])(?:nav-side|side-nav|sidebar|header-container|bottom-bar|recommend|you-may-like|search-card)(?:$|[\s_-])/i
+          .test(blob)
+      ) return true;
+      const e2e = element.getAttribute('data-e2e') ?? '';
+      if (/^(?:recommend|search-card|nav|bottom-nav)/i.test(e2e)) return true;
+      const rect = element.getBoundingClientRect();
+      return rect.left < 24 &&
+        rect.width > 0 &&
+        rect.width <= 140 &&
+        rect.height >= window.innerHeight * 0.65;
+    };
+
+    const isPageShell = (element: Element) => {
+      if (element.id === 'main-content-video_detail' || element.id === 'app') return true;
+      const e2e = element.getAttribute('data-e2e') ?? '';
+      const rect = element.getBoundingClientRect();
+      const viewportShell = rect.width >= window.innerWidth * 0.86 &&
+        rect.height >= window.innerHeight * 0.78;
+      if (e2e === 'browse-video' && (
+        viewportShell ||
+        (rect.height >= window.innerHeight * 0.75 && rect.width >= window.innerWidth * 0.4)
+      )) return true;
+      const video = element.querySelector('video');
+      if (video instanceof HTMLVideoElement && isLaidOut(video)) {
+        const videoRect = video.getBoundingClientRect();
+        const videoArea = Math.max(1, videoRect.width * videoRect.height);
+        const elementArea = Math.max(1, rect.width * rect.height);
+        if (elementArea / videoArea > 1.55) return true;
       }
-      let best: HTMLElement | null = null;
-      let bestArea = 0;
-      for (const video of document.querySelectorAll('video')) {
-        if (!(video instanceof HTMLVideoElement)) continue;
-        const area = visibleArea(video);
-        if (area <= bestArea) continue;
-        const wrapper = video.closest('[data-e2e="browse-video"], [data-e2e="video-player"], .xgplayer, article, section');
-        best = wrapper instanceof HTMLElement
-          ? wrapper
-          : video.parentElement instanceof HTMLElement
-            ? video.parentElement
-            : video;
-        bestArea = area;
+      const namedPlayer = e2e === 'video-player' || /\bxgplayer\b/i.test(tokenBlob(element));
+      return viewportShell && !namedPlayer;
+    };
+
+    const isPlayerSized = (element: Element) => {
+      const rect = element.getBoundingClientRect();
+      if (rect.width < 140 || rect.height < 160) return false;
+      const ratio = rect.width / rect.height;
+      return ratio >= 0.35 && ratio <= 2.4;
+    };
+
+    const looksNamedPlayer = (element: Element) => {
+      const e2e = element.getAttribute('data-e2e') ?? '';
+      if (e2e === 'video-player') return true;
+      return /\bxgplayer\b|DivVideoPlayer|VideoPlayer/i.test(tokenBlob(element));
+    };
+
+    const surfaceFromVideo = (video: HTMLVideoElement): HTMLElement => {
+      const named = video.closest('[data-e2e="video-player"], .xgplayer');
+      if (
+        named instanceof HTMLElement &&
+        isLaidOut(named) &&
+        !isNavOrUnrelatedChrome(named) &&
+        !isPageShell(named)
+      ) {
+        return named;
+      }
+      let best: HTMLElement = video;
+      let node = video.parentElement;
+      for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+        if (!isLaidOut(node) || isNavOrUnrelatedChrome(node) || isPageShell(node)) break;
+        if (!isPlayerSized(node)) continue;
+        const videoRect = video.getBoundingClientRect();
+        const nodeRect = node.getBoundingClientRect();
+        const videoArea = Math.max(1, videoRect.width * videoRect.height);
+        const nodeArea = Math.max(1, nodeRect.width * nodeRect.height);
+        if (nodeArea / videoArea > 1.7) continue;
+        best = node;
+        if (looksNamedPlayer(node)) break;
       }
       return best;
+    };
+
+    const findPlayer = (): HTMLElement | null => {
+      let bestVideo: HTMLVideoElement | null = null;
+      let bestScore = Number.NEGATIVE_INFINITY;
+      for (const entry of document.querySelectorAll('video')) {
+        if (!(entry instanceof HTMLVideoElement) || !isLaidOut(entry)) continue;
+        let ancestor: HTMLElement | null = entry.parentElement;
+        let unrelated = isNavOrUnrelatedChrome(entry);
+        for (let depth = 0; ancestor && depth < 10 && !unrelated; depth += 1, ancestor = ancestor.parentElement) {
+          if (isNavOrUnrelatedChrome(ancestor)) unrelated = true;
+        }
+        if (unrelated) continue;
+        const rect = entry.getBoundingClientRect();
+        if (rect.width < 140 || rect.height < 160) continue;
+        const visible = visibleArea(entry);
+        const area = rect.width * rect.height;
+        const cx = (rect.left + rect.right) / 2;
+        const cy = (rect.top + rect.bottom) / 2;
+        const centerBias = Math.hypot(cx - window.innerWidth / 2, cy - window.innerHeight / 2);
+        const score = (visible > 0 ? visible : area * 0.35) - centerBias * 40;
+        if (score <= bestScore) continue;
+        bestVideo = entry;
+        bestScore = score;
+      }
+      if (bestVideo) return surfaceFromVideo(bestVideo);
+
+      const namedPlayers = [
+        '[data-e2e="video-player"]',
+        '.xgplayer',
+      ];
+      for (const selector of namedPlayers) {
+        for (const candidate of document.querySelectorAll(selector)) {
+          if (!(candidate instanceof HTMLElement) || !isLaidOut(candidate)) continue;
+          if (isNavOrUnrelatedChrome(candidate) || isPageShell(candidate)) continue;
+          if (isPlayerSized(candidate) || looksNamedPlayer(candidate)) return candidate;
+        }
+      }
+
+      const shells = [
+        '[data-e2e="browse-video"]',
+        '#main-content-video_detail',
+      ];
+      for (const selector of shells) {
+        for (const candidate of document.querySelectorAll(selector)) {
+          if (!(candidate instanceof HTMLElement) || !isLaidOut(candidate)) continue;
+          const nested = candidate.querySelector('video, [data-e2e="video-player"], .xgplayer');
+          if (nested instanceof HTMLVideoElement && isLaidOut(nested)) {
+            return surfaceFromVideo(nested);
+          }
+          if (
+            nested instanceof HTMLElement &&
+            isLaidOut(nested) &&
+            !isPageShell(nested) &&
+            (isPlayerSized(nested) || looksNamedPlayer(nested))
+          ) {
+            return nested;
+          }
+        }
+      }
+      return null;
     };
 
     const player = findPlayer();
@@ -142,9 +266,11 @@ export function applyTikTokHoverHighlightOnPage(
     };
 
     const strong = request.strength === 'strong';
-    const dimOpacity = strong ? 0.12 : 0.09;
-    const ringWidth = strong ? 3 : 2;
-    const ringColor = strong ? 'rgba(236, 241, 246, 0.92)' : 'rgba(154, 167, 181, 0.78)';
+    const dimOpacity = strong ? 0.14 : 0.1;
+    const ringWidth = strong ? 4 : 3;
+    const ringInset = strong ? 6 : 5;
+    const ringColor = strong ? 'rgba(255, 196, 56, 0.96)' : 'rgba(255, 184, 40, 0.92)';
+    const ringContrast = 'rgba(20, 16, 8, 0.72)';
 
     let root = document.getElementById(rootId);
     if (!(root instanceof HTMLElement)) {
@@ -155,6 +281,9 @@ export function applyTikTokHoverHighlightOnPage(
       document.documentElement.appendChild(root);
     }
     root.dataset.strength = request.strength;
+    root.dataset.surface = player.getAttribute('data-e2e') ||
+      player.id ||
+      (/\bxgplayer\b/i.test(typeof player.className === 'string' ? player.className : '') ? 'xgplayer' : player.tagName.toLowerCase());
     root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
 
     const layer = (selector: string, attribute: string): HTMLElement => {
@@ -181,14 +310,16 @@ export function applyTikTokHoverHighlightOnPage(
         `background:rgba(0,0,0,${dimOpacity})`,
         `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
       ].join(';');
+      const insetX = Math.min(ringInset, Math.max(0, (rect.width - 24) / 2));
+      const insetY = Math.min(ringInset, Math.max(0, (rect.height - 24) / 2));
       ring.style.cssText = [
         'position:fixed',
-        `top:${rect.top}px`,
-        `left:${rect.left}px`,
-        `width:${Math.max(0, rect.width)}px`,
-        `height:${Math.max(0, rect.height)}px`,
-        `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
-        'border-radius:2px',
+        `top:${rect.top + insetY}px`,
+        `left:${rect.left + insetX}px`,
+        `width:${Math.max(0, rect.width - insetX * 2)}px`,
+        `height:${Math.max(0, rect.height - insetY * 2)}px`,
+        `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
+        'border-radius:4px',
       ].join(';');
 
       const bar = player.querySelector('[class*="progress"], [class*="Progress"], [role="slider"]');
