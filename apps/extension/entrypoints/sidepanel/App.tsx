@@ -1757,7 +1757,7 @@ function App() {
 
   const publishAudioClip = useCallback(async () => {
     const audioIdentity = sourceState.status === 'connected'
-      ? createAudioIdentity(sourceState.source)
+      ? connectedAudioSource(sourceState.source) ?? watchPageAudioIdentity(sourceState.source)
       : null;
     if (
       !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
