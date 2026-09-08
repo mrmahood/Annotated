@@ -725,14 +725,15 @@ Production launch and hardening remain separately authorized.
 - **Exact Storage cleanup-to-zero** for F6-deferred derivative objects when
   dispatcher/reconciler schedules are temporarily authorized, then re-paused.
   Production remains untouched.
-- **Minimal Matt-only operator console** (not a broad admin UI). Single
-  allowlisted operator; reuse existing `/api/moderation/*` routes; no new
-  privileges beyond `ANNOTATED_MODERATION_OPERATOR_*`. Default sequence: after
-  extension polish and X re-enable for bounty, unless the owner pulls it
-  forward. Owner-approved sketch to implement later, not in this docs change:
-  - Route in `apps/web` at `/ops` or `/moderation` with no public nav link.
-    Server Component gate: if the session user is not on the allowlist,
-    `notFound()` (do not 403 with a useful probe).
+- **Minimal Matt-only operator console** (implemented on this branch; not a
+  broad admin UI). Single allowlisted operator UI at `/ops`; reuses existing
+  `/api/moderation/*` routes; no new privileges beyond
+  `ANNOTATED_MODERATION_OPERATOR_*`. No public nav or Feed link. Non-allowlisted
+  sessions, including anonymous visitors, receive `notFound()`. Owner Staging
+  acceptance is still required. Shipped sketch:
+  - Route in `apps/web` at `/ops` with no public nav link. Server Component
+    gate: if the session user is not on the allowlist, `notFound()` (do not
+    403 with a useful probe).
   - Claim queue tab: table of open claims via `GET /api/moderation/claims`;
     row click opens detail; optional “Show claimant PII” toggle with
     `includeClaimantPii=true`; Reviewing / Resolve / Reject with typed
