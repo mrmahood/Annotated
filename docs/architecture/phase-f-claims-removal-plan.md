@@ -46,7 +46,8 @@ controlled removal:
   `docs/product/x-oauth-staging-reenable.md`).
 - Production deployment, DNS/TLS cutover, or enabling paused worker schedules
   except for an explicitly authorized bounded Staging acceptance run.
-- Cross-origin / Brightcove player adapters. Generic webpage-video
+- Cross-origin / Brightcove player adapters (tabled indefinitely;
+  Phase G / later-horizon; not a bounty blocker). Generic webpage-video
   publication is a later article-backed hosted begin increment.
 - Legal counsel substitution; this plan encodes owner policy decisions, not
   legal advice.
@@ -407,8 +408,12 @@ schedules remain paused. The bounded `geaux tigers` fixture (annotation
 media-only withdraw → F2 claim list and `submitted→reviewing` → F3 hide/unhide
 → F5 remove (`annotation_remove` / `removed` at 2026-09-04 ~14:48 UTC).
 Playback of the withdrawn clip returned `{"error":"MEDIA_UNAVAILABLE"}`. Exact
-Storage cleanup-to-zero is deferred while dispatcher/reconciler schedules stay
-paused. Vote isolation relies on existing pgTAP. Automated evidence is required
+Storage cleanup-to-zero for the media-worker buckets is recorded 2026-09-07/08
+in `docs/product/roadmap.md` after an owner one-shot of
+`annotated-media-reconciler-staging` (schedules stayed paused; Production
+was not accessed). Legacy `annotation-audio` objects remain an optional
+follow-up, not an F6 cleanup-to-zero blocker. Vote isolation relies on existing
+pgTAP. Automated evidence is required
 GitHub CI on `main` rather than a re-run of the full local `AGENTS.md` release
 gate on an agent machine.
 
@@ -495,7 +500,9 @@ Must cover:
 
 - F1–F5 contracts merged with tests green on required CI.
 - Owner acceptance recorded for Local (and bounded Staging if authorized).
-- Roadmap updated with evidence, digests, costs, and cleanup-to-zero proof.
+- Roadmap updated with evidence, digests, costs, and cleanup-to-zero proof
+  (media-worker buckets recorded 2026-09-07/08; see
+  `docs/product/roadmap.md`).
 - No Production access; schedules paused unless owner changed that later.
 - Bounty-critical “File a claim” remains visible and confidential; media-only
   and full removal are operable by Matt through the minimum safe boundary.

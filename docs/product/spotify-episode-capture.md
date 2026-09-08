@@ -1,8 +1,9 @@
 # Spotify episode hosted capture
 
-Status: implemented on this branch (Create/publish identity + hover).
-Owner-authorized 2026-09-05/06. Staging-only migration. Do not touch
-Production. Do not unpause Cloud Run schedules.
+Status: implemented on `main` (Create/publish identity + hover; hover
+promo/outline fix PR #90). Owner Chrome and Staging acceptance remain
+required. Owner-authorized 2026-09-05/06. Staging-only migration. Do not
+touch Production. Do not unpause Cloud Run schedules.
 
 ## Product choice
 
