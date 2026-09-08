@@ -87,7 +87,7 @@ function fakeChrome(options = {}) {
   };
 }
 
-test('audio hover connects Web page and Podcast sources but not YouTube', () => {
+test('audio hover stays off YouTube and TikTok so watch-page Audio cannot steal video outline targeting', () => {
   assert.deepEqual(audioHoverConnectionForTab('Web page', 17, EPISODE), {
     tabId: 17,
     tabUrl: EPISODE,

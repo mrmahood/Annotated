@@ -76,6 +76,17 @@ async function withFakeVideo(callback, overrides = {}) {
   }
 }
 
+test('youtube-audio capture prepares the watch player without requiring a page-audio element', async () => {
+  const audioSource = { ...source, kind: 'youtube-audio' };
+  const result = await withFakeVideo(() => prepareMediaCaptureOnPage({
+    source: audioSource, startMs: 10_000, endMs: 25_000,
+  }));
+  assert.equal(result.ok, true);
+  assert.equal(result.prepared.sourceKind, 'youtube-audio');
+  assert.equal(result.prepared.requestedDurationMs, 15_000);
+  assert.equal((await withFakeVideo(() => playMediaForCaptureOnPage(audioSource, 10_000))).ok, true);
+});
+
 test('prepares only the selected range and seeks the top-level player', async () => {
   const result = await withFakeVideo(() => prepareMediaCaptureOnPage({
     source, startMs: 10_000, endMs: 25_000,
