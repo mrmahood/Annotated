@@ -3,29 +3,32 @@
 Status: Phase D complete and merged; Phase E increments E1a-E1e, E2a-E2c,
 E3, and the bounded live-X Gate 3 are complete, merged, accepted, and rolled
 back in Staging. Phase F F0–F5 implementation is merged on protected `main`;
-F6 owner-authorized Staging acceptance is recorded 2026-09-04. Production was
-not accessed; GCP media dispatcher and reconciler schedules remain paused.
-Updated 2026-09-06. Sprint 1 UI polish and Sprint 2 YouTube hover
-linking are merged and owner-accepted on `main`; Sprint 3 (article/text)
-hover is implemented on `main`. Sprint 4 (audio/podcast) hover is
-implemented pending owner Chrome acceptance. Sprint 5 (generic
-page-video hover; not YouTube `/watch`) is implemented pending owner
-Chrome acceptance on a readable HTML5 webpage-video fixture. Generic
+F6 owner-authorized Staging acceptance is recorded 2026-09-04. Exact Storage
+cleanup-to-zero for the media-worker buckets is recorded 2026-09-07/08 after
+an owner one-shot of `annotated-media-reconciler-staging` (schedules stayed
+paused; Production was not accessed). Updated 2026-09-08. Sprint 1 UI polish
+and Sprint 2 YouTube hover linking are merged and owner-accepted on `main`;
+Sprint 3 (article/text) hover is implemented on `main`. Sprint 4
+(audio/podcast) hover is implemented pending owner Chrome acceptance. Sprint
+5 (generic page-video hover; not YouTube `/watch`) is implemented pending
+owner Chrome acceptance on a readable HTML5 webpage-video fixture. Generic
 webpage-video publication (`video_clip` + article source identity)
 remains available but is a niche HTML5 path; owner-authorized Sprint 6
 locks hosted capture, Feed cards, and hover to **TikTok watch URLs**
 (`source_type = tiktok`, not article) and is implemented on `main`
 (squash-merged PR #78). Owner Chrome and Staging acceptance for TikTok
-are still required. After TikTok Sprint 6, the next platform priority
-is **Spotify podcast / episode audio** for hosted audio annotation
-capture; Create/publish identity and hover are implemented on this
-branch pending owner Chrome and Staging acceptance. A separate Create UX
-follow-on is **typed clip range entry** (keep Set start / Set end, and
-also type start/end such as `1:00`–`2:30`); implemented on this branch.
-Brightcove / inaccessible
-cross-origin news-site embeds remain a later increment. X OAuth is out
-of Sprint 6. Staging-only X OAuth re-enable for the bounty submit is
-implemented in this increment; Production remains separately authorized. D1 and D2 completed their
+are still required. After TikTok Sprint 6, **Spotify podcast / episode
+audio** is implemented on `main` for hosted audio annotation capture;
+Create/publish identity and hover remain pending owner Chrome and Staging
+acceptance. The Spotify hover promo/outline fix is merged as PR #90. A
+separate Create UX follow-on is **typed clip range entry** (keep Set start
+/ Set end, and also type start/end such as `1:00`–`2:30`); implemented on
+`main`. The Matt-only `/ops` operator console is implemented and merged as
+PR #91. Fox / Brightcove / proprietary cross-origin news-site embeds are
+**tabled indefinitely** (Phase G / later-horizon) and are not a
+mid-September bounty blocker. X OAuth is out of Sprint 6. Staging-only X
+OAuth re-enable for the bounty submit is implemented on `main`; Production
+remains separately authorized. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -48,9 +51,10 @@ post-merge `main` CI `33004543238` passed. E1d merged through PR #29 as
 `ac456e072302f3cfecf70c7dfdbfa79e45ad8ace` after PR CI `33135378733`;
 post-merge `main` CI `33135718601` passed. E1e passed Owner Chrome acceptance
 and merged through PR #31 as `185d1a386ac374f7a1d9fe56dda97b872553b671`
-after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Cross-origin
-player adapters remain separately authorized. Generic webpage-video
-publication is implemented in a later increment on this branch. E2a passed Owner Chrome acceptance and merged through PR #33 as
+after PR CI `33230216132`; post-merge `main` CI `33230745060` passed. Fox /
+Brightcove / proprietary cross-origin player adapters are tabled indefinitely
+(Phase G / later-horizon) and are not a bounty blocker. Generic webpage-video
+publication is the niche HTML5/article-backed path on `main`. E2a passed Owner Chrome acceptance and merged through PR #33 as
 `83db250f9f07eeb747399546f1138b8503c44781` after PR CI `33259588362`;
 post-merge `main` CI `33260246341` passed. E2b passed Owner Local web acceptance
 and merged through PR #35 as `617cfdbeee4ebee6feacefa1abeb07775a250663`
@@ -409,8 +413,10 @@ tenth-second range display passed Owner Chrome acceptance. PR #31
 passed required CI run `33230216132`, was squash-merged as
 `185d1a386ac374f7a1d9fe56dda97b872553b671`, and passed post-merge `main` CI run
 `33230745060`. Inaccessible cross-origin players continue to fail closed;
-cross-origin adapters remain a separate increment. Generic webpage-video
-publication is implemented later on this branch. E2a's provider-neutral web and extension authentication boundaries,
+Fox / Brightcove / proprietary cross-origin adapters are tabled
+indefinitely (Phase G / later-horizon) and are not a bounty blocker.
+Generic webpage-video publication is the niche HTML5/article-backed path
+on `main`. E2a's provider-neutral web and extension authentication boundaries,
 bounded attempt/provider/callback/session validation, one-attempt handling,
 safe cleanup, provider-mismatch rejection, and token-safe errors preserved the
 proven Google flow. E2a passed Owner Chrome acceptance and PR CI run
@@ -454,8 +460,8 @@ disabled both web and extension capability opt-ins, and disabled only the
 Supabase Staging X provider while preserving Google, Site URL, redirects, masked
 credentials, and the X application. X is again absent from both user surfaces.
 Production was not accessed or deployed. Proprietary Brightcove and other
-inaccessible cross-origin player adapters remain a separately authorized
-increment.
+inaccessible cross-origin player adapters are tabled indefinitely (Phase G /
+later-horizon) and are not a mid-September bounty blocker.
 
 - Rename the visible extension tab **Context** to **Create** and add a
   **Text / Video / Audio** switcher at the top of the Create surface.
@@ -474,8 +480,9 @@ increment.
   separately authorized player-adapter contract. Generic webpage-video
   publication is the later article-backed hosted begin increment on this
   branch: `video_clip` on the existing article source, same capture →
-  upload → Processing → ready path as YouTube/audio. Brightcove /
-  inaccessible cross-origin adapters remain out of that increment.
+  upload → Processing → ready path as YouTube/audio. Fox / Brightcove /
+  proprietary cross-origin adapters remain out of that increment and are
+  tabled indefinitely (Phase G / later-horizon).
 - E2a placed existing Google sign-in behind provider-neutral web and extension
   boundaries with bounded attempt, callback, provider, session, retry, cleanup,
   and token-safe error handling. It did not display, execute, or configure X.
@@ -496,8 +503,9 @@ increment.
 Claims, takedown, and removal. The bounded plan is
 `docs/architecture/phase-f-claims-removal-plan.md`. F0–F5 implementation is
 merged on protected `main`. F6 owner-authorized Staging acceptance is recorded
-below. Production was not accessed; GCP media dispatcher and reconciler
-schedules remain paused.
+below, including 2026-09-07/08 exact Storage cleanup-to-zero for the
+media-worker buckets. Production was not accessed; GCP media dispatcher
+and reconciler schedules remain paused.
 
 F0 was merged through PR #43. F1a published-target claim intake is on `main` as
 `7ccd615f51a5359d5ef002a175063854a94ca787` (PR #44). F4 media-only withdrawal is
@@ -558,12 +566,17 @@ annotation `0f993576-9bae-44f0-a098-2532b448ca18`, media
    `resultCode: removed`; audit `annotation_remove` / `removed` at 2026-09-04
    ~14:48 UTC.
 
-Explicitly deferred and out of F6 close criteria for now:
+F6 Staging follow-up (2026-09-07/08) and remaining out-of-close notes:
 
-- Exact Storage cleanup-to-zero for derivative objects is deferred because
-  media dispatcher/reconciler schedules stay paused (owner choice). The media
-  row remains `processing_status=removed` with its path still present pending
-  the reconciler.
+- Exact Storage cleanup-to-zero for the media-worker buckets is **done**.
+  The owner ran a one-shot `annotated-media-reconciler-staging` execution
+  (not permanent schedule enablement) while dispatcher/reconciler
+  schedules stayed paused. Outcome: `annotation-media` holds only the 5
+  ready/published excerpts; `annotation-media-raw` is empty; no
+  reconciliation candidates remain; removed rows have null storage paths.
+  Legacy `annotation-audio` still has 4 pre-pipeline objects (out of
+  media reconciler scope) — optional follow-up, not blocking F6
+  cleanup-to-zero. Production was not accessed. Schedules remain paused.
 - Votes isolation is covered by existing pgTAP (`phase_d2c_voting_isolation`
   and Phase F tests on `main`); no Staging vote-driven moderation was observed.
 - The full `AGENTS.md` local release gate was not re-run on an agent machine.
@@ -582,11 +595,15 @@ Durable Phase F product rules remain:
 
 ## Near-term after Phase F
 
-Phase F implementation and owner-authorized Staging acceptance are recorded
-above. The next product work is not Phase G. Default recommendation, unless the
-owner pulls an item forward: **extension UI polish and X OAuth re-enable for
-the mid-September bounty submit**, then remaining near-term items. Phase G
-Production launch and hardening remain separately authorized.
+Phase F implementation, owner-authorized Staging acceptance, and
+2026-09-07/08 exact Storage cleanup-to-zero are recorded above. The next
+product work is not Phase G. Default recommendation, unless the owner
+pulls an item forward: remaining **extension UI polish** (owner Chrome
+acceptance where still pending) and **X OAuth re-enable for the
+mid-September bounty submit**. Fox / Brightcove / proprietary
+cross-origin news-site embeds are tabled indefinitely and are not in
+this near-term sequence. Phase G Production launch and hardening remain
+separately authorized.
 
 - **Extension UI polish / minimalist redesign.** Sequenced after Phase F per
   the locked September sequence in
@@ -655,10 +672,10 @@ Production launch and hardening remain separately authorized.
     mismatch, or when no safe player target exists. Webpage-video
     hosted publish is implemented as an article-backed `video_clip`
     begin RPC plus Feed/detail projection; owner Staging acceptance
-    still needs a readable HTML5 fixture (not opaque Brightcove unless
-    that player is already same-origin readable). Same permissions; no
-    persistent content scripts; no host-specific selectors. Brightcove
-    / cross-origin adapters remain separate.
+    still needs a readable HTML5 fixture. Same permissions; no
+    persistent content scripts; no host-specific selectors. Fox /
+    Brightcove / proprietary cross-origin news-site embeds are tabled
+    indefinitely (Phase G / later-horizon) and are not a bounty blocker.
   - **Sprint 6 — TikTok hosted capture, publish, Feed cards, and hover**
     (extension + web + additive Staging RPC; implemented on `main` via
     squash-merged PR #78; owner Chrome and Staging acceptance still
@@ -680,12 +697,15 @@ Production launch and hardening remain separately authorized.
     photos, `vm`/`vt`/`t` short links, login walls, DRM, and when
     identity or player chrome cannot be confirmed. Desktop
     `tiktok.com` watch URLs only for v1. Webpage HTML5 publish remains
-    the niche article-backed path; news-site opaque embeds stay later.
-    No X OAuth and no Brightcove/Fox adapter in this increment.
+    the niche article-backed path. Fox / Brightcove / proprietary
+    cross-origin news-site embeds are tabled indefinitely (Phase G /
+    later-horizon) and are not in this increment or the bounty submit.
+    No X OAuth in this increment.
     Staging migration: `20260905221500_begin_hosted_tiktok_annotation`.
     Do not touch Production. Do not unpause Cloud Run.
   - **After Sprint 6 — Spotify podcast / episode audio** (implemented
-    on this branch). Owner authorization (2026-09-05/06): first-class
+    on `main`; hover promo/outline fix merged as PR #90). Owner
+    authorization (2026-09-05/06): first-class
     `source_type = spotify` and `begin_hosted_spotify_annotation`, not
     reuse of generic `podcast`. Stable episode URL identity
     (`https://open.spotify.com/episode/<id>` and common variants).
@@ -694,16 +714,20 @@ Production launch and hardening remain separately authorized.
     what that tab can already play (logged-in listen or a logged-out
     limited preview that is already audible). Public playback is
     Annotated's hosted derivative, not a live Spotify embed.
-    Feed card `kind: spotify`. Hover highlights the now-playing bar.
-    Fail closed on home, search, show-only, login walls that cannot
-    play, DRM, and unreadable / off-start player time. DRM and
-    stream-URL scraping stay out of scope. Fox / Brightcove stay a
-    later vertical.
+    Feed card `kind: spotify`. Hover highlights the now-playing bar
+    (PR #90 keeps the outline on the player bar rather than a
+    promotional tile). Fail closed on home, search, show-only, login
+    walls that cannot play, DRM, and unreadable / off-start player
+    time. DRM and stream-URL scraping stay out of scope. Owner Chrome
+    and Staging acceptance remain required. Fox / Brightcove /
+    proprietary cross-origin news-site embeds are not the next
+    platform after Spotify; they are tabled indefinitely (Phase G /
+    later-horizon) and are not a bounty blocker.
     Staging migration: `20260906031846_begin_hosted_spotify_annotation`.
     Owner apply/verify notes: `docs/product/spotify-episode-capture.md`.
     Do not touch Production. Do not unpause Cloud Run.
 - **Typed clip range entry** (Create UX follow-on for Video and Audio;
-  implemented on this branch). Owner side note (2026-09-05): in
+  implemented on `main`). Owner side note (2026-09-05): in
   addition to **Set start** and **Set end**, the user can **type**
   start and stop times (examples: start `1:00`, end `2:30`). Keep the
   existing Set start / Set end buttons. Direct text fields accept
@@ -722,11 +746,20 @@ Production launch and hardening remain separately authorized.
   checklist for the Staging provider, X Developer Portal, and callback
   URLs: `docs/product/x-oauth-staging-reenable.md`. Production X remains
   separately authorized.
-- **Exact Storage cleanup-to-zero** for F6-deferred derivative objects when
-  dispatcher/reconciler schedules are temporarily authorized, then re-paused.
-  Production remains untouched.
-- **Minimal Matt-only operator console** (implemented on this branch; not a
-  broad admin UI). Single allowlisted operator UI at `/ops`; reuses existing
+- **Exact Storage cleanup-to-zero** for the media-worker buckets is
+  **done** (2026-09-07/08). Owner ran one-shot
+  `annotated-media-reconciler-staging` (not permanent schedule
+  enablement). `annotation-media` holds only the 5 ready/published
+  excerpts; `annotation-media-raw` is empty; no reconciliation
+  candidates remain; removed rows have null storage paths. Legacy
+  `annotation-audio` still has 4 pre-pipeline objects (out of media
+  reconciler scope) — optional follow-up, not blocking F6
+  cleanup-to-zero. Production was not accessed. Dispatcher and
+  reconciler schedules remain paused. Details are in the Phase F
+  section above.
+- **Minimal Matt-only operator console** (implemented and merged as
+  PR #91; not a broad admin UI). Single allowlisted operator UI at
+  `/ops`; reuses existing
   `/api/moderation/*` routes; no new privileges beyond
   `ANNOTATED_MODERATION_OPERATOR_*`. No public nav or Feed link. Non-allowlisted
   sessions, including anonymous visitors, receive `notFound()`. Owner Staging
@@ -748,7 +781,9 @@ Production launch and hardening remain separately authorized.
   - Out of scope: multi-operator RBAC, public appeals, email, analytics
     dashboards, editing claims content, Production-only features.
 - **Phase G Production launch and hardening** remains a separate phase with
-  its own authorization; it is not the next increment after F.
+  its own authorization; it is not the next increment after F. Fox /
+  Brightcove / proprietary cross-origin news-site embeds live on that
+  later-horizon, not in the mid-September bounty sequence.
 
 ## Phase G — future
 
@@ -764,6 +799,12 @@ Production launch and hardening:
   monitoring, alerting, rollback, retention operations, and staged Production
   enablement. Preserve the Chrome/browser/device, zoom/DPR/fullscreen/resize,
   auth/session, retry, privacy, security, and end-to-end regression matrices.
+- **Fox / Brightcove / proprietary cross-origin news-site embeds** are
+  tabled indefinitely on this later-horizon. Owner directed (2026-09-07/08)
+  that they are not needed for the mid-September bounty submit and are not
+  the next platform after Spotify. Readable HTML5 webpage-video remains the
+  niche article-backed path; opaque news-site players continue to fail
+  closed until a separately authorized Phase G (or later) adapter contract.
 - Phase E has passed Local, required CI, bounded Staging acceptance, exact
   cleanup, and reversible rollback. Production access, deployment, schedule
   enablement, DNS/OAuth/vendor configuration, and traffic cutover each still
@@ -804,13 +845,18 @@ extension live-X Staging acceptance, PR CI `33578556343`, squash merge
 `33579104948`; exact disposable-user/grant cleanup and reversible capability/
 provider rollback then passed. X user-facing Staging re-enable is implemented in this increment;
 the Supabase Staging provider and X Developer Portal remain owner
-manual steps in `docs/product/x-oauth-staging-reenable.md`. Cross-origin player adapters, later implementation,
-schedule enablement, Production access, and deployment remain separately
+manual steps in `docs/product/x-oauth-staging-reenable.md`. Fox /
+Brightcove / proprietary cross-origin news-site embeds are tabled
+indefinitely (Phase G / later-horizon) and are not a bounty blocker.
+Schedule enablement, Production access, and deployment remain separately
 authorized. Generic webpage-video publication remains the niche
 HTML5/article-backed path. Sprint 6 TikTok hosted capture/publish is
 the owner-authorized demo path for hosted watch pages after YouTube.
 Phase E has passed its Local, required CI, and bounded Staging gates. Production
 rollout still requires its own explicit authorization. Phase F F0–F5 are merged
 on `main`; F6 owner-authorized Staging acceptance is recorded in the Phase F
-section. Production was not accessed; worker schedules remain paused. Exact
-Storage cleanup-to-zero remains deferred while those schedules stay paused.
+section. Exact Storage cleanup-to-zero for the media-worker buckets is
+recorded 2026-09-07/08 after a one-shot `annotated-media-reconciler-staging`
+run. Production was not accessed; worker schedules remain paused. Legacy
+`annotation-audio` objects remain an optional follow-up, not an F6
+cleanup-to-zero blocker.

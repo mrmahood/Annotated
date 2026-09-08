@@ -9,16 +9,20 @@ page-video hover linking) is implemented pending owner Chrome
 acceptance. Sprint 6 (TikTok hosted capture/publish + hover) is
 implemented on `main` (squash-merged PR #78) pending owner Chrome
 and Staging acceptance. After TikTok Sprint 6, Spotify podcast /
-episode audio capture + hover is implemented on this branch
-(`docs/product/spotify-episode-capture.md`). Typed clip range entry
+episode audio capture + hover is implemented on `main`
+(`docs/product/spotify-episode-capture.md`); the hover promo/outline
+fix is PR #90. Typed clip range entry
 (type start/end such as `1:00`–`2:30` in addition to Set start /
 Set end) is a separate Create UX follow-on; it is implemented on
-this branch. Approving the polish sections does not authorize
+`main`. Fox / Brightcove / proprietary cross-origin news-site embeds
+are tabled indefinitely (Phase G / later-horizon) and are not a
+bounty blocker. Approving the polish sections does not authorize
 Staging apply, Production, or Phase G. X OAuth Staging re-enable is a separate
 owner-authorized increment (`docs/product/x-oauth-staging-reenable.md`).
 
 Baseline: protected `main` after Sprint 2 PR #61 (2026-09-05), with
-Phase F F0–F5 and F6 Staging acceptance already recorded. Sequence:
+Phase F F0–F5, F6 Staging acceptance, and 2026-09-07/08 media-worker
+Storage cleanup-to-zero already recorded. Sequence:
 polish after Phase F, before X re-enable and the mid-September bounty
 submit. Sprint 1 and Sprint 2 of that polish are done. Production has
 not been accessed. Worker schedules remain paused.
@@ -52,7 +56,7 @@ remaining hover-link follow-ons:
   **implemented** on `main` via PR #78; owner Chrome and Staging
   acceptance still required);
 - after Sprint 6, Spotify podcast / episode audio capture + hover
-  (implemented on this branch; see
+  (implemented on `main`; hover promo/outline fix PR #90; see
   `docs/product/spotify-episode-capture.md`).
 
 The annotation is the product; chrome gets out of the way.
@@ -458,8 +462,9 @@ identity is the article page (`source_type = article`), distinct from
 YouTube `video_clip` + `youtube`. Generic webpage-video **hosted
 publish** is implemented as an article-backed begin RPC plus Feed/detail
 projection. Sprint 5 Chrome acceptance still needs a readable HTML5
-fixture; Brightcove / inaccessible cross-origin adapters remain a
-separate increment. Owner later concluded readable HTML5 webpage-video
+fixture. Fox / Brightcove / proprietary cross-origin adapters are
+tabled indefinitely (Phase G / later-horizon) and are not a bounty
+blocker. Owner later concluded readable HTML5 webpage-video
 is too rare for real demos; Sprint 6 is the TikTok watch path.
 
 ### 8.5 Sprint 6 — TikTok hosted capture, Feed cards, and hover (implemented)
@@ -499,17 +504,22 @@ Known v1 limits — fail closed:
 - mobile-only surfaces.
 
 Webpage HTML5 publish remains the niche article-backed path.
-News-site opaque embeds (Brightcove/Fox) stay later. No X OAuth.
+Fox / Brightcove / proprietary cross-origin news-site embeds are
+tabled indefinitely (Phase G / later-horizon) and are not a
+mid-September bounty blocker. No X OAuth.
 
 ### 8.6 After Sprint 6 — Spotify podcast / episode capture + hover
 
-Implemented on this branch. First-class `source_type = spotify`,
+Implemented on `main` (hover promo/outline fix PR #90). First-class
+`source_type = spotify`,
 Create → Audio, Feed chip **Spotify**, and now-playing-bar hover.
 Capture is tabCapture of what the connected tab can already play
 (logged-in listen or a logged-out limited preview that is already
 audible). Public playback is the hosted derivative, not a Spotify
 embed. See `docs/product/spotify-episode-capture.md`. DRM /
-stream-URL scraping stay out of scope. Fox / Brightcove remain later.
+stream-URL scraping stay out of scope. Fox / Brightcove /
+proprietary cross-origin news-site embeds are tabled indefinitely
+(Phase G / later-horizon), not the next platform after Spotify.
 
 ## 9. Acceptance criteria (Sprint 1)
 
@@ -535,7 +545,8 @@ stream-URL scraping stay out of scope. Fox / Brightcove remain later.
   one-shot if needed → Feed Video/TikTok card → hover
   scroll+outline on the TikTok tab, plus YouTube / NYT text/audio /
   webpage-video regression. Opaque Brightcove/Fox cross-origin
-  players remain out of scope unless they are already same-origin
+  players are tabled indefinitely (Phase G / later-horizon) and
+  remain out of sprint scope unless they are already same-origin
   readable.
 
 Sprint 1 and Sprint 2 owner Chrome acceptance are recorded. Automated
@@ -548,7 +559,8 @@ video hover on live source pages.
 
 Out of this brief’s implementation slices:
 
-- `/ops` console, Production / Phase G, user
+- `/ops` console (shipped separately as PR #91; not a polish sprint),
+  Production / Phase G, user
   accent-color picker, broad admin UI. X OAuth Staging re-enable is a
   separate increment, not a polish sprint.
 - Multi-operator admin UI, claimant email, rebuilding Feed IA beyond the
@@ -573,11 +585,13 @@ Sprint 1, Sprint 2, and Sprint 3 are already implemented and accepted.
 Sprint 4 and Sprint 5 are implemented pending owner Chrome acceptance.
 Sprint 6 is implemented on `main` (PR #78) pending owner Chrome and
 Staging acceptance. Spotify episode capture + hover is implemented
-on this branch pending owner Chrome and Staging acceptance. Typed
+on `main` (hover promo/outline fix PR #90) pending owner Chrome and
+Staging acceptance. Typed
 start/end clip fields are a separate Create UX follow-on and are
 not authorized here. Do not treat this brief as permission to
 change capture, hosted-media publication, claims, or extension
 permissions beyond the later owner-authorized webpage-video
 publication increment and the owner-authorized Sprint 6 TikTok
-increment. Brightcove / cross-origin adapters remain out of Sprint
-5 and Sprint 6.
+increment. Brightcove / cross-origin adapters are tabled
+indefinitely (Phase G / later-horizon) and remain out of Sprint
+5 and Sprint 6 and the mid-September bounty submit.
