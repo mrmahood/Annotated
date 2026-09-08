@@ -247,7 +247,9 @@ export function applyTikTokHoverHighlightOnPage(
     }
 
     try {
-      player.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      if (!(document.getElementById(rootId) instanceof HTMLElement)) {
+        player.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      }
     } catch {
       try { player.scrollIntoView(true); } catch { /* Scroll is best-effort. */ }
     }
@@ -284,7 +286,6 @@ export function applyTikTokHoverHighlightOnPage(
     root.dataset.surface = player.getAttribute('data-e2e') ||
       player.id ||
       (/\bxgplayer\b/i.test(typeof player.className === 'string' ? player.className : '') ? 'xgplayer' : player.tagName.toLowerCase());
-    root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
 
     const layer = (selector: string, attribute: string): HTMLElement => {
       const existing = root.querySelector(selector);
@@ -297,6 +298,13 @@ export function applyTikTokHoverHighlightOnPage(
     const dim = layer('[data-annotated-hover-dim="1"]', 'data-annotated-hover-dim');
     const ring = layer('[data-annotated-hover-ring="1"]', 'data-annotated-hover-ring');
     const range = layer('[data-annotated-hover-range="1"]', 'data-annotated-hover-range');
+    // Duplicated in every serialized injector. Keep aligned with hover-overlay-paint.ts.
+    const writeCss = (element: HTMLElement & { __annotatedHoverCss?: string }, next: string) => {
+      if (element.__annotatedHoverCss === next) return;
+      element.__annotatedHoverCss = next;
+      element.style.cssText = next;
+    };
+    writeCss(root, 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;');
 
     const position = () => {
       const rect = player.getBoundingClientRect();
@@ -304,15 +312,15 @@ export function applyTikTokHoverHighlightOnPage(
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
-      dim.style.cssText = [
+      writeCss(dim, [
         'position:fixed',
         'inset:0',
         `background:rgba(0,0,0,${dimOpacity})`,
         `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
-      ].join(';');
+      ].join(';'));
       const insetX = Math.min(ringInset, Math.max(0, (rect.width - 24) / 2));
       const insetY = Math.min(ringInset, Math.max(0, (rect.height - 24) / 2));
-      ring.style.cssText = [
+      writeCss(ring, [
         'position:fixed',
         `top:${rect.top + insetY}px`,
         `left:${rect.left + insetX}px`,
@@ -320,7 +328,7 @@ export function applyTikTokHoverHighlightOnPage(
         `height:${Math.max(0, rect.height - insetY * 2)}px`,
         `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
         'border-radius:4px',
-      ].join(';');
+      ].join(';'));
 
       const bar = player.querySelector('[class*="progress"], [class*="Progress"], [role="slider"]');
       const video = player.querySelector('video') ?? document.querySelector('video');
@@ -337,7 +345,7 @@ export function applyTikTokHoverHighlightOnPage(
         bar.getBoundingClientRect().width > 16;
       if (barVisible && cue) {
         const barRect = bar.getBoundingClientRect();
-        range.style.cssText = [
+        writeCss(range, [
           'position:fixed',
           `top:${barRect.top}px`,
           `left:${barRect.left + (barRect.width * cue.leftPercent) / 100}px`,
@@ -345,10 +353,10 @@ export function applyTikTokHoverHighlightOnPage(
           `height:${Math.max(3, barRect.height)}px`,
           'background:rgba(154,167,181,0.72)',
           'border-radius:999px',
-        ].join(';');
+        ].join(';'));
         range.hidden = false;
       } else {
-        range.style.cssText = 'display:none';
+        writeCss(range, 'display:none');
         range.hidden = true;
       }
     };
@@ -356,14 +364,27 @@ export function applyTikTokHoverHighlightOnPage(
     position();
     const previous = (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup;
     if (typeof previous === 'function') previous();
+    let raf = 0;
     const onChange = () => {
-      try { position(); } catch { /* Reposition is best-effort. */ }
+      if (raf) return;
+      const requestFrame = window.requestAnimationFrame;
+      if (typeof requestFrame === 'function') {
+        raf = requestFrame(() => {
+          raf = 0;
+          try { position(); } catch { /* Reposition is best-effort. */ }
+        });
+      } else {
+        try { position(); } catch { /* Reposition is best-effort. */ }
+      }
     };
-    window.addEventListener('scroll', onChange, true);
-    window.addEventListener('resize', onChange);
+    window.addEventListener('scroll', onChange, { capture: true, passive: true });
+    window.addEventListener('resize', onChange, { passive: true });
     (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup = () => {
-      window.removeEventListener('scroll', onChange, true);
+      window.removeEventListener('scroll', onChange, { capture: true });
       window.removeEventListener('resize', onChange);
+      const cancel = window.cancelAnimationFrame;
+      if (raf && typeof cancel === 'function') cancel(raf);
+      raf = 0;
     };
 
     // Soft and strong hover must not seek or play the opaque TikTok player.

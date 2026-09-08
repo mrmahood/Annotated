@@ -566,6 +566,7 @@ export function applyArticleHoverHighlightOnPage(
     }
 
     let root = document.getElementById(rootId);
+    const hadRoot = root instanceof HTMLElement;
     if (!(root instanceof HTMLElement)) {
       root = document.createElement('div');
       root.id = rootId;
@@ -574,15 +575,24 @@ export function applyArticleHoverHighlightOnPage(
       document.documentElement.appendChild(root);
     }
     root.dataset.strength = request.strength;
-    root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
-    root.replaceChildren();
+    // Duplicated in every serialized injector. Keep aligned with hover-overlay-paint.ts.
+    const writeCss = (element: HTMLElement & { __annotatedHoverCss?: string }, next: string) => {
+      if (element.__annotatedHoverCss === next) return;
+      element.__annotatedHoverCss = next;
+      element.style.cssText = next;
+    };
+    writeCss(root, 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;');
 
-    const dim = document.createElement('div');
-    dim.setAttribute('data-annotated-hover-dim', '1');
-    root.appendChild(dim);
-    const rings = document.createElement('div');
-    rings.setAttribute('data-annotated-hover-rings', '1');
-    root.appendChild(rings);
+    const layer = (selector: string, attribute: string): HTMLElement => {
+      const existing = root.querySelector(selector);
+      if (existing instanceof HTMLElement) return existing;
+      const created = document.createElement('div');
+      created.setAttribute(attribute, '1');
+      root.appendChild(created);
+      return created;
+    };
+    const dim = layer('[data-annotated-hover-dim="1"]', 'data-annotated-hover-dim');
+    const rings = layer('[data-annotated-hover-rings="1"]', 'data-annotated-hover-rings');
 
     const position = () => {
       const nextRects = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
@@ -593,20 +603,28 @@ export function applyArticleHoverHighlightOnPage(
         const bottom = Math.min(window.innerHeight, rect.bottom);
         return `${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px`;
       }).join(', ');
-      dim.style.cssText = [
+      writeCss(dim, [
         'position:fixed',
         'inset:0',
         `background:rgba(0,0,0,${dimOpacity})`,
         holes
           ? `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${holes})`
           : '',
-      ].filter(Boolean).join(';');
+      ].filter(Boolean).join(';'));
 
-      rings.replaceChildren();
-      for (const rect of nextRects) {
-        const ring = document.createElement('div');
-        ring.setAttribute('data-annotated-hover-ring', '1');
-        ring.style.cssText = [
+      for (let index = 0; index < nextRects.length; index += 1) {
+        const rect = nextRects[index];
+        if (!rect) continue;
+        const existingRing = rings.children[index];
+        let ring: HTMLElement;
+        if (existingRing instanceof HTMLElement) {
+          ring = existingRing;
+        } else {
+          ring = document.createElement('div');
+          ring.setAttribute('data-annotated-hover-ring', '1');
+          rings.appendChild(ring);
+        }
+        writeCss(ring, [
           'position:fixed',
           `top:${rect.top}px`,
           `left:${rect.left}px`,
@@ -615,37 +633,54 @@ export function applyArticleHoverHighlightOnPage(
           `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
           `background:${fillColor}`,
           'border-radius:2px',
-        ].join(';');
-        rings.appendChild(ring);
+        ].join(';'));
+      }
+      while (rings.children.length > nextRects.length) {
+        rings.children[rings.children.length - 1]?.remove();
       }
     };
 
     position();
     const previous = (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup;
     if (typeof previous === 'function') previous();
+    let raf = 0;
     const onChange = () => {
-      try { position(); } catch { /* Reposition is best-effort. */ }
+      if (raf) return;
+      const requestFrame = window.requestAnimationFrame;
+      if (typeof requestFrame === 'function') {
+        raf = requestFrame(() => {
+          raf = 0;
+          try { position(); } catch { /* Reposition is best-effort. */ }
+        });
+      } else {
+        try { position(); } catch { /* Reposition is best-effort. */ }
+      }
     };
-    window.addEventListener('scroll', onChange, true);
-    window.addEventListener('resize', onChange);
+    window.addEventListener('scroll', onChange, { capture: true, passive: true });
+    window.addEventListener('resize', onChange, { passive: true });
     (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup = () => {
-      window.removeEventListener('scroll', onChange, true);
+      window.removeEventListener('scroll', onChange, { capture: true });
       window.removeEventListener('resize', onChange);
+      const cancel = window.cancelAnimationFrame;
+      if (raf && typeof cancel === 'function') cancel(raf);
+      raf = 0;
     };
 
     try {
-      const scrollOptions: ScrollIntoViewOptions = {
-        block: 'center',
-        inline: 'nearest',
-        behavior: 'smooth',
-      };
-      const parent = startPoint.node.parentElement;
-      if (parent && typeof parent.scrollIntoView === 'function') {
-        parent.scrollIntoView(scrollOptions);
-      }
-      const firstRing = rings.querySelector('[data-annotated-hover-ring="1"]');
-      if (firstRing && typeof firstRing.scrollIntoView === 'function') {
-        firstRing.scrollIntoView(scrollOptions);
+      if (!hadRoot) {
+        const scrollOptions: ScrollIntoViewOptions = {
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'smooth',
+        };
+        const parent = startPoint.node.parentElement;
+        if (parent && typeof parent.scrollIntoView === 'function') {
+          parent.scrollIntoView(scrollOptions);
+        }
+        const firstRing = rings.querySelector('[data-annotated-hover-ring="1"]');
+        if (firstRing && typeof firstRing.scrollIntoView === 'function') {
+          firstRing.scrollIntoView(scrollOptions);
+        }
       }
     } catch {
       // Scroll is best-effort after a successful paint.

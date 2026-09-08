@@ -391,6 +391,21 @@ test('page injector fails closed off-source, on For You, and when no player is p
   }, { noPlayer: true, noRelated: true });
 });
 
+test('re-applying hover does not scroll the player again', () => {
+  withPage(({ player }) => {
+    const target = {
+      expectedVideoId: VIDEO_ID,
+      strength: 'soft',
+      startMs: 1_000,
+      endMs: 8_000,
+    };
+    assert.equal(applyTikTokHoverHighlightOnPage(target).ok, true);
+    assert.equal(player.scrolls.length, 1);
+    assert.equal(applyTikTokHoverHighlightOnPage({ ...target, strength: 'strong' }).ok, true);
+    assert.equal(player.scrolls.length, 1);
+  });
+});
+
 test('soft and strong hover never seek or play and clear removes the overlay', () => {
   withPage(({ documentElement, video }) => {
     assert.equal(applyTikTokHoverHighlightOnPage({

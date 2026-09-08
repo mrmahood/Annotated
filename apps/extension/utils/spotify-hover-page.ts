@@ -295,7 +295,9 @@ export function applySpotifyHoverHighlightOnPage(
     const player = measured.element;
 
     try {
-      player.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      if (!(document.getElementById(rootId) instanceof HTMLElement)) {
+        player.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+      }
     } catch {
       try { player.scrollIntoView(true); } catch { /* Scroll is best-effort. */ }
     }
@@ -315,7 +317,6 @@ export function applySpotifyHoverHighlightOnPage(
       document.documentElement.appendChild(root);
     }
     root.setAttribute('data-annotated-hover-surface', 'player-bar');
-    root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
 
     const layer = (selector: string, attribute: string): HTMLElement => {
       const existing = root.querySelector(selector);
@@ -327,6 +328,13 @@ export function applySpotifyHoverHighlightOnPage(
     };
     const dim = layer('[data-annotated-hover-dim="1"]', 'data-annotated-hover-dim');
     const ring = layer('[data-annotated-hover-ring="1"]', 'data-annotated-hover-ring');
+    // Duplicated in every serialized injector. Keep aligned with hover-overlay-paint.ts.
+    const writeCss = (element: HTMLElement & { __annotatedHoverCss?: string }, next: string) => {
+      if (element.__annotatedHoverCss === next) return;
+      element.__annotatedHoverCss = next;
+      element.style.cssText = next;
+    };
+    writeCss(root, 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;');
 
     const position = () => {
       const next = measurePlayer();
@@ -335,13 +343,13 @@ export function applySpotifyHoverHighlightOnPage(
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
-      dim.style.cssText = [
+      writeCss(dim, [
         'position:fixed',
         'inset:0',
         `background:rgba(0,0,0,${dimOpacity})`,
         `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
-      ].join(';');
-      ring.style.cssText = [
+      ].join(';'));
+      writeCss(ring, [
         'position:fixed',
         `top:${rect.top}px`,
         `left:${rect.left}px`,
@@ -349,20 +357,33 @@ export function applySpotifyHoverHighlightOnPage(
         `height:${Math.max(0, rect.height)}px`,
         `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
         'border-radius:8px',
-      ].join(';');
+      ].join(';'));
     };
 
     position();
     const previous = (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup;
     if (typeof previous === 'function') previous();
+    let raf = 0;
     const onChange = () => {
-      try { position(); } catch { /* Reposition is best-effort. */ }
+      if (raf) return;
+      const requestFrame = window.requestAnimationFrame;
+      if (typeof requestFrame === 'function') {
+        raf = requestFrame(() => {
+          raf = 0;
+          try { position(); } catch { /* Reposition is best-effort. */ }
+        });
+      } else {
+        try { position(); } catch { /* Reposition is best-effort. */ }
+      }
     };
-    window.addEventListener('scroll', onChange, true);
-    window.addEventListener('resize', onChange);
+    window.addEventListener('scroll', onChange, { capture: true, passive: true });
+    window.addEventListener('resize', onChange, { passive: true });
     (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup = () => {
-      window.removeEventListener('scroll', onChange, true);
+      window.removeEventListener('scroll', onChange, { capture: true });
       window.removeEventListener('resize', onChange);
+      const cancel = window.cancelAnimationFrame;
+      if (raf && typeof cancel === 'function') cancel(raf);
+      raf = 0;
     };
     return { ok: true };
   } catch {
