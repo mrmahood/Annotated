@@ -28,6 +28,7 @@ function withPage(callback, overrides = {}) {
   const names = ['location', 'document', 'window', 'HTMLElement', 'HTMLVideoElement', 'getComputedStyle'];
   const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
   const listeners = { scroll: [], resize: [] };
+  const frames = [];
   const nodes = new Map();
 
   class ElementStub {
@@ -165,6 +166,13 @@ function withPage(callback, overrides = {}) {
         if (!listeners[name]) return;
         listeners[name] = listeners[name].filter((entry) => entry !== fn);
       },
+      requestAnimationFrame: (callback) => {
+        frames.push(callback);
+        return frames.length;
+      },
+      cancelAnimationFrame: (handle) => {
+        if (handle >= 1 && handle <= frames.length) frames[handle - 1] = null;
+      },
     },
   };
 
@@ -172,7 +180,7 @@ function withPage(callback, overrides = {}) {
     for (const [name, value] of Object.entries(values)) {
       Object.defineProperty(globalThis, name, { configurable: true, value });
     }
-    return callback({ player, video, documentElement, listeners, nodes });
+    return callback({ player, video, documentElement, listeners, nodes, frames });
   } finally {
     for (const name of names) {
       const descriptor = previous.get(name);
@@ -395,6 +403,39 @@ test('page injector collapses a rapid same-seek re-apply and never calls play', 
       seekMs: 10_000,
     }).ok, true);
     assert.equal(video.currentTime, 40);
+  });
+});
+
+test('scroll and resize coalesce onto one animation frame and skip identical css writes', () => {
+  withPage(({ player, documentElement, listeners, frames }) => {
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'soft',
+      startMs: null,
+      endMs: null,
+      seekMs: null,
+    }).ok, true);
+    const ring = documentElement.querySelector('[data-annotated-hover-ring="1"]');
+    const firstCss = ring.style.cssText;
+    assert.equal(listeners.scroll.length, 1);
+    assert.equal(frames.length, 0);
+
+    listeners.scroll[0]();
+    listeners.scroll[0]();
+    listeners.resize[0]();
+    assert.equal(frames.length, 1);
+    assert.equal(ring.style.cssText, firstCss);
+
+    player.rect = { left: 80, top: 60, right: 720, bottom: 420, width: 640, height: 360 };
+    frames[0](0);
+    const moved = parseBox(ring.style.cssText);
+    assert.equal(moved.left, 85);
+    assert.equal(moved.top, 65);
+
+    const afterMove = ring.style.cssText;
+    listeners.scroll[0]();
+    frames[1](0);
+    assert.equal(ring.style.cssText, afterMove);
   });
 });
 

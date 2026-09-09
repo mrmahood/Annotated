@@ -328,6 +328,13 @@ test('hover outlines only the player row when Preview promo is stacked above it'
     assert.doesNotMatch(dim, new RegExp(`${STACK_RECT.left}px ${STACK_RECT.top}px, ${STACK_RECT.right}px ${STACK_RECT.top}px`));
     assert.match(ring.style.cssText, /rgba\(255, 184, 40/);
     assert.equal(playerRow.scrolls.length, 1);
+    assert.equal(applySpotifyHoverHighlightOnPage({
+      expectedEpisodeId: EPISODE_ID,
+      strength: 'strong',
+      startMs: null,
+      endMs: null,
+    }).ok, true);
+    assert.equal(playerRow.scrolls.length, 1);
   });
 });
 

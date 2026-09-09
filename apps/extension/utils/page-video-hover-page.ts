@@ -456,6 +456,7 @@ export function applyPageVideoHoverHighlightOnPage(
     const ringColor = strong ? 'rgba(236, 241, 246, 0.92)' : 'rgba(154, 167, 181, 0.78)';
 
     let root = document.getElementById(rootId);
+    const hadRoot = root instanceof HTMLElement;
     if (!(root instanceof HTMLElement)) {
       root = document.createElement('div');
       root.id = rootId;
@@ -464,7 +465,6 @@ export function applyPageVideoHoverHighlightOnPage(
       document.documentElement.appendChild(root);
     }
     root.dataset.strength = request.strength;
-    root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;';
 
     const layer = (selector: string, attribute: string): HTMLElement => {
       const existing = root.querySelector(selector);
@@ -477,6 +477,13 @@ export function applyPageVideoHoverHighlightOnPage(
     const dim = layer('[data-annotated-hover-dim="1"]', 'data-annotated-hover-dim');
     const ring = layer('[data-annotated-hover-ring="1"]', 'data-annotated-hover-ring');
     const range = layer('[data-annotated-hover-range="1"]', 'data-annotated-hover-range');
+    // Duplicated in every serialized injector. Keep aligned with hover-overlay-paint.ts.
+    const writeCss = (element: HTMLElement & { __annotatedHoverCss?: string }, next: string) => {
+      if (element.__annotatedHoverCss === next) return;
+      element.__annotatedHoverCss = next;
+      element.style.cssText = next;
+    };
+    writeCss(root, 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;');
 
     const position = () => {
       const rect = player.getBoundingClientRect();
@@ -484,13 +491,13 @@ export function applyPageVideoHoverHighlightOnPage(
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
-      dim.style.cssText = [
+      writeCss(dim, [
         'position:fixed',
         'inset:0',
         `background:rgba(0,0,0,${dimOpacity})`,
         `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
-      ].join(';');
-      ring.style.cssText = [
+      ].join(';'));
+      writeCss(ring, [
         'position:fixed',
         `top:${rect.top}px`,
         `left:${rect.left}px`,
@@ -498,7 +505,7 @@ export function applyPageVideoHoverHighlightOnPage(
         `height:${Math.max(0, rect.height)}px`,
         `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
         'border-radius:2px',
-      ].join(';');
+      ].join(';'));
 
       const bar = findScrubber(player);
       const durationMs = mediaDurationMs(media) ?? sliderDurationMs(bar);
@@ -512,7 +519,7 @@ export function applyPageVideoHoverHighlightOnPage(
         bar.getBoundingClientRect().width > 16;
       if (barVisible && cue) {
         const barRect = bar.getBoundingClientRect();
-        range.style.cssText = [
+        writeCss(range, [
           'position:fixed',
           `top:${barRect.top}px`,
           `left:${barRect.left + (barRect.width * cue.leftPercent) / 100}px`,
@@ -520,10 +527,10 @@ export function applyPageVideoHoverHighlightOnPage(
           `height:${Math.max(3, barRect.height)}px`,
           'background:rgba(154,167,181,0.72)',
           'border-radius:999px',
-        ].join(';');
+        ].join(';'));
         range.hidden = false;
       } else {
-        range.style.cssText = 'display:none';
+        writeCss(range, 'display:none');
         range.hidden = true;
       }
     };
@@ -531,41 +538,56 @@ export function applyPageVideoHoverHighlightOnPage(
     position();
     const previous = (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup;
     if (typeof previous === 'function') previous();
+    let raf = 0;
     const onChange = () => {
-      try { position(); } catch { /* Reposition is best-effort. */ }
+      if (raf) return;
+      const requestFrame = window.requestAnimationFrame;
+      if (typeof requestFrame === 'function') {
+        raf = requestFrame(() => {
+          raf = 0;
+          try { position(); } catch { /* Reposition is best-effort. */ }
+        });
+      } else {
+        try { position(); } catch { /* Reposition is best-effort. */ }
+      }
     };
-    window.addEventListener('scroll', onChange, true);
-    window.addEventListener('resize', onChange);
+    window.addEventListener('scroll', onChange, { capture: true, passive: true });
+    window.addEventListener('resize', onChange, { passive: true });
     (root as HTMLElement & { __annotatedHoverCleanup?: () => void }).__annotatedHoverCleanup = () => {
-      window.removeEventListener('scroll', onChange, true);
+      window.removeEventListener('scroll', onChange, { capture: true });
       window.removeEventListener('resize', onChange);
+      const cancel = window.cancelAnimationFrame;
+      if (raf && typeof cancel === 'function') cancel(raf);
+      raf = 0;
     };
 
     try {
-      const scrollOptions: ScrollIntoViewOptions = {
-        block: 'center',
-        inline: 'nearest',
-        behavior: 'smooth',
-      };
-      const bar = findScrubber(player);
-      const scrollableChrome = (start: HTMLElement | null): HTMLElement | null => {
-        let node: HTMLElement | null = start;
-        for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
-          if (!isLaidOut(node) || !inFlowPosition(node)) continue;
-          return node;
+      if (!hadRoot) {
+        const scrollOptions: ScrollIntoViewOptions = {
+          block: 'center',
+          inline: 'nearest',
+          behavior: 'smooth',
+        };
+        const bar = findScrubber(player);
+        const scrollableChrome = (start: HTMLElement | null): HTMLElement | null => {
+          let node: HTMLElement | null = start;
+          for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+            if (!isLaidOut(node) || !inFlowPosition(node)) continue;
+            return node;
+          }
+          return start instanceof HTMLElement && isLaidOut(start) ? start : null;
+        };
+        const chromeTarget = (bar instanceof HTMLElement && scrubberVisible(bar)
+          ? scrollableChrome(bar)
+          : null) ??
+          scrollableChrome(player) ??
+          (isLaidOut(player) ? player : null);
+        if (chromeTarget && typeof chromeTarget.scrollIntoView === 'function') {
+          chromeTarget.scrollIntoView(scrollOptions);
         }
-        return start instanceof HTMLElement && isLaidOut(start) ? start : null;
-      };
-      const chromeTarget = (bar instanceof HTMLElement && scrubberVisible(bar)
-        ? scrollableChrome(bar)
-        : null) ??
-        scrollableChrome(player) ??
-        (isLaidOut(player) ? player : null);
-      if (chromeTarget && typeof chromeTarget.scrollIntoView === 'function') {
-        chromeTarget.scrollIntoView(scrollOptions);
-      }
-      if (ring && typeof ring.scrollIntoView === 'function') {
-        ring.scrollIntoView(scrollOptions);
+        if (ring && typeof ring.scrollIntoView === 'function') {
+          ring.scrollIntoView(scrollOptions);
+        }
       }
     } catch {
       // Scroll is best-effort after a successful paint. Leave debounce must
