@@ -60,6 +60,31 @@ test('rejects malformed hosted audio begin responses', () => {
   assert.throws(() => parseHostedAudioBeginResponse([]), /invalid draft/);
 });
 
+test('watch-page audio begin keeps podcast identity on YouTube and TikTok URLs', async () => {
+  const fake = fakeClient();
+  await beginHostedAudioClipAnnotation(fake.client, {
+    ...input,
+    sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s',
+    canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    title: 'Watch title',
+    author: 'Channel',
+    publisher: 'YouTube',
+    showName: null,
+  });
+  assert.equal(fake.calls[0][0], 'begin_hosted_audio_annotation');
+  assert.equal(fake.calls[0][1].p_normalized_url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  await beginHostedAudioClipAnnotation(fake.client, {
+    ...input,
+    sourceUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+    canonicalUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+    title: 'TikTok title',
+    author: '@bbcnews',
+    publisher: 'TikTok',
+    showName: null,
+  });
+  assert.equal(fake.calls[1][1].p_normalized_url, 'https://www.tiktok.com/@bbcnews/video/7550123456789012345');
+});
+
 test('does not remap begin errors into a same-URL article conflict', async () => {
   const fake = fakeClient();
   fake.client.rpc = async () => ({

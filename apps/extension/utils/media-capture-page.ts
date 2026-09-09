@@ -55,11 +55,15 @@ export async function prepareMediaCaptureOnPage(
       return url.href;
     } catch { return null; }
   };
-  const sourceMatches = () => request.source.kind === 'youtube'
+  const playerFamily = request.source.kind === 'youtube-audio' ? 'youtube'
+    : request.source.kind === 'tiktok-audio' ? 'tiktok'
+    : request.source.kind === 'web-video-audio' ? 'web-video'
+    : request.source.kind;
+  const sourceMatches = () => playerFamily === 'youtube'
     ? youtubeId(location.href) === request.source.sourceKey
-    : request.source.kind === 'tiktok'
+    : playerFamily === 'tiktok'
       ? tiktokId(location.href) === request.source.sourceKey
-    : request.source.kind === 'web-video'
+    : playerFamily === 'web-video'
       ? articleKey(location.href) === request.source.sourceKey && articleKey(request.source.pageUrl) === request.source.sourceKey
       : comparable(location.href) === comparable(request.source.pageUrl);
   type FrameMapping = NonNullable<CaptureGeometry['frameMapping']> & { offsetX: number; offsetY: number };
@@ -113,7 +117,7 @@ export async function prepareMediaCaptureOnPage(
         [right - (right - left) / 4, bottom - (bottom - top) / 4],
       ].some(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(element));
     };
-    if (request.source.kind === 'web-video') {
+    if (playerFamily === 'web-video') {
       const candidates: Array<{ media: HTMLVideoElement; mapping: FrameMapping }> = [];
       const topOrigin = new URL(location.href).origin;
       const collect = (ownerDocument: Document, ownerWindow: Window, mapping: FrameMapping) => {
@@ -177,7 +181,7 @@ export async function prepareMediaCaptureOnPage(
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
-      const accepted = request.source.kind === 'youtube' || request.source.kind === 'tiktok'
+      const accepted = playerFamily === 'youtube' || playerFamily === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
@@ -189,7 +193,7 @@ export async function prepareMediaCaptureOnPage(
     if (candidates.length > 5) return null;
     const matches = candidates.filter((element, index) => {
       const kind = element instanceof HTMLAudioElement ? 'audio'
-        : request.source.kind === 'audio' ? 'audio-only-video' : 'video';
+        : playerFamily === 'audio' ? 'audio-only-video' : 'video';
       return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` ===
         request.source.playerIdentity;
     });
@@ -528,11 +532,15 @@ export async function playMediaForCaptureOnPage(
       return match?.[2] ?? null;
     } catch { return null; }
   };
-  const sourceMatches = () => source.kind === 'youtube'
+  const playerFamily = source.kind === 'youtube-audio' ? 'youtube'
+    : source.kind === 'tiktok-audio' ? 'tiktok'
+    : source.kind === 'web-video-audio' ? 'web-video'
+    : source.kind;
+  const sourceMatches = () => playerFamily === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
-    : source.kind === 'tiktok'
+    : playerFamily === 'tiktok'
       ? tiktokId(location.href) === source.sourceKey
-    : source.kind === 'web-video'
+    : playerFamily === 'web-video'
       ? articleKey(location.href) === source.sourceKey && articleKey(source.pageUrl) === source.sourceKey
       : comparable(location.href) === comparable(source.pageUrl);
   const selectMedia = (): HTMLMediaElement | null => {
@@ -585,7 +593,7 @@ export async function playMediaForCaptureOnPage(
         [right - (right - left) / 4, bottom - (bottom - top) / 4],
       ].some(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(element));
     };
-    if (source.kind === 'web-video') {
+    if (playerFamily === 'web-video') {
       const candidates: Array<{ media: HTMLVideoElement; path: string; origin: string }> = [];
       const topOrigin = new URL(location.href).origin;
       const collect = (ownerDocument: Document, ownerWindow: Window, path: string) => {
@@ -634,7 +642,7 @@ export async function playMediaForCaptureOnPage(
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
-      const accepted = source.kind === 'youtube' || source.kind === 'tiktok'
+      const accepted = playerFamily === 'youtube' || playerFamily === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
@@ -646,7 +654,7 @@ export async function playMediaForCaptureOnPage(
     if (candidates.length > 5) return null;
     const matches = candidates.filter((element, index) => {
       const kind = element instanceof HTMLAudioElement ? 'audio'
-        : source.kind === 'audio' ? 'audio-only-video' : 'video';
+        : playerFamily === 'audio' ? 'audio-only-video' : 'video';
       return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` === source.playerIdentity;
     });
     return matches.length === 1 ? matches[0]! : null;
@@ -869,11 +877,15 @@ export function finishMediaCaptureOnPage(
       return match?.[2] ?? null;
     } catch { return null; }
   };
-  const sourceStillMatches = () => source.kind === 'youtube'
+  const playerFamily = source.kind === 'youtube-audio' ? 'youtube'
+    : source.kind === 'tiktok-audio' ? 'tiktok'
+    : source.kind === 'web-video-audio' ? 'web-video'
+    : source.kind;
+  const sourceStillMatches = () => playerFamily === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
-    : source.kind === 'tiktok'
+    : playerFamily === 'tiktok'
       ? tiktokId(location.href) === source.sourceKey
-    : source.kind === 'web-video'
+    : playerFamily === 'web-video'
       ? articleKey(location.href) === source.sourceKey && articleKey(source.pageUrl) === source.sourceKey
       : comparable(location.href) === comparable(source.pageUrl);
   type FrameMapping = NonNullable<CaptureGeometry['frameMapping']> & { offsetX: number; offsetY: number };
@@ -927,7 +939,7 @@ export function finishMediaCaptureOnPage(
         [right - (right - left) / 4, bottom - (bottom - top) / 4],
       ].some(([x, y]) => ownerDocument.elementsFromPoint(x!, y!).includes(element));
     };
-    if (source.kind === 'web-video') {
+    if (playerFamily === 'web-video') {
       const candidates: Array<{ media: HTMLVideoElement; mapping: FrameMapping }> = [];
       const topOrigin = new URL(location.href).origin;
       const collect = (ownerDocument: Document, ownerWindow: Window, mapping: FrameMapping) => {
@@ -981,7 +993,7 @@ export function finishMediaCaptureOnPage(
     const candidates: HTMLMediaElement[] = [];
     for (const element of document.querySelectorAll('audio, video')) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
-      const accepted = source.kind === 'youtube' || source.kind === 'tiktok'
+      const accepted = playerFamily === 'youtube' || playerFamily === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
         : element instanceof HTMLAudioElement || (
           element instanceof HTMLVideoElement && element.readyState >= 1 &&
@@ -993,7 +1005,7 @@ export function finishMediaCaptureOnPage(
     if (candidates.length > 5) return null;
     const matches = candidates.filter((element, index) => {
       const kind = element instanceof HTMLAudioElement ? 'audio'
-        : source.kind === 'audio' ? 'audio-only-video' : 'video';
+        : playerFamily === 'audio' ? 'audio-only-video' : 'video';
       return `${kind}:${index + 1}:${digest(`${kind}|${sourceFor(element)}`)}` === source.playerIdentity;
     });
     return matches.length === 1 ? { media: matches[0]!, mapping: null } : null;

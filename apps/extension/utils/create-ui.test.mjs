@@ -104,7 +104,11 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   assert.match(source, /kind: 'web-video'/);
   assert.match(source, /publishWebpageVideoClip/);
   assert.match(source, /canPublishWebpageVideo/);
-  assert.match(source, /mediaType: source\.kind === 'audio' \|\| source\.kind === 'spotify' \? 'audio' : 'video'/);
+  assert.match(source, /mediaType: isAudioOnlyCaptureSourceKind\(source\.kind\) \? 'audio' : 'video'/);
+  assert.match(source, /kind: 'youtube-audio'/);
+  assert.match(source, /kind: 'tiktok-audio'/);
+  assert.doesNotMatch(source, /Audio mode supports top-level page audio, not YouTube video/);
+  assert.doesNotMatch(source, /Audio mode supports top-level page audio, not TikTok video/);
   assert.doesNotMatch(source, /Publishing not enabled/);
   assert.doesNotMatch(source, /separately authorized article-backed hosted-video server contract/);
   assert.doesNotMatch(source, /beginHostedYouTubeAnnotation\(supabase, \{[\s\S]{0,500}webVideoSource/);
@@ -112,10 +116,11 @@ test('generic webpage video publishes through the article-backed hosted begin pa
 });
 
 test('Create Video and Audio keep Set start / Set end and add typed clip fields', async () => {
-  const [source, fields, style] = await Promise.all([
+  const [source, fields, style, capabilities] = await Promise.all([
     readFile(APP_URL, 'utf8'),
     readFile(new URL('../entrypoints/sidepanel/clip-range-fields.tsx', import.meta.url), 'utf8'),
     readFile(STYLE_URL, 'utf8'),
+    readFile(new URL('./create-mode-capabilities.ts', import.meta.url), 'utf8'),
   ]);
   assert.match(source, /useTypedClipRange/);
   assert.match(source, /commitVideoRange/);
@@ -135,7 +140,7 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(source, /beginHostedSpotifyAnnotation/);
   assert.match(source, /Spotify episode/);
   assert.match(source, /kind: 'spotify'/);
-  assert.match(source, /Start the preview, or sign in if it is gated/);
+  assert.match(capabilities, /Start the preview, or sign in if it is gated/);
   assert.match(source, /Preview \/ Jump to start and Publish seek the now-playing bar to the clip start/);
   assert.match(source, /The Spotify player could not seek to the clip start/);
   assert.doesNotMatch(source, /Sign in to Spotify in this tab to capture an episode/);

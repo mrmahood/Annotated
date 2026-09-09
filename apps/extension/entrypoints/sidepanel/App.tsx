@@ -21,7 +21,6 @@ import {
 import {
   readAudioPageSnapshot,
   validateAudioPageSnapshot,
-  type AudioPageSource,
 } from '../../utils/audio-page';
 import {
   getSourceState,
@@ -31,8 +30,15 @@ import {
   videoPlayerSourceKey,
   type PageSource,
   type SourceState,
-  type SpotifyPageSource,
 } from '../../utils/connected-source';
+import {
+  audioUsesWatchPlayer,
+  connectedAudioSource,
+  connectedSpotifySource,
+  createAudioIdentity,
+  getModeCapabilities,
+  watchPageAudioIdentity,
+} from '../../utils/create-mode-capabilities';
 import { beginHostedAudioClipAnnotation } from '../../utils/audio-publishing';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import {
@@ -118,7 +124,6 @@ import {
   type MediaCreateMode,
   type ModeRevisionState,
   type ModeCapabilities,
-  type ModeCapability,
   type ModeSelectionState,
   type StoredCreateModeSelection,
 } from '../../utils/create-mode';
@@ -198,6 +203,7 @@ import {
   MEDIA_CAPTURE_RETRY,
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
+  isAudioOnlyCaptureSourceKind,
   type CaptureSnapshot,
   type CaptureSourceIdentity,
   type HostedMediaOperation,
@@ -308,102 +314,40 @@ function CreateModeIcon({ mode }: { mode: CreateMode }) {
   );
 }
 
-function createUnavailableCapabilities(reason: string): ModeCapabilities {
-  return {
-    text: { status: 'unavailable', reason },
-    video: { status: 'unavailable', reason },
-    audio: { status: 'unavailable', reason },
-  };
-}
-
-function connectedAudioSource(source: PageSource): AudioPageSource | null {
-  if (source.classification === 'Podcast / web audio') return source;
-  if (source.classification === 'Web page' && source.audioAvailable && source.audioIdentity) {
-    return source.audioIdentity;
+function audioCaptureSourceIdentity(
+  source: PageSource,
+  pageUrl: string,
+  playerIdentity: string,
+): CaptureSourceIdentity | null {
+  if (source.classification === 'Spotify') {
+    return { kind: 'spotify', pageUrl, sourceKey: source.episodeId, playerIdentity };
+  }
+  const pageAudio = connectedAudioSource(source);
+  if (pageAudio) {
+    return { kind: 'audio', pageUrl, sourceKey: pageAudio.normalizedUrl, playerIdentity };
+  }
+  if (source.classification === 'YouTube') {
+    return { kind: 'youtube-audio', pageUrl, sourceKey: source.videoId, playerIdentity };
+  }
+  if (source.classification === 'TikTok') {
+    return { kind: 'tiktok-audio', pageUrl, sourceKey: source.videoId, playerIdentity };
+  }
+  if (isWebpageVideoCapableSource(source) && source.videoAvailable) {
+    return {
+      kind: 'web-video-audio',
+      pageUrl,
+      sourceKey: normalizeArticleUrl(source.url),
+      playerIdentity,
+    };
   }
   return null;
 }
 
-function connectedSpotifySource(source: PageSource): SpotifyPageSource | null {
-  return source.classification === 'Spotify' ? source : null;
-}
-
-function audioCapabilityForConnectedSource(
-  sourceState: Extract<SourceState, { status: 'connected' }>,
-): ModeCapability {
-  if (connectedAudioSource(sourceState.source)) {
-    return { status: 'available' };
-  }
-  if (sourceState.source.classification === 'Web page') {
-    return sourceState.source.audioDetectionResolved
-      ? { status: 'unavailable', reason: 'No supported top-level page audio was found.' }
-      : { status: 'checking' };
-  }
-  return { status: 'unavailable', reason: 'No supported top-level page audio was found.' };
-}
-
-function getModeCapabilities(sourceState: SourceState): ModeCapabilities {
-  if (
-    sourceState.status === 'loading' ||
-    sourceState.status === 'refreshing'
-  ) {
-    return {
-      text: { status: 'checking' },
-      video: { status: 'checking' },
-      audio: { status: 'checking' },
-    };
-  }
-  if (sourceState.status !== 'connected') {
-    const reason = sourceState.status === 'different-tab'
-      ? 'Return to the connected tab or connect this tab.'
-      : sourceState.status === 'reconnect-required'
-        ? 'Reconnect Annotated to this page.'
-        : 'Connect a supported HTTP(S) page first.';
-    return createUnavailableCapabilities(reason);
-  }
-  if (sourceState.source.classification === 'YouTube') {
-    return {
-      text: { status: 'available' },
-      video: { status: 'available' },
-      audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not YouTube video.' },
-    };
-  }
-  if (sourceState.source.classification === 'TikTok') {
-    return {
-      text: { status: 'available' },
-      video: { status: 'available' },
-      audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not TikTok video.' },
-    };
-  }
-  if (sourceState.source.classification === 'Spotify') {
-    return {
-      text: { status: 'available' },
-      video: { status: 'unavailable', reason: 'Video mode supports watch pages, not Spotify episodes.' },
-      audio: sourceState.source.pageBlock === 'login'
-        ? { status: 'unavailable', reason: 'This Spotify tab is not playing an episode. Start the preview, or sign in if it is gated.' }
-        : { status: 'available' },
-    };
-  }
-  if (sourceState.source.classification === 'Podcast / web audio') {
-    return {
-      text: { status: 'available' },
-      video: sourceState.source.videoDetectionResolved
-        ? sourceState.source.videoAvailable
-          ? { status: 'available' }
-          : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
-        : { status: 'checking' },
-      audio: audioCapabilityForConnectedSource(sourceState),
-    };
-  }
-  return {
-    text: { status: 'available' },
-    video: sourceState.source.videoDetectionResolved
-      ? sourceState.source.videoAvailable
-        ? { status: 'available' }
-        : { status: 'unavailable', reason: 'No safe readable webpage video was found.' }
-      : { status: 'checking' },
-    audio: audioCapabilityForConnectedSource(sourceState),
-  };
+function persistableAudioIdentity(source: PageSource): { url: string; canonicalUrl: string } | null {
+  const identity = createAudioIdentity(source);
+  return identity && 'canonicalUrl' in identity
+    ? { url: identity.url, canonicalUrl: identity.canonicalUrl }
+    : null;
 }
 
 function getCreatePageSourceKey(url: string): string | null {
@@ -802,7 +746,7 @@ function App() {
   }, [clearTikTokDraft, clearWebVideoDraft, clearYoutubeDraft, sourceState]);
 
   const persistAudioDraft = useCallback((
-    source: AudioPageSource,
+    source: { url: string; canonicalUrl: string },
     startMs: number | null,
     endMs: number | null,
     text: string,
@@ -1189,12 +1133,17 @@ function App() {
     if (sourceState.status !== 'connected') throw new Error('Choose a player first.');
     const context = connectedContextRef.current;
     if (!context) throw new Error(RECONNECT_MESSAGE);
-    const genericVideo = mode === 'video' && isWebpageVideoCapableSource(sourceState.source);
+    const usesWatchAudioPlayer = mode === 'audio' && audioUsesWatchPlayer(sourceState.source);
+    const genericVideo = (mode === 'video' || usesWatchAudioPlayer) &&
+      isWebpageVideoCapableSource(sourceState.source);
     const audioIdentity = connectedAudioSource(sourceState.source);
     const spotifyIdentity = connectedSpotifySource(sourceState.source);
-    if (mode === 'audio' && !audioIdentity && !spotifyIdentity) throw new Error(RECONNECT_MESSAGE);
+    if (mode === 'audio' && !audioIdentity && !spotifyIdentity && !usesWatchAudioPlayer) {
+      throw new Error(RECONNECT_MESSAGE);
+    }
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (activeTab?.id !== context.tabId) throw new Error(RECONNECT_MESSAGE);
+    const playerMode = usesWatchAudioPlayer ? 'video' : mode;
     const execution = spotifyIdentity && mode === 'audio'
       ? await chrome.scripting.executeScript({
         target: { tabId: context.tabId, frameIds: [0] },
@@ -1208,11 +1157,11 @@ function App() {
       world: genericVideo ? 'MAIN' : 'ISOLATED',
       func: actOnTopFramePlayer,
       args: [
-        mode,
+        playerMode,
         identity,
         sourceState.source.classification === 'YouTube' || sourceState.source.classification === 'TikTok'
           ? sourceState.source.videoId
-          : mode === 'video'
+          : playerMode === 'video'
             ? normalizeArticleUrl(sourceState.source.url)
             : audioIdentity?.normalizedUrl ?? '',
         action,
@@ -1253,7 +1202,8 @@ function App() {
       : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
     const audioIdentity = connectedAudioSource(sourceState.source);
     const spotifyIdentity = connectedSpotifySource(sourceState.source);
-    if (!mode || (mode === 'audio' && !audioIdentity && !spotifyIdentity)) return;
+    const watchAudioIdentity = watchPageAudioIdentity(sourceState.source);
+    if (!mode || (mode === 'audio' && !audioIdentity && !spotifyIdentity && !watchAudioIdentity)) return;
     const draft = mode === 'video' ? videoDraftState : audioDraftState;
     let token: PlayerActionToken;
     try { token = getPlayerActionToken(mode, draft.playerIdentity); } catch { return; }
@@ -1264,7 +1214,7 @@ function App() {
       const patch = {
         sourceKey: mode === 'video'
           ? videoPlayerSourceKey(sourceState.source)
-          : spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? '',
+          : spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? watchAudioIdentity?.normalizedUrl ?? '',
         playerIdentity: draft.playerIdentity,
         playerTimeMs: player.currentTimeMs,
         durationMs: player.durationMs,
@@ -1310,6 +1260,13 @@ function App() {
           action === 'end' ? player.currentTimeMs : audioDraftState.endMs,
           audioDraftState.commentary,
         );
+      } else if (mode === 'audio' && watchAudioIdentity) {
+        persistAudioDraft(
+          watchAudioIdentity,
+          action === 'start' ? player.currentTimeMs : audioDraftState.startMs,
+          action === 'end' ? player.currentTimeMs : audioDraftState.endMs,
+          audioDraftState.commentary,
+        );
       }
     } catch {
       if (playerTokenIsCurrent(token)) {
@@ -1333,23 +1290,28 @@ function App() {
   };
 
   const changeAudioCommentary = (value: string) => {
-    const audioIdentity = sourceState.status === 'connected'
-      ? connectedAudioSource(sourceState.source)
+    const persistable = sourceState.status === 'connected'
+      ? persistableAudioIdentity(sourceState.source)
       : null;
     const spotifyIdentity = sourceState.status === 'connected'
       ? connectedSpotifySource(sourceState.source)
       : null;
-    const sourceKey = spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? audioDraftState.sourceKey;
+    const sourceKey = spotifyIdentity?.normalizedUrl
+      ?? (sourceState.status === 'connected' ? createAudioIdentity(sourceState.source)?.normalizedUrl : null)
+      ?? audioDraftState.sourceKey;
     dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { commentary: value, sourceKey } });
     if (spotifyIdentity) {
       persistSpotifyDraft(spotifyIdentity.url, audioDraftState.startMs, audioDraftState.endMs, value);
-    } else if (audioIdentity) {
-      persistAudioDraft(audioIdentity, audioDraftState.startMs, audioDraftState.endMs, value);
+    } else if (persistable) {
+      persistAudioDraft(persistable, audioDraftState.startMs, audioDraftState.endMs, value);
     }
   };
 
   const choosePlayer = (mode: PlayerMode, identity: string) => {
-    const discovery = mode === 'video' ? videoPlayers : audioPlayers;
+    const discovery = mode === 'video' ||
+      (mode === 'audio' && sourceState.status === 'connected' && audioUsesWatchPlayer(sourceState.source))
+      ? videoPlayers
+      : audioPlayers;
     if (
       discovery.status !== 'ready' || discovery.pageGeneration !== modeSelection?.page.generation ||
       !discovery.candidates.some((candidate) => candidate.identity === identity)
@@ -1436,7 +1398,7 @@ function App() {
     const session: HostedMediaSession = {
       operation,
       sourceUrl: source.pageUrl,
-      mediaType: source.kind === 'audio' || source.kind === 'spotify' ? 'audio' : 'video',
+      mediaType: isAudioOnlyCaptureSourceKind(source.kind) ? 'audio' : 'video',
       startMs,
       endMs,
       createdAt: Date.now(),
@@ -1795,11 +1757,12 @@ function App() {
 
   const publishAudioClip = useCallback(async () => {
     const audioIdentity = sourceState.status === 'connected'
-      ? connectedAudioSource(sourceState.source)
+      ? connectedAudioSource(sourceState.source) ?? watchPageAudioIdentity(sourceState.source)
       : null;
     if (
       !supabase || publishInFlightRef.current || authState.status !== 'signed-in' ||
       sourceState.status !== 'connected' || !audioIdentity ||
+      connectedSpotifySource(sourceState.source) ||
       audioDraftState.startMs === null || audioDraftState.endMs === null ||
       !audioDraftState.commentary.trim() || audioDraftState.durationMs === null ||
       !audioDraftState.playerIdentity
@@ -1830,6 +1793,15 @@ function App() {
         audioDraftState.startMs, audioDraftState.endMs, player.durationMs,
       );
       if (actionRangeError) throw new Error(actionRangeError);
+      if (!('canonicalUrl' in audioIdentity)) {
+        throw new Error('The connected audio source could not be published.');
+      }
+      const captureSource = audioCaptureSourceIdentity(
+        sourceState.source,
+        sourceState.source.url,
+        audioDraftState.playerIdentity,
+      );
+      if (!captureSource) throw new Error('The connected audio source could not be published.');
       const operation = await beginHostedAudioClipAnnotation(supabase, {
         sourceUrl: audioIdentity.url,
         canonicalUrl: audioIdentity.canonicalUrl,
@@ -1852,12 +1824,7 @@ function App() {
         );
         throw new Error('The Audio page, player, or draft changed. The hosted draft was cancelled; review it and try again.');
       }
-      await startHostedCapture(operation, {
-        kind: 'audio',
-        pageUrl: sourceState.source.url,
-        sourceKey: audioIdentity.normalizedUrl,
-        playerIdentity: audioDraftState.playerIdentity,
-      }, audioDraftState.startMs, audioDraftState.endMs);
+      await startHostedCapture(operation, captureSource, audioDraftState.startMs, audioDraftState.endMs);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
       setAudioPublishState({
@@ -2067,6 +2034,37 @@ function App() {
       }, session.startMs, session.endMs);
     } else if (
       session.mediaType === 'audio' &&
+      sourceState.status === 'connected' &&
+      audioUsesWatchPlayer(sourceState.source)
+    ) {
+      const watchIdentity = watchPageAudioIdentity(sourceState.source);
+      let originalAudioIdentity: string | null = null;
+      try { originalAudioIdentity = getAudioSourceIdentity(session.sourceUrl).normalizedUrl; } catch { /* Invalid persisted source. */ }
+      if (!watchIdentity || originalAudioIdentity !== watchIdentity.normalizedUrl) {
+        setMediaCaptureState({
+          status: 'error',
+          captureId: null,
+          code: 'connected-source-changed',
+          message: 'Reconnect the original source before recapturing this draft.',
+        });
+        return;
+      }
+      if (!audioDraftState.playerIdentity) {
+        setMediaCaptureState({ status: 'error', captureId: null, code: 'connected-source-changed', message: 'Choose the original audio player before recapturing this draft.' });
+        return;
+      }
+      const token = getPlayerActionToken('audio', audioDraftState.playerIdentity);
+      await runSelectedPlayerAction(token, 'read', null);
+      if (!playerTokenIsCurrent(token)) return;
+      const captureSource = audioCaptureSourceIdentity(
+        sourceState.source,
+        sourceState.source.url,
+        audioDraftState.playerIdentity,
+      );
+      if (!captureSource) return;
+      await startHostedCapture(session.operation, captureSource, session.startMs, session.endMs);
+    } else if (
+      session.mediaType === 'audio' &&
       connectedAudioSource(sourceState.source)
     ) {
       const audioIdentity = connectedAudioSource(sourceState.source)!;
@@ -2125,6 +2123,14 @@ function App() {
         spotifyIdentity.episodeId !== annotation.source.episodeId
       ) throw new Error('The connected Spotify episode does not match this clip.');
     } else if (
+      sourceState.status === 'connected' &&
+      audioUsesWatchPlayer(sourceState.source)
+    ) {
+      const watchIdentity = watchPageAudioIdentity(sourceState.source);
+      if (!watchIdentity || watchIdentity.normalizedUrl !== annotation.source.normalizedUrl) {
+        throw new Error('The connected audio source does not match this clip.');
+      }
+    } else if (
       sourceState.status !== 'connected' ||
       !audioIdentity ||
       audioIdentity.normalizedUrl !== annotation.source.normalizedUrl
@@ -2157,7 +2163,8 @@ function App() {
   const previewAudioDraft = useCallback(async () => {
     if (
       audioDraftState.startMs === null || sourceState.status !== 'connected' ||
-      (!connectedAudioSource(sourceState.source) && !connectedSpotifySource(sourceState.source))
+      (!connectedAudioSource(sourceState.source) && !connectedSpotifySource(sourceState.source) &&
+        !audioUsesWatchPlayer(sourceState.source))
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
@@ -2263,11 +2270,11 @@ function App() {
 
   useEffect(() => {
     const audioIdentity = sourceState.status === 'connected'
-      ? connectedAudioSource(sourceState.source)
+      ? persistableAudioIdentity(sourceState.source)
       : null;
     if (
       draftRestorationStatus !== 'ready' || sourceState.status !== 'connected' ||
-      !audioIdentity
+      !audioIdentity || connectedSpotifySource(sourceState.source)
     ) return;
     const draft = audioDraftRef.current;
     if (
@@ -2748,6 +2755,27 @@ function App() {
             durationMs: selected?.durationMs ?? null,
             playerReadState: previousIdentity && !playerIdentity ? 'error' : 'idle' },
         });
+        if (
+          probe.mode === 'video' &&
+          sourceState.status === 'connected' &&
+          audioUsesWatchPlayer(sourceState.source)
+        ) {
+          const previousAudioIdentity = playerIdentityRef.current.audio;
+          const audioPlayerIdentity = reconcilePlayerSelection(discovery, previousAudioIdentity);
+          const audioSelected = discovery.status === 'ready'
+            ? discovery.candidates.find((candidate) => candidate.identity === audioPlayerIdentity) ?? null
+            : null;
+          dispatchCreateDraft({
+            type: 'patch-media', mode: 'audio',
+            patch: {
+              sourceKey: watchPageAudioIdentity(sourceState.source)?.normalizedUrl ?? probe.sourceKey,
+              playerIdentity: audioPlayerIdentity,
+              playerTimeMs: audioSelected?.currentTimeMs ?? null,
+              durationMs: audioSelected?.durationMs ?? null,
+              playerReadState: previousAudioIdentity && !audioPlayerIdentity ? 'error' : 'idle',
+            },
+          });
+        }
       }).catch(() => {
         if (!current || createPageRef.current?.generation !== pageGeneration) return;
         const state: PlayerDiscoveryState = { ...EMPTY_PLAYER_DISCOVERY, pageGeneration };
@@ -2760,6 +2788,17 @@ function App() {
         } else setAudioPlayers(state);
         dispatchCreateDraft({ type: 'patch-media', mode: probe.mode,
           patch: { playerIdentity: null, playerTimeMs: null, durationMs: null, playerReadState: 'error' } });
+        if (
+          probe.mode === 'video' &&
+          sourceState.status === 'connected' &&
+          audioUsesWatchPlayer(sourceState.source)
+        ) {
+          dispatchCreateDraft({
+            type: 'patch-media',
+            mode: 'audio',
+            patch: { playerIdentity: null, playerTimeMs: null, durationMs: null, playerReadState: 'error' },
+          });
+        }
       });
     }
     return () => { current = false; };
@@ -3026,16 +3065,18 @@ function App() {
   };
 
   const commitAudioRange = (startMs: number | null, endMs: number | null) => {
-    const audioIdentity = sourceState.status === 'connected'
-      ? connectedAudioSource(sourceState.source)
+    const persistable = sourceState.status === 'connected'
+      ? persistableAudioIdentity(sourceState.source)
       : null;
     const spotifyIdentity = sourceState.status === 'connected'
       ? connectedSpotifySource(sourceState.source)
       : null;
-    const sourceKey = spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? audioDraftState.sourceKey;
+    const sourceKey = spotifyIdentity?.normalizedUrl
+      ?? (sourceState.status === 'connected' ? createAudioIdentity(sourceState.source)?.normalizedUrl : null)
+      ?? audioDraftState.sourceKey;
     dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { startMs, endMs, sourceKey } });
     if (spotifyIdentity) persistSpotifyDraft(spotifyIdentity.url, startMs, endMs, audioDraftState.commentary);
-    else if (audioIdentity) persistAudioDraft(audioIdentity, startMs, endMs, audioDraftState.commentary);
+    else if (persistable) persistAudioDraft(persistable, startMs, endMs, audioDraftState.commentary);
   };
 
   const videoRangeEntry = useTypedClipRange(
@@ -3166,8 +3207,10 @@ function App() {
     : null;
   const videoSource = youtubeSource ?? tiktokSource ?? webVideoSource;
   const audioSource = sourceState.status === 'connected'
-    ? connectedAudioSource(sourceState.source) ?? connectedSpotifySource(sourceState.source)
+    ? createAudioIdentity(sourceState.source)
     : null;
+  const watchAudioPlayer = sourceState.status === 'connected' && audioUsesWatchPlayer(sourceState.source);
+  const audioPlayerDiscovery = watchAudioPlayer ? videoPlayers : audioPlayers;
   const exclusivePodcast = sourceState.status === 'connected' && (
     sourceState.source.classification === 'Podcast / web audio' ||
     (sourceState.source.classification === 'Web page' && sourceState.source.exclusivePodcast)
@@ -3305,9 +3348,9 @@ function App() {
   const videoPlayerSelected = videoPlayers.status === 'ready' &&
     videoPlayers.pageGeneration === modeSelection?.page.generation &&
     videoPlayers.candidates.some((candidate) => candidate.identity === videoDraftState.playerIdentity);
-  const audioPlayerSelected = audioPlayers.status === 'ready' &&
-    audioPlayers.pageGeneration === modeSelection?.page.generation &&
-    audioPlayers.candidates.some((candidate) => candidate.identity === audioDraftState.playerIdentity);
+  const audioPlayerSelected = audioPlayerDiscovery.status === 'ready' &&
+    audioPlayerDiscovery.pageGeneration === modeSelection?.page.generation &&
+    audioPlayerDiscovery.candidates.some((candidate) => candidate.identity === audioDraftState.playerIdentity);
   const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
     videoPlayerSelected && videoRangeEntry.allowsPublish &&
     videoClipRangeError === null && videoDraftState.commentary.trim().length > 0 &&
@@ -3470,10 +3513,10 @@ function App() {
             </section>
           ) : selectedCreateMode === 'audio' && audioSource ? (
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
-              <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>{spotifySource ? 'Spotify episode' : exclusivePodcast ? 'Podcast / web audio' : 'Page audio'}</span></div>
+              <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>{spotifySource ? 'Spotify episode' : youtubeSource ? 'YouTube audio' : tiktokSource ? 'TikTok audio' : exclusivePodcast ? 'Podcast / web audio' : watchAudioPlayer ? 'Page video audio' : 'Page audio'}</span></div>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
-                <p className="create-help">{spotifySource ? 'Play the connected Spotify episode, then Set start / Set end or type times such as 1:00 and 2:30. Preview / Jump to start and Publish seek the now-playing bar to the clip start.' : 'Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.'}</p>
-                <PlayerSelector mode="audio" discovery={audioPlayers} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
+                <p className="create-help">{spotifySource ? 'Play the connected Spotify episode, then Set start / Set end or type times such as 1:00 and 2:30. Preview / Jump to start and Publish seek the now-playing bar to the clip start.' : watchAudioPlayer ? 'Play the connected video, then Set start / Set end or type times such as 1:00 and 2:30. Publish captures the audio that is already playing, as a separate audio annotation.' : 'Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.'}</p>
+                <PlayerSelector mode="audio" discovery={audioPlayerDiscovery} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
                 <ClipRangeFields
                   idPrefix="audio"
                   startField={audioRangeEntry.startField}
@@ -3491,7 +3534,7 @@ function App() {
                 <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>{audioDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
                 {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview / Jump to start</button>}
                 {showAudioRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
-                {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
+                {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : watchAudioPlayer ? 'The connected video player changed or could not be read. Reselect it and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
                 <div className="annotation-field"><label htmlFor="audio-clip-commentary">Your commentary <span aria-hidden="true">*</span></label><textarea id="audio-clip-commentary" value={audioDraftState.commentary} maxLength={2_000} rows={6} required disabled={mediaEditorLocked} onChange={(event) => changeAudioCommentary(event.target.value)} /><span aria-live="polite">{audioDraftState.commentary.length.toLocaleString()} / 2,000</span></div>
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}

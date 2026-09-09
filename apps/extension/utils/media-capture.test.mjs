@@ -558,6 +558,69 @@ test('Spotify episode capture uses episode identity and now-playing player ident
   assert.equal('video_element' in metadata, false);
 });
 
+test('watch-page audio capture reuses the video player and stays audio-only', () => {
+  const youtubeAudio = {
+    kind: 'youtube-audio',
+    pageUrl: 'https://www.youtube.com/watch?v=abcdefghijk',
+    sourceKey: 'abcdefghijk',
+    playerIdentity: 'video:1:f8443fef',
+  };
+  const tiktokAudio = {
+    kind: 'tiktok-audio',
+    pageUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+    sourceKey: '7550123456789012345',
+    playerIdentity: 'video:1:f8443fef',
+  };
+  const webVideoAudio = {
+    kind: 'web-video-audio',
+    pageUrl: 'https://www.foxnews.com/politics/story?utm_source=mail#player',
+    sourceKey: 'https://www.foxnews.com/politics/story',
+    playerIdentity: 'web-video:1.2:2:1234abcd',
+  };
+  assert.equal(isCaptureStartRequest({ ...request, source: youtubeAudio }), true);
+  assert.equal(isCaptureStartRequest({ ...request, source: tiktokAudio }), true);
+  assert.equal(isCaptureStartRequest({ ...request, source: webVideoAudio }), true);
+  assert.equal(isCaptureStartRequest({
+    ...request,
+    source: { ...youtubeAudio, playerIdentity: 'audio:1:f8443fef' },
+  }), false);
+  assert.equal(sourceIdentityMatchesUrl(youtubeAudio, youtubeAudio.pageUrl), true);
+  assert.equal(sourceIdentityMatchesUrl(tiktokAudio, tiktokAudio.pageUrl), true);
+  assert.equal(sourceIdentityMatchesUrl(webVideoAudio, 'https://www.foxnews.com/politics/story?utm_medium=social'), true);
+  const prepared = {
+    sourceKind: 'youtube-audio',
+    requestedStartMs: 5_000,
+    requestedEndMs: 20_000,
+    requestedDurationMs: 15_000,
+    playerCurrentTimeBeforeRecordingMs: 5_000,
+    mediaDurationMs: 120_000,
+    pageUrl: youtubeAudio.pageUrl,
+    geometry: {
+      viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+      boundingClientRect: null, videoWidth: null, videoHeight: null,
+      objectFit: null, objectPosition: null, fullscreen: false,
+      fullscreenElement: null, scrollX: 0, scrollY: 0, frameMapping: null,
+    },
+  };
+  assert.equal(isCapturePreparedPage(prepared), true);
+  const metadata = buildCaptureMetadataV2({
+    prepared,
+    endGeometry: null,
+    selectedMimeType: 'audio/webm;codecs=opus',
+    tracks: [],
+    audioTrackCount: 1,
+    videoTrackCount: 0,
+    loopbackEnabled: true,
+    leadInMs: 20,
+    recorderElapsedMs: 15_020,
+    playerStartMs: 5_000,
+    playerEndMs: 20_000,
+  });
+  assert.equal(metadata.version, 2);
+  assert.equal('viewport' in metadata, false);
+  assert.equal('video_element' in metadata, false);
+});
+
 test('generic webpage video capture binds normalized article and frame/player identity', () => {
   const webSource = {
     kind: 'web-video',
@@ -625,6 +688,9 @@ test('capture metadata v2 requires video end geometry and uses monotonic lead-in
   assert.equal(isAudioOnlyCaptureSourceKind('tiktok'), false);
   assert.equal(isAudioOnlyCaptureSourceKind('audio'), true);
   assert.equal(isAudioOnlyCaptureSourceKind('spotify'), true);
+  assert.equal(isAudioOnlyCaptureSourceKind('youtube-audio'), true);
+  assert.equal(isAudioOnlyCaptureSourceKind('tiktok-audio'), true);
+  assert.equal(isAudioOnlyCaptureSourceKind('web-video-audio'), true);
   const result = buildCaptureMetadataV2(input);
   assert.equal(result.version, 2);
   assert.equal(result.timing.lead_in_clock, 'offscreen_monotonic');
@@ -713,7 +779,7 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(background, /getMediaStreamId/);
   assert.ok(background.indexOf('if (!prepared.ok)') < background.indexOf('getMediaStreamId'));
   assert.equal(
-    background.match(/world: (?:capture\.request|request)\.source\.kind === 'web-video' \? 'MAIN' : 'ISOLATED'/g)?.length,
+    background.match(/world: usesMainWorldCapture\((?:capture\.request|request)\.source\.kind\) \? 'MAIN' : 'ISOLATED'/g)?.length,
     3,
   );
   assert.match(background, /tabs\.onRemoved/);
