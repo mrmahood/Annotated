@@ -1,6 +1,7 @@
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getCommentaryContractError } from './audio-commentary.ts';
 import { isUuid } from './social-helpers.ts';
 import type { HostedMediaOperation } from './media-capture.ts';
 
@@ -11,6 +12,7 @@ export type YouTubeAnnotationInput = {
   startMs: number;
   endMs: number;
   commentaryText: string;
+  hasRecordedCommentary?: boolean;
   videoDurationMs?: number | null;
 };
 
@@ -52,9 +54,11 @@ export async function beginHostedYouTubeAnnotation(
     input.videoDurationMs,
   );
   if (rangeError) throw new Error(rangeError);
-  if (!input.commentaryText.trim() || input.commentaryText.length > 2_000) {
-    throw new Error('Commentary must contain between 1 and 2,000 characters.');
-  }
+  const commentaryError = getCommentaryContractError(
+    input.commentaryText,
+    input.hasRecordedCommentary === true,
+  );
+  if (commentaryError) throw new Error(commentaryError);
 
   const { data, error } = await supabase.rpc('begin_hosted_youtube_annotation', {
     p_normalized_url: identity.normalizedUrl,

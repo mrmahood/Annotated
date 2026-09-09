@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  audioUsesWatchPlayer,
   connectedAudioSource,
   createAudioIdentity,
   getModeCapabilities,
-  watchPageAudioIdentity,
 } from './create-mode-capabilities.ts';
 
 const YOUTUBE_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -97,19 +95,19 @@ function spotifySource(overrides = {}) {
   };
 }
 
-test('YouTube and TikTok offer Text, Video, and Audio together', () => {
+test('YouTube and TikTok offer Text and Video, and grey Audio media', () => {
   const youtube = getModeCapabilities({ status: 'connected', source: youtubeSource() });
   assert.equal(youtube.text.status, 'available');
   assert.equal(youtube.video.status, 'available');
-  assert.equal(youtube.audio.status, 'available');
+  assert.equal(youtube.audio.status, 'unavailable');
+  assert.match(youtube.audio.reason, /not YouTube video/);
   const tiktok = getModeCapabilities({ status: 'connected', source: tiktokSource() });
   assert.equal(tiktok.text.status, 'available');
   assert.equal(tiktok.video.status, 'available');
-  assert.equal(tiktok.audio.status, 'available');
-  assert.equal(audioUsesWatchPlayer(youtubeSource()), true);
-  assert.equal(audioUsesWatchPlayer(tiktokSource()), true);
-  assert.equal(watchPageAudioIdentity(youtubeSource())?.normalizedUrl, YOUTUBE_URL);
-  assert.equal(watchPageAudioIdentity(tiktokSource())?.normalizedUrl, TIKTOK_URL);
+  assert.equal(tiktok.audio.status, 'unavailable');
+  assert.match(tiktok.audio.reason, /not TikTok video/);
+  assert.equal(createAudioIdentity(youtubeSource()), null);
+  assert.equal(createAudioIdentity(tiktokSource()), null);
 });
 
 test('Spotify keeps Audio and continues to fail-closed for login-gated tabs', () => {
@@ -123,10 +121,9 @@ test('Spotify keeps Audio and continues to fail-closed for login-gated tabs', ()
   });
   assert.equal(gated.audio.status, 'unavailable');
   assert.match(gated.audio.reason, /preview|sign in/i);
-  assert.equal(audioUsesWatchPlayer(spotifySource()), false);
 });
 
-test('article pages keep Audio when page audio exists and add it when only video exists', () => {
+test('article pages keep Audio only when page audio exists, not because video exists', () => {
   const textOnly = getModeCapabilities({ status: 'connected', source: articleSource() });
   assert.equal(textOnly.text.status, 'available');
   assert.equal(textOnly.video.status, 'unavailable');
@@ -147,29 +144,17 @@ test('article pages keep Audio when page audio exists and add it when only video
   });
   assert.equal(pageAudio.audio.status, 'available');
   assert.equal(pageAudio.video.status, 'unavailable');
-  assert.equal(audioUsesWatchPlayer(articleSource({
-    audioAvailable: true,
-    audioIdentity: podcastSource({
-      url: ARTICLE_URL,
-      normalizedUrl: ARTICLE_URL,
-      canonicalUrl: ARTICLE_URL,
-      videoDetectionResolved: undefined,
-      videoAvailable: undefined,
-    }),
-  })), false);
   const videoOnly = getModeCapabilities({
     status: 'connected',
     source: articleSource({ videoAvailable: true }),
   });
   assert.equal(videoOnly.video.status, 'available');
-  assert.equal(videoOnly.audio.status, 'available');
-  assert.equal(audioUsesWatchPlayer(articleSource({ videoAvailable: true })), true);
-  const checkingVideo = getModeCapabilities({
+  assert.equal(videoOnly.audio.status, 'unavailable');
+  const checkingAudio = getModeCapabilities({
     status: 'connected',
-    source: articleSource({ videoDetectionResolved: false }),
+    source: articleSource({ audioDetectionResolved: false }),
   });
-  assert.equal(checkingVideo.video.status, 'checking');
-  assert.equal(checkingVideo.audio.status, 'checking');
+  assert.equal(checkingAudio.audio.status, 'checking');
 });
 
 test('podcast pages keep Audio and only offer Video when a safe webpage video exists', () => {
@@ -182,13 +167,12 @@ test('podcast pages keep Audio and only offer Video when a safe webpage video ex
   });
   assert.equal(both.audio.status, 'available');
   assert.equal(both.video.status, 'available');
-  assert.equal(audioUsesWatchPlayer(podcastSource()), false);
   assert.equal(connectedAudioSource(podcastSource())?.normalizedUrl, AUDIO_URL);
 });
 
-test('Create Audio identity prefers page audio, then watch-page audio, and never uses mic commentary', () => {
-  assert.equal(createAudioIdentity(youtubeSource())?.publisher, 'YouTube');
-  assert.equal(createAudioIdentity(tiktokSource())?.publisher, 'TikTok');
+test('Create Audio identity prefers page audio or Spotify and never uses watch-page video sound', () => {
+  assert.equal(createAudioIdentity(youtubeSource()), null);
+  assert.equal(createAudioIdentity(tiktokSource()), null);
   assert.equal(createAudioIdentity(spotifySource())?.episodeId, '6EMoFpxEsLelogfZz8eAC2');
   const hybrid = articleSource({
     audioAvailable: true,
@@ -202,7 +186,6 @@ test('Create Audio identity prefers page audio, then watch-page audio, and never
     }),
   });
   assert.equal(createAudioIdentity(hybrid)?.classification, 'Podcast / web audio');
-  assert.equal(audioUsesWatchPlayer(hybrid), false);
 });
 
 test('disconnected tabs fail closed for every mode', () => {

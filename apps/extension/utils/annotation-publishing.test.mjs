@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { publishArticleAnnotation } from './annotation-publishing.ts';
+import { publishArticleAnnotation, uploadAndAttachOwnerCommentaryAudio } from './annotation-publishing.ts';
+import { ATTACH_OWNER_ANNOTATION_AUDIO_RPC } from './audio-commentary.ts';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const ANNOTATION_ID = '33333333-3333-4333-8333-333333333333';
@@ -80,6 +81,30 @@ test('an RPC failure removes only the newly uploaded object', async () => {
   );
   assert.equal(fake.calls.at(-1)[0], 'remove');
   assert.deepEqual(fake.calls.at(-1)[1], [fake.calls[1][1]]);
+});
+
+test('voice-only article publishing uploads then calls the audio RPC', async () => {
+  const fake = createFakeClient();
+  const blob = new Blob(['recording'], { type: 'audio/webm' });
+  assert.equal(
+    await publishArticleAnnotation(fake.client, { ...INPUT, commentaryText: '' }, { blob, durationMs: 1_500 }),
+    ANNOTATION_ID,
+  );
+  assert.equal(fake.calls.at(-1)[0], 'rpc');
+  assert.equal(fake.calls.at(-1)[1], 'publish_article_annotation_with_audio');
+  await assert.rejects(
+    publishArticleAnnotation(fake.client, { ...INPUT, commentaryText: '' }),
+    /typed commentary, a voice clip, or both/,
+  );
+});
+
+test('hosted follow-up attach uploads then calls attach_owner_annotation_audio', async () => {
+  const fake = createFakeClient();
+  const blob = new Blob(['recording'], { type: 'audio/webm' });
+  await uploadAndAttachOwnerCommentaryAudio(fake.client, ANNOTATION_ID, { blob, durationMs: 1_500 });
+  assert.equal(fake.calls.at(-1)[0], 'rpc');
+  assert.equal(fake.calls.at(-1)[1], ATTACH_OWNER_ANNOTATION_AUDIO_RPC);
+  assert.equal(fake.calls.at(-1)[2].p_annotation_id, ANNOTATION_ID);
 });
 
 test('cleanup failure is reported without replacing the primary RPC error', async () => {

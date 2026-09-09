@@ -89,7 +89,9 @@ export function AnnotationCard({
 
       <div className="card-body">
         <p className="card-commentary-lead" id={headingId}>
-          {truncateExcerpt(annotation.commentaryText, COMMENTARY_EXCERPT_LENGTH)}
+          {annotation.commentaryText.trim()
+            ? truncateExcerpt(annotation.commentaryText, COMMENTARY_EXCERPT_LENGTH)
+            : "Voice commentary"}
         </p>
 
         <div className="card-nested-source">

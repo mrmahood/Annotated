@@ -997,12 +997,12 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   const sourceUrl = sourceOpenHref(annotation);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const hasPassage = annotation.kind === 'article';
-  const hasArticleAudio = annotation.kind === 'article' && Boolean(annotation.audio);
+  const hasCommentaryAudio = Boolean(annotation.audio);
   const hostedReady = isHostedExcerptReady(hosted) ? hosted : null;
   const hostedTranscript = hostedReady && hasHostedExcerptTranscript(hostedReady.transcript)
     ? hostedReady.transcript
     : null;
-  const audioUrl = hasArticleAudio && annotation.audio
+  const audioUrl = hasCommentaryAudio && annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;
   const annotationRef = useRef(annotation);
@@ -1091,7 +1091,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
         <time dateTime={annotation.publishedAt}>{formatTimestamp(annotation.publishedAt)}</time>
       </header>
       <div className="annotation-card-body" {...cardHover}>
-        <p className="commentary-lead">{annotation.commentaryText}</p>
+        <p className="commentary-lead">{annotation.commentaryText.trim() || (hasCommentaryAudio ? 'Voice commentary' : '')}</p>
         <div className="nested-source">
           <button
             className="nested-source-body"
@@ -1212,7 +1212,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           ) : expanded && hostedTranscript ? (
             <p className="transcript-peek">{hostedTranscript.text}</p>
           ) : null}
-          {expanded && hasArticleAudio && audioUrl && (
+          {expanded && hasCommentaryAudio && audioUrl && (
             <audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
           )}
           <a className="open-source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSourceOpenClick(event, annotation, articleHover, audioHover, pageVideoHover, tiktokHover, spotifyHover, sourceUrl, onArticleHoverResult, annotation.kind === 'audio' ? onAudioAwaitingConnection : annotation.kind === 'video' ? onPageVideoAwaitingConnection : annotation.kind === 'tiktok' ? onTikTokAwaitingConnection : annotation.kind === 'spotify' ? onSpotifyAwaitingConnection : onAwaitingConnection)}>Open source ↗</a>
@@ -1734,8 +1734,8 @@ export function AnnotationDetailView({
           <p>This archived excerpt is no longer available. The annotation and original source remain accessible.</p>
         </section>
       )}
-      <section className="detail-commentary" {...commentaryHover}><span className="section-label">Commentary</span><p>{annotation.commentaryText}</p></section>
-      {annotation.kind === 'article' && annotation.audio && audioUrl && <section className="detail-audio" aria-labelledby="detail-audio-heading"><span className="section-label" id="detail-audio-heading">Audio commentary</span><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</section>}
+      {(annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" {...commentaryHover}><span className="section-label">Commentary</span>{annotation.commentaryText.trim() ? <p>{annotation.commentaryText}</p> : null}</section>}
+      {annotation.audio && audioUrl && <section className="detail-audio" aria-labelledby="detail-audio-heading"><span className="section-label" id="detail-audio-heading">Audio commentary</span><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</section>}
       <div className="detail-secondary-actions"><span>{annotation.commentCount.toLocaleString()} comments</span>{publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Share / public page ↗</a>}</div>
       <Comments supabase={supabase} annotationId={annotation.id} currentUserId={currentUserId} onSignIn={onSignIn} onProfile={navigation.openProfile} autoFocus={focusComments} onCountChange={(commentCount) => setAnnotation((current) => current ? { ...current, commentCount } : current)} onMutation={onSocialMutation} />
     </article>

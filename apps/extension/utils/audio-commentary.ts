@@ -179,3 +179,38 @@ export function getPublishRpcName(hasAudio: boolean) {
     ? 'publish_article_annotation_with_audio'
     : 'publish_article_annotation';
 }
+
+export const COMMENTARY_TEXT_LIMIT = 2_000;
+export const COMMENTARY_CONTRACT_HINT =
+  'Add typed commentary, a voice clip, or both.';
+export const ATTACH_OWNER_ANNOTATION_AUDIO_RPC = 'attach_owner_annotation_audio';
+
+export function getCommentaryContractError(
+  text: string,
+  hasRecordedCommentary: boolean,
+): string | null {
+  if (text.length > COMMENTARY_TEXT_LIMIT) {
+    return 'Commentary cannot exceed 2,000 characters.';
+  }
+  if (!text.trim() && !hasRecordedCommentary) {
+    return COMMENTARY_CONTRACT_HINT;
+  }
+  return null;
+}
+
+export function hasPublishableCommentary(
+  text: string,
+  hasRecordedCommentary: boolean,
+): boolean {
+  return getCommentaryContractError(text, hasRecordedCommentary) === null;
+}
+
+export function isCommentaryRecordingBusy(status: RecordingState['status']): boolean {
+  return status === 'requesting_permission' || status === 'recording';
+}
+
+export function readStoredCommentaryText(value: unknown): string | null {
+  return typeof value === 'string' && value.length <= COMMENTARY_TEXT_LIMIT
+    ? value
+    : null;
+}

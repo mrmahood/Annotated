@@ -265,7 +265,10 @@ export function mapPublicAnnotationDetail(
   if (!isRecord(annotationValue) || !isRecord(targetValue) || !isRecord(sourceValue) || !isRecord(profileValue)) return null;
 
   const annotationId = getOptionalText(annotationValue.id);
-  const commentaryText = getOptionalText(annotationValue.commentary_text);
+  const commentaryText = typeof annotationValue.commentary_text === "string" &&
+    annotationValue.commentary_text.length <= 2_000
+    ? annotationValue.commentary_text
+    : null;
   const profileId = getOptionalText(profileValue.id);
   const canonicalUrl = getHttpUrl(sourceValue.canonical_url);
   const hostname = formatHostname(sourceValue.canonical_url);
@@ -273,7 +276,7 @@ export function mapPublicAnnotationDetail(
   const publishedDate = publishedAt ? new Date(publishedAt) : null;
   const sourceMetadata = isRecord(sourceValue.metadata) ? sourceValue.metadata : {};
   const selectedText = getOptionalText(targetValue.selected_text);
-  if (!annotationId || !isUuid(annotationId) || !commentaryText || !profileId || !isUuid(profileId) ||
+  if (!annotationId || !isUuid(annotationId) || commentaryText === null || !profileId || !isUuid(profileId) ||
       !canonicalUrl || !hostname || !publishedDate || Number.isNaN(publishedDate.getTime())) return null;
 
   const audioMetadata = parsePublicAnnotationAudio(annotationValue.audio);

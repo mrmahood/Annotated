@@ -60,29 +60,39 @@ test('rejects malformed hosted audio begin responses', () => {
   assert.throws(() => parseHostedAudioBeginResponse([]), /invalid draft/);
 });
 
-test('watch-page audio begin keeps podcast identity on YouTube and TikTok URLs', async () => {
+test('rejects YouTube and TikTok watch URLs before the podcast begin RPC', async () => {
+  const fake = fakeClient();
+  await assert.rejects(
+    beginHostedAudioClipAnnotation(fake.client, {
+      ...input,
+      sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s',
+      canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    }),
+    /YouTube watch URL/,
+  );
+  await assert.rejects(
+    beginHostedAudioClipAnnotation(fake.client, {
+      ...input,
+      sourceUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+      canonicalUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
+    }),
+    /TikTok watch URL/,
+  );
+  assert.equal(fake.calls.length, 0);
+});
+
+test('allows empty typed commentary when a recorded voice clip is present', async () => {
   const fake = fakeClient();
   await beginHostedAudioClipAnnotation(fake.client, {
     ...input,
-    sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s',
-    canonicalUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    title: 'Watch title',
-    author: 'Channel',
-    publisher: 'YouTube',
-    showName: null,
+    commentaryText: '',
+    hasRecordedCommentary: true,
   });
-  assert.equal(fake.calls[0][0], 'begin_hosted_audio_annotation');
-  assert.equal(fake.calls[0][1].p_normalized_url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-  await beginHostedAudioClipAnnotation(fake.client, {
-    ...input,
-    sourceUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
-    canonicalUrl: 'https://www.tiktok.com/@bbcnews/video/7550123456789012345',
-    title: 'TikTok title',
-    author: '@bbcnews',
-    publisher: 'TikTok',
-    showName: null,
-  });
-  assert.equal(fake.calls[1][1].p_normalized_url, 'https://www.tiktok.com/@bbcnews/video/7550123456789012345');
+  assert.equal(fake.calls[0][1].p_commentary_text, '');
+  await assert.rejects(
+    beginHostedAudioClipAnnotation(fake.client, { ...input, commentaryText: '' }),
+    /typed commentary, a voice clip, or both/,
+  );
 });
 
 test('does not remap begin errors into a same-URL article conflict', async () => {

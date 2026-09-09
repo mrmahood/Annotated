@@ -58,3 +58,20 @@ test('rejects show-only and malformed begin responses', async () => {
   }), /Spotify episode URL/);
   assert.throws(() => parseHostedSpotifyBeginResponse({ annotation_id: ANNOTATION_ID }), /invalid draft/);
 });
+
+test('allows empty typed commentary when a recorded voice clip is present', async () => {
+  const client = fakeClient();
+  await beginHostedSpotifyAnnotation(client, {
+    sourceUrl: CANONICAL, title: 'The Daily', author: 'The New York Times',
+    showName: 'The Daily', startMs: 1_000, endMs: 8_000,
+    commentaryText: '', hasRecordedCommentary: true,
+  });
+  assert.equal(client.calls[0][1].p_commentary_text, '');
+  await assert.rejects(
+    beginHostedSpotifyAnnotation(client, {
+      sourceUrl: CANONICAL, title: 'The Daily', author: 'The New York Times',
+      showName: 'The Daily', startMs: 1_000, endMs: 8_000, commentaryText: '',
+    }),
+    /typed commentary, a voice clip, or both/,
+  );
+});

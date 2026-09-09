@@ -120,7 +120,9 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
   const source = getSingleRelation(value.source);
   const target = getSingleRelation(value.target);
   const annotationId = getOptionalText(value.id);
-  const commentaryText = getOptionalText(value.commentary_text);
+  const commentaryText = typeof value.commentary_text === "string" && value.commentary_text.length <= 2_000
+    ? value.commentary_text
+    : null;
   const selectedText = getOptionalText(target?.selected_text);
   const annotationType = getOptionalText(value.annotation_type);
   const sourceType = getOptionalText(source?.source_type);
@@ -137,7 +139,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
 
   if (
     !annotator || !source || !target ||
-    !annotationId || !isUuid(annotationId) || !commentaryText ||
+    !annotationId || !isUuid(annotationId) || commentaryText === null ||
     !profileId || !isUuid(profileId) || !canonicalUrl || !hostname ||
     !publishedDate || Number.isNaN(publishedDate.getTime())
   ) {

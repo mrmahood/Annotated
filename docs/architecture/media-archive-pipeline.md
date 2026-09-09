@@ -122,8 +122,9 @@ closeout state is recorded above; the bullets below preserve the baseline audit:
 
 Article, YouTube, and podcast publication use separate authenticated RPCs.
 They are `SECURITY INVOKER`, derive ownership from `auth.uid()`, normalize or
-validate source identity, require text commentary, create/reuse the source, and
-insert annotation and target atomically. All three currently create an
+validate source identity, require typed commentary and/or recorded voice
+commentary, create/reuse the source, and insert annotation and target
+atomically. All three currently create an
 immediately `published` annotation. YouTube identity is a canonical watch URL;
 podcast identity strips fragments, tracking parameters, and recognized playback
 position parameters; article normalization similarly strips common tracking.
@@ -550,8 +551,8 @@ only after later media removal, not as a successful initial publication state.
 Productionize the spike into focused modules rather than merging its diagnostic
 panel:
 
-1. User selects a 1-90-second range, supplies required commentary, and presses
-   Publish.
+1. User selects a 1-90-second range, supplies typed commentary and/or a
+   recorded voice clip, and presses Publish.
 2. Extension calls a media-begin endpoint/RPC with its bearer token. The
    user-context RPC normalizes source identity and atomically creates source,
    draft annotation, target, slug, and `capture_pending` media row.

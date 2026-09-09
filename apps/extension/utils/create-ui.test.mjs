@@ -105,10 +105,12 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   assert.match(source, /publishWebpageVideoClip/);
   assert.match(source, /canPublishWebpageVideo/);
   assert.match(source, /mediaType: isAudioOnlyCaptureSourceKind\(source\.kind\) \? 'audio' : 'video'/);
-  assert.match(source, /kind: 'youtube-audio'/);
-  assert.match(source, /kind: 'tiktok-audio'/);
-  assert.doesNotMatch(source, /Audio mode supports top-level page audio, not YouTube video/);
-  assert.doesNotMatch(source, /Audio mode supports top-level page audio, not TikTok video/);
+  assert.doesNotMatch(source, /kind: 'youtube-audio'/);
+  assert.doesNotMatch(source, /kind: 'tiktok-audio'/);
+  assert.doesNotMatch(source, /kind: 'web-video-audio'/);
+  assert.match(source, /videoCommentaryRecorder/);
+  assert.match(source, /audioCommentaryRecorder/);
+  assert.match(source, /hasPublishableCommentary/);
   assert.doesNotMatch(source, /Publishing not enabled/);
   assert.doesNotMatch(source, /separately authorized article-backed hosted-video server contract/);
   assert.doesNotMatch(source, /beginHostedYouTubeAnnotation\(supabase, \{[\s\S]{0,500}webVideoSource/);
