@@ -247,9 +247,9 @@ set local role authenticated;
 select lives_ok(
   $$
     select * from public.begin_hosted_youtube_annotation(
-      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      'dQw4w9WgXcQ', 'No voice', 'Channel',
+      'https://www.youtube.com/watch?v=jNQXAC9IVRw',
+      'https://www.youtube.com/watch?v=jNQXAC9IVRw',
+      'jNQXAC9IVRw', 'No voice', 'Channel',
       9000, 16000, ''
     )
   $$,
@@ -274,13 +274,10 @@ set
 where media.annotation_id = (
   select annotations.id
   from public.annotations
-  where annotations.user_id = 'e1000000-0000-4000-8000-000000000001'
+  join public.sources on sources.id = annotations.source_id
+  where sources.normalized_url = 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
+    and annotations.user_id = 'e1000000-0000-4000-8000-000000000001'
     and annotations.status = 'draft'
-    and annotations.commentary_text = ''
-    and not exists (
-      select 1 from public.annotation_audio
-      where annotation_audio.annotation_id = annotations.id
-    )
 );
 
 insert into public.annotation_transcripts (
@@ -288,13 +285,10 @@ insert into public.annotation_transcripts (
 )
 select annotations.id, 'Excerpt transcript without voice', 'test', 'test'
 from public.annotations
-where annotations.user_id = 'e1000000-0000-4000-8000-000000000001'
-  and annotations.status = 'draft'
-  and annotations.commentary_text = ''
-  and not exists (
-    select 1 from public.annotation_audio
-    where annotation_audio.annotation_id = annotations.id
-  );
+join public.sources on sources.id = annotations.source_id
+where sources.normalized_url = 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
+  and annotations.user_id = 'e1000000-0000-4000-8000-000000000001'
+  and annotations.status = 'draft';
 
 select throws_ok(
   $$
@@ -303,9 +297,10 @@ select throws_ok(
     where user_id = 'e1000000-0000-4000-8000-000000000001'
       and status = 'draft'
       and commentary_text = ''
-      and not exists (
-        select 1 from public.annotation_audio
-        where annotation_audio.annotation_id = annotations.id
+      and source_id = (
+        select sources.id
+        from public.sources
+        where sources.normalized_url = 'https://www.youtube.com/watch?v=jNQXAC9IVRw'
       )
   $$,
   '23514',
