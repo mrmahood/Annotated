@@ -726,19 +726,24 @@ separately authorized.
     Staging migration: `20260906031846_begin_hosted_spotify_annotation`.
     Owner apply/verify notes: `docs/product/spotify-episode-capture.md`.
     Do not touch Production. Do not unpause Cloud Run.
-- **Audio Create on every media kind** (implemented on this branch;
-  owner Chrome and Staging acceptance still required). Text / Video /
-  Audio stay independent. YouTube and TikTok no longer grey Audio just
-  because the page is classified as video. Audio on a watch or webpage-
-  video page captures the tab’s already-playing sound through the
-  proven `tabCapture → offscreen → MediaRecorder` audio-only path and
-  publishes a coexisting `podcast` / `audio_clip` row via
-  `begin_hosted_audio_annotation`. Video publish on the same URL is
-  unchanged. Soft hover still must not seek/play; Audio must not steal
-  text hover. Hosted clips remain 1–90 s. No Production access; do not
-  unpause Cloud Run. No new Staging migration is required for the RPC
-  itself; add the Local pgTAP coexistence check before owner Staging
-  regression.
+- **Voice commentary on Video + Audio Create** (this increment; owner
+  Chrome and Staging acceptance still required). The existing Text
+  Create `AudioRecorder` / `annotation-audio` stack is the commentary
+  contract everywhere: typed text, a recorded voice clip, or both;
+  Publish stays disabled with neither. Video Create (YouTube / TikTok /
+  webpage video) and Audio Create (Spotify / podcast / page-audio) show
+  the same mic under Your commentary. Hosted drafts attach voice
+  through `attach_owner_annotation_audio` before capture. Do not
+  confuse this with Create-mode Audio **media**.
+- **Watch-page Audio media from #94 is reverted.** When a page has
+  video, Create-mode Audio is unavailable again (YouTube, TikTok, and
+  webpage-video-only tabs). Audio **media** stays for Spotify /
+  podcast / page-audio only. Text + Video coexistence on the same URL
+  remains. Database source coexistence for the same URL is unchanged;
+  the extension no longer offers or captures `youtube-audio` /
+  `tiktok-audio` / `web-video-audio`. Hosted clips remain 1–90 s. No
+  Production access; do not unpause Cloud Run. Staging migration:
+  `20260909014932_commentary_voice_or_text`.
 - **Typed clip range entry** (Create UX follow-on for Video and Audio;
   implemented on `main`). Owner side note (2026-09-05): in
   addition to **Set start** and **Set end**, the user can **type**

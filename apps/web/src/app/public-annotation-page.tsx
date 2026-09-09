@@ -168,10 +168,14 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
           <section className="commentary-section" aria-labelledby="commentary-heading">
             <p className="section-label">Commentary</p>
             <h2 id="commentary-heading">The annotation</h2>
-            <p className="commentary-text">{annotation.commentaryText}</p>
+            {annotation.commentaryText.trim() ? (
+              <p className="commentary-text">{annotation.commentaryText}</p>
+            ) : annotation.audio ? (
+              <p className="commentary-text">Voice commentary</p>
+            ) : null}
           </section>
 
-          {annotation.kind === "article" && annotation.audio && (
+          {annotation.audio && (
             <PublishedAudioPlayer publicUrl={annotation.audio.publicUrl} durationMs={annotation.audio.durationMs} />
           )}
 

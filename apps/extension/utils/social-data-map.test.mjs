@@ -92,6 +92,21 @@ test('the same NYT URL can project article text and podcast audio as separate ca
   assert.equal(article?.selectedText.includes('Judge Davis'), true);
 });
 
+test('maps voice-only commentary when typed text is empty and audio metadata is present', () => {
+  const mapped = mapPublicAnnotation(baseRow({
+    commentary_text: '',
+    audio: {
+      storage_path: `${PROFILE_ID}/22222222-2222-4222-8222-222222222222.webm`,
+      duration_ms: 4_000,
+      mime_type: 'audio/webm',
+      byte_size: 2_048,
+    },
+  }));
+  assert.equal(mapped?.kind, 'audio');
+  assert.equal(mapped?.commentaryText, '');
+  assert.equal(mapped?.audio?.durationMs, 4_000);
+});
+
 test('does not project audio_clip rows that still point at an article source', () => {
   assert.equal(
     mapPublicAnnotation(baseRow({

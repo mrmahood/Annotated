@@ -5,7 +5,9 @@ import {
   createAudioStoragePath,
   formatAudioDuration,
   getAudioValidationError,
+  getCommentaryContractError,
   getPublishRpcName,
+  hasPublishableCommentary,
   parseAnnotationAudio,
   reduceRecordingState,
   selectRecordingMimeType,
@@ -77,4 +79,15 @@ test('recording reducer ignores stale transitions and supports discard', () => {
 test('text and audio publications route to separate RPCs', () => {
   assert.equal(getPublishRpcName(false), 'publish_article_annotation');
   assert.equal(getPublishRpcName(true), 'publish_article_annotation_with_audio');
+});
+
+test('publish gating requires typed commentary, a recorded clip, or both', () => {
+  assert.equal(hasPublishableCommentary('', false), false);
+  assert.equal(hasPublishableCommentary('   ', false), false);
+  assert.equal(hasPublishableCommentary('Noted.', false), true);
+  assert.equal(hasPublishableCommentary('', true), true);
+  assert.equal(hasPublishableCommentary('Noted.', true), true);
+  assert.match(getCommentaryContractError('', false), /typed commentary, a voice clip, or both/);
+  assert.match(getCommentaryContractError('x'.repeat(2_001), true), /2,000/);
+  assert.equal(getCommentaryContractError('', true), null);
 });

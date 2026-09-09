@@ -1,7 +1,10 @@
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import { isSpotifyEpisodeUrl } from '@annotated/shared/spotify';
+import { isTikTokVideoUrl } from '@annotated/shared/tiktok';
+import { isYouTubeVideoUrl } from '@annotated/shared/youtube';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getCommentaryContractError } from './audio-commentary.ts';
 import { isUuid } from './social-helpers.ts';
 import type { HostedMediaOperation } from './media-capture.ts';
 
@@ -15,6 +18,7 @@ export type AudioClipAnnotationInput = {
   startMs: number;
   endMs: number;
   commentaryText: string;
+  hasRecordedCommentary?: boolean;
   mediaDurationMs: number;
 };
 
@@ -52,6 +56,12 @@ export async function beginHostedAudioClipAnnotation(
   if (isSpotifyEpisodeUrl(input.sourceUrl) || isSpotifyEpisodeUrl(input.canonicalUrl)) {
     throw new Error('Podcast audio clips cannot use a Spotify episode URL. Use the Spotify hosted begin path.');
   }
+  if (isYouTubeVideoUrl(input.sourceUrl) || isYouTubeVideoUrl(input.canonicalUrl)) {
+    throw new Error('Podcast audio clips cannot use a YouTube watch URL.');
+  }
+  if (isTikTokVideoUrl(input.sourceUrl) || isTikTokVideoUrl(input.canonicalUrl)) {
+    throw new Error('Podcast audio clips cannot use a TikTok watch URL.');
+  }
   const identity = getAudioSourceIdentity(input.sourceUrl, input.canonicalUrl);
   const rangeError = getNewMediaPublicationRangeError(
     input.startMs,
@@ -59,9 +69,11 @@ export async function beginHostedAudioClipAnnotation(
     input.mediaDurationMs,
   );
   if (rangeError) throw new Error(rangeError);
-  if (!input.commentaryText.trim() || input.commentaryText.length > 2_000) {
-    throw new Error('Commentary must contain between 1 and 2,000 characters.');
-  }
+  const commentaryError = getCommentaryContractError(
+    input.commentaryText,
+    input.hasRecordedCommentary === true,
+  );
+  if (commentaryError) throw new Error(commentaryError);
 
   const { data, error } = await supabase.rpc('begin_hosted_audio_annotation', {
     p_normalized_url: identity.normalizedUrl,

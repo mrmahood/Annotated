@@ -1,25 +1,12 @@
-import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 import type { AudioPageSource } from './audio-page.ts';
 import type { ModeCapabilities, ModeCapability } from './create-mode.ts';
 import {
-  isHostedWatchSource,
-  isWebpageVideoCapableSource,
   type PageSource,
   type SourceState,
   type SpotifyPageSource,
 } from './connected-source.ts';
 
-export type WatchPageAudioIdentity = {
-  url: string;
-  canonicalUrl: string;
-  normalizedUrl: string;
-  title: string;
-  author: string | null;
-  publisher: string | null;
-  showName: string | null;
-};
-
-export type CreateAudioIdentity = AudioPageSource | SpotifyPageSource | WatchPageAudioIdentity;
+export type CreateAudioIdentity = AudioPageSource | SpotifyPageSource;
 
 function createUnavailableCapabilities(reason: string): ModeCapabilities {
   return {
@@ -41,53 +28,8 @@ export function connectedSpotifySource(source: PageSource): SpotifyPageSource | 
   return source.classification === 'Spotify' ? source : null;
 }
 
-export function audioUsesWatchPlayer(source: PageSource): boolean {
-  if (isHostedWatchSource(source)) return true;
-  return isWebpageVideoCapableSource(source) && source.videoAvailable && !connectedAudioSource(source);
-}
-
-export function watchPageAudioIdentity(source: PageSource): WatchPageAudioIdentity | null {
-  if (source.classification === 'YouTube') {
-    const identity = getAudioSourceIdentity(source.normalizedUrl);
-    return {
-      url: source.url,
-      canonicalUrl: identity.canonicalUrl,
-      normalizedUrl: identity.normalizedUrl,
-      title: source.title,
-      author: source.channelName,
-      publisher: 'YouTube',
-      showName: null,
-    };
-  }
-  if (source.classification === 'TikTok') {
-    const identity = getAudioSourceIdentity(source.normalizedUrl);
-    return {
-      url: source.url,
-      canonicalUrl: identity.canonicalUrl,
-      normalizedUrl: identity.normalizedUrl,
-      title: source.title,
-      author: source.author,
-      publisher: 'TikTok',
-      showName: null,
-    };
-  }
-  if (audioUsesWatchPlayer(source) && isWebpageVideoCapableSource(source)) {
-    const identity = getAudioSourceIdentity(source.url);
-    return {
-      url: source.url,
-      canonicalUrl: identity.canonicalUrl,
-      normalizedUrl: identity.normalizedUrl,
-      title: source.title,
-      author: null,
-      publisher: source.hostname,
-      showName: null,
-    };
-  }
-  return null;
-}
-
 export function createAudioIdentity(source: PageSource): CreateAudioIdentity | null {
-  return connectedSpotifySource(source) ?? connectedAudioSource(source) ?? watchPageAudioIdentity(source);
+  return connectedSpotifySource(source) ?? connectedAudioSource(source);
 }
 
 function audioCapabilityForConnectedSource(
@@ -97,11 +39,9 @@ function audioCapabilityForConnectedSource(
     return { status: 'available' };
   }
   if (sourceState.source.classification === 'Web page') {
-    if (sourceState.source.videoAvailable) return { status: 'available' };
-    if (!sourceState.source.audioDetectionResolved || !sourceState.source.videoDetectionResolved) {
-      return { status: 'checking' };
-    }
-    return { status: 'unavailable', reason: 'No supported top-level page audio or video was found.' };
+    return sourceState.source.audioDetectionResolved
+      ? { status: 'unavailable', reason: 'No supported top-level page audio was found.' }
+      : { status: 'checking' };
   }
   if (sourceState.source.classification === 'Podcast / web audio') {
     return { status: 'available' };
@@ -132,14 +72,14 @@ export function getModeCapabilities(sourceState: SourceState): ModeCapabilities 
     return {
       text: { status: 'available' },
       video: { status: 'available' },
-      audio: { status: 'available' },
+      audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not YouTube video.' },
     };
   }
   if (sourceState.source.classification === 'TikTok') {
     return {
       text: { status: 'available' },
       video: { status: 'available' },
-      audio: { status: 'available' },
+      audio: { status: 'unavailable', reason: 'Audio mode supports top-level page audio, not TikTok video.' },
     };
   }
   if (sourceState.source.classification === 'Spotify') {

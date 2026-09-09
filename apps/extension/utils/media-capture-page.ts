@@ -55,10 +55,7 @@ export async function prepareMediaCaptureOnPage(
       return url.href;
     } catch { return null; }
   };
-  const playerFamily = request.source.kind === 'youtube-audio' ? 'youtube'
-    : request.source.kind === 'tiktok-audio' ? 'tiktok'
-    : request.source.kind === 'web-video-audio' ? 'web-video'
-    : request.source.kind;
+  const playerFamily = request.source.kind;
   const sourceMatches = () => playerFamily === 'youtube'
     ? youtubeId(location.href) === request.source.sourceKey
     : playerFamily === 'tiktok'
@@ -532,10 +529,7 @@ export async function playMediaForCaptureOnPage(
       return match?.[2] ?? null;
     } catch { return null; }
   };
-  const playerFamily = source.kind === 'youtube-audio' ? 'youtube'
-    : source.kind === 'tiktok-audio' ? 'tiktok'
-    : source.kind === 'web-video-audio' ? 'web-video'
-    : source.kind;
+  const playerFamily = source.kind;
   const sourceMatches = () => playerFamily === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
     : playerFamily === 'tiktok'
@@ -877,10 +871,7 @@ export function finishMediaCaptureOnPage(
       return match?.[2] ?? null;
     } catch { return null; }
   };
-  const playerFamily = source.kind === 'youtube-audio' ? 'youtube'
-    : source.kind === 'tiktok-audio' ? 'tiktok'
-    : source.kind === 'web-video-audio' ? 'web-video'
-    : source.kind;
+  const playerFamily = source.kind;
   const sourceStillMatches = () => playerFamily === 'youtube'
     ? youtubeId(location.href) === source.sourceKey
     : playerFamily === 'tiktok'

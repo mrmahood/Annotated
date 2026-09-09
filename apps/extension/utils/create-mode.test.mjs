@@ -229,10 +229,10 @@ test('incidental article audio stays a Web page capability instead of an exclusi
   assert.doesNotMatch(app, /lookupExistingSourceType|EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
   assert.doesNotMatch(publishing, /EXISTING_NON_AUDIO_SOURCE_MESSAGE/);
   assert.doesNotMatch(app, /detection\.status === 'supported'[\s\S]{0,180}\.\.\.detection\.source/);
-  assert.doesNotMatch(app, /Audio mode supports top-level page audio, not YouTube video/);
-  assert.doesNotMatch(app, /Audio mode supports top-level page audio, not TikTok video/);
-  assert.match(app, /audioUsesWatchPlayer/);
-  assert.match(app, /kind: 'youtube-audio'/);
+  assert.doesNotMatch(app, /audioUsesWatchPlayer/);
+  assert.doesNotMatch(app, /kind: 'youtube-audio'/);
+  assert.doesNotMatch(app, /kind: 'tiktok-audio'/);
+  assert.doesNotMatch(app, /kind: 'web-video-audio'/);
 });
 
 test('the side panel is wired to independent Text, Video, and Audio draft slices', async () => {

@@ -2,8 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   ANNOTATION_AUDIO_BUCKET,
   ANNOTATION_AUDIO_MIME_TYPE,
+  ATTACH_OWNER_ANNOTATION_AUDIO_RPC,
   createAudioStoragePath,
   getAudioValidationError,
+  getCommentaryContractError,
   getPublishRpcName,
 } from './audio-commentary.ts';
 import { isUuid } from './social-helpers.ts';
@@ -73,6 +75,9 @@ export async function publishArticleAnnotation(
     throw new Error('The authenticated session is unavailable.');
   }
 
+  const commentaryError = getCommentaryContractError(input.commentaryText, Boolean(audio));
+  if (commentaryError) throw new Error(commentaryError);
+
   if (!audio) {
     const { data, error } = await supabase.rpc(
       getPublishRpcName(false),
@@ -126,4 +131,56 @@ export async function publishArticleAnnotation(
     throw new Error('Publishing returned an invalid annotation identifier.');
   }
   return data;
+}
+
+export async function uploadAndAttachOwnerCommentaryAudio(
+  supabase: SupabaseClient,
+  annotationId: string,
+  audio: RecordedAudioInput,
+  onCleanupFailure?: (diagnostic: CleanupDiagnostic) => void,
+): Promise<void> {
+  const [{ data: sessionData, error: sessionError }, { data: userData, error: userError }] =
+    await Promise.all([supabase.auth.getSession(), supabase.auth.getUser()]);
+  const sessionUser = sessionData.session?.user;
+  if (
+    sessionError || userError || !sessionUser || !userData.user ||
+    userData.user.id !== sessionUser.id || !isUuid(sessionUser.id) || !isUuid(annotationId)
+  ) {
+    throw new Error('The authenticated session is unavailable.');
+  }
+
+  const validationError = getAudioValidationError(audio.blob, audio.durationMs);
+  if (validationError) throw new Error(validationError);
+  const storagePath = createAudioStoragePath(sessionUser.id);
+  const bucket = supabase.storage.from(ANNOTATION_AUDIO_BUCKET);
+  const { data: uploadData, error: uploadError } = await bucket.upload(
+    storagePath,
+    audio.blob,
+    {
+      upsert: false,
+      contentType: ANNOTATION_AUDIO_MIME_TYPE,
+    },
+  );
+  if (uploadError || uploadData?.path !== storagePath) {
+    throw new Error('The audio upload failed.');
+  }
+
+  const { error } = await supabase.rpc(ATTACH_OWNER_ANNOTATION_AUDIO_RPC, {
+    p_annotation_id: annotationId,
+    p_storage_path: storagePath,
+    p_audio_duration_ms: audio.durationMs,
+    p_audio_mime_type: ANNOTATION_AUDIO_MIME_TYPE,
+    p_audio_byte_size: audio.blob.size,
+  });
+
+  if (error) {
+    const { error: cleanupError } = await bucket.remove([storagePath]);
+    if (cleanupError) {
+      onCleanupFailure?.({
+        storagePath,
+        message: 'The uploaded object could not be removed after the database attachment failed.',
+      });
+    }
+    throw new Error(error.message);
+  }
 }

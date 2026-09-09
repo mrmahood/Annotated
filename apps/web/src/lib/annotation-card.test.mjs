@@ -10,6 +10,7 @@ test("public cards are commentary-led with nested source and Open source", async
 
   assert.match(card, /"use client"/);
   assert.match(card, /className="card-commentary-lead"/);
+  assert.match(card, /Voice commentary/);
   assert.match(card, /className="card-nested-source"/);
   assert.match(card, /aria-expanded=\{expanded\}/);
   assert.match(card, /Open source/);

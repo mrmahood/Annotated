@@ -56,3 +56,19 @@ test('rejects For You and malformed begin responses', async () => {
   }), /TikTok video URL/);
   assert.throws(() => parseHostedTikTokBeginResponse({ annotation_id: ANNOTATION_ID }), /invalid draft/);
 });
+
+test('allows empty typed commentary when a recorded voice clip is present', async () => {
+  const client = fakeClient();
+  await beginHostedTikTokAnnotation(client, {
+    sourceUrl: CANONICAL, title: 'BBC clip', author: 'bbcnews',
+    startMs: 1_000, endMs: 8_000, commentaryText: '', hasRecordedCommentary: true,
+  });
+  assert.equal(client.calls[0][1].p_commentary_text, '');
+  await assert.rejects(
+    beginHostedTikTokAnnotation(client, {
+      sourceUrl: CANONICAL, title: 'BBC clip', author: 'bbcnews',
+      startMs: 1_000, endMs: 8_000, commentaryText: '',
+    }),
+    /typed commentary, a voice clip, or both/,
+  );
+});

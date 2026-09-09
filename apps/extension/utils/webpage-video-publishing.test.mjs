@@ -91,6 +91,20 @@ test('rejects malformed hosted webpage-video begin responses', () => {
   assert.throws(() => parseHostedWebpageVideoBeginResponse([]), /invalid draft/);
 });
 
+test('allows empty typed commentary when a recorded voice clip is present', async () => {
+  const fake = fakeClient();
+  await beginHostedWebpageVideoAnnotation(fake.client, {
+    ...input,
+    commentaryText: '',
+    hasRecordedCommentary: true,
+  });
+  assert.equal(fake.calls[0][1].p_commentary_text, '');
+  await assert.rejects(
+    beginHostedWebpageVideoAnnotation(fake.client, { ...input, commentaryText: '' }),
+    /typed commentary, a voice clip, or both/,
+  );
+});
+
 test('does not remap begin errors into a YouTube or article conflict', async () => {
   const fake = fakeClient();
   fake.client.rpc = async () => ({

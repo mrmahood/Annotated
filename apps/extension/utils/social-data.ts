@@ -166,7 +166,9 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
   const target = getSingleRelation(value.target);
   const id = getOptionalText(value.id);
   const creatorId = getOptionalText(creator?.id);
-  const commentaryText = getOptionalText(value.commentary_text);
+  const commentaryText = typeof value.commentary_text === 'string' && value.commentary_text.length <= 2_000
+    ? value.commentary_text
+    : null;
   const selectedText = getOptionalText(target?.selected_text);
   const annotationType = getOptionalText(value.annotation_type);
   const sourceType = getOptionalText(source?.source_type);
@@ -184,7 +186,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
 
   if (
     !id || !isUuid(id) || !creatorId || !isUuid(creatorId) ||
-    !commentaryText || !canonicalUrl ||
+    commentaryText === null || !canonicalUrl ||
     !date || Number.isNaN(date.getTime())
   ) {
     return null;

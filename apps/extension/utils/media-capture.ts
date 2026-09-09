@@ -19,8 +19,7 @@ export const MEDIA_CAPTURE_OFFSCREEN_EVENT = 'annotated.mediaCapture.offscreenEv
 export const MEDIA_CAPTURE_OFFSCREEN_NEEDS_END = 'annotated.mediaCapture.offscreenNeedsEnd.v1';
 
 export type CaptureSourceKind =
-  | 'youtube' | 'tiktok' | 'web-video' | 'audio' | 'spotify'
-  | 'youtube-audio' | 'tiktok-audio' | 'web-video-audio';
+  | 'youtube' | 'tiktok' | 'web-video' | 'audio' | 'spotify';
 export type CaptureSourceIdentity = {
   kind: CaptureSourceKind;
   pageUrl: string;
@@ -108,27 +107,26 @@ function viewportSample(geometry: CaptureGeometry): CaptureViewport {
 
 export function isAudioOnlyCaptureSourceKind(
   value: CaptureSourceIdentity['kind'] | CapturePreparedPage['sourceKind'],
-): value is 'audio' | 'spotify' | 'youtube-audio' | 'tiktok-audio' | 'web-video-audio' {
-  return value === 'audio' || value === 'spotify' ||
-    value === 'youtube-audio' || value === 'tiktok-audio' || value === 'web-video-audio';
+): value is 'audio' | 'spotify' {
+  return value === 'audio' || value === 'spotify';
 }
 
 export function isYoutubeCaptureKind(
   value: CaptureSourceIdentity['kind'] | CapturePreparedPage['sourceKind'],
 ): boolean {
-  return value === 'youtube' || value === 'youtube-audio';
+  return value === 'youtube';
 }
 
 export function isTiktokCaptureKind(
   value: CaptureSourceIdentity['kind'] | CapturePreparedPage['sourceKind'],
 ): boolean {
-  return value === 'tiktok' || value === 'tiktok-audio';
+  return value === 'tiktok';
 }
 
 export function isWebVideoCaptureKind(
   value: CaptureSourceIdentity['kind'] | CapturePreparedPage['sourceKind'],
 ): boolean {
-  return value === 'web-video' || value === 'web-video-audio';
+  return value === 'web-video';
 }
 
 export function usesMainWorldCapture(
@@ -304,7 +302,7 @@ export function isHostedMediaOperation(value: unknown): value is HostedMediaOper
 export function isCaptureStartRequest(value: unknown): value is CaptureStartRequest {
   if (!isRecord(value) || !isRecord(value.source)) return false;
   return isCaptureId(value.captureId) && isInteger(value.tabId) && value.tabId >= 0 &&
-    (value.source.kind === 'youtube' || value.source.kind === 'tiktok' || value.source.kind === 'web-video' || value.source.kind === 'audio' || value.source.kind === 'spotify' || value.source.kind === 'youtube-audio' || value.source.kind === 'tiktok-audio' || value.source.kind === 'web-video-audio') &&
+    (value.source.kind === 'youtube' || value.source.kind === 'tiktok' || value.source.kind === 'web-video' || value.source.kind === 'audio' || value.source.kind === 'spotify') &&
     typeof value.source.pageUrl === 'string' && value.source.pageUrl.length > 0 &&
     typeof value.source.sourceKey === 'string' && value.source.sourceKey.length > 0 &&
     typeof value.source.playerIdentity === 'string' && (
@@ -351,7 +349,7 @@ export function isCapturePreparedPage(value: unknown): value is CapturePreparedP
     typeof frameMapping.origin === 'string' && /^https?:\/\//.test(frameMapping.origin) &&
     ['viewportWidth','viewportHeight','borderLeft','borderRight','borderTop','borderBottom']
       .every((key) => finite(frameMapping[key])));
-  return (value.sourceKind === 'youtube' || value.sourceKind === 'tiktok' || value.sourceKind === 'web-video' || value.sourceKind === 'audio' || value.sourceKind === 'spotify' || value.sourceKind === 'youtube-audio' || value.sourceKind === 'tiktok-audio' || value.sourceKind === 'web-video-audio') &&
+  return (value.sourceKind === 'youtube' || value.sourceKind === 'tiktok' || value.sourceKind === 'web-video' || value.sourceKind === 'audio' || value.sourceKind === 'spotify') &&
     isInteger(value.requestedStartMs) && isInteger(value.requestedEndMs) &&
     value.requestedDurationMs === value.requestedEndMs - value.requestedStartMs &&
     getCaptureRangeError(value.requestedStartMs, value.requestedEndMs) === null &&

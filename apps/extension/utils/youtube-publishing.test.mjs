@@ -52,3 +52,21 @@ test('rejects invalid or oversized ranges before calling the RPC', async () => {
 test('rejects malformed begin RPC responses', () => {
   assert.throws(() => parseHostedYouTubeBeginResponse({ annotation_id: ANNOTATION_ID }), /invalid draft/);
 });
+
+test('allows empty typed commentary when a recorded voice clip is present', async () => {
+  const client = fakeClient();
+  await beginHostedYouTubeAnnotation(client, {
+    sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    title: 'Video', channelName: 'Channel', startMs: 1_000, endMs: 8_000,
+    commentaryText: '', hasRecordedCommentary: true,
+  });
+  assert.equal(client.calls[0][1].p_commentary_text, '');
+  await assert.rejects(
+    beginHostedYouTubeAnnotation(client, {
+      sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      title: 'Video', channelName: 'Channel', startMs: 1_000, endMs: 8_000,
+      commentaryText: '',
+    }),
+    /typed commentary, a voice clip, or both/,
+  );
+});
