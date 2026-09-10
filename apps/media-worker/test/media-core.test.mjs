@@ -9,6 +9,7 @@ import {
   DERIVATIVE_DURATION_TOLERANCE_MS,
   RAW_ABSOLUTE_MAX_DURATION_MS,
   WEBM_DURATION_DISAGREEMENT_MS,
+  inferNaOpusContentMs,
   inferPacketTimelineEndSeconds,
   inferPacketTimelineOriginSeconds,
   packetDurationMs,
@@ -290,6 +291,49 @@ test('encoded packet content wins when media-clock span is a second short of the
   const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
   assert.ok(Math.abs(durationMs - packetCount * 20) < 0.01);
   assert.ok(durationMs >= 76_900 && durationMs <= 77_100);
+});
+
+test('Chrome N/A priming packet plus 1s-quantized playhead recovers 77s encoded content', () => {
+  const packetCount = 3_850;
+  const lines = ['0.000000,N/A', '0.020000,N/A', '0.040000,N/A'];
+  for (let index = 0; index < packetCount; index += 1) {
+    const pts = 30 + (index / (packetCount - 1)) * 76;
+    lines.push(`${pts.toFixed(6)},N/A`);
+  }
+  assert.equal(inferPacketTimelineOriginSeconds(lines.map((line) => Number(line.split(',')[0]))), 30);
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(durationMs >= 76_984.9 && durationMs <= 79_004.9);
+  assert.deepEqual(selectWebmDurationMs(106_000, durationMs), {
+    durationMs, source: 'packet_timestamps',
+  });
+
+  const audio = structuredClone(probeByName.get('audio-only.webm').probe);
+  audio.format.duration = (durationMs / 1_000).toFixed(6);
+  const facts = validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  });
+  assert.ok(facts.durationMs >= 76_984.9 && facts.durationMs <= 79_004.9);
+  assert.equal(inferNaOpusContentMs(Array.from({ length: packetCount }, (_, index) => ({
+    pts: 30 + (index / (packetCount - 1)) * 76,
+    duration: 0,
+  }))), packetCount * 20);
+});
+
+test('N/A packets that really encode 76s stay a 76s span and still fail the 77s raw gate', () => {
+  const packetCount = 3_801;
+  const lines = [];
+  for (let index = 0; index < packetCount; index += 1) {
+    lines.push(`${(30 + index * 0.02).toFixed(6)},N/A`);
+  }
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(durationMs >= 75_900 && durationMs <= 76_100);
+  const audio = structuredClone(probeByName.get('audio-only.webm').probe);
+  audio.format.duration = (durationMs / 1_000).toFixed(6);
+  assert.throws(() => validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  }), errorCode('duration_out_of_bounds'));
 });
 
 test('WebM container duration yields to packet span when they disagree by more than two seconds', () => {

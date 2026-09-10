@@ -24,6 +24,14 @@ const PACKET_ORIGIN_PREFIX_MAX_SECONDS = 0.5;
 // encoded content length, unlike container last-timestamp or a quantized
 // playhead span (player 30 s–106 s = 76 s for a 77 s recorder run).
 const PACKET_CONTENT_COVERAGE = 0.9;
+// Chrome MediaRecorder writes duration_time as N/A, so the duration_time sum
+// never runs. Recover encoded length by snapping the median inter-packet gap
+// onto an Opus frame size (usually 20 ms) and multiplying by packet count.
+// A 1 s-quantized playhead (30 s–106 s = 76 s) of a 77 s recorder run compresses
+// spacing by ~1.3%; a true 76 s encoding has matching count and span.
+const OPUS_FRAME_SECONDS = [0.0025, 0.005, 0.01, 0.02, 0.04, 0.06];
+const OPUS_FRAME_SNAP_RELATIVE = 0.15;
+const MIN_NA_OPUS_PACKETS = 50;
 // AAC-LC at 48 kHz uses 1024 samples per frame ≈ 21.333 ms. Chrome MV3 tabCapture
 // + MediaRecorder + ffmpeg `-ss` after `-i` plus `-t` can emit a few extra frames
 // and container-duration rounding on real ≤90 s clips. PRs #46–#48 admitted one
@@ -108,6 +116,44 @@ export function inferPacketTimelineEndSeconds(sortedPackets, originSeconds) {
   return endSeconds;
 }
 
+function medianNumber(values) {
+  if (!Array.isArray(values) || values.length < 1) return Number.NaN;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) return (sorted[middle - 1] + sorted[middle]) / 2;
+  return sorted[middle];
+}
+
+function snapOpusFrameSeconds(medianGapSeconds) {
+  if (!Number.isFinite(medianGapSeconds) || medianGapSeconds <= 0) return null;
+  let frame = null;
+  for (const candidate of OPUS_FRAME_SECONDS) {
+    const relative = Math.abs(medianGapSeconds - candidate) / candidate;
+    if (relative > OPUS_FRAME_SNAP_RELATIVE) continue;
+    if (frame === null || Math.abs(medianGapSeconds - candidate) < Math.abs(medianGapSeconds - frame)) {
+      frame = candidate;
+    }
+  }
+  return frame;
+}
+
+export function inferNaOpusContentMs(clusterPackets) {
+  if (!Array.isArray(clusterPackets) || clusterPackets.length < MIN_NA_OPUS_PACKETS) return null;
+  const gaps = [];
+  for (let index = 1; index < clusterPackets.length; index += 1) {
+    const gap = clusterPackets[index].pts - clusterPackets[index - 1].pts;
+    if (Number.isFinite(gap) && gap > 0) gaps.push(gap);
+  }
+  if (gaps.length < MIN_NA_OPUS_PACKETS - 1) return null;
+  const frameSeconds = snapOpusFrameSeconds(medianNumber(gaps));
+  if (frameSeconds === null) return null;
+  const contentMs = clusterPackets.length * frameSeconds * 1_000;
+  if (!Number.isFinite(contentMs) || contentMs < 1_000 || contentMs > RAW_ABSOLUTE_MAX_DURATION_MS) {
+    return null;
+  }
+  return contentMs;
+}
+
 export function packetDurationMs(output) {
   if (typeof output !== 'string' || !output.endsWith('\n')) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet timing output is incomplete.');
@@ -142,12 +188,20 @@ export function packetDurationMs(output) {
   const spanMs = (maximumEndSeconds - originSeconds) * 1_000;
   const contentMs = contentSeconds * 1_000;
   const contentCoverage = packetsWithDuration / packets.length;
+  const clusterPackets = packets.filter((packet) => (
+    packet.pts + 1e-9 >= originSeconds && packet.pts <= maximumEndSeconds + 1e-9
+  ));
   let value = spanMs;
   if (contentCoverage >= PACKET_CONTENT_COVERAGE &&
       contentMs >= 1_000 &&
       contentMs <= RAW_ABSOLUTE_MAX_DURATION_MS &&
       Math.abs(spanMs - contentMs) > PROBE_DURATION_TOLERANCE_MS) {
     value = contentMs;
+  } else if (contentCoverage <= 1 - PACKET_CONTENT_COVERAGE) {
+    const inferredMs = inferNaOpusContentMs(clusterPackets);
+    if (inferredMs !== null && Math.abs(spanMs - inferredMs) > PROBE_DURATION_TOLERANCE_MS) {
+      value = inferredMs;
+    }
   }
   if (!Number.isFinite(value) || value <= 0) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
