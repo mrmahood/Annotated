@@ -27,6 +27,7 @@ test("feed discovery projects webpage video_clip rows on the article source as V
   assert.match(source, /kind: "tiktok"/);
   assert.match(source, /annotationType === "audio_clip" && sourceType === "spotify"/);
   assert.match(source, /kind: "spotify"/);
+  assert.match(source, /parseStoredAnnotationTitle\(value\.title\)/);
   assert.match(source, /typeof value\.commentary_text === "string" && value\.commentary_text\.length <= 2_000/);
   assert.match(source, /parsePublicAnnotationAudio/);
   assert.match(source, /ANNOTATION_AUDIO_BUCKET/);

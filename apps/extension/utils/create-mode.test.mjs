@@ -164,6 +164,7 @@ test('Text, Video, and Audio draft slices mutate and reset independently', () =>
     startMs: 1_000,
     endMs: 4_000,
     commentary: 'Video note',
+    title: 'Video headline',
   });
   state = reduceCreateDraftState(state, {
     type: 'restore-media',
@@ -172,6 +173,7 @@ test('Text, Video, and Audio draft slices mutate and reset independently', () =>
     startMs: 2_000,
     endMs: 8_000,
     commentary: 'Audio note',
+    title: 'Audio headline',
   });
   const beforeVideoPatch = structuredClone(state);
   state = reduceCreateDraftState(state, {
@@ -187,11 +189,18 @@ test('Text, Video, and Audio draft slices mutate and reset independently', () =>
   assert.deepEqual(state.text, beforeAudioReset.text);
   assert.deepEqual(state.video, beforeAudioReset.video);
   assert.equal(state.audio.commentary, '');
+  assert.equal(state.audio.title, '');
   assert.equal(state.audio.startMs, null);
   assert.equal(state.audio.revision, beforeAudioReset.audio.revision + 1);
   assert.equal(hasCreateModeDraft(state, 'text'), true);
   assert.equal(hasCreateModeDraft(state, 'video'), true);
   assert.equal(hasCreateModeDraft(state, 'audio'), false);
+  state = reduceCreateDraftState(state, { type: 'set-text-title', title: 'Kept headline' });
+  assert.equal(state.text.title, 'Kept headline');
+  assert.equal(hasCreateModeDraft(reduceCreateDraftState(createInitialDraftState(), {
+    type: 'set-text-title',
+    title: 'Title only',
+  }), 'text'), true);
 });
 
 test('draft contract rejects invalid commentary, times, and media identities', () => {
@@ -199,6 +208,10 @@ test('draft contract rejects invalid commentary, times, and media identities', (
   assert.throws(() => reduceCreateDraftState(state, {
     type: 'set-text-commentary',
     commentary: 'x'.repeat(2_001),
+  }));
+  assert.throws(() => reduceCreateDraftState(state, {
+    type: 'set-text-title',
+    title: 'x'.repeat(121),
   }));
   assert.throws(() => reduceCreateDraftState(state, {
     type: 'patch-media',
@@ -240,6 +253,7 @@ test('the side panel is wired to independent Text, Video, and Audio draft slices
     new URL('../entrypoints/sidepanel/App.tsx', import.meta.url),
     'utf8',
   );
+  assert.match(appSource, /const title = createDraftState\.text\.title;/);
   assert.match(appSource, /const commentary = createDraftState\.text\.commentary;/);
   assert.match(appSource, /const videoDraftState = createDraftState\.video;/);
   assert.match(appSource, /const audioDraftState = createDraftState\.audio;/);

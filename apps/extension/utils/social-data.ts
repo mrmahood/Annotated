@@ -1,3 +1,4 @@
+import { parseStoredAnnotationTitle } from '@annotated/shared/annotation-title';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getHistoricalStoredTargetRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from '@annotated/shared/youtube';
@@ -30,6 +31,7 @@ import {
 
 type PublicAnnotationBase = {
   id: string;
+  title: string | null;
   commentaryText: string;
   publishedAt: string;
   route: PublicAnnotationRoute | null;
@@ -139,6 +141,7 @@ export function buildAnnotationSelect(options: { innerSource?: boolean } = {}): 
   id,
   slug,
   annotation_type,
+  title,
   commentary_text,
   published_at,
   creator:profiles!annotations_user_id_fkey(id, username, display_name, avatar_url),
@@ -166,6 +169,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
   const target = getSingleRelation(value.target);
   const id = getOptionalText(value.id);
   const creatorId = getOptionalText(creator?.id);
+  const title = parseStoredAnnotationTitle(value.title);
   const commentaryText = typeof value.commentary_text === 'string' && value.commentary_text.length <= 2_000
     ? value.commentary_text
     : null;
@@ -194,6 +198,7 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
 
   const common = {
     id,
+    title,
     commentaryText,
     publishedAt: date.toISOString(),
     route,

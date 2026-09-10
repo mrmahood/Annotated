@@ -178,7 +178,7 @@ select is(
   'the text-after-audio annotation is attached to the article source'
 );
 
-select ok(pg_catalog.to_regprocedure('public.publish_article_annotation_with_audio(text,text,text,text,text,text,text,text,text,text,integer,text,integer)') is not null, 'existing recorded audio commentary publishing remains available');
+select ok(pg_catalog.to_regprocedure('public.publish_article_annotation_with_audio(text,text,text,text,text,text,text,text,text,text,integer,text,integer,text)') is not null, 'existing recorded audio commentary publishing remains available');
 select ok(not pg_catalog.has_table_privilege('anon', 'public.claims', 'select') and not pg_catalog.has_table_privilege('authenticated', 'public.claims', 'select'), 'claim privacy remains intact');
 
 select * from finish();

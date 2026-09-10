@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { ANNOTATION_TITLE_MAX_LENGTH } from '@annotated/shared/annotation-title';
 import { normalizeArticleUrl, ArticleUrlNormalizationError } from '@annotated/shared/url-normalization';
 import {
   formatMediaTime,
@@ -82,6 +83,7 @@ import {
   shouldApplyDraftRestoration,
   shouldClearAnnotationDraft,
   updateAnnotationDraftCommentary,
+  updateAnnotationDraftTitle,
   type AnnotationDraft,
   type AnnotationDraftLifecycleEvent,
 } from '../../utils/annotation-draft';
@@ -567,6 +569,34 @@ function SignInActions({
   );
 }
 
+function TitleField({
+  id,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="annotation-field annotation-title-field">
+      <label className="visually-hidden" htmlFor={id}>Title</label>
+      <input
+        id={id}
+        type="text"
+        value={value}
+        maxLength={ANNOTATION_TITLE_MAX_LENGTH}
+        disabled={disabled}
+        placeholder="Add a title…"
+        autoComplete="off"
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 function CommentaryField({
   id,
   value,
@@ -659,6 +689,7 @@ function App() {
   const videoCommentaryRecorder = useAudioRecorder();
   const audioCommentaryRecorder = useAudioRecorder();
 
+  const title = createDraftState.text.title;
   const commentary = createDraftState.text.commentary;
   const videoDraftState = createDraftState.video;
   const audioDraftState = createDraftState.audio;
@@ -706,9 +737,10 @@ function App() {
     startMs: number | null,
     endMs: number | null,
     text: string,
+    draftTitle = createDraftStateRef.current.video.title,
   ) => {
     try {
-      const draft = serializeYouTubeClipDraft(sourceUrl, startMs, endMs, text);
+      const draft = serializeYouTubeClipDraft(sourceUrl, startMs, endMs, text, Date.now(), draftTitle);
       youtubeDraftRef.current = draft;
       webVideoDraftRef.current = null;
       tiktokDraftRef.current = null;
@@ -740,9 +772,10 @@ function App() {
     startMs: number | null,
     endMs: number | null,
     text: string,
+    draftTitle = createDraftStateRef.current.video.title,
   ) => {
     try {
-      const draft = serializeTikTokClipDraft(sourceUrl, startMs, endMs, text);
+      const draft = serializeTikTokClipDraft(sourceUrl, startMs, endMs, text, Date.now(), draftTitle);
       tiktokDraftRef.current = draft;
       youtubeDraftRef.current = null;
       webVideoDraftRef.current = null;
@@ -774,9 +807,10 @@ function App() {
     startMs: number | null,
     endMs: number | null,
     text: string,
+    draftTitle = createDraftStateRef.current.video.title,
   ) => {
     try {
-      const draft = serializeWebVideoClipDraft(sourceUrl, startMs, endMs, text);
+      const draft = serializeWebVideoClipDraft(sourceUrl, startMs, endMs, text, Date.now(), draftTitle);
       webVideoDraftRef.current = draft;
       youtubeDraftRef.current = null;
       tiktokDraftRef.current = null;
@@ -813,6 +847,7 @@ function App() {
     startMs: number | null,
     endMs: number | null,
     text: string,
+    draftTitle = createDraftStateRef.current.audio.title,
   ) => {
     try {
       const draft = serializeAudioClipDraft(
@@ -821,6 +856,8 @@ function App() {
         startMs,
         endMs,
         text,
+        Date.now(),
+        draftTitle,
       );
       audioDraftRef.current = draft;
       spotifyDraftRef.current = null;
@@ -836,9 +873,10 @@ function App() {
     startMs: number | null,
     endMs: number | null,
     text: string,
+    draftTitle = createDraftStateRef.current.audio.title,
   ) => {
     try {
-      const draft = serializeSpotifyClipDraft(sourceUrl, startMs, endMs, text);
+      const draft = serializeSpotifyClipDraft(sourceUrl, startMs, endMs, text, Date.now(), draftTitle);
       spotifyDraftRef.current = draft;
       audioDraftRef.current = null;
       void chrome.storage.session
@@ -975,6 +1013,7 @@ function App() {
     if (draft && context && annotationDraftBelongsToContext(draft, context)) {
       setCaptureState({ status: 'captured', data: draft.capture });
       dispatchCreateDraft({ type: 'set-text-commentary', commentary: draft.commentary });
+      dispatchCreateDraft({ type: 'set-text-title', title: draft.title });
     } else if (draft) {
       captureRevisionRef.current += 1;
       setCaptureState({ status: 'idle' });
@@ -988,6 +1027,7 @@ function App() {
         startMs: youtubeDraft.startMs,
         endMs: youtubeDraft.endMs,
         commentary: youtubeDraft.commentary,
+        title: youtubeDraft.title,
       });
     }
     const tiktokDraft = tiktokDraftRef.current;
@@ -999,6 +1039,7 @@ function App() {
         startMs: tiktokDraft.startMs,
         endMs: tiktokDraft.endMs,
         commentary: tiktokDraft.commentary,
+        title: tiktokDraft.title,
       });
     }
     const webVideoDraft = webVideoDraftRef.current;
@@ -1010,6 +1051,7 @@ function App() {
         startMs: webVideoDraft.startMs,
         endMs: webVideoDraft.endMs,
         commentary: webVideoDraft.commentary,
+        title: webVideoDraft.title,
       });
     }
     const audioDraft = audioDraftRef.current;
@@ -1021,6 +1063,7 @@ function App() {
         startMs: audioDraft.startMs,
         endMs: audioDraft.endMs,
         commentary: audioDraft.commentary,
+        title: audioDraft.title,
       });
     }
     connectedContextRef.current = context;
@@ -1094,7 +1137,7 @@ function App() {
       if (!result.ok) { setCaptureState({ status: 'recoverable-error', message: getExtractionErrorMessage(result.reason) }); return; }
       let draft: AnnotationDraft;
       try {
-        draft = serializeAnnotationDraft(context, result.data, '');
+        draft = serializeAnnotationDraft(context, result.data, '', Date.now(), createDraftStateRef.current.text.title);
       } catch {
         enterReconnectRequired();
         return;
@@ -1148,6 +1191,7 @@ function App() {
           textPrefix: captured.textPrefix,
           textSuffix: captured.textSuffix,
           commentaryText: commentary,
+          annotationTitle: title,
         },
         recordedAudio,
         reportCommentaryCleanup,
@@ -1181,7 +1225,7 @@ function App() {
     } finally {
       publishInFlightRef.current = false;
     }
-  }, [authState.status, captureState, clearDraft, commentary, supabase, textCommentaryRecorder]);
+  }, [authState.status, captureState, clearDraft, commentary, supabase, textCommentaryRecorder, title]);
 
   const runSelectedPlayerAction = useCallback(async (
     token: PlayerActionToken,
@@ -1322,6 +1366,20 @@ function App() {
     }
   }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, persistAudioDraft, persistSpotifyDraft, persistTikTokDraft, persistWebVideoDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
 
+  const changeYoutubeTitle = (value: string) => {
+    const sourceKey = sourceState.status === 'connected'
+      ? videoPlayerSourceKey(sourceState.source)
+      : videoDraftState.sourceKey;
+    dispatchCreateDraft({ type: 'patch-media', mode: 'video', patch: { title: value, sourceKey } });
+    if (sourceState.status === 'connected' && sourceState.source.classification === 'YouTube') {
+      persistYoutubeDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, videoDraftState.commentary, value);
+    } else if (sourceState.status === 'connected' && sourceState.source.classification === 'TikTok') {
+      persistTikTokDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, videoDraftState.commentary, value);
+    } else if (sourceState.status === 'connected') {
+      persistWebVideoDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, videoDraftState.commentary, value);
+    }
+  };
+
   const changeYoutubeCommentary = (value: string) => {
     const sourceKey = sourceState.status === 'connected'
       ? videoPlayerSourceKey(sourceState.source)
@@ -1333,6 +1391,24 @@ function App() {
       persistTikTokDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
     } else if (sourceState.status === 'connected') {
       persistWebVideoDraft(sourceState.source.url, videoDraftState.startMs, videoDraftState.endMs, value);
+    }
+  };
+
+  const changeAudioTitle = (value: string) => {
+    const persistable = sourceState.status === 'connected'
+      ? persistableAudioIdentity(sourceState.source)
+      : null;
+    const spotifyIdentity = sourceState.status === 'connected'
+      ? connectedSpotifySource(sourceState.source)
+      : null;
+    const sourceKey = spotifyIdentity?.normalizedUrl
+      ?? (sourceState.status === 'connected' ? createAudioIdentity(sourceState.source)?.normalizedUrl : null)
+      ?? audioDraftState.sourceKey;
+    dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { title: value, sourceKey } });
+    if (spotifyIdentity) {
+      persistSpotifyDraft(spotifyIdentity.url, audioDraftState.startMs, audioDraftState.endMs, audioDraftState.commentary, value);
+    } else if (persistable) {
+      persistAudioDraft(persistable, audioDraftState.startMs, audioDraftState.endMs, audioDraftState.commentary, value);
     }
   };
 
@@ -1542,6 +1618,7 @@ function App() {
         startMs: videoDraftState.startMs,
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
+        annotationTitle: videoDraftState.title,
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -1630,6 +1707,7 @@ function App() {
         startMs: videoDraftState.startMs,
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
+        annotationTitle: videoDraftState.title,
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -1731,6 +1809,7 @@ function App() {
         startMs: videoDraftState.startMs,
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
+        annotationTitle: videoDraftState.title,
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -1827,6 +1906,7 @@ function App() {
         startMs: audioDraftState.startMs,
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
+        annotationTitle: audioDraftState.title,
         hasRecordedCommentary: Boolean(recordedCommentary),
         mediaDurationMs: player.durationMs,
       });
@@ -1935,6 +2015,7 @@ function App() {
         startMs: audioDraftState.startMs,
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
+        annotationTitle: audioDraftState.title,
         hasRecordedCommentary: Boolean(recordedCommentary),
         mediaDurationMs: player.durationMs,
       });
@@ -2358,6 +2439,7 @@ function App() {
         startMs: draft.startMs,
         endMs: draft.endMs,
         commentary: draft.commentary,
+        title: draft.title,
       });
     }
   }, [draftRestorationStatus, sourceState]);
@@ -2385,6 +2467,7 @@ function App() {
         startMs: draft.startMs,
         endMs: draft.endMs,
         commentary: draft.commentary,
+        title: draft.title,
       });
     }
   }, [draftRestorationStatus, sourceState]);
@@ -2596,6 +2679,7 @@ function App() {
           draftRef.current = draft;
           setCaptureState({ status: 'captured', data: draft.capture });
           dispatchCreateDraft({ type: 'set-text-commentary', commentary: draft.commentary });
+          dispatchCreateDraft({ type: 'set-text-title', title: draft.title });
         } else if (restorationRevision === draftRevisionRef.current && storedDraftValue !== undefined && draft === null) {
           void removePersistedDraft();
         }
@@ -2614,6 +2698,7 @@ function App() {
             startMs: youtubeDraft.startMs,
             endMs: youtubeDraft.endMs,
             commentary: youtubeDraft.commentary,
+            title: youtubeDraft.title,
           });
         } else if (
           restorationRevision === draftRevisionRef.current &&
@@ -2636,6 +2721,7 @@ function App() {
             startMs: tiktokDraft.startMs,
             endMs: tiktokDraft.endMs,
             commentary: tiktokDraft.commentary,
+            title: tiktokDraft.title,
           });
         } else if (
           restorationRevision === draftRevisionRef.current &&
@@ -2673,6 +2759,7 @@ function App() {
             startMs: webVideoDraft.startMs,
             endMs: webVideoDraft.endMs,
             commentary: webVideoDraft.commentary,
+            title: webVideoDraft.title,
           });
         } else if (
           restorationRevision === draftRevisionRef.current &&
@@ -2705,6 +2792,7 @@ function App() {
             startMs: spotifyDraft.startMs,
             endMs: spotifyDraft.endMs,
             commentary: spotifyDraft.commentary,
+            title: spotifyDraft.title,
           });
         } else if (
           restorationRevision === draftRevisionRef.current &&
@@ -3152,6 +3240,15 @@ function App() {
     commitAudioRange,
   );
 
+  const changeTitle = (value: string) => {
+    draftRevisionRef.current += 1;
+    dispatchCreateDraft({ type: 'set-text-title', title: value });
+    const draft = draftRef.current;
+    if (!draft) return;
+    const updatedDraft = updateAnnotationDraftTitle(draft, value);
+    if (updatedDraft) persistDraft(updatedDraft);
+  };
+
   const changeCommentary = (value: string) => {
     draftRevisionRef.current += 1;
     dispatchCreateDraft({ type: 'set-text-commentary', commentary: value });
@@ -3585,6 +3682,7 @@ function App() {
                 {videoDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview from start</button>}
                 {showVideoRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
+                <TitleField id="youtube-title" value={videoDraftState.title} disabled={mediaEditorLocked} onChange={changeYoutubeTitle} />
                 <CommentaryField id="youtube-commentary" value={videoDraftState.commentary} disabled={mediaEditorLocked} onChange={changeYoutubeCommentary} />
                 <AudioRecorder controller={videoCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : tiktokSource ? <button className="button button-primary" type="button" onClick={() => void publishTikTokClip()} disabled={!canPublishTikTok}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
@@ -3615,6 +3713,7 @@ function App() {
                 {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview / Jump to start</button>}
                 {showAudioRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
                 {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
+                <TitleField id="audio-clip-title" value={audioDraftState.title} disabled={mediaEditorLocked} onChange={changeAudioTitle} />
                 <CommentaryField id="audio-clip-commentary" value={audioDraftState.commentary} disabled={mediaEditorLocked} onChange={changeAudioCommentary} />
                 <AudioRecorder controller={audioCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
@@ -3623,7 +3722,7 @@ function App() {
             </section>
           ) : selectedCreateMode === 'text' ? (
             <section className="create-panel" aria-labelledby="create-heading" key="create-text"><h2 id="create-heading" className="visually-hidden">Create annotation</h2>
-              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
+              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><TitleField id="annotation-title" value={title} disabled={publishState.status === 'publishing'} onChange={changeTitle} /><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
             </section>
           ) : (
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>

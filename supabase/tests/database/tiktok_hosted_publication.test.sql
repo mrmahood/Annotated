@@ -6,18 +6,18 @@ select plan(20);
 select has_function(
   'public',
   'begin_hosted_tiktok_annotation',
-  array['text', 'text', 'text', 'text', 'text', 'integer', 'integer', 'text'],
+  array['text', 'text', 'text', 'text', 'text', 'integer', 'integer', 'text', 'text'],
   'hosted TikTok begin RPC exists'
 );
 select ok(
   not pg_catalog.has_function_privilege(
     'anon',
-    'public.begin_hosted_tiktok_annotation(text,text,text,text,text,integer,integer,text)',
+    'public.begin_hosted_tiktok_annotation(text,text,text,text,text,integer,integer,text,text)',
     'execute'
   )
   and pg_catalog.has_function_privilege(
     'authenticated',
-    'public.begin_hosted_tiktok_annotation(text,text,text,text,text,integer,integer,text)',
+    'public.begin_hosted_tiktok_annotation(text,text,text,text,text,integer,integer,text,text)',
     'execute'
   ),
   'only authenticated clients can begin hosted TikTok annotations'

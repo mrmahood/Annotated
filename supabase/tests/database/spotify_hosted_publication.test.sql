@@ -6,18 +6,18 @@ select plan(19);
 select has_function(
   'public',
   'begin_hosted_spotify_annotation',
-  array['text', 'text', 'text', 'text', 'text', 'text', 'integer', 'integer', 'text'],
+  array['text', 'text', 'text', 'text', 'text', 'text', 'integer', 'integer', 'text', 'text'],
   'hosted Spotify begin RPC exists'
 );
 select ok(
   not pg_catalog.has_function_privilege(
     'anon',
-    'public.begin_hosted_spotify_annotation(text,text,text,text,text,text,integer,integer,text)',
+    'public.begin_hosted_spotify_annotation(text,text,text,text,text,text,integer,integer,text,text)',
     'execute'
   )
   and pg_catalog.has_function_privilege(
     'authenticated',
-    'public.begin_hosted_spotify_annotation(text,text,text,text,text,text,integer,integer,text)',
+    'public.begin_hosted_spotify_annotation(text,text,text,text,text,text,integer,integer,text,text)',
     'execute'
   ),
   'only authenticated clients can begin hosted Spotify annotations'

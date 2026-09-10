@@ -4,6 +4,7 @@ export const PUBLIC_ANNOTATION_CARD_SELECT = `
   id,
   slug,
   annotation_type,
+  title,
   commentary_text,
   published_at,
   annotator:profiles!annotations_user_id_fkey(id, username, display_name, avatar_url),

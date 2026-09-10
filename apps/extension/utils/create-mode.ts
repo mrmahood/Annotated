@@ -1,3 +1,5 @@
+import { ANNOTATION_TITLE_MAX_LENGTH } from '@annotated/shared/annotation-title';
+
 export const CREATE_MODES = ['text', 'video', 'audio'] as const;
 export type CreateMode = typeof CREATE_MODES[number];
 export type MediaCreateMode = Exclude<CreateMode, 'text'>;
@@ -49,6 +51,7 @@ export type ModeAsyncToken = {
 export type PlayerReadState = 'idle' | 'reading' | 'error';
 
 export type TextCreateDraftState = {
+  title: string;
   commentary: string;
   revision: number;
 };
@@ -60,6 +63,7 @@ export type MediaCreateDraftState = {
   endMs: number | null;
   durationMs: number | null;
   playerTimeMs: number | null;
+  title: string;
   commentary: string;
   playerReadState: PlayerReadState;
   revision: number;
@@ -75,9 +79,10 @@ type MediaDraftPatch = Partial<Omit<MediaCreateDraftState, 'revision'>>;
 
 export type CreateDraftAction =
   | { type: 'set-text-commentary'; commentary: string }
+  | { type: 'set-text-title'; title: string }
   | { type: 'patch-media'; mode: MediaCreateMode; patch: MediaDraftPatch }
   | { type: 'set-player-read-state'; mode: MediaCreateMode; state: PlayerReadState }
-  | { type: 'restore-media'; mode: MediaCreateMode; sourceKey: string; startMs: number | null; endMs: number | null; commentary: string }
+  | { type: 'restore-media'; mode: MediaCreateMode; sourceKey: string; startMs: number | null; endMs: number | null; commentary: string; title: string }
   | { type: 'reset-mode'; mode: CreateMode }
   | { type: 'advance-revision'; mode: CreateMode };
 
@@ -91,6 +96,7 @@ const EMPTY_MEDIA_DRAFT: Omit<MediaCreateDraftState, 'revision'> = {
   endMs: null,
   durationMs: null,
   playerTimeMs: null,
+  title: '',
   commentary: '',
   playerReadState: 'idle',
 };
@@ -109,7 +115,7 @@ export function createInitialModeRevisions(): ModeRevisionState {
 
 export function createInitialDraftState(): CreateDraftState {
   return {
-    text: { commentary: '', revision: 0 },
+    text: { title: '', commentary: '', revision: 0 },
     video: { ...EMPTY_MEDIA_DRAFT, revision: 0 },
     audio: { ...EMPTY_MEDIA_DRAFT, revision: 0 },
   };
@@ -339,6 +345,10 @@ function validCommentary(value: string): boolean {
   return value.length <= COMMENTARY_LIMIT;
 }
 
+function validTitle(value: string): boolean {
+  return value.length <= ANNOTATION_TITLE_MAX_LENGTH;
+}
+
 function validTime(value: number | null): boolean {
   return value === null || (Number.isSafeInteger(value) && value >= 0);
 }
@@ -346,6 +356,9 @@ function validTime(value: number | null): boolean {
 function validateMediaPatch(patch: MediaDraftPatch): void {
   if (patch.commentary !== undefined && !validCommentary(patch.commentary)) {
     throw new Error('The Create commentary is invalid.');
+  }
+  if (patch.title !== undefined && !validTitle(patch.title)) {
+    throw new Error('The Create title is invalid.');
   }
   for (const key of ['startMs', 'endMs', 'durationMs', 'playerTimeMs'] as const) {
     if (patch[key] !== undefined && !validTime(patch[key])) {
@@ -377,7 +390,19 @@ export function reduceCreateDraftState(
     return {
       ...state,
       text: {
+        ...state.text,
         commentary: action.commentary,
+        revision: state.text.revision + 1,
+      },
+    };
+  }
+  if (action.type === 'set-text-title') {
+    if (!validTitle(action.title)) throw new Error('The Create title is invalid.');
+    return {
+      ...state,
+      text: {
+        ...state.text,
+        title: action.title,
         revision: state.text.revision + 1,
       },
     };
@@ -414,6 +439,7 @@ export function reduceCreateDraftState(
         sourceKey: action.sourceKey,
         startMs: action.startMs,
         endMs: action.endMs,
+        title: action.title,
         commentary: action.commentary,
         revision: current.revision + 1,
       },
@@ -423,7 +449,7 @@ export function reduceCreateDraftState(
     if (action.mode === 'text') {
       return {
         ...state,
-        text: { commentary: '', revision: state.text.revision + 1 },
+        text: { title: '', commentary: '', revision: state.text.revision + 1 },
       };
     }
     return {
@@ -453,10 +479,13 @@ export function hasCreateModeDraft(
   state: CreateDraftState,
   mode: CreateMode,
 ): boolean {
-  if (mode === 'text') return state.text.commentary.trim().length > 0;
+  if (mode === 'text') {
+    return state.text.commentary.trim().length > 0 || state.text.title.trim().length > 0;
+  }
   const draft = state[mode];
   return (
     draft.commentary.trim().length > 0 ||
+    draft.title.trim().length > 0 ||
     draft.startMs !== null ||
     draft.endMs !== null
   );

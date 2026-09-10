@@ -1,3 +1,7 @@
+import {
+  ANNOTATION_TITLE_MAX_LENGTH,
+  readDraftAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
 
 export const SPOTIFY_CLIP_DRAFT_STORAGE_KEY = 'annotated.spotifyClipDraft.v1';
@@ -13,6 +17,7 @@ export type SpotifyClipDraft = {
   };
   startMs: number | null;
   endMs: number | null;
+  title: string;
   commentary: string;
   updatedAt: number;
 };
@@ -29,12 +34,16 @@ export function serializeSpotifyClipDraft(
   endMs: number | null,
   commentary: string,
   updatedAt = Date.now(),
+  title = '',
 ): SpotifyClipDraft {
   const source = getSpotifyEpisodeIdentity(sourceUrl);
-  if (!validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT) {
+  if (
+    !validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT ||
+    title.length > ANNOTATION_TITLE_MAX_LENGTH
+  ) {
     throw new Error('The Spotify clip draft is invalid.');
   }
-  return { version: VERSION, source, startMs, endMs, commentary, updatedAt };
+  return { version: VERSION, source, startMs, endMs, title, commentary, updatedAt };
 }
 
 export function deserializeSpotifyClipDraft(value: unknown): SpotifyClipDraft | null {
@@ -63,6 +72,7 @@ export function deserializeSpotifyClipDraft(value: unknown): SpotifyClipDraft | 
       source: identity,
       startMs: row.startMs,
       endMs: row.endMs,
+      title: readDraftAnnotationTitle(row.title),
       commentary: row.commentary,
       updatedAt: row.updatedAt,
     };

@@ -96,7 +96,7 @@ export const loadPublicAnnotation = cache(
       const supabase = await createClient();
       const { data: annotation, error: annotationError } = await supabase
         .from("annotations")
-        .select("id, source_id, user_id, annotation_type, commentary_text, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)")
+        .select("id, source_id, user_id, annotation_type, title, commentary_text, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)")
         .eq("id", annotationId)
         .eq("status", "published")
         .maybeSingle();

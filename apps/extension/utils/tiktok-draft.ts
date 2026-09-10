@@ -1,3 +1,7 @@
+import {
+  ANNOTATION_TITLE_MAX_LENGTH,
+  readDraftAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 
 export const TIKTOK_CLIP_DRAFT_STORAGE_KEY = 'annotated.tiktokClipDraft.v1';
@@ -14,6 +18,7 @@ export type TikTokClipDraft = {
   };
   startMs: number | null;
   endMs: number | null;
+  title: string;
   commentary: string;
   updatedAt: number;
 };
@@ -30,12 +35,16 @@ export function serializeTikTokClipDraft(
   endMs: number | null,
   commentary: string,
   updatedAt = Date.now(),
+  title = '',
 ): TikTokClipDraft {
   const source = getTikTokVideoIdentity(sourceUrl);
-  if (!validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT) {
+  if (
+    !validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT ||
+    title.length > ANNOTATION_TITLE_MAX_LENGTH
+  ) {
     throw new Error('The TikTok clip draft is invalid.');
   }
-  return { version: VERSION, source, startMs, endMs, commentary, updatedAt };
+  return { version: VERSION, source, startMs, endMs, title, commentary, updatedAt };
 }
 
 export function deserializeTikTokClipDraft(value: unknown): TikTokClipDraft | null {
@@ -65,6 +74,7 @@ export function deserializeTikTokClipDraft(value: unknown): TikTokClipDraft | nu
       source: identity,
       startMs: row.startMs,
       endMs: row.endMs,
+      title: readDraftAnnotationTitle(row.title),
       commentary: row.commentary,
       updatedAt: row.updatedAt,
     };

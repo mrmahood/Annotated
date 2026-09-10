@@ -12,6 +12,7 @@ test("public detail mapping accepts article-backed webpage video_clip rows", asy
   assert.match(source, /normalizeArticleUrl\(canonicalUrl\.href\)/);
   assert.match(source, /type: "article"; videoId: null/);
   assert.match(source, /kind: "video_hosted"/);
+  assert.match(source, /parseStoredAnnotationTitle\(annotationValue\.title\)/);
   assert.match(source, /isSpotifyEpisodeUrl\(canonicalUrl\.href\)/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });
@@ -19,6 +20,7 @@ test("public detail mapping accepts article-backed webpage video_clip rows", asy
 test("public detail leads with creator annotation before source clip, transcript, or passage", async () => {
   const page = await readFile(new URL("../../app/public-annotation-page.tsx", import.meta.url), "utf8");
   const commentary = page.indexOf('className="commentary-section"');
+  const title = page.indexOf('className="annotation-title"');
   const audio = page.indexOf("<PublishedAudioPlayer");
   const source = page.indexOf('className="source-attribution"');
   const passage = page.indexOf('className="passage-section"');
@@ -26,7 +28,8 @@ test("public detail leads with creator annotation before source clip, transcript
   const player = page.indexOf("<HostedMediaPlayer");
   const transcript = page.indexOf('className="transcript-section"');
 
-  assert.ok(commentary >= 0 && audio >= 0 && source >= 0 && passage >= 0 && clip >= 0 && player >= 0 && transcript >= 0);
+  assert.ok(commentary >= 0 && title >= 0 && audio >= 0 && source >= 0 && passage >= 0 && clip >= 0 && player >= 0 && transcript >= 0);
+  assert.ok(title > commentary && title < audio, "creator title leads the annotation block when present");
   assert.ok(commentary < audio, "typed commentary must precede voice commentary");
   assert.ok(audio < source, "voice commentary must precede source attribution");
   assert.ok(source < passage, "source attribution must precede captured passage");

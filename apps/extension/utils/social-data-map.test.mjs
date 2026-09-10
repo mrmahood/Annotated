@@ -49,6 +49,7 @@ test('global feed select uses the annotation source FK and inner-joins only for 
   assert.doesNotMatch(globalSelect, /sources!inner/);
   assert.match(listingSelect, /source:sources!annotations_source_id_fkey!inner\(/);
   assert.match(globalSelect, /annotation_type/);
+  assert.match(globalSelect, /\btitle,\s*\n\s*commentary_text/);
   assert.match(globalSelect, /source_type/);
   assert.doesNotMatch(globalSelect, /createSignedUrl|processed_storage_path|service_role/);
 });
@@ -56,6 +57,7 @@ test('global feed select uses the annotation source FK and inner-joins only for 
 test('maps the Staging NYT hosted audio fixture as an Audio feed card', () => {
   const mapped = mapPublicAnnotation(baseRow());
   assert.equal(mapped?.kind, 'audio');
+  assert.equal(mapped?.title, null);
   assert.equal(mapped?.id, ANNOTATION_ID);
   assert.equal(mapped?.startMs, 0);
   assert.equal(mapped?.endMs, 16_000);
@@ -64,6 +66,15 @@ test('maps the Staging NYT hosted audio fixture as an Audio feed card', () => {
   assert.equal(mapped?.hosted, null);
   assert.equal(mapped?.route?.creatorHandle, 'matt-mahood-3e3882b6');
   assert.equal(mapped?.route?.annotationSlug, NYT_SLUG);
+});
+
+test('projects a creator-entered title without inventing one from the source nest', () => {
+  const mapped = mapPublicAnnotation(baseRow({ title: '  Voice-only take  ' }));
+  assert.equal(mapped?.title, 'Voice-only take');
+  assert.equal(mapped?.source.title, baseRow().source.title);
+  assert.notEqual(mapped?.title, mapped?.source.title);
+  assert.equal(mapPublicAnnotation(baseRow({ title: '   ' }))?.title, null);
+  assert.equal(mapPublicAnnotation(baseRow({ title: 'A'.repeat(121) }))?.title, null);
 });
 
 test('keeps published audio when the public route is missing instead of dropping the card', () => {

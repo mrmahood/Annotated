@@ -8,6 +8,7 @@ import {
   shouldApplyDraftRestoration,
   shouldClearAnnotationDraft,
   updateAnnotationDraftCommentary,
+  updateAnnotationDraftTitle,
 } from './annotation-draft.ts';
 
 const CONTEXT = {
@@ -47,6 +48,16 @@ test('commentary updates preserve captured passage and source identity', () => {
   assert.equal(updated.updatedAt, 456);
   assert.deepEqual(updated.capture, CAPTURE);
   assert.deepEqual(updated.source, draft.source);
+});
+
+test('optional titles persist independently from commentary', () => {
+  const draft = serializeAnnotationDraft(CONTEXT, CAPTURE, 'Commentary', 123, '  Quiet take');
+  assert.equal(draft.title, '  Quiet take');
+  const updated = updateAnnotationDraftTitle(draft, 'Revised', 456);
+  assert.equal(updated.title, 'Revised');
+  assert.equal(updated.commentary, 'Commentary');
+  assert.equal(deserializeAnnotationDraft({ ...draft, title: undefined }).title, '');
+  assert.equal(updateAnnotationDraftTitle(draft, 'x'.repeat(121)), null);
 });
 
 test('a draft belongs only to the same connected tab and normalized source', () => {

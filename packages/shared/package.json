@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./annotation-title": "./src/annotation-title.ts",
     "./audio-source": "./src/audio-source.ts",
     "./url-normalization": "./src/url-normalization.ts",
     "./youtube": "./src/youtube.ts",

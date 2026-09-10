@@ -1,3 +1,4 @@
+import { parseStoredAnnotationTitle } from "@annotated/shared/annotation-title";
 import { ANNOTATION_AUDIO_BUCKET, parsePublicAnnotationAudio } from "@/lib/audio-commentary";
 import { createClient } from "@/lib/supabase/server";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
@@ -30,6 +31,7 @@ import { queryPublicCommentCounts } from "./social-query";
 type PublicAnnotationCardBase = {
   id: string;
   commentCount: number;
+  title: string | null;
   commentaryText: string;
   audio: { publicUrl: string; durationMs: number } | null;
   publishedAt: string;
@@ -125,6 +127,7 @@ export function mapPublicAnnotation(
   const source = getSingleRelation(value.source);
   const target = getSingleRelation(value.target);
   const annotationId = getOptionalText(value.id);
+  const title = parseStoredAnnotationTitle(value.title);
   const commentaryText = typeof value.commentary_text === "string" && value.commentary_text.length <= 2_000
     ? value.commentary_text
     : null;
@@ -160,6 +163,7 @@ export function mapPublicAnnotation(
   const common = {
     id: annotationId,
     commentCount: 0,
+    title,
     commentaryText,
     audio,
     publishedAt: publishedDate.toISOString(),

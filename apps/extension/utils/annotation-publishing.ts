@@ -1,3 +1,7 @@
+import {
+  getAnnotationTitleError,
+  normalizeAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   ANNOTATION_AUDIO_BUCKET,
@@ -20,6 +24,7 @@ export type ArticleAnnotationInput = {
   textPrefix: string;
   textSuffix: string;
   commentaryText: string;
+  annotationTitle?: string;
 };
 
 export type RecordedAudioInput = {
@@ -50,6 +55,7 @@ function getRpcArguments(
     p_text_prefix: input.textPrefix,
     p_text_suffix: input.textSuffix,
     p_commentary_text: input.commentaryText,
+    p_title: normalizeAnnotationTitle(input.annotationTitle),
     ...(audio ? {
       p_storage_path: audio.storagePath,
       p_audio_duration_ms: audio.durationMs,
@@ -77,6 +83,8 @@ export async function publishArticleAnnotation(
 
   const commentaryError = getCommentaryContractError(input.commentaryText, Boolean(audio));
   if (commentaryError) throw new Error(commentaryError);
+  const titleError = getAnnotationTitleError(input.annotationTitle ?? '');
+  if (titleError) throw new Error(titleError);
 
   if (!audio) {
     const { data, error } = await supabase.rpc(
