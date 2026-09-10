@@ -3,8 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   actOnSpotifyPlayer,
+  extractSpotifyPageMetadata,
+  isGenericSpotifyChromeTitle,
   isSpotifyNowPlayingIdentity,
   normalizeSpotifyEpisodeTitle,
+  parseSpotifyEpisodeChromeTitle,
   validateSpotifyPageMetadata,
   validateSpotifyPlayerDiscovery,
   validateSpotifyPlayerState,
@@ -16,6 +19,37 @@ test('normalizes Spotify episode titles and rejects the bare player title', () =
   assert.equal(normalizeSpotifyEpisodeTitle('The Daily | Spotify'), 'The Daily');
   assert.equal(normalizeSpotifyEpisodeTitle('Spotify'), '');
   assert.equal(normalizeSpotifyEpisodeTitle(null), '');
+});
+
+test('rejects nav and chrome labels such as Podcasts, Home, and Search', () => {
+  for (const title of [
+    'Podcasts',
+    'Podcast',
+    'Podcast Episode',
+    'Home',
+    'Search',
+    'Your Library',
+    'Spotify – Web Player',
+    'Spotify - Web Player',
+    'open.spotify.com',
+  ]) {
+    assert.equal(isGenericSpotifyChromeTitle(title), true, title);
+    assert.equal(normalizeSpotifyEpisodeTitle(title), '', title);
+    assert.equal(normalizeSpotifyEpisodeTitle(`${title} | Spotify`), '', title);
+  }
+  assert.equal(
+    normalizeSpotifyEpisodeTitle('Introducing “Where is Austin Tice?” from NPR and the BBC'),
+    'Introducing “Where is Austin Tice?” from NPR and the BBC',
+  );
+  assert.deepEqual(
+    parseSpotifyEpisodeChromeTitle(
+      'Introducing “Where is Austin Tice?” from NPR and the BBC - Embedded | Podcast on Spotify',
+    ),
+    {
+      title: 'Introducing “Where is Austin Tice?” from NPR and the BBC',
+      showName: 'Embedded',
+    },
+  );
 });
 
 test('validates episode metadata against the connected URL and fail-closed blocks', () => {
@@ -49,6 +83,18 @@ test('validates episode metadata against the connected URL and fail-closed block
     hostname: 'open.spotify.com',
     pageBlock: 'login',
   })?.pageBlock, 'login');
+  const generic = validateSpotifyPageMetadata(CANONICAL, {
+    pageUrl: CANONICAL,
+    episodeId: '7makk4oTQel546B0P8lOOJ',
+    title: 'Podcasts',
+    author: 'Podcasts',
+    showName: 'Home',
+    hostname: 'open.spotify.com',
+    pageBlock: null,
+  });
+  assert.equal(generic?.title, 'Spotify episode');
+  assert.equal(generic?.author, null);
+  assert.equal(generic?.showName, null);
 });
 
 test('player discovery accepts one now-playing identity and rejects HTML5 audio ids', () => {
@@ -263,4 +309,105 @@ test('player state fails closed on unreadable or inverted times', () => {
     currentTime: 100, duration: 10, paused: true,
   }), null);
   assert.equal(validateSpotifyPlayerState({ currentTime: Number.NaN, paused: true }), null);
+});
+
+const AUSTIN_EPISODE = 'https://open.spotify.com/episode/1NBsfXP6MMPoSsNyaHLCFp';
+const AUSTIN_TITLE = 'Introducing “Where is Austin Tice?” from NPR and the BBC';
+
+async function withSpotifyExtractDocument(page, run) {
+  const names = ['document', 'location', 'window'];
+  const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  const selectors = page.selectors instanceof Map ? page.selectors : new Map(Object.entries(page.selectors ?? {}));
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      title: page.title ?? '',
+      body: { innerText: page.bodyText ?? '' },
+      querySelector(selector) {
+        return selectors.get(selector) ?? null;
+      },
+      querySelectorAll(selector) {
+        return selector === 'h1' ? (page.headings ?? []) : [];
+      },
+    },
+  });
+  Object.defineProperty(globalThis, 'location', {
+    configurable: true,
+    value: {
+      href: page.href ?? AUSTIN_EPISODE,
+      hostname: 'open.spotify.com',
+      pathname: new URL(page.href ?? AUSTIN_EPISODE).pathname,
+    },
+  });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout } });
+  try {
+    return await run();
+  } finally {
+    for (const name of names) {
+      const descriptor = previous.get(name);
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  }
+}
+
+test('extract prefers the episode heading over a Podcasts og:title or tab title', async () => {
+  const metadata = await withSpotifyExtractDocument({
+    title: 'Podcasts',
+    selectors: {
+      'meta[property="og:title"]': { content: 'Podcasts' },
+      'main h1': { textContent: AUSTIN_TITLE },
+      'main a[href*="/show/"]': { textContent: 'Embedded' },
+    },
+  }, extractSpotifyPageMetadata);
+  assert.equal(metadata.title, AUSTIN_TITLE);
+  assert.equal(metadata.showName, 'Embedded');
+  assert.equal(metadata.author, 'Embedded');
+  assert.equal(metadata.episodeId, '1NBsfXP6MMPoSsNyaHLCFp');
+});
+
+test('extract uses a cleaned og:title and show when the heading is missing', async () => {
+  const metadata = await withSpotifyExtractDocument({
+    title: 'Podcasts',
+    selectors: {
+      'meta[property="og:title"]': {
+        content: `${AUSTIN_TITLE} - Embedded | Podcast on Spotify`,
+      },
+    },
+  }, extractSpotifyPageMetadata);
+  assert.equal(metadata.title, AUSTIN_TITLE);
+  assert.equal(metadata.showName, 'Embedded');
+  assert.equal(metadata.author, 'Embedded');
+});
+
+test('extract ignores nav labels and does not persist Podcasts as the episode title', async () => {
+  const metadata = await withSpotifyExtractDocument({
+    title: 'Podcasts',
+    headings: [{ textContent: 'Podcasts' }, { textContent: 'Home' }],
+    selectors: {
+      'meta[property="og:title"]': { content: 'Podcasts' },
+      'meta[name="twitter:title"]': { content: 'Home' },
+      '[data-testid="entityTitle"]': { textContent: 'Search' },
+    },
+  }, extractSpotifyPageMetadata);
+  assert.equal(metadata.title, '');
+  assert.equal(metadata.showName, null);
+  assert.equal(
+    validateSpotifyPageMetadata(AUSTIN_EPISODE, metadata)?.title,
+    'Spotify episode',
+  );
+});
+
+test('extract reads logged-in entityTitle and show-title testids', async () => {
+  const metadata = await withSpotifyExtractDocument({
+    title: 'The Daily | Spotify',
+    selectors: {
+      '[data-testid="entityTitle"]': { textContent: 'The Daily' },
+      '[data-testid="show-title"]': { textContent: 'The Daily' },
+      '[data-testid="creator-link"]': { textContent: 'The New York Times' },
+    },
+  }, extractSpotifyPageMetadata);
+  assert.equal(metadata.title, 'The Daily');
+  assert.equal(metadata.showName, 'The Daily');
+  assert.equal(metadata.author, 'The New York Times');
 });

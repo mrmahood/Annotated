@@ -66,8 +66,16 @@ test('Spotify episode URLs classify as Spotify, not generic webpage audio', () =
   assert.equal(state.source.hostname, 'open.spotify.com');
   assert.equal(state.source.episodeId, '7makk4oTQel546B0P8lOOJ');
   assert.equal(state.source.normalizedUrl, SPOTIFY);
+  assert.equal(state.source.title, 'The Daily');
   assert.equal(isHostedWatchSource(state.source), false);
   assert.equal(isWebpageVideoCapableSource(state.source), false);
+});
+
+test('Spotify tab titles that are only Podcasts or other nav chrome fall back', () => {
+  const state = getSourceState('Podcasts', SPOTIFY);
+  assert.equal(state.status, 'connected');
+  assert.equal(state.source.classification, 'Spotify');
+  assert.equal(state.source.title, 'Spotify episode');
 });
 
 test('Spotify home, search, and show-only URLs stay generic Web page', () => {
