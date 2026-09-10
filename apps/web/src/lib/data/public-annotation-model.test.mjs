@@ -16,6 +16,27 @@ test("public detail mapping accepts article-backed webpage video_clip rows", asy
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });
 
+test("public detail leads with creator annotation before source clip, transcript, or passage", async () => {
+  const page = await readFile(new URL("../../app/public-annotation-page.tsx", import.meta.url), "utf8");
+  const commentary = page.indexOf('className="commentary-section"');
+  const audio = page.indexOf("<PublishedAudioPlayer");
+  const source = page.indexOf('className="source-attribution"');
+  const passage = page.indexOf('className="passage-section"');
+  const clip = page.indexOf('className="clip-range-section"');
+  const player = page.indexOf("<HostedMediaPlayer");
+  const transcript = page.indexOf('className="transcript-section"');
+
+  assert.ok(commentary >= 0 && audio >= 0 && source >= 0 && passage >= 0 && clip >= 0 && player >= 0 && transcript >= 0);
+  assert.ok(commentary < audio, "typed commentary must precede voice commentary");
+  assert.ok(audio < source, "voice commentary must precede source attribution");
+  assert.ok(source < passage, "source attribution must precede captured passage");
+  assert.ok(passage < clip, "article passage and clip range stay in the secondary block");
+  assert.ok(clip < player, "saved clip range must precede hosted player");
+  assert.ok(player < transcript, "hosted clip must precede excerpt transcript");
+  assert.match(page, /<h1 id="commentary-heading">The annotation<\/h1>/);
+  assert.match(page, /<h2 id="source-heading">\{sourceTitle\}<\/h2>/);
+});
+
 test("public detail page labels webpage video separately from YouTube", async () => {
   const [page, routes] = await Promise.all([
     readFile(new URL("../../app/public-annotation-page.tsx", import.meta.url), "utf8"),

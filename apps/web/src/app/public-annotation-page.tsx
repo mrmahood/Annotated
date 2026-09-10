@@ -92,10 +92,24 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             </div>
           </header>
 
+          <section className="commentary-section" aria-labelledby="commentary-heading">
+            <p className="section-label">Commentary</p>
+            <h1 id="commentary-heading">The annotation</h1>
+            {annotation.commentaryText.trim() ? (
+              <p className="commentary-text">{annotation.commentaryText}</p>
+            ) : annotation.audio ? (
+              <p className="commentary-text">Voice commentary</p>
+            ) : null}
+          </section>
+
+          {annotation.audio && (
+            <PublishedAudioPlayer publicUrl={annotation.audio.publicUrl} durationMs={annotation.audio.durationMs} />
+          )}
+
           <section className="source-attribution" aria-labelledby="source-heading">
             <div className="source-copy">
               <p className="section-label">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isSpotifyEpisode ? "Spotify episode" : isAudio ? "Podcast / web audio" : "Original article"}</p>
-              <h1 id="source-heading">{sourceTitle}</h1>
+              <h2 id="source-heading">{sourceTitle}</h2>
               {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
                 <p className="source-byline">
                   {annotation.source.showName && isAudio && `${annotation.source.showName} · `}
@@ -163,20 +177,6 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
                 </ol>
               )}
             </section>
-          )}
-
-          <section className="commentary-section" aria-labelledby="commentary-heading">
-            <p className="section-label">Commentary</p>
-            <h2 id="commentary-heading">The annotation</h2>
-            {annotation.commentaryText.trim() ? (
-              <p className="commentary-text">{annotation.commentaryText}</p>
-            ) : annotation.audio ? (
-              <p className="commentary-text">Voice commentary</p>
-            ) : null}
-          </section>
-
-          {annotation.audio && (
-            <PublishedAudioPlayer publicUrl={annotation.audio.publicUrl} durationMs={annotation.audio.durationMs} />
           )}
 
           <VoteControls

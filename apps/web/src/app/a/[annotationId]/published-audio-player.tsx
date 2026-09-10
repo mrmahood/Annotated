@@ -13,7 +13,7 @@ export function PublishedAudioPlayer({
   const [error, setError] = useState<string | null>(null);
   return (
     <section className="audio-commentary-section" aria-labelledby="audio-commentary-heading">
-      <p className="section-label">Supplemental commentary</p>
+      <p className="section-label">Voice commentary</p>
       <div className="audio-commentary-heading-row">
         <h2 id="audio-commentary-heading">Audio commentary</h2>
         <span>{formatAudioDuration(durationMs)}</span>

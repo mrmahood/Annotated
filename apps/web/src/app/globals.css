@@ -385,9 +385,9 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .annotator-name a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .publication-date { margin-top: 2px; }
 .creator-handle { margin-top: 2px; }
-.source-attribution { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; }
+.source-attribution { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; border-top: 1px solid var(--border); }
 .source-copy { min-width: 0; }
-.source-attribution h1 { max-width: 680px; font-size: clamp(1.55rem, 4vw, 2.45rem); overflow-wrap: anywhere; }
+.source-attribution h2 { max-width: 680px; font-size: clamp(1.55rem, 4vw, 2.45rem); overflow-wrap: anywhere; }
 .source-byline { margin-top: 12px; color: var(--text-secondary); font-size: 0.84rem; line-height: 1.5; }
 .source-hostname { margin-top: 6px; overflow-wrap: anywhere; }
 .source-link { min-width: 164px; }
@@ -419,9 +419,9 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.commentary-section h2, .claim-intro h2, .form-success h3, .comments-heading-row h2, .comment-composer h3 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
-.commentary-section h2, .comments-heading-row h2 { font-size: 1.28rem; }
-.commentary-text { max-width: 720px; margin-top: 12px; color: var(--text-secondary); font-size: 0.94rem; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+.commentary-section h1, .claim-intro h2, .form-success h3, .comments-heading-row h2, .comment-composer h3 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
+.commentary-section h1, .comments-heading-row h2 { font-size: 1.28rem; }
+.commentary-text { max-width: 720px; margin-top: 12px; color: var(--text-primary); font-size: 1.02rem; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
 .audio-commentary-section { border-top: 1px solid var(--border); }
 .hosted-media-section, .media-removed-section, .transcript-section { border-top: 1px solid var(--border); }
 .hosted-media-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }

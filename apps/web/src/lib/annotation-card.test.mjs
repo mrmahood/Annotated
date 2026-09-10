@@ -12,6 +12,10 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(card, /className="card-commentary-lead"/);
   assert.match(card, /Voice commentary/);
   assert.match(card, /className="card-nested-source"/);
+  assert.ok(
+    card.indexOf('className="card-commentary-lead"') < card.indexOf('className="card-nested-source"'),
+    "typed/voice commentary lead must appear above nested source media or text",
+  );
   assert.match(card, /aria-expanded=\{expanded\}/);
   assert.match(card, /Open source/);
   assert.match(card, /getYouTubeTimestampUrl\(annotation\.source\.canonicalUrl, annotation\.startMs\)/);
