@@ -56,9 +56,17 @@ test('detail UI prefers the hosted player and transcript for ready media', async
     "typed commentary must precede voice commentary",
   );
   assert.ok(
-    annotationDetail.indexOf('className="detail-audio"') < annotationDetail.indexOf('className="detail-source"'),
-    "voice commentary must precede source article, clip, and transcript blocks",
+    annotationDetail.indexOf('className="detail-audio"') < annotationDetail.indexOf("</section>"),
+    "voice player stays inside the single annotation block",
   );
+  assert.ok(
+    annotationDetail.indexOf('className="detail-commentary"') < annotationDetail.indexOf('className="detail-source"'),
+    "annotation block must precede source article, clip, and transcript blocks",
+  );
+  assert.doesNotMatch(annotationDetail, />Commentary</);
+  assert.doesNotMatch(annotationDetail, />Voice commentary</);
+  assert.doesNotMatch(annotationDetail, />Audio commentary</);
+  assert.doesNotMatch(annotationDetail, />The annotation</);
   assert.ok(
     annotationDetail.indexOf('className="detail-source"') < annotationDetail.indexOf('hostedReady && <HostedExcerptPlayer'),
     "source passage or clip range must precede hosted excerpt player",

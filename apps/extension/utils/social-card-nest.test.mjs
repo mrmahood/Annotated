@@ -77,7 +77,11 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(card, /View annotation/);
   assert.doesNotMatch(card, /className="annotation-card-main"/);
   assert.doesNotMatch(card, />Commentary</);
-  assert.match(card, /Voice commentary/);
+  assert.doesNotMatch(card, /hasCommentaryAudio \? 'Voice commentary'/);
+  assert.doesNotMatch(card, />Voice commentary</);
+  assert.doesNotMatch(card, />Audio commentary</);
+  assert.doesNotMatch(card, />The annotation</);
+  assert.match(card, /aria-label="Published audio commentary"/);
   assert.doesNotMatch(card, /CLIP&nbsp;/);
   assert.doesNotMatch(card, /YouTube video/);
   assert.doesNotMatch(card, /createSignedUrl|processed_storage_path|console\.(?:log|info|debug|warn)/);

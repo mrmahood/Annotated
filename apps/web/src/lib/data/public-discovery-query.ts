@@ -8,7 +8,8 @@ export const PUBLIC_ANNOTATION_CARD_SELECT = `
   published_at,
   annotator:profiles!annotations_user_id_fkey(id, username, display_name, avatar_url),
   source:sources!annotations_source_id_fkey(canonical_url, normalized_url, source_type, title, author, publisher, metadata),
-  target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms)
+  target:annotation_targets!annotation_targets_annotation_id_fkey(target_type, selected_text, start_ms, end_ms),
+  audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)
 `;
 
 type PublicAnnotationFilter = {

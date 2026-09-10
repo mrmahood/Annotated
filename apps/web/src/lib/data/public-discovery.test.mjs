@@ -28,5 +28,8 @@ test("feed discovery projects webpage video_clip rows on the article source as V
   assert.match(source, /annotationType === "audio_clip" && sourceType === "spotify"/);
   assert.match(source, /kind: "spotify"/);
   assert.match(source, /typeof value\.commentary_text === "string" && value\.commentary_text\.length <= 2_000/);
+  assert.match(source, /parsePublicAnnotationAudio/);
+  assert.match(source, /ANNOTATION_AUDIO_BUCKET/);
+  assert.match(source, /audio: \{ publicUrl: string; durationMs: number \} \| null/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });
