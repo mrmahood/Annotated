@@ -21,15 +21,53 @@ export type SpotifyPlayerState = {
   paused: boolean;
 };
 
-export function normalizeSpotifyEpisodeTitle(value: unknown) {
-  if (typeof value !== 'string') return '';
-  const title = value
+const GENERIC_SPOTIFY_CHROME_TITLE =
+  /^(?:(?:open\.)?spotify(?:\.com)?|spotify\s*[|\-–—]\s*web player|web player|podcasts?|podcast episode|episode|show|home|search|your library|create|premium|download|install app|log ?in|sign ?up|now playing|queue|liked songs|made for you|what's new|browse)$/i;
+
+export function isGenericSpotifyChromeTitle(value: unknown): boolean {
+  if (typeof value !== 'string') return true;
+  const title = value.replace(/\s+/g, ' ').trim();
+  return !title || GENERIC_SPOTIFY_CHROME_TITLE.test(title);
+}
+
+function stripSpotifyChromeSuffix(value: string) {
+  return value
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/\s*[|\-–—]\s*Spotify$/i, '')
+    .replace(/\s*[|\-–—]\s*Podcast on Spotify$/i, '')
     .replace(/\s+on Spotify$/i, '')
+    .replace(/\s*[|\-–—]\s*Spotify$/i, '')
+    .replace(/\s*[|\-–—]\s*Web Player$/i, '')
+    .replace(/\s*[|\-–—]\s*Podcasts?$/i, '')
     .trim();
-  return /^(?:open\.)?spotify(?:\.com)?$/i.test(title) ? '' : title.slice(0, 500);
+}
+
+export function parseSpotifyEpisodeChromeTitle(value: unknown): {
+  title: string;
+  showName: string | null;
+} {
+  if (typeof value !== 'string') return { title: '', showName: null };
+  const stripped = stripSpotifyChromeSuffix(value);
+  if (isGenericSpotifyChromeTitle(stripped)) return { title: '', showName: null };
+  const match = stripped.match(/^(.*)(?:\s+[-–—]\s+)(.+)$/);
+  if (match) {
+    const title = match[1]!.trim();
+    const showName = match[2]!.trim();
+    if (
+      !isGenericSpotifyChromeTitle(title) &&
+      !isGenericSpotifyChromeTitle(showName) &&
+      showName.length <= 120
+    ) {
+      return { title: title.slice(0, 500), showName: showName.slice(0, 500) };
+    }
+  }
+  return { title: stripped.slice(0, 500), showName: null };
+}
+
+export function normalizeSpotifyEpisodeTitle(value: unknown) {
+  if (typeof value !== 'string') return '';
+  const title = stripSpotifyChromeSuffix(value);
+  return isGenericSpotifyChromeTitle(title) ? '' : title.slice(0, 500);
 }
 
 export function isSpotifyNowPlayingIdentity(value: unknown): value is string {
@@ -57,12 +95,13 @@ export function validateSpotifyPageMetadata(
     const actual = getSpotifyEpisodeIdentity(row.pageUrl);
     if (expected.episodeId !== actual.episodeId || row.episodeId !== actual.episodeId) return null;
     const title = normalizeSpotifyEpisodeTitle(row.title);
-    const author = typeof row.author === 'string'
-      ? row.author.replace(/\s+/g, ' ').trim().slice(0, 500) || null
-      : null;
-    const showName = typeof row.showName === 'string'
-      ? row.showName.replace(/\s+/g, ' ').trim().slice(0, 500) || null
-      : null;
+    const cleanIdentity = (value: unknown) => {
+      if (typeof value !== 'string') return null;
+      const text = value.replace(/\s+/g, ' ').trim().slice(0, 500);
+      return text && !isGenericSpotifyChromeTitle(text) ? text : null;
+    };
+    const author = cleanIdentity(row.author);
+    const showName = cleanIdentity(row.showName);
     return {
       ...expected,
       title: title || 'Spotify episode',
@@ -146,12 +185,33 @@ export function validateSpotifyPlayerDiscovery(
 export async function extractSpotifyPageMetadata() {
   const clean = (value: string | null | undefined) =>
     value?.replace(/\s+/g, ' ').trim() ?? '';
-  const cleanTitle = (value: string | null | undefined) => {
-    const title = clean(value)
-      .replace(/\s*[|\-–—]\s*Spotify$/i, '')
+  const isGenericChromeTitle = (value: string) =>
+    /^(?:(?:open\.)?spotify(?:\.com)?|spotify\s*[|\-–—]\s*web player|web player|podcasts?|podcast episode|episode|show|home|search|your library|create|premium|download|install app|log ?in|sign ?up|now playing|queue|liked songs|made for you|what's new|browse)$/i
+      .test(value);
+  const stripChrome = (value: string | null | undefined) =>
+    clean(value)
+      .replace(/\s*[|\-–—]\s*Podcast on Spotify$/i, '')
       .replace(/\s+on Spotify$/i, '')
+      .replace(/\s*[|\-–—]\s*Spotify$/i, '')
+      .replace(/\s*[|\-–—]\s*Web Player$/i, '')
+      .replace(/\s*[|\-–—]\s*Podcasts?$/i, '')
       .trim();
-    return /^(?:open\.)?spotify(?:\.com)?$/i.test(title) ? '' : title;
+  const cleanTitle = (value: string | null | undefined) => {
+    const title = stripChrome(value);
+    return !title || isGenericChromeTitle(title) ? '' : title;
+  };
+  const parseChromeTitle = (value: string | null | undefined) => {
+    const stripped = stripChrome(value);
+    if (!stripped || isGenericChromeTitle(stripped)) return { title: '', showName: '' };
+    const match = stripped.match(/^(.*)(?:\s+[-–—]\s+)(.+)$/);
+    if (match) {
+      const title = match[1]!.trim();
+      const showName = match[2]!.trim();
+      if (title && !isGenericChromeTitle(title) && showName && !isGenericChromeTitle(showName) && showName.length <= 120) {
+        return { title, showName };
+      }
+    }
+    return { title: stripped, showName: '' };
   };
   const meta = (selector: string) =>
     clean(document.querySelector<HTMLMetaElement>(selector)?.content);
@@ -217,24 +277,54 @@ export async function extractSpotifyPageMetadata() {
     return { currentTime: current, duration: total };
   };
 
+  const headingTitle = () => {
+    const nodes = [
+      document.querySelector('[data-testid="entityTitle"]'),
+      document.querySelector('main h1'),
+      document.querySelector('[role="main"] h1'),
+      document.querySelector('#main h1'),
+    ];
+    for (const node of nodes) {
+      const title = cleanTitle(node?.textContent);
+      if (title) return title;
+    }
+    for (const node of document.querySelectorAll('h1')) {
+      const title = cleanTitle(node.textContent);
+      if (title) return title;
+    }
+    return '';
+  };
+  const showFromPage = () => {
+    const nodes = [
+      document.querySelector('[data-testid="show-title"]'),
+      document.querySelector('[data-testid="creator-link"]'),
+      document.querySelector('main a[href*="/show/"]'),
+      document.querySelector('[role="main"] a[href*="/show/"]'),
+      document.querySelector('#main a[href*="/show/"]'),
+    ];
+    for (const node of nodes) {
+      const name = clean(node?.textContent);
+      if (name && !isGenericChromeTitle(name)) return name;
+    }
+    const album = clean(meta('meta[name="music:album"]'));
+    return album && !isGenericChromeTitle(album) ? album : '';
+  };
+
   const read = () => {
-    const title =
-      cleanTitle(meta('meta[property="og:title"]')) ||
-      cleanTitle(meta('meta[name="twitter:title"]')) ||
-      cleanTitle(document.querySelector('[data-testid="entityTitle"]')?.textContent) ||
-      cleanTitle(document.title);
+    const heading = headingTitle();
+    const og = parseChromeTitle(meta('meta[property="og:title"]'));
+    const twitter = parseChromeTitle(meta('meta[name="twitter:title"]'));
+    const documentParsed = parseChromeTitle(document.title);
+    const title = heading || og.title || twitter.title || documentParsed.title;
+    const showName = showFromPage() || og.showName || twitter.showName || documentParsed.showName;
     const author =
       clean(document.querySelector('[data-testid="creator-link"]')?.textContent) ||
       clean(meta('meta[name="music:musician"]')) ||
-      clean(meta('meta[property="og:description"]')).split(' · ')[0] ||
-      '';
-    const showName =
-      clean(document.querySelector('[data-testid="show-title"]')?.textContent) ||
-      clean(meta('meta[name="music:album"]')) ||
+      showName ||
       '';
     return {
       title,
-      author: author.slice(0, 500) || null,
+      author: (author && !isGenericChromeTitle(author) ? author : '').slice(0, 500) || null,
       showName: showName.slice(0, 500) || null,
     };
   };
