@@ -368,7 +368,6 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .passage-section,
 .clip-range-section,
 .commentary-section,
-.audio-commentary-section,
 .hosted-media-section,
 .media-removed-section,
 .transcript-section,
@@ -385,9 +384,9 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .annotator-name a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .publication-date { margin-top: 2px; }
 .creator-handle { margin-top: 2px; }
-.source-attribution { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; }
+.source-attribution { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 28px; border-top: 1px solid var(--border); }
 .source-copy { min-width: 0; }
-.source-attribution h1 { max-width: 680px; font-size: clamp(1.55rem, 4vw, 2.45rem); overflow-wrap: anywhere; }
+.source-attribution h2 { max-width: 680px; font-size: clamp(1.55rem, 4vw, 2.45rem); overflow-wrap: anywhere; }
 .source-byline { margin-top: 12px; color: var(--text-secondary); font-size: 0.84rem; line-height: 1.5; }
 .source-hostname { margin-top: 6px; overflow-wrap: anywhere; }
 .source-link { min-width: 164px; }
@@ -419,10 +418,16 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.commentary-section h2, .claim-intro h2, .form-success h3, .comments-heading-row h2, .comment-composer h3 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
-.commentary-section h2, .comments-heading-row h2 { font-size: 1.28rem; }
-.commentary-text { max-width: 720px; margin-top: 12px; color: var(--text-secondary); font-size: 0.94rem; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
-.audio-commentary-section { border-top: 1px solid var(--border); }
+.commentary-section h1, .claim-intro h2, .form-success h3, .comments-heading-row h2, .comment-composer h3 { margin: 0; font-weight: 600; letter-spacing: -0.02em; }
+.commentary-section h1, .comments-heading-row h2 { font-size: 1.28rem; }
+.commentary-text { max-width: 720px; margin: 0; color: var(--text-primary); font-size: 1.02rem; line-height: 1.7; overflow-wrap: anywhere; white-space: pre-wrap; }
+.audio-commentary-player { display: grid; gap: 8px; max-width: 720px; }
+.commentary-section .commentary-text + .audio-commentary-player { margin-top: 14px; }
+.audio-commentary-duration { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem; justify-self: end; }
+.card-commentary-audio { display: grid; gap: 8px; }
+.card-commentary-audio audio,
+.audio-commentary-player audio { width: min(100%, 720px); height: 38px; color-scheme: dark; }
+.card-commentary-audio-error { margin: 0; color: var(--destructive); font-size: 0.78rem; }
 .hosted-media-section, .media-removed-section, .transcript-section { border-top: 1px solid var(--border); }
 .hosted-media-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
 .hosted-media-heading-row h2, .media-removed-section h2, .transcript-section h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
@@ -442,11 +447,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .transcript-segments { display: grid; gap: 0; max-width: 720px; margin: 18px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
 .transcript-segments li { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .transcript-segments p { margin: 0; color: var(--text-secondary); font-size: 0.84rem; line-height: 1.55; white-space: pre-wrap; }
-.audio-commentary-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
-.audio-commentary-heading-row h2 { margin: 0; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; }
-.audio-commentary-heading-row span { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.7rem; }
-.audio-commentary-section audio { width: min(100%, 720px); height: 38px; margin-top: 14px; color-scheme: dark; }
-.audio-commentary-section .form-error { max-width: 720px; margin: 10px 0 0; }
+.audio-commentary-player .form-error { max-width: 720px; margin: 0; }
 
 /* Voting */
 .vote-section { border-top: 1px solid var(--border); scroll-margin-top: 20px; }
@@ -729,7 +730,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .card-body { padding-inline: 14px; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .annotation-shell { padding: 14px 10px 36px; }
-  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .audio-commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .vote-section, .comments-section, .claim-section { padding: 18px; }
+  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .vote-section, .comments-section, .claim-section { padding: 18px; }
   .source-attribution { grid-template-columns: 1fr; align-items: stretch; gap: 18px; }
   .source-link, .public-button-claim { width: 100%; }
   .annotator-line { align-items: flex-start; flex-wrap: wrap; }

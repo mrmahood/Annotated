@@ -13,7 +13,7 @@ import {
 import { getAnnotationVoteSnapshot } from "@/lib/data/voting";
 import { ClaimForm } from "./a/[annotationId]/claim-form";
 import { CommentsSection } from "./a/[annotationId]/comments-section";
-import { PublishedAudioPlayer } from "./a/[annotationId]/published-audio-player";
+import { PublishedAudioPlayer } from "./published-audio-player";
 import { FollowButton } from "./follow-button";
 import { HostedMediaPlayer } from "./hosted-media-player";
 import { SiteHeader } from "./site-header";
@@ -92,10 +92,24 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             </div>
           </header>
 
+          {(annotation.commentaryText.trim() || annotation.audio) && (
+            <section className="commentary-section" aria-labelledby="commentary-heading">
+              <h1 id="commentary-heading" className="visually-hidden">
+                {annotation.commentaryText.trim() ? "Annotation" : "Voice commentary"}
+              </h1>
+              {annotation.commentaryText.trim() ? (
+                <p className="commentary-text">{annotation.commentaryText}</p>
+              ) : null}
+              {annotation.audio && (
+                <PublishedAudioPlayer publicUrl={annotation.audio.publicUrl} durationMs={annotation.audio.durationMs} />
+              )}
+            </section>
+          )}
+
           <section className="source-attribution" aria-labelledby="source-heading">
             <div className="source-copy">
               <p className="section-label">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isSpotifyEpisode ? "Spotify episode" : isAudio ? "Podcast / web audio" : "Original article"}</p>
-              <h1 id="source-heading">{sourceTitle}</h1>
+              <h2 id="source-heading">{sourceTitle}</h2>
               {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
                 <p className="source-byline">
                   {annotation.source.showName && isAudio && `${annotation.source.showName} · `}
@@ -163,20 +177,6 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
                 </ol>
               )}
             </section>
-          )}
-
-          <section className="commentary-section" aria-labelledby="commentary-heading">
-            <p className="section-label">Commentary</p>
-            <h2 id="commentary-heading">The annotation</h2>
-            {annotation.commentaryText.trim() ? (
-              <p className="commentary-text">{annotation.commentaryText}</p>
-            ) : annotation.audio ? (
-              <p className="commentary-text">Voice commentary</p>
-            ) : null}
-          </section>
-
-          {annotation.audio && (
-            <PublishedAudioPlayer publicUrl={annotation.audio.publicUrl} durationMs={annotation.audio.durationMs} />
           )}
 
           <VoteControls

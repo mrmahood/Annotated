@@ -47,6 +47,30 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /Excerpt transcript/);
   assert.match(detail, /function ExcerptTranscript/);
   assert.doesNotMatch(detail.slice(detail.indexOf('function ExcerptTranscript'), detail.indexOf('function Avatar')), /seekMs/);
+  const annotationDetail = detail.slice(
+    detail.indexOf('export function AnnotationDetailView'),
+    detail.indexOf('export function ProfileView'),
+  );
+  assert.ok(
+    annotationDetail.indexOf('className="detail-commentary"') < annotationDetail.indexOf('className="detail-audio"'),
+    "typed commentary must precede voice commentary",
+  );
+  assert.ok(
+    annotationDetail.indexOf('className="detail-audio"') < annotationDetail.indexOf("</section>"),
+    "voice player stays inside the single annotation block",
+  );
+  assert.ok(
+    annotationDetail.indexOf('className="detail-commentary"') < annotationDetail.indexOf('className="detail-source"'),
+    "annotation block must precede source article, clip, and transcript blocks",
+  );
+  assert.doesNotMatch(annotationDetail, />Commentary</);
+  assert.doesNotMatch(annotationDetail, />Voice commentary</);
+  assert.doesNotMatch(annotationDetail, />Audio commentary</);
+  assert.doesNotMatch(annotationDetail, />The annotation</);
+  assert.ok(
+    annotationDetail.indexOf('className="detail-source"') < annotationDetail.indexOf('hostedReady && <HostedExcerptPlayer'),
+    "source passage or clip range must precede hosted excerpt player",
+  );
   assert.match(detail, /hostedReady && <HostedExcerptPlayer/);
   assert.match(detail, /hostedTranscript && <ExcerptTranscript/);
   assert.match(detail, /hasHostedExcerptTranscript/);

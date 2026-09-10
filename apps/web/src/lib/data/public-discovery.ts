@@ -1,3 +1,4 @@
+import { ANNOTATION_AUDIO_BUCKET, parsePublicAnnotationAudio } from "@/lib/audio-commentary";
 import { createClient } from "@/lib/supabase/server";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
 import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from "@annotated/shared/youtube";
@@ -30,6 +31,7 @@ type PublicAnnotationCardBase = {
   id: string;
   commentCount: number;
   commentaryText: string;
+  audio: { publicUrl: string; durationMs: number } | null;
   publishedAt: string;
   route: PublicAnnotationRoute | null;
   annotator: { id: string; displayName: string; avatarUrl: string | null };
@@ -113,7 +115,10 @@ function getSingleRelation(value: unknown): UnknownRecord | null {
   return isRecord(value) ? value : null;
 }
 
-export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | null {
+export function mapPublicAnnotation(
+  value: unknown,
+  audioPublicUrl: string | null = null,
+): PublicAnnotationCardData | null {
   if (!isRecord(value)) return null;
 
   const annotator = getSingleRelation(value.annotator);
@@ -146,10 +151,17 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotationCardData | 
     return null;
   }
 
+  const audioMetadata = parsePublicAnnotationAudio(value.audio);
+  const resolvedAudioUrl = audioPublicUrl ? getHttpUrl(audioPublicUrl) : null;
+  const audio = audioMetadata && resolvedAudioUrl
+    ? { publicUrl: resolvedAudioUrl.href, durationMs: audioMetadata.durationMs }
+    : null;
+
   const common = {
     id: annotationId,
     commentCount: 0,
     commentaryText,
+    audio,
     publishedAt: publishedDate.toISOString(),
     route,
     annotator: {
@@ -315,7 +327,17 @@ async function getPublicAnnotationPage(
     const hasNext = data.length > PUBLIC_PAGE_SIZE;
     const annotations = data
       .slice(0, PUBLIC_PAGE_SIZE)
-      .map(mapPublicAnnotation)
+      .map((item) => {
+        const audioMetadata = isRecord(item) ? parsePublicAnnotationAudio(item.audio) : null;
+        const audioPublicUrl = audioMetadata
+          ? getHttpUrl(
+            supabase.storage
+              .from(ANNOTATION_AUDIO_BUCKET)
+              .getPublicUrl(audioMetadata.storagePath).data.publicUrl,
+          )?.href ?? null
+          : null;
+        return mapPublicAnnotation(item, audioPublicUrl);
+      })
       .filter((item): item is PublicAnnotationCardData => Boolean(item));
 
     const commentCounts = await queryPublicCommentCounts(

@@ -8,6 +8,7 @@ import type { PublicAnnotationCardData } from "@/lib/data/public-discovery";
 import { getInitial, truncateExcerpt } from "@/lib/public-content";
 import { getPublicAnnotationPath } from "@/lib/public-routes";
 import { HostedMediaPlayer } from "./hosted-media-player";
+import { PublishedAudioPlayer } from "./published-audio-player";
 
 const PASSAGE_EXCERPT_LENGTH = 360;
 const COMMENTARY_EXCERPT_LENGTH = 280;
@@ -57,9 +58,17 @@ export function AnnotationCard({
       ? annotation.selectedText
       : truncateExcerpt(annotation.selectedText, PASSAGE_EXCERPT_LENGTH)
     : null;
+  const typedCommentary = annotation.commentaryText.trim();
+  const commentaryLead = typedCommentary
+    ? truncateExcerpt(typedCommentary, COMMENTARY_EXCERPT_LENGTH)
+    : null;
 
   return (
-    <article className="annotation-card" aria-labelledby={headingId}>
+    <article
+      className="annotation-card"
+      aria-labelledby={commentaryLead ? headingId : undefined}
+      aria-label={commentaryLead ? undefined : annotation.audio ? "Voice commentary" : sourceTitle}
+    >
       <header className="card-header">
         {showCreator && (
           <Link className="card-creator" href={`/p/${annotation.annotator.id}`}>
@@ -88,11 +97,18 @@ export function AnnotationCard({
       </header>
 
       <div className="card-body">
-        <p className="card-commentary-lead" id={headingId}>
-          {annotation.commentaryText.trim()
-            ? truncateExcerpt(annotation.commentaryText, COMMENTARY_EXCERPT_LENGTH)
-            : "Voice commentary"}
-        </p>
+        {commentaryLead ? (
+          <p className="card-commentary-lead" id={headingId}>
+            {commentaryLead}
+          </p>
+        ) : null}
+        {annotation.audio && (
+          <PublishedAudioPlayer
+            publicUrl={annotation.audio.publicUrl}
+            durationMs={annotation.audio.durationMs}
+            compact
+          />
+        )}
 
         <div className="card-nested-source">
           <button
