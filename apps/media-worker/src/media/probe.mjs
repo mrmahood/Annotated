@@ -24,6 +24,14 @@ const PACKET_ORIGIN_PREFIX_MAX_SECONDS = 0.5;
 // encoded content length, unlike container last-timestamp or a quantized
 // playhead span (player 30 s–106 s = 76 s for a 77 s recorder run).
 const PACKET_CONTENT_COVERAGE = 0.9;
+// Chrome MediaRecorder writes duration_time as N/A, so the duration_time sum
+// never runs. Recover encoded length by snapping the median inter-packet gap
+// onto an Opus frame size (usually 20 ms) and multiplying by packet count.
+// A 1 s-quantized playhead (30 s–106 s = 76 s) of a 77 s recorder run compresses
+// spacing by ~1.3%; a true 76 s encoding has matching count and span.
+const OPUS_FRAME_SECONDS = [0.0025, 0.005, 0.01, 0.02, 0.04, 0.06];
+const OPUS_FRAME_SNAP_RELATIVE = 0.15;
+const MIN_NA_OPUS_PACKETS = 50;
 // AAC-LC at 48 kHz uses 1024 samples per frame ≈ 21.333 ms. Chrome MV3 tabCapture
 // + MediaRecorder + ffmpeg `-ss` after `-i` plus `-t` can emit a few extra frames
 // and container-duration rounding on real ≤90 s clips. PRs #46–#48 admitted one
@@ -38,7 +46,7 @@ const DURATION_COMPARE_EPSILON_MS = 0.001;
 export function ffprobeArguments(inputPath) {
   return [
     '-v', 'error',
-    '-show_entries', 'format=format_name,duration,size',
+    '-show_entries', 'format=format_name,duration,size,start_time',
     '-show_entries', 'stream=index,codec_name,codec_type,profile,pix_fmt,width,height,sample_rate,channels',
     '-of', 'json',
     inputPath,
@@ -79,6 +87,73 @@ export function inferPacketTimelineOriginSeconds(sortedStartSeconds) {
   return defaultOrigin;
 }
 
+// Chrome MediaRecorder often writes duration_time as N/A and a last timestamp /
+// Duration equal to Spotify currentTime (~105 s) while packets run 0–77 s.
+export function inferPacketTimelineEndSeconds(sortedPackets, originSeconds) {
+  if (!Array.isArray(sortedPackets) || sortedPackets.length < 1) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
+  }
+  let endIndex = sortedPackets.length - 1;
+  if (originSeconds === 0) {
+    for (let index = sortedPackets.length - 1; index > 0; index -= 1) {
+      const gap = sortedPackets[index].pts - sortedPackets[index - 1].pts;
+      if (gap < PACKET_TIMELINE_OFFSET_MS / 1_000) continue;
+      const suffixCount = sortedPackets.length - index;
+      const mainCount = index;
+      const mainSpanSeconds = sortedPackets[index - 1].pts - sortedPackets[0].pts;
+      if (suffixCount < mainCount &&
+          mainSpanSeconds >= 1 &&
+          (suffixCount / sortedPackets.length <= PACKET_ORIGIN_PREFIX_MAX_RATIO || suffixCount <= 25)) {
+        endIndex = index - 1;
+      }
+    }
+  }
+  const last = sortedPackets[endIndex];
+  const endSeconds = last.pts + last.duration;
+  if (!Number.isFinite(endSeconds)) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
+  }
+  return endSeconds;
+}
+
+function medianNumber(values) {
+  if (!Array.isArray(values) || values.length < 1) return Number.NaN;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) return (sorted[middle - 1] + sorted[middle]) / 2;
+  return sorted[middle];
+}
+
+function snapOpusFrameSeconds(medianGapSeconds) {
+  if (!Number.isFinite(medianGapSeconds) || medianGapSeconds <= 0) return null;
+  let frame = null;
+  for (const candidate of OPUS_FRAME_SECONDS) {
+    const relative = Math.abs(medianGapSeconds - candidate) / candidate;
+    if (relative > OPUS_FRAME_SNAP_RELATIVE) continue;
+    if (frame === null || Math.abs(medianGapSeconds - candidate) < Math.abs(medianGapSeconds - frame)) {
+      frame = candidate;
+    }
+  }
+  return frame;
+}
+
+export function inferNaOpusContentMs(clusterPackets) {
+  if (!Array.isArray(clusterPackets) || clusterPackets.length < MIN_NA_OPUS_PACKETS) return null;
+  const gaps = [];
+  for (let index = 1; index < clusterPackets.length; index += 1) {
+    const gap = clusterPackets[index].pts - clusterPackets[index - 1].pts;
+    if (Number.isFinite(gap) && gap > 0) gaps.push(gap);
+  }
+  if (gaps.length < MIN_NA_OPUS_PACKETS - 1) return null;
+  const frameSeconds = snapOpusFrameSeconds(medianNumber(gaps));
+  if (frameSeconds === null) return null;
+  const contentMs = clusterPackets.length * frameSeconds * 1_000;
+  if (!Number.isFinite(contentMs) || contentMs < 1_000 || contentMs > RAW_ABSOLUTE_MAX_DURATION_MS) {
+    return null;
+  }
+  return contentMs;
+}
+
 export function packetDurationMs(output) {
   if (typeof output !== 'string' || !output.endsWith('\n')) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet timing output is incomplete.');
@@ -87,8 +162,7 @@ export function packetDurationMs(output) {
   if (lines.length < 1 || lines.length > 25_000) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet timing count is invalid.');
   }
-  const starts = [];
-  let maximumEndSeconds = Number.NEGATIVE_INFINITY;
+  const packets = [];
   let contentSeconds = 0;
   let packetsWithDuration = 0;
   for (const line of lines) {
@@ -99,27 +173,35 @@ export function packetDurationMs(output) {
         !Number.isFinite(duration) || duration < 0 || duration > 2) {
       mediaCoreFailure('probing', 'probe_failed', 'Packet timing value is invalid.');
     }
-    starts.push(pts);
-    maximumEndSeconds = Math.max(maximumEndSeconds, pts + duration);
+    packets.push({ pts, duration });
     if (durationText !== 'N/A' && duration > 0) {
       contentSeconds += duration;
       packetsWithDuration += 1;
     }
   }
-  starts.sort((left, right) => left - right);
-  const originSeconds = inferPacketTimelineOriginSeconds(starts);
+  packets.sort((left, right) => left.pts - right.pts);
+  const originSeconds = inferPacketTimelineOriginSeconds(packets.map((packet) => packet.pts));
+  const maximumEndSeconds = inferPacketTimelineEndSeconds(packets, originSeconds);
   if (!Number.isFinite(originSeconds) || !Number.isFinite(maximumEndSeconds)) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
   }
   const spanMs = (maximumEndSeconds - originSeconds) * 1_000;
   const contentMs = contentSeconds * 1_000;
-  const contentCoverage = packetsWithDuration / starts.length;
+  const contentCoverage = packetsWithDuration / packets.length;
+  const clusterPackets = packets.filter((packet) => (
+    packet.pts + 1e-9 >= originSeconds && packet.pts <= maximumEndSeconds + 1e-9
+  ));
   let value = spanMs;
   if (contentCoverage >= PACKET_CONTENT_COVERAGE &&
       contentMs >= 1_000 &&
       contentMs <= RAW_ABSOLUTE_MAX_DURATION_MS &&
       Math.abs(spanMs - contentMs) > PROBE_DURATION_TOLERANCE_MS) {
     value = contentMs;
+  } else if (contentCoverage <= 1 - PACKET_CONTENT_COVERAGE) {
+    const inferredMs = inferNaOpusContentMs(clusterPackets);
+    if (inferredMs !== null && Math.abs(spanMs - inferredMs) > PROBE_DURATION_TOLERANCE_MS) {
+      value = inferredMs;
+    }
   }
   if (!Number.isFinite(value) || value <= 0) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
@@ -137,7 +219,45 @@ export function selectWebmDurationMs(formatDurationMs, packetMs) {
   if (Math.abs(formatDurationMs - packetMs) > WEBM_DURATION_DISAGREEMENT_MS) {
     return { durationMs: packetMs, source: 'packet_timestamps' };
   }
+  if (formatDurationMs > RAW_ABSOLUTE_MAX_DURATION_MS && packetMs <= RAW_ABSOLUTE_MAX_DURATION_MS) {
+    return { durationMs: packetMs, source: 'packet_timestamps' };
+  }
   return { durationMs: formatDurationMs, source: 'container' };
+}
+
+function normalizePacketStdout(stdout) {
+  if (typeof stdout !== 'string') return '';
+  const trimmed = stdout.trim();
+  if (!trimmed) return '';
+  return `${trimmed}\n`;
+}
+
+async function readWebmPacketStdout(ffprobePath, inputPath, timeoutMs) {
+  const audioOnly = await runExecutable(ffprobePath, ffprobePacketDurationArguments(inputPath), {
+    timeoutMs,
+    stage: 'probing',
+    failureCode: 'probe_failed',
+  });
+  if (audioOnly.stdoutTruncated) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet timing output exceeded its bound.');
+  }
+  const audioStdout = normalizePacketStdout(audioOnly.stdout);
+  if (audioStdout) return audioStdout;
+
+  const allPackets = await runExecutable(ffprobePath, [
+    '-v', 'error',
+    '-show_entries', 'packet=pts_time,duration_time',
+    '-of', 'csv=p=0',
+    inputPath,
+  ], {
+    timeoutMs,
+    stage: 'probing',
+    failureCode: 'probe_failed',
+  });
+  if (allPackets.stdoutTruncated) {
+    mediaCoreFailure('probing', 'probe_failed', 'Packet timing output exceeded its bound.');
+  }
+  return normalizePacketStdout(allPackets.stdout);
 }
 
 export async function probeFile(ffprobePath, inputPath, timeoutMs = 30_000) {
@@ -155,22 +275,25 @@ export async function probeFile(ffprobePath, inputPath, timeoutMs = 30_000) {
   const webm = typeof probe?.format?.format_name === 'string' &&
     probe.format.format_name.split(',').includes('webm');
   if (webm) {
-    const packets = await runExecutable(ffprobePath, ffprobePacketDurationArguments(inputPath), {
-      timeoutMs,
-      stage: 'probing',
-      failureCode: 'probe_failed',
-    });
-    if (packets.stdoutTruncated) {
-      mediaCoreFailure('probing', 'probe_failed', 'Packet timing output exceeded its bound.');
-    }
-    if (typeof packets.stdout === 'string' && packets.stdout.endsWith('\n')) {
-      const selected = selectWebmDurationMs(formatDuration, packetDurationMs(packets.stdout));
+    const packetStdout = await readWebmPacketStdout(ffprobePath, inputPath, timeoutMs);
+    if (packetStdout) {
+      const selected = selectWebmDurationMs(formatDuration, packetDurationMs(packetStdout));
       if (selected.source === 'packet_timestamps') {
         if (!probe.format || typeof probe.format !== 'object') {
           mediaCoreFailure('probing', 'probe_failed', 'Media container is missing.');
         }
         probe.format.duration = (selected.durationMs / 1_000).toFixed(6);
         probe.format.duration_source = selected.source;
+      }
+    }
+    if (probe?.format && probe.format.duration_source !== 'packet_timestamps') {
+      const startMs = Number(probe.format.start_time) * 1_000;
+      const adjusted = formatDuration - startMs;
+      if (Number.isFinite(startMs) && startMs >= PACKET_TIMELINE_OFFSET_MS &&
+          Number.isFinite(formatDuration) && formatDuration > RAW_ABSOLUTE_MAX_DURATION_MS &&
+          adjusted >= 1_000 && adjusted <= RAW_ABSOLUTE_MAX_DURATION_MS) {
+        probe.format.duration = (adjusted / 1_000).toFixed(6);
+        probe.format.duration_source = 'container_start_time';
       }
     }
   }

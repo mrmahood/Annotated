@@ -5,7 +5,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { createLocalDerivative } from '../src/media/local-media-core.mjs';
 import { validateCaptureMetadataV2 } from '../src/media/capture-metadata.mjs';
-import { probeFile, validateRawProbe, DERIVATIVE_DURATION_TOLERANCE_MS } from '../src/media/probe.mjs';
+import {
+  DERIVATIVE_DURATION_TOLERANCE_MS,
+  ffprobePacketDurationArguments,
+  packetDurationMs,
+  probeFile,
+  validateRawProbe,
+} from '../src/media/probe.mjs';
 import { runExecutable } from '../src/media/process.mjs';
 import { ffmpegExecutables, generatedFixtureRoot, loadMetadata } from './helpers/fixtures.mjs';
 
@@ -163,6 +169,33 @@ integration('packet span recovers a 28s-offset ~77s Spotify WebM whose container
     requestedDurationMs: 77_000,
   });
   assert.ok(result.output.durationMs >= 76_900 && result.output.durationMs <= 77_100);
+}));
+
+integration('Chrome N/A duration_time, priming packets, and 1s-quantized playhead recover 77s from a real Opus dump', async () => withTempDirectory(async (directory) => {
+  const inputPath = path.join(directory, 'spotify-clock-77s.webm');
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=77.017',
+    '-c:a', 'libopus', '-b:a', '128k', '-output_ts_offset', '28', '-f', 'webm', inputPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  const dump = await runExecutable(tools.ffprobePath, ffprobePacketDurationArguments(inputPath), {
+    stage: 'probing', failureCode: 'fixture_failed',
+  });
+  const pts = dump.stdout.trim().split(/\r?\n/u)
+    .map((line) => Number(line.split(',')[0]))
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  assert.ok(pts.length >= 3_000);
+  const minPts = pts[0];
+  const maxPts = pts[pts.length - 1];
+  assert.ok(maxPts - minPts > 70);
+  const lines = ['0.000000,N/A', '0.020000,N/A', '0.040000,N/A'];
+  for (let index = 0; index < pts.length; index += 1) {
+    const remapped = 30 + ((pts[index] - minPts) / (maxPts - minPts)) * 76;
+    lines.push(`${remapped.toFixed(6)},N/A`);
+  }
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(durationMs >= 76_984.9 && durationMs <= 79_004.9);
 }));
 
 integration('packet span still rejects an audio WebM that is actually shorter or longer than the selected range', async () => withTempDirectory(async (directory) => {
