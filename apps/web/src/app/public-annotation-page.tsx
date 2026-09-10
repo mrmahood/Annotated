@@ -108,7 +108,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
 
           <section className="source-attribution" aria-labelledby="source-heading">
             <div className="source-copy">
-              <p className="section-label">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isSpotifyEpisode ? "Spotify episode" : isAudio ? "Podcast / web audio" : "Original article"}</p>
+              <p className="visually-hidden">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isSpotifyEpisode ? "Spotify episode" : isAudio ? "Podcast / web audio" : "Original article"}</p>
               <h2 id="source-heading">{sourceTitle}</h2>
               {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
                 <p className="source-byline">
@@ -128,12 +128,12 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
 
           {annotation.kind === "article" ? (
             <section className="passage-section" aria-labelledby="passage-heading">
-              <p className="section-label" id="passage-heading">Captured passage</p>
+              <p className="visually-hidden" id="passage-heading">Captured passage</p>
               <blockquote>{annotation.selectedText}</blockquote>
             </section>
           ) : (
             <section className="clip-range-section" aria-labelledby="clip-range-heading">
-              <p className="section-label" id="clip-range-heading">Saved clip</p>
+              <p className="visually-hidden" id="clip-range-heading">Saved clip</p>
               <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
               <span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span>
             </section>

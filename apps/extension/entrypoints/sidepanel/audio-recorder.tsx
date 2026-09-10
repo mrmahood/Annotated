@@ -21,7 +21,7 @@ type RecorderListeners = {
 function getMicrophoneErrorMessage(error: unknown): string {
   const name = error instanceof DOMException ? error.name : '';
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return 'Microphone access was denied. Allow microphone access and choose Record audio to try again.';
+    return 'Microphone access was denied. Allow microphone access and choose Record to try again.';
   }
   if (name === 'NotFoundError') {
     return 'No microphone was found. Connect a microphone or publish without audio.';
@@ -240,17 +240,11 @@ export function AudioRecorder({
   const { state } = controller;
   return (
     <section className="audio-recorder" aria-labelledby="audio-commentary-heading">
-      <div className="audio-recorder-heading">
-        <div>
-          <span className="section-label" id="audio-commentary-heading">Audio commentary</span>
-          <span className="optional-label">Optional</span>
-        </div>
-        <span className="audio-limit">WebM · 5:00 max · 6 MiB</span>
-      </div>
+      <h2 className="visually-hidden" id="audio-commentary-heading">Voice note</h2>
 
       {state.status === 'idle' && (
         <button className="button button-secondary button-small" type="button" onClick={() => void controller.start()} disabled={disabled}>
-          Record audio
+          Record
         </button>
       )}
       {state.status === 'requesting_permission' && (
@@ -291,7 +285,7 @@ export function AudioRecorder({
       {state.status === 'error' && (
         <div className="audio-error">
           <p className="inline-error" role="alert">{state.message}</p>
-          <button className="button button-secondary button-small" type="button" onClick={() => void controller.start()} disabled={disabled}>Record audio</button>
+            <button className="button button-secondary button-small" type="button" onClick={() => void controller.start()} disabled={disabled}>Record</button>
         </div>
       )}
     </section>

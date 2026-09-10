@@ -40,6 +40,9 @@ test("public detail leads with creator annotation before source clip, transcript
   const commentaryClose = page.indexOf("</section>", commentary);
   assert.ok(audio > commentary && audio < commentaryClose, "voice player stays inside the single annotation block");
   assert.match(page, /<h2 id="source-heading">\{sourceTitle\}<\/h2>/);
+  assert.match(page, /className="visually-hidden">\{isYouTubeVideo \? "YouTube source"/);
+  assert.match(page, /className="visually-hidden" id="passage-heading">Captured passage/);
+  assert.match(page, /className="visually-hidden" id="clip-range-heading">Saved clip/);
 });
 
 test("public detail page labels webpage video separately from YouTube", async () => {

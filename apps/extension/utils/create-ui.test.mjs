@@ -7,12 +7,11 @@ const STYLE_URL = new URL('../entrypoints/sidepanel/style.css', import.meta.url)
 
 test('Create is the visible compatibility label and the switcher uses a segmented radiogroup', async () => {
   const source = await readFile(APP_URL, 'utf8');
-  assert.match(source, /currentScreen\.view === 'context' \? 'Create'/);
   assert.match(source, /view === 'context' \? 'Create'/);
   assert.doesNotMatch(source, /currentScreen\.view === 'context' \? 'Context'/);
-  assert.match(source, /<h1>Create<\/h1>/);
+  assert.match(source, /<h1 className="visually-hidden">Create<\/h1>/);
   assert.match(source, /<fieldset className="create-mode-switcher">/);
-  assert.match(source, /<legend>Create mode<\/legend>/);
+  assert.match(source, /<legend className="visually-hidden">Create mode<\/legend>/);
   assert.match(source, /className="create-mode-segmented"/);
   assert.match(source, /role="radiogroup"/);
   assert.match(source, /CREATE_MODES\.map\(\(mode\) =>/);
