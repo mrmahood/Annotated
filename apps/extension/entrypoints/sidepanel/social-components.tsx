@@ -1091,7 +1091,9 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
         <time dateTime={annotation.publishedAt}>{formatTimestamp(annotation.publishedAt)}</time>
       </header>
       <div className="annotation-card-body" {...cardHover}>
-        <p className="commentary-lead">{annotation.commentaryText.trim() || (hasCommentaryAudio ? 'Voice commentary' : '')}</p>
+        {annotation.commentaryText.trim() ? (
+          <p className="commentary-lead">{annotation.commentaryText.trim()}</p>
+        ) : null}
         {hasCommentaryAudio && audioUrl && (
           <audio className="commentary-audio" controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
         )}
@@ -1707,8 +1709,7 @@ export function AnnotationDetailView({
         <button className="text-button creator-button" type="button" onClick={() => navigation.openProfile(annotation.creator.id)}><Avatar name={annotation.creator.displayName} url={annotation.creator.avatarUrl} size={34} /><span><strong>{annotation.creator.displayName}</strong><time dateTime={annotation.publishedAt}>Published {formatTimestamp(annotation.publishedAt)}</time></span></button>
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
-      {(annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" {...commentaryHover}><span className="section-label">Commentary</span>{annotation.commentaryText.trim() ? <p>{annotation.commentaryText}</p> : annotation.audio ? <p>Voice commentary</p> : null}</section>}
-      {annotation.audio && audioUrl && <section className="detail-audio" aria-labelledby="detail-audio-heading"><span className="section-label" id="detail-audio-heading">Audio commentary</span><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</section>}
+      {(annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" aria-label={annotation.commentaryText.trim() ? 'Annotation' : 'Voice commentary'} {...commentaryHover}>{annotation.commentaryText.trim() ? <p>{annotation.commentaryText}</p> : null}{annotation.audio && audioUrl && <div className="detail-audio"><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</div>}</section>}
       {annotation.kind === 'article' ? <>
         <section className="detail-source" {...sourceHover}><span className="section-label">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection)}>View original source ↗</a><ArticlePendingConnectHint show={showHint} /></section>
         <section className="detail-passage" {...sourceHover}><span className="section-label">Captured passage</span><blockquote>{annotation.selectedText}</blockquote><ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} /></section>

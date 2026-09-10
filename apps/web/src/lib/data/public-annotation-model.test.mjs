@@ -33,7 +33,12 @@ test("public detail leads with creator annotation before source clip, transcript
   assert.ok(passage < clip, "article passage and clip range stay in the secondary block");
   assert.ok(clip < player, "saved clip range must precede hosted player");
   assert.ok(player < transcript, "hosted clip must precede excerpt transcript");
-  assert.match(page, /<h1 id="commentary-heading">The annotation<\/h1>/);
+  assert.match(page, /<h1 id="commentary-heading" className="visually-hidden">/);
+  assert.doesNotMatch(page, />The annotation</);
+  assert.doesNotMatch(page, />Voice commentary</);
+  assert.doesNotMatch(page, />Commentary</);
+  const commentaryClose = page.indexOf("</section>", commentary);
+  assert.ok(audio > commentary && audio < commentaryClose, "voice player stays inside the single annotation block");
   assert.match(page, /<h2 id="source-heading">\{sourceTitle\}<\/h2>/);
 });
 
