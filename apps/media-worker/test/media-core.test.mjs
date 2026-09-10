@@ -7,7 +7,9 @@ import { validateCaptureMetadataV2 } from '../src/media/capture-metadata.mjs';
 import { calculateVideoCrop } from '../src/media/geometry.mjs';
 import {
   DERIVATIVE_DURATION_TOLERANCE_MS,
+  RAW_ABSOLUTE_MAX_DURATION_MS,
   WEBM_DURATION_DISAGREEMENT_MS,
+  inferPacketTimelineOriginSeconds,
   packetDurationMs,
   selectWebmDurationMs,
   validateDerivativeProbe,
@@ -224,15 +226,43 @@ test('packet timestamps provide a bounded MediaRecorder WebM duration fallback',
   assert.equal(packetDurationMs('0.000000,N/A\n89.976000,0.016000\n'), 89_992);
   assert.equal(packetDurationMs('-0.007000,0.020000,\n2.000000,0.020000\n'), 2_020);
   assert.equal(packetDurationMs('299.993000,0.020000\n360.014000,0.020000\n'), 60_041);
+  assert.equal(packetDurationMs('27.993000,0.020000\n105.014000,0.020000\n'), 77_041);
   assert.throws(() => packetDurationMs('0.000000,N/A'), errorCode('probe_failed'));
   assert.throws(() => packetDurationMs('0.000000,3.000000\n'), errorCode('probe_failed'));
   assert.throws(() => packetDurationMs('not-a-time,N/A\n'), errorCode('probe_failed'));
 });
 
+test('packet origin skips a near-zero priming packet before a media-clock cluster', () => {
+  assert.equal(inferPacketTimelineOriginSeconds([0, 28, 28.02, 105]), 28);
+  assert.equal(inferPacketTimelineOriginSeconds([27.993, 28.014, 105.014]), 27.993);
+  assert.equal(inferPacketTimelineOriginSeconds([0, 0.02, 0.04, 77.017]), 0);
+  assert.equal(inferPacketTimelineOriginSeconds([299.993, 360.014]), 299.993);
+  assert.equal(
+    packetDurationMs('0.000000,0.020000\n28.000000,0.020000\n105.000000,0.020000\n'),
+    77_020,
+  );
+});
+
+test('encoded packet content wins when media-clock span is a second short of the recorder run', () => {
+  const packetCount = 3_850;
+  const lines = [];
+  for (let index = 0; index < packetCount; index += 1) {
+    const pts = 30 + (index / (packetCount - 1)) * 76;
+    lines.push(`${pts.toFixed(6)},0.020000`);
+  }
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(Math.abs(durationMs - packetCount * 20) < 0.01);
+  assert.ok(durationMs >= 76_900 && durationMs <= 77_100);
+});
+
 test('WebM container duration yields to packet span when they disagree by more than two seconds', () => {
   assert.equal(WEBM_DURATION_DISAGREEMENT_MS, 2_000);
+  assert.equal(RAW_ABSOLUTE_MAX_DURATION_MS, 92_000);
   assert.deepEqual(selectWebmDurationMs(360_032, 60_041), {
     durationMs: 60_041, source: 'packet_timestamps',
+  });
+  assert.deepEqual(selectWebmDurationMs(105_025, 77_041), {
+    durationMs: 77_041, source: 'packet_timestamps',
   });
   assert.deepEqual(selectWebmDurationMs(1_008, 60_041), {
     durationMs: 60_041, source: 'packet_timestamps',
@@ -266,6 +296,19 @@ test('raw probe still rejects a real undershoot and a last-timestamp overshoot',
     requestedDurationMs: 60_000, leadInMs: 5.5,
   });
   assert.equal(facts.durationMs, 60_024);
+
+  audio.format.duration = '77.041000';
+  const nearCeiling = validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  });
+  assert.equal(nearCeiling.durationMs, 77_041);
+
+  audio.format.duration = '105.025000';
+  assert.throws(() => validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  }), errorCode('duration_out_of_bounds'));
 });
 
 test('derivative validation rejects a probe above 90 seconds', () => {
