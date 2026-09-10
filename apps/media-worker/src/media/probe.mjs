@@ -8,6 +8,17 @@ export const AUDIO_FINAL_MAX_BYTES = 8 * 1024 * 1024;
 export const MAX_FINAL_DURATION_MS = 90_000;
 export const RAW_ABSOLUTE_MAX_DURATION_MS = 92_000;
 const PROBE_DURATION_TOLERANCE_MS = 20;
+// Chrome tabCapture + MediaRecorder raw WebM at the 90 s product ceiling often
+// probes at ~requested (or a few frames / player-clock ms short) while
+// offscreen lead-in is 20–30 ms. The previous 20 ms window required
+// requested + leadIn − 20, so exact-90 s video failed Staging probing
+// (media 376b94ce: min ≈ 90_002.8 ms vs ~90_000 / 89_955 ms encoded).
+// 100 ms matches derivative slack: enough for that jitter and still enough
+// raw to trim lead-in and emit a ≤90 s excerpt. Multi-second undershoots
+// and the 92 s raw ceiling stay closed. Packet-vs-container math keeps the
+// 20 ms comparison above.
+export const RAW_PROBE_UNDERSHOOT_MS = 100;
+export const RAW_PROBE_OVERSHOOT_MS = 2_000;
 // Chrome tabCapture + MediaRecorder audio WebM may stamp packets on the source
 // media clock (Spotify currentTime ≈ 300 s) and write format.duration as the last
 // timestamp (~360 s) instead of the ~60 s span. Treat disagreements larger than
@@ -399,12 +410,27 @@ export function validateRawProbe({ mediaType, probe, expectedByteSize, requested
   }
 
   const probedDurationMs = durationMs(probe);
-  const minRawDurationMs = Math.max(1_000, requestedDurationMs + leadInMs - PROBE_DURATION_TOLERANCE_MS);
-  const maxRawDurationMs = Math.min(RAW_ABSOLUTE_MAX_DURATION_MS, requestedDurationMs + leadInMs + 2_000);
-  if (probedDurationMs < minRawDurationMs || probedDurationMs > maxRawDurationMs) {
+  const { minRawDurationMs, maxRawDurationMs } = rawProbeDurationBoundsMs(requestedDurationMs, leadInMs);
+  if (
+    probedDurationMs + DURATION_COMPARE_EPSILON_MS < minRawDurationMs
+    || probedDurationMs > maxRawDurationMs + DURATION_COMPARE_EPSILON_MS
+  ) {
     mediaCoreFailure('probing', 'duration_out_of_bounds', 'Raw media duration is outside the allowed recorder bound.');
   }
   return { ...found, durationMs: probedDurationMs, byteSize: size, formatNames: formatNames(probe) };
+}
+
+export function rawProbeDurationBoundsMs(requestedDurationMs, leadInMs) {
+  if (!Number.isFinite(requestedDurationMs) || !Number.isFinite(leadInMs)) {
+    mediaCoreFailure('probing', 'probe_failed', 'Raw duration bounds are invalid.');
+  }
+  return {
+    minRawDurationMs: Math.max(1_000, requestedDurationMs + leadInMs - RAW_PROBE_UNDERSHOOT_MS),
+    maxRawDurationMs: Math.min(
+      RAW_ABSOLUTE_MAX_DURATION_MS,
+      requestedDurationMs + leadInMs + RAW_PROBE_OVERSHOOT_MS,
+    ),
+  };
 }
 
 function outputInvalid(reason, message) {

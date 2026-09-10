@@ -8,11 +8,14 @@ import { calculateVideoCrop } from '../src/media/geometry.mjs';
 import {
   DERIVATIVE_DURATION_TOLERANCE_MS,
   RAW_ABSOLUTE_MAX_DURATION_MS,
+  RAW_PROBE_OVERSHOOT_MS,
+  RAW_PROBE_UNDERSHOOT_MS,
   WEBM_DURATION_DISAGREEMENT_MS,
   inferNaOpusContentMs,
   inferPacketTimelineEndSeconds,
   inferPacketTimelineOriginSeconds,
   packetDurationMs,
+  rawProbeDurationBoundsMs,
   selectWebmDurationMs,
   validateDerivativeProbe,
   validateRawProbe,
@@ -231,6 +234,65 @@ test('raw probe enforces the recorder overshoot ceiling', () => {
   const over = probeByName.get('duration-92001.webm').probe;
   assert.throws(() => validateRawProbe({
     mediaType: 'audio', probe: over, expectedByteSize: Number(over.format.size), requestedDurationMs: 90_000, leadInMs: 0,
+  }), errorCode('duration_out_of_bounds'));
+});
+
+test('raw probe admits Staging-like exact-90s video with lead-in and still rejects a multi-second overshoot', async () => {
+  assert.equal(RAW_PROBE_UNDERSHOOT_MS, DERIVATIVE_DURATION_TOLERANCE_MS);
+  assert.equal(RAW_PROBE_OVERSHOOT_MS, 2_000);
+  const leadInMs = 22.799999997019768;
+  const previousMinMs = 90_000 + leadInMs - 20;
+  const bounds = rawProbeDurationBoundsMs(90_000, leadInMs);
+  assert.ok(previousMinMs > 90_000);
+  assert.ok(bounds.minRawDurationMs <= 89_955);
+  assert.ok(bounds.minRawDurationMs <= 90_000);
+  assert.equal(bounds.maxRawDurationMs, RAW_ABSOLUTE_MAX_DURATION_MS);
+
+  const metadata = await loadMetadata('safe-landscape.json');
+  metadata.timing.requested_start_ms = 300_000;
+  metadata.timing.requested_end_ms = 390_000;
+  metadata.timing.requested_duration_ms = 90_000;
+  metadata.timing.lead_in_ms = leadInMs;
+  metadata.timing.recorder_elapsed_ms = 90_035;
+  metadata.timing.player_start_ms = 300_000;
+  metadata.timing.player_end_ms = 389_955;
+  assert.deepEqual(validateCaptureMetadataV2(metadata, 'video', 90_000), {
+    requestedStartMs: 300_000,
+    requestedEndMs: 390_000,
+    requestedDurationMs: 90_000,
+    leadInMs,
+    recorderElapsedMs: 90_035,
+  });
+
+  const video = structuredClone(probeByName.get('landscape-video.webm').probe);
+  video.format.duration = '90.000000';
+  assert.equal(validateRawProbe({
+    mediaType: 'video', probe: video, expectedByteSize: Number(video.format.size),
+    requestedDurationMs: 90_000, leadInMs,
+  }).durationMs, 90_000);
+
+  video.format.duration = '89.955000';
+  assert.equal(validateRawProbe({
+    mediaType: 'video', probe: video, expectedByteSize: Number(video.format.size),
+    requestedDurationMs: 90_000, leadInMs,
+  }).durationMs, Number('89.955000') * 1_000);
+
+  video.format.duration = '90.035000';
+  assert.equal(validateRawProbe({
+    mediaType: 'video', probe: video, expectedByteSize: Number(video.format.size),
+    requestedDurationMs: 90_000, leadInMs,
+  }).durationMs, 90_035);
+
+  video.format.duration = '93.000000';
+  assert.throws(() => validateRawProbe({
+    mediaType: 'video', probe: video, expectedByteSize: Number(video.format.size),
+    requestedDurationMs: 90_000, leadInMs,
+  }), errorCode('duration_out_of_bounds'));
+
+  video.format.duration = '87.000000';
+  assert.throws(() => validateRawProbe({
+    mediaType: 'video', probe: video, expectedByteSize: Number(video.format.size),
+    requestedDurationMs: 90_000, leadInMs,
   }), errorCode('duration_out_of_bounds'));
 });
 
