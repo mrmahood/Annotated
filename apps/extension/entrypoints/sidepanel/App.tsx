@@ -487,7 +487,7 @@ function SourceSummary({ state }: { state: SourceState }) {
   return (
     <div className="source-summary">
       <span className="source-type">{state.source.classification}</span>
-      <div><span className="section-label">Connected source</span><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'TikTok' && state.source.author && <p>{state.source.author}</p>}{state.source.classification === 'Spotify' && (state.source.showName || state.source.author) && <p>{state.source.showName ?? state.source.author}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}<p>{state.source.hostname}</p></div>
+      <div><h2>{state.source.title}</h2>{state.source.classification === 'YouTube' && state.source.channelName && <p>{state.source.channelName}</p>}{state.source.classification === 'TikTok' && state.source.author && <p>{state.source.author}</p>}{state.source.classification === 'Spotify' && (state.source.showName || state.source.author) && <p>{state.source.showName ?? state.source.author}</p>}{state.source.classification === 'Podcast / web audio' && (state.source.showName || state.source.publisher) && <p>{state.source.showName ?? state.source.publisher}</p>}<p>{state.source.hostname}</p></div>
     </div>
   );
 }
@@ -563,6 +563,34 @@ function SignInActions({
           Continue with X
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function CommentaryField({
+  id,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="annotation-field">
+      <label className="visually-hidden" htmlFor={id}>Commentary</label>
+      <textarea
+        id={id}
+        value={value}
+        maxLength={2_000}
+        rows={5}
+        disabled={disabled}
+        placeholder="Add a note…"
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <span aria-live="polite">{value.length.toLocaleString()} / 2,000</span>
     </div>
   );
 }
@@ -3470,9 +3498,9 @@ function App() {
   return (
     <main className="panel">
       <header className="app-header">
-        <div className="app-bar">
+        <div className={`app-bar${currentScreen.kind === 'root' ? ' app-bar-root' : ''}`}>
           {currentScreen.kind !== 'root' ? <button className="back-button" type="button" onClick={() => dispatchNavigation({ type: 'back' })} aria-label="Go back">←</button> : <span className="wordmark">ANNOTATED</span>}
-          <span className="view-title">{currentScreen.kind === 'annotation' || currentScreen.kind === 'comments' ? 'Annotation' : currentScreen.kind === 'profile' ? 'Creator' : currentScreen.view === 'context' ? 'Create' : currentScreen.view === 'feed' ? 'Feed' : 'Account'}</span>
+          {currentScreen.kind !== 'root' && <span className="view-title">{currentScreen.kind === 'profile' ? 'Creator' : 'Annotation'}</span>}
         </div>
         <nav className="top-tabs" aria-label="Primary">
           {(['context', 'feed', 'account'] as const).map((view) => <button key={view} type="button" className={currentScreen.kind === 'root' && currentScreen.view === view ? 'active' : ''} aria-current={currentScreen.kind === 'root' && currentScreen.view === view ? 'page' : undefined} onClick={() => selectRoot(view)}>{view === 'context' ? 'Create' : view === 'account' ? 'Me' : 'Feed'}</button>)}
@@ -3486,24 +3514,24 @@ function App() {
       {supabase && currentScreen.kind === 'profile' && <ProfileView key={`profile:${currentScreen.profileId}`} supabase={supabase} profileId={currentScreen.profileId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} cache={socialCacheRef.current} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} />}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'feed' && (
-        <div className="root-view"><header className="view-intro"><span className="section-label">Public activity</span><h1>Recent annotations</h1><p>Published notes from across Annotated.</p></header>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
+        <div className="root-view"><h1 className="visually-hidden">Feed</h1>{supabase ? <AnnotationCollection supabase={supabase} cache={socialCacheRef.current} cacheKey="feed" navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle="No published annotations" emptyMessage="The public feed is quiet for now." /> : <div className="compact-state compact-state-error">Feed unavailable</div>}</div>
       )}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'account' && (
-        <div className="root-view"><header className="view-intro"><span className="section-label">Private account</span><h1>Me</h1></header><section className="account-view">
-          {authState.status === 'loading' && <div className="compact-state" role="status">Restoring session…</div>}
-          {authState.status === 'signed-out' && <div className="signed-out-account"><p>Sign in to publish, comment, and follow creators.</p><SignInActions onSignIn={beginSignIn} /></div>}
+        <div className="root-view"><h1 className="visually-hidden">Me</h1><section className="account-view">
+          {authState.status === 'loading' && <div className="compact-state compact-state-quiet" role="status">Restoring session…</div>}
+          {authState.status === 'signed-out' && <div className="signed-out-account"><p>Sign in to publish, comment, and follow.</p><SignInActions onSignIn={beginSignIn} /></div>}
           {authState.status === 'signing-in' && <button className="button button-primary" type="button" disabled>Signing in…</button>}
           {authState.status === 'error' && <div className="compact-state compact-state-error" role="alert"><strong>Account unavailable</strong><span>{authState.message}</span><button className="button button-secondary" type="button" onClick={() => void retryAuthentication()}>Try again</button></div>}
-          {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span></div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="button button-secondary danger-button" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button></>}
+          {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span></div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="text-button danger-text" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button></>}
         </section></div>
       )}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'context' && (
         <div className="root-view context-view">
-          <header className="view-intro create-intro"><span className="section-label">New annotation</span><h1>Create</h1><p>Choose Text, Video, or Audio without losing work in another mode.</p></header>
+          <h1 className="visually-hidden">Create</h1>
           <fieldset className="create-mode-switcher">
-            <legend>Create mode</legend>
+            <legend className="visually-hidden">Create mode</legend>
             <div
               className="create-mode-segmented"
               role="radiogroup"
@@ -3535,7 +3563,7 @@ function App() {
             <div className="compact-state detached-draft" role="status"><strong>{CREATE_MODE_LABELS[selectedCreateMode]} draft saved</strong><span>This draft belongs to another connected source. Return to that source to continue, or discard it to start here.</span><button className="button button-secondary" type="button" onClick={discardSelectedDetachedDraft}>Discard {CREATE_MODE_LABELS[selectedCreateMode]} draft and start here</button></div>
           ) : selectedCreateMode === 'video' && videoSource ? (
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading" key="create-video">
-              <div className="section-heading"><h2 id="create-heading">Create clip</h2><span>{youtubeSource ? 'YouTube time range' : tiktokSource ? 'TikTok time range' : 'Webpage video range'}</span></div>
+              <h2 id="create-heading" className="visually-hidden">Create clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
                 <p className="create-help">Play the connected video, then Set start / Set end or type times such as 1:00 and 2:30.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
@@ -3557,7 +3585,7 @@ function App() {
                 {videoDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview from start</button>}
                 {showVideoRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
-                <div className="annotation-field"><label htmlFor="youtube-commentary">Your commentary</label><textarea id="youtube-commentary" value={videoDraftState.commentary} maxLength={2_000} rows={6} disabled={mediaEditorLocked} onChange={(event) => changeYoutubeCommentary(event.target.value)} /><span aria-live="polite">{videoDraftState.commentary.length.toLocaleString()} / 2,000</span><span className="create-help">Add typed commentary, a voice clip, or both.</span></div>
+                <CommentaryField id="youtube-commentary" value={videoDraftState.commentary} disabled={mediaEditorLocked} onChange={changeYoutubeCommentary} />
                 <AudioRecorder controller={videoCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : tiktokSource ? <button className="button button-primary" type="button" onClick={() => void publishTikTokClip()} disabled={!canPublishTikTok}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
@@ -3565,7 +3593,7 @@ function App() {
             </section>
           ) : selectedCreateMode === 'audio' && audioSource ? (
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
-              <div className="section-heading"><h2 id="create-heading">Create audio clip</h2><span>{spotifySource ? 'Spotify episode' : exclusivePodcast ? 'Podcast / web audio' : 'Page audio'}</span></div>
+              <h2 id="create-heading" className="visually-hidden">Create audio clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
                 <p className="create-help">{spotifySource ? 'Play the connected Spotify episode, then Set start / Set end or type times such as 1:00 and 2:30. Preview / Jump to start and Publish seek the now-playing bar to the clip start.' : 'Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.'}</p>
                 <PlayerSelector mode="audio" discovery={audioPlayerDiscovery} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
@@ -3587,15 +3615,15 @@ function App() {
                 {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview / Jump to start</button>}
                 {showAudioRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
                 {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
-                <div className="annotation-field"><label htmlFor="audio-clip-commentary">Your commentary</label><textarea id="audio-clip-commentary" value={audioDraftState.commentary} maxLength={2_000} rows={6} disabled={mediaEditorLocked} onChange={(event) => changeAudioCommentary(event.target.value)} /><span aria-live="polite">{audioDraftState.commentary.length.toLocaleString()} / 2,000</span><span className="create-help">Add typed commentary, a voice clip, or both.</span></div>
+                <CommentaryField id="audio-clip-commentary" value={audioDraftState.commentary} disabled={mediaEditorLocked} onChange={changeAudioCommentary} />
                 <AudioRecorder controller={audioCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
               </>}
             </section>
           ) : selectedCreateMode === 'text' ? (
-            <section className="create-panel" aria-labelledby="create-heading" key="create-text"><div className="section-heading"><h2 id="create-heading">Create annotation</h2><span>Article text</span></div>
-              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><div className="annotation-field"><label htmlFor="annotation-commentary">Your commentary</label><textarea id="annotation-commentary" value={commentary} maxLength={2_000} rows={6} disabled={publishState.status === 'publishing'} onChange={(event) => changeCommentary(event.target.value)} /><span aria-live="polite">{commentary.length.toLocaleString()} / 2,000</span><span className="create-help">Add typed commentary, a voice clip, or both.</span></div><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here. Selections and commentary may contain up to 2,000 characters each.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
+            <section className="create-panel" aria-labelledby="create-heading" key="create-text"><h2 id="create-heading" className="visually-hidden">Create annotation</h2>
+              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
             </section>
           ) : (
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
@@ -3613,7 +3641,6 @@ function App() {
           onCancel={(event) => { event.preventDefault(); dismissModeSwitch(); }}
           onClose={() => setPendingModeSwitch(null)}
         >
-          <span className="section-label">Active hosted-media operation</span>
           <h2 id="mode-switch-dialog-title">Cancel {CREATE_MODE_LABELS[pendingModeSwitch.hostedMode]} capture and switch?</h2>
           <p id="mode-switch-dialog-description">
             Switching to {CREATE_MODE_LABELS[pendingModeSwitch.toMode]} will cancel the active {CREATE_MODE_LABELS[pendingModeSwitch.hostedMode]} range from {formatMediaTime(pendingModeSwitch.startMs)} to {formatMediaTime(pendingModeSwitch.endMs)}. Annotated will switch only after cancellation is confirmed.
