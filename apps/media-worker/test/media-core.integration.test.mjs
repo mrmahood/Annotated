@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, mkdtemp, rm, stat } from 'node:fs/promises';
+import { access, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -141,6 +141,60 @@ integration('packet span recovers a 28s-offset ~77s Spotify WebM whose container
 
   const probe = await probeFile(tools.ffprobePath, inputPath);
   assert.equal(probe.format.duration_source, 'packet_timestamps');
+  const facts = validateRawProbe({
+    mediaType: 'audio', probe, expectedByteSize: (await stat(inputPath)).size,
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  });
+  assert.ok(facts.durationMs >= 76_984.9 && facts.durationMs <= 79_004.9);
+
+  const captureMetadata = await audioMetadataForDuration(77_000);
+  captureMetadata.timing.requested_start_ms = 28_000;
+  captureMetadata.timing.requested_end_ms = 105_000;
+  captureMetadata.timing.lead_in_ms = 4.9;
+  captureMetadata.timing.recorder_elapsed_ms = 77_017;
+  captureMetadata.timing.player_start_ms = 30_000;
+  captureMetadata.timing.player_end_ms = 106_000;
+  const result = await createLocalDerivative({
+    ...tools,
+    mediaType: 'audio',
+    inputPath,
+    outputPath: path.join(directory, 'excerpt.m4a'),
+    captureMetadata,
+    requestedDurationMs: 77_000,
+  });
+  assert.ok(result.output.durationMs >= 76_900 && result.output.durationMs <= 77_100);
+}));
+
+integration('packet span recovers a Chrome timeslice Cluster-0 plus 28s media-clock Spotify WebM', async () => withTempDirectory(async (directory) => {
+  const prefixPath = path.join(directory, 'timeslice0.webm');
+  const clockPath = path.join(directory, 'media-clock.webm');
+  const listPath = path.join(directory, 'concat.txt');
+  const inputPath = path.join(directory, 'chrome-spotify.webm');
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=1.02',
+    '-c:a', 'libopus', '-b:a', '128k', '-cluster_time_limit', '1000', '-f', 'webm', prefixPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=76.017',
+    '-c:a', 'libopus', '-b:a', '128k', '-output_ts_offset', '28',
+    '-cluster_time_limit', '1000', '-f', 'webm', clockPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  await writeFile(listPath, `file '${prefixPath}'\nfile '${clockPath}'\n`);
+  await runExecutable(tools.ffmpegPath, [
+    '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-f', 'webm', inputPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+
+  const packets = await runExecutable(tools.ffprobePath, [
+    '-v', 'error', '-select_streams', 'a', '-show_entries', 'packet=pts_time,duration_time',
+    '-of', 'csv=p=0', inputPath,
+  ], { stage: 'probing', failureCode: 'fixture_failed' });
+  assert.ok(packets.stdout.includes('\n28.'));
+  assert.match(packets.stdout, /^0\./u);
+
+  const probe = await probeFile(tools.ffprobePath, inputPath);
   const facts = validateRawProbe({
     mediaType: 'audio', probe, expectedByteSize: (await stat(inputPath)).size,
     requestedDurationMs: 77_000, leadInMs: 4.9,

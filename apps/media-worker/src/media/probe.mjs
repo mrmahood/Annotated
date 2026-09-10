@@ -16,10 +16,15 @@ export const WEBM_DURATION_DISAGREEMENT_MS = 2_000;
 // Packet timelines that start at least 1 s after 0 are media-clock offsets, not
 // ordinary MediaRecorder priming (a few milliseconds around the origin).
 const PACKET_TIMELINE_OFFSET_MS = 1_000;
-// A first Cluster at timecode 0 plus media-clock Blocks (28 s–105 s) must not
-// pin the origin at 0. Skip only a small prefix before a ≥1 s gap.
+// Chrome MediaRecorder.start(1000) writes a ~1 s Cluster-0 timeslice before
+// media-clock Blocks (28 s–105 s). #96 only skipped a 0.5 s / <1 s prefix, so
+// a full first timeslice pinned origin at 0 and recovered ~105 s. Allow one
+// timeslice plus encoder jitter; stop scanning once the prefix is past that.
 const PACKET_ORIGIN_PREFIX_MAX_RATIO = 0.05;
-const PACKET_ORIGIN_PREFIX_MAX_SECONDS = 0.5;
+export const PACKET_ORIGIN_PREFIX_MAX_SECONDS = 1.25;
+const OPUS_FRAME_SECONDS = Object.freeze([0.0025, 0.005, 0.01, 0.02, 0.04, 0.06]);
+const OPUS_FRAME_SNAP_SECONDS = 0.003;
+const MIN_INTRA_CLUSTER_DELTAS = 10;
 // Prefer summed packet duration_time when most packets report it. That is the
 // encoded content length, unlike container last-timestamp or a quantized
 // playhead span (player 30 s–106 s = 76 s for a 77 s recorder run).
@@ -65,7 +70,7 @@ export function inferPacketTimelineOriginSeconds(sortedStartSeconds) {
   for (let index = 1; index < total; index += 1) {
     const previous = sortedStartSeconds[index - 1];
     const next = sortedStartSeconds[index];
-    if (previous * 1_000 >= PACKET_TIMELINE_OFFSET_MS) break;
+    if (previous > PACKET_ORIGIN_PREFIX_MAX_SECONDS) break;
     if (next - previous < PACKET_TIMELINE_OFFSET_MS / 1_000) continue;
     const prefixRatio = index / total;
     const prefixDuration = previous - minStart;
@@ -77,6 +82,42 @@ export function inferPacketTimelineOriginSeconds(sortedStartSeconds) {
     }
   }
   return defaultOrigin;
+}
+
+function medianNumber(values) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function snapOpusFrameSeconds(deltaSeconds) {
+  let best = null;
+  let bestError = Number.POSITIVE_INFINITY;
+  for (const frame of OPUS_FRAME_SECONDS) {
+    const error = Math.abs(deltaSeconds - frame);
+    if (error < bestError) {
+      best = frame;
+      bestError = error;
+    }
+  }
+  if (best === null || bestError > Math.max(OPUS_FRAME_SNAP_SECONDS, best * 0.25)) return null;
+  return best;
+}
+
+function estimatedContentMsFromPacketStarts(starts) {
+  const intraDeltas = [];
+  for (let index = 1; index < starts.length; index += 1) {
+    const delta = starts[index] - starts[index - 1];
+    if (delta > 0 && delta < PACKET_TIMELINE_OFFSET_MS / 1_000) intraDeltas.push(delta);
+  }
+  if (intraDeltas.length < MIN_INTRA_CLUSTER_DELTAS) return null;
+  const frame = snapOpusFrameSeconds(medianNumber(intraDeltas));
+  if (frame === null) return null;
+  const estimateMs = starts.length * frame * 1_000;
+  if (!Number.isFinite(estimateMs) || estimateMs < 1_000 || estimateMs > RAW_ABSOLUTE_MAX_DURATION_MS) {
+    return null;
+  }
+  return estimateMs;
 }
 
 export function packetDurationMs(output) {
@@ -120,6 +161,11 @@ export function packetDurationMs(output) {
       contentMs <= RAW_ABSOLUTE_MAX_DURATION_MS &&
       Math.abs(spanMs - contentMs) > PROBE_DURATION_TOLERANCE_MS) {
     value = contentMs;
+  } else if (contentCoverage < PACKET_CONTENT_COVERAGE) {
+    const estimatedMs = estimatedContentMsFromPacketStarts(starts);
+    if (estimatedMs !== null && Math.abs(spanMs - estimatedMs) > PROBE_DURATION_TOLERANCE_MS) {
+      value = estimatedMs;
+    }
   }
   if (!Number.isFinite(value) || value <= 0) {
     mediaCoreFailure('probing', 'probe_failed', 'Packet-derived media duration is invalid.');
@@ -163,12 +209,18 @@ export async function probeFile(ffprobePath, inputPath, timeoutMs = 30_000) {
     if (packets.stdoutTruncated) {
       mediaCoreFailure('probing', 'probe_failed', 'Packet timing output exceeded its bound.');
     }
-    if (typeof packets.stdout === 'string' && packets.stdout.endsWith('\n')) {
-      const selected = selectWebmDurationMs(formatDuration, packetDurationMs(packets.stdout));
+    const packetOutput = typeof packets.stdout === 'string' ? packets.stdout : '';
+    const normalizedPackets = packetOutput.endsWith('\n')
+      ? packetOutput
+      : packetOutput.length > 0 ? `${packetOutput}\n` : '';
+    if (normalizedPackets) {
+      if (!probe.format || typeof probe.format !== 'object') {
+        mediaCoreFailure('probing', 'probe_failed', 'Media container is missing.');
+      }
+      const packetMs = packetDurationMs(normalizedPackets);
+      probe.format.packet_duration_ms = packetMs;
+      const selected = selectWebmDurationMs(formatDuration, packetMs);
       if (selected.source === 'packet_timestamps') {
-        if (!probe.format || typeof probe.format !== 'object') {
-          mediaCoreFailure('probing', 'probe_failed', 'Media container is missing.');
-        }
         probe.format.duration = (selected.durationMs / 1_000).toFixed(6);
         probe.format.duration_source = selected.source;
       }
@@ -232,11 +284,16 @@ export function validateRawProbe({ mediaType, probe, expectedByteSize, requested
     mediaCoreFailure('probing', 'unsupported_codec', 'Raw media has an unsupported stream layout.');
   }
 
-  const probedDurationMs = durationMs(probe);
+  let probedDurationMs = durationMs(probe);
   const minRawDurationMs = Math.max(1_000, requestedDurationMs + leadInMs - PROBE_DURATION_TOLERANCE_MS);
   const maxRawDurationMs = Math.min(RAW_ABSOLUTE_MAX_DURATION_MS, requestedDurationMs + leadInMs + 2_000);
   if (probedDurationMs < minRawDurationMs || probedDurationMs > maxRawDurationMs) {
-    mediaCoreFailure('probing', 'duration_out_of_bounds', 'Raw media duration is outside the allowed recorder bound.');
+    const packetMs = Number(probe?.format?.packet_duration_ms);
+    if (Number.isFinite(packetMs) && packetMs >= minRawDurationMs && packetMs <= maxRawDurationMs) {
+      probedDurationMs = packetMs;
+    } else {
+      mediaCoreFailure('probing', 'duration_out_of_bounds', 'Raw media duration is outside the allowed recorder bound.');
+    }
   }
   return { ...found, durationMs: probedDurationMs, byteSize: size, formatNames: formatNames(probe) };
 }
