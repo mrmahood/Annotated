@@ -9,6 +9,7 @@ import {
   DERIVATIVE_DURATION_TOLERANCE_MS,
   RAW_ABSOLUTE_MAX_DURATION_MS,
   WEBM_DURATION_DISAGREEMENT_MS,
+  inferPacketTimelineEndSeconds,
   inferPacketTimelineOriginSeconds,
   packetDurationMs,
   selectWebmDurationMs,
@@ -243,6 +244,42 @@ test('packet origin skips a near-zero priming packet before a media-clock cluste
   );
 });
 
+test('N/A recorder-clock packets without a media-clock tail already recover 77s on main', () => {
+  const lines = [];
+  for (let index = 0; index <= 3_850; index += 1) lines.push(`${(index * 0.02).toFixed(6)},N/A`);
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(durationMs >= 76_984.9 && durationMs <= 79_004.9);
+  assert.deepEqual(selectWebmDurationMs(105_025, durationMs), {
+    durationMs, source: 'packet_timestamps',
+  });
+});
+
+test('Chrome MediaRecorder N/A packets on the recorder clock drop a 105s media-clock tail', () => {
+  const lines = [];
+  for (let index = 0; index <= 3_850; index += 1) lines.push(`${(index * 0.02).toFixed(6)},N/A`);
+  lines.push('105.000000,N/A');
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(durationMs >= 76_984.9 && durationMs <= 79_004.9);
+  assert.deepEqual(selectWebmDurationMs(105_025, durationMs), {
+    durationMs, source: 'packet_timestamps',
+  });
+
+  const audio = structuredClone(probeByName.get('audio-only.webm').probe);
+  audio.format.duration = (durationMs / 1_000).toFixed(6);
+  const facts = validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  });
+  assert.ok(facts.durationMs >= 76_984.9 && facts.durationMs <= 79_004.9);
+
+  assert.equal(inferPacketTimelineEndSeconds([
+    { pts: 0, duration: 0 },
+    { pts: 0.02, duration: 0 },
+    { pts: 77, duration: 0 },
+    { pts: 105, duration: 0 },
+  ], 0), 77);
+});
+
 test('encoded packet content wins when media-clock span is a second short of the recorder run', () => {
   const packetCount = 3_850;
   const lines = [];
@@ -272,6 +309,12 @@ test('WebM container duration yields to packet span when they disagree by more t
   });
   assert.deepEqual(selectWebmDurationMs(60_032, 60_041), {
     durationMs: 60_032, source: 'container',
+  });
+  assert.deepEqual(selectWebmDurationMs(105_025, 105_000), {
+    durationMs: 105_025, source: 'container',
+  });
+  assert.deepEqual(selectWebmDurationMs(93_500, 91_800), {
+    durationMs: 91_800, source: 'packet_timestamps',
   });
   assert.throws(() => selectWebmDurationMs(60_032, 0), errorCode('probe_failed'));
 });
