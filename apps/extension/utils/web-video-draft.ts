@@ -1,3 +1,7 @@
+import {
+  ANNOTATION_TITLE_MAX_LENGTH,
+  readDraftAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 
 export const WEB_VIDEO_CLIP_DRAFT_STORAGE_KEY = 'annotated.webVideoClipDraft.v1';
@@ -9,6 +13,7 @@ export type WebVideoClipDraft = {
   source: { pageUrl: string; normalizedUrl: string };
   startMs: number | null;
   endMs: number | null;
+  title: string;
   commentary: string;
   updatedAt: number;
 };
@@ -23,9 +28,13 @@ export function serializeWebVideoClipDraft(
   endMs: number | null,
   commentary: string,
   updatedAt = Date.now(),
+  title = '',
 ): WebVideoClipDraft {
   const normalizedUrl = normalizeArticleUrl(pageUrl);
-  if (!validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT || !Number.isFinite(updatedAt)) {
+  if (
+    !validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT ||
+    title.length > ANNOTATION_TITLE_MAX_LENGTH || !Number.isFinite(updatedAt)
+  ) {
     throw new Error('The webpage video draft is invalid.');
   }
   return {
@@ -33,6 +42,7 @@ export function serializeWebVideoClipDraft(
     source: { pageUrl: normalizedUrl, normalizedUrl },
     startMs,
     endMs,
+    title,
     commentary,
     updatedAt,
   };
@@ -58,6 +68,7 @@ export function deserializeWebVideoClipDraft(value: unknown): WebVideoClipDraft 
       source: { pageUrl: normalizedUrl, normalizedUrl },
       startMs: row.startMs,
       endMs: row.endMs,
+      title: readDraftAnnotationTitle(row.title),
       commentary: row.commentary,
       updatedAt: row.updatedAt,
     };

@@ -1,3 +1,7 @@
+import {
+  ANNOTATION_TITLE_MAX_LENGTH,
+  readDraftAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
 
 export const AUDIO_CLIP_DRAFT_STORAGE_KEY = 'annotated.audioClipDraft.v1';
@@ -9,6 +13,7 @@ export type AudioClipDraft = {
   source: { normalizedUrl: string; canonicalUrl: string };
   startMs: number | null;
   endMs: number | null;
+  title: string;
   commentary: string;
   updatedAt: number;
 };
@@ -26,9 +31,13 @@ export function serializeAudioClipDraft(
   endMs: number | null,
   commentary: string,
   updatedAt = Date.now(),
+  title = '',
 ): AudioClipDraft {
   const source = getAudioSourceIdentity(sourceUrl, canonicalUrl);
-  if (!validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT) {
+  if (
+    !validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT ||
+    title.length > ANNOTATION_TITLE_MAX_LENGTH
+  ) {
     throw new Error('The audio clip draft is invalid.');
   }
   return {
@@ -36,6 +45,7 @@ export function serializeAudioClipDraft(
     source: { normalizedUrl: source.normalizedUrl, canonicalUrl: source.canonicalUrl },
     startMs,
     endMs,
+    title,
     commentary,
     updatedAt,
   };
@@ -65,6 +75,7 @@ export function deserializeAudioClipDraft(value: unknown): AudioClipDraft | null
       source: { normalizedUrl: identity.normalizedUrl, canonicalUrl: identity.canonicalUrl },
       startMs: row.startMs,
       endMs: row.endMs,
+      title: readDraftAnnotationTitle(row.title),
       commentary: row.commentary,
       updatedAt: row.updatedAt,
     };

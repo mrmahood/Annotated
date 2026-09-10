@@ -117,7 +117,7 @@ select lives_ok(
 reset role;
 
 select ok(
-  pg_catalog.to_regprocedure('public.publish_article_annotation_with_audio(text,text,text,text,text,text,text,text,text,text,integer,text,integer)') is not null,
+  pg_catalog.to_regprocedure('public.publish_article_annotation_with_audio(text,text,text,text,text,text,text,text,text,text,integer,text,integer,text)') is not null,
   'existing article audio publishing remains available'
 );
 select ok(

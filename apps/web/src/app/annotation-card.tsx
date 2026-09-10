@@ -62,12 +62,13 @@ export function AnnotationCard({
   const commentaryLead = typedCommentary
     ? truncateExcerpt(typedCommentary, COMMENTARY_EXCERPT_LENGTH)
     : null;
+  const headingLead = annotation.title ?? commentaryLead;
 
   return (
     <article
       className="annotation-card"
-      aria-labelledby={commentaryLead ? headingId : undefined}
-      aria-label={commentaryLead ? undefined : annotation.audio ? "Voice commentary" : sourceTitle}
+      aria-labelledby={headingLead ? headingId : undefined}
+      aria-label={headingLead ? undefined : annotation.audio ? "Voice commentary" : sourceTitle}
     >
       <header className="card-header">
         {showCreator && (
@@ -97,8 +98,13 @@ export function AnnotationCard({
       </header>
 
       <div className="card-body">
+        {annotation.title ? (
+          <p className="card-annotation-title" id={headingId}>
+            {annotation.title}
+          </p>
+        ) : null}
         {commentaryLead ? (
-          <p className="card-commentary-lead" id={headingId}>
+          <p className="card-commentary-lead" id={annotation.title ? undefined : headingId}>
             {commentaryLead}
           </p>
         ) : null}

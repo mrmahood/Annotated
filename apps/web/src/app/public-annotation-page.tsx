@@ -92,11 +92,15 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             </div>
           </header>
 
-          {(annotation.commentaryText.trim() || annotation.audio) && (
+          {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && (
             <section className="commentary-section" aria-labelledby="commentary-heading">
-              <h1 id="commentary-heading" className="visually-hidden">
-                {annotation.commentaryText.trim() ? "Annotation" : "Voice commentary"}
-              </h1>
+              {annotation.title ? (
+                <h1 id="commentary-heading" className="annotation-title">{annotation.title}</h1>
+              ) : (
+                <h1 id="commentary-heading" className="visually-hidden">
+                  {annotation.commentaryText.trim() ? "Annotation" : "Voice commentary"}
+                </h1>
+              )}
               {annotation.commentaryText.trim() ? (
                 <p className="commentary-text">{annotation.commentaryText}</p>
               ) : null}

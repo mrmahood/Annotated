@@ -1,3 +1,7 @@
+import {
+  ANNOTATION_TITLE_MAX_LENGTH,
+  readDraftAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 import type { ActiveTabContext } from './active-tab-context';
 import type { CapturedArticleSelection } from './selection-capture';
@@ -16,6 +20,7 @@ export type AnnotationDraft = {
     normalizedUrl: string;
   };
   capture: CapturedArticleSelection;
+  title: string;
   commentary: string;
   updatedAt: number;
 };
@@ -86,12 +91,14 @@ export function serializeAnnotationDraft(
   capture: CapturedArticleSelection,
   commentary: string,
   updatedAt = Date.now(),
+  title = '',
 ): AnnotationDraft {
   const normalizedUrl = normalizeSourceUrl(capture.sourceUrl);
   if (
     normalizedUrl === null ||
     normalizeSourceUrl(context.url) !== normalizedUrl ||
-    commentary.length > MAXIMUM_ANNOTATION_TEXT_LENGTH
+    commentary.length > MAXIMUM_ANNOTATION_TEXT_LENGTH ||
+    title.length > ANNOTATION_TITLE_MAX_LENGTH
   ) {
     throw new Error('The annotation draft source or commentary is invalid.');
   }
@@ -105,6 +112,7 @@ export function serializeAnnotationDraft(
       normalizedUrl,
     },
     capture: { ...capture },
+    title,
     commentary,
     updatedAt,
   };
@@ -145,6 +153,7 @@ export function deserializeAnnotationDraft(value: unknown): AnnotationDraft | nu
       normalizedUrl: value.source.normalizedUrl,
     },
     capture,
+    title: readDraftAnnotationTitle(value.title),
     commentary: value.commentary,
     updatedAt: value.updatedAt,
   };
@@ -168,6 +177,15 @@ export function updateAnnotationDraftCommentary(
 ): AnnotationDraft | null {
   if (commentary.length > MAXIMUM_ANNOTATION_TEXT_LENGTH) return null;
   return { ...draft, commentary, updatedAt };
+}
+
+export function updateAnnotationDraftTitle(
+  draft: AnnotationDraft,
+  title: string,
+  updatedAt = Date.now(),
+): AnnotationDraft | null {
+  if (title.length > ANNOTATION_TITLE_MAX_LENGTH) return null;
+  return { ...draft, title, updatedAt };
 }
 
 export function shouldApplyDraftRestoration(

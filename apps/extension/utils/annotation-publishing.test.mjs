@@ -53,6 +53,29 @@ test('text-only publishing remains routed directly to the existing RPC', async (
   assert.deepEqual(fake.calls.map(([kind, name]) => [kind, name]), [
     ['rpc', 'publish_article_annotation'],
   ]);
+  assert.equal(fake.calls[0][2].p_title, null);
+});
+
+test('optional titles are trimmed and sent as p_title', async () => {
+  const fake = createFakeClient();
+  assert.equal(await publishArticleAnnotation(fake.client, {
+    ...INPUT,
+    annotationTitle: '  Quiet headline  ',
+  }), ANNOTATION_ID);
+  assert.equal(fake.calls[0][2].p_title, 'Quiet headline');
+});
+
+test('a title cannot substitute for typed or voice commentary', async () => {
+  const fake = createFakeClient();
+  await assert.rejects(
+    publishArticleAnnotation(fake.client, {
+      ...INPUT,
+      commentaryText: '',
+      annotationTitle: 'Not enough',
+    }),
+    /typed commentary, a voice clip, or both/,
+  );
+  assert.equal(fake.calls.length, 0);
 });
 
 test('audio publishing uploads before calling the audio RPC', async () => {

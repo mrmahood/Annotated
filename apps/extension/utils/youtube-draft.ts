@@ -1,3 +1,7 @@
+import {
+  ANNOTATION_TITLE_MAX_LENGTH,
+  readDraftAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 
 export const YOUTUBE_CLIP_DRAFT_STORAGE_KEY = 'annotated.youtubeClipDraft.v1';
@@ -13,6 +17,7 @@ export type YouTubeClipDraft = {
   };
   startMs: number | null;
   endMs: number | null;
+  title: string;
   commentary: string;
   updatedAt: number;
 };
@@ -29,12 +34,16 @@ export function serializeYouTubeClipDraft(
   endMs: number | null,
   commentary: string,
   updatedAt = Date.now(),
+  title = '',
 ): YouTubeClipDraft {
   const source = getYouTubeVideoIdentity(sourceUrl);
-  if (!validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT) {
+  if (
+    !validTime(startMs) || !validTime(endMs) || commentary.length > COMMENTARY_LIMIT ||
+    title.length > ANNOTATION_TITLE_MAX_LENGTH
+  ) {
     throw new Error('The YouTube clip draft is invalid.');
   }
-  return { version: VERSION, source, startMs, endMs, commentary, updatedAt };
+  return { version: VERSION, source, startMs, endMs, title, commentary, updatedAt };
 }
 
 export function deserializeYouTubeClipDraft(value: unknown): YouTubeClipDraft | null {
@@ -62,6 +71,7 @@ export function deserializeYouTubeClipDraft(value: unknown): YouTubeClipDraft | 
       source: identity,
       startMs: row.startMs,
       endMs: row.endMs,
+      title: readDraftAnnotationTitle(row.title),
       commentary: row.commentary,
       updatedAt: row.updatedAt,
     };

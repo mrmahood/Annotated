@@ -9,6 +9,7 @@ test("public cards are commentary-led with nested source and Open source", async
   ]);
 
   assert.match(card, /"use client"/);
+  assert.match(card, /className="card-annotation-title"/);
   assert.match(card, /className="card-commentary-lead"/);
   assert.match(card, /PublishedAudioPlayer/);
   assert.match(card, /annotation\.audio &&/);
@@ -18,6 +19,10 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.doesNotMatch(card, />The annotation</);
   assert.doesNotMatch(card, />Audio commentary</);
   assert.match(card, /className="card-nested-source"/);
+  assert.ok(
+    card.indexOf('className="card-annotation-title"') < card.indexOf('className="card-commentary-lead"'),
+    "creator title must lead typed commentary when present",
+  );
   assert.ok(
     card.indexOf('className="card-commentary-lead"') < card.indexOf("<PublishedAudioPlayer"),
     "typed commentary must appear before voice commentary",
@@ -50,6 +55,7 @@ test("public cards are commentary-led with nested source and Open source", async
 
   assert.match(styles, /--accent:/);
   assert.match(styles, /--motion-duration: 180ms/);
+  assert.match(styles, /\.card-annotation-title/);
   assert.match(styles, /\.card-commentary-lead/);
   assert.match(styles, /\.card-commentary-audio/);
   assert.match(styles, /\.card-nested-source/);

@@ -1,3 +1,7 @@
+import {
+  getAnnotationTitleError,
+  normalizeAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
 import { isTikTokVideoUrl } from '@annotated/shared/tiktok';
@@ -15,6 +19,7 @@ export type WebpageVideoAnnotationInput = {
   startMs: number;
   endMs: number;
   commentaryText: string;
+  annotationTitle?: string;
   hasRecordedCommentary?: boolean;
   videoDurationMs?: number | null;
 };
@@ -69,6 +74,8 @@ export async function beginHostedWebpageVideoAnnotation(
     input.hasRecordedCommentary === true,
   );
   if (commentaryError) throw new Error(commentaryError);
+  const titleError = getAnnotationTitleError(input.annotationTitle ?? '');
+  if (titleError) throw new Error(titleError);
 
   const { data, error } = await supabase.rpc('begin_hosted_webpage_video_annotation', {
     p_normalized_url: normalizedUrl,
@@ -79,6 +86,7 @@ export async function beginHostedWebpageVideoAnnotation(
     p_start_ms: input.startMs,
     p_end_ms: input.endMs,
     p_commentary_text: input.commentaryText,
+    p_title: normalizeAnnotationTitle(input.annotationTitle),
   });
   if (error) {
     const raw = typeof error.message === 'string' ? error.message.trim() : '';

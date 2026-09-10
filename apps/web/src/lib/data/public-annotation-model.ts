@@ -1,3 +1,4 @@
+import { parseStoredAnnotationTitle } from "@annotated/shared/annotation-title";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
 import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
@@ -38,6 +39,7 @@ export type PublicTranscript = {
 
 type PublicAnnotationBase = {
   id: string;
+  title: string | null;
   commentaryText: string;
   publishedAt: string;
   route: PublicAnnotationRoute | null;
@@ -265,6 +267,7 @@ export function mapPublicAnnotationDetail(
   if (!isRecord(annotationValue) || !isRecord(targetValue) || !isRecord(sourceValue) || !isRecord(profileValue)) return null;
 
   const annotationId = getOptionalText(annotationValue.id);
+  const title = parseStoredAnnotationTitle(annotationValue.title);
   const commentaryText = typeof annotationValue.commentary_text === "string" &&
     annotationValue.commentary_text.length <= 2_000
     ? annotationValue.commentary_text
@@ -286,6 +289,7 @@ export function mapPublicAnnotationDetail(
     : null;
   const common = {
     id: annotationId,
+    title,
     commentaryText,
     publishedAt: publishedDate.toISOString(),
     route: getRoute(annotationValue, profileValue),

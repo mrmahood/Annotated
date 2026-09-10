@@ -1,3 +1,7 @@
+import {
+  getAnnotationTitleError,
+  normalizeAnnotationTitle,
+} from '@annotated/shared/annotation-title';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -12,6 +16,7 @@ export type YouTubeAnnotationInput = {
   startMs: number;
   endMs: number;
   commentaryText: string;
+  annotationTitle?: string;
   hasRecordedCommentary?: boolean;
   videoDurationMs?: number | null;
 };
@@ -59,6 +64,8 @@ export async function beginHostedYouTubeAnnotation(
     input.hasRecordedCommentary === true,
   );
   if (commentaryError) throw new Error(commentaryError);
+  const titleError = getAnnotationTitleError(input.annotationTitle ?? '');
+  if (titleError) throw new Error(titleError);
 
   const { data, error } = await supabase.rpc('begin_hosted_youtube_annotation', {
     p_normalized_url: identity.normalizedUrl,
@@ -69,6 +76,7 @@ export async function beginHostedYouTubeAnnotation(
     p_start_ms: input.startMs,
     p_end_ms: input.endMs,
     p_commentary_text: input.commentaryText,
+    p_title: normalizeAnnotationTitle(input.annotationTitle),
   });
   if (error) throw new Error(error.message);
   return parseHostedYouTubeBeginResponse(data);

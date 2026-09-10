@@ -62,6 +62,10 @@ The bounded Phase E planning contract is
 
 - Preserve `annotations`, `annotation_targets`, `sources`, claims, comments, and
   creator profiles as the product's authoritative records.
+- Optional annotation `title` is a creator-typed one-liner (max 120 characters)
+  stored on `annotations`. Show it only when the creator entered it. It does
+  not replace typed or voice commentary, and it is not the source episode/show
+  title.
 - Create a `draft` annotation only when the user presses Publish and the server
   accepts the publication intent. Do not create server rows while the user is
   merely editing.
@@ -639,7 +643,8 @@ use the current-handle canonical route.
 Create one server-side loader keyed by UUID or canonical route and return a
 discriminated model:
 
-- common: annotation UUID/slug, required commentary, publication time, creator
+- common: annotation UUID/slug, optional creator-entered title (max 120
+  characters; never inferred), required commentary, publication time, creator
   handle/display/avatar, source title/author/publisher/show/host/original URL,
   creator audio commentary when valid, claim capability, comment page/count,
   and social metadata;

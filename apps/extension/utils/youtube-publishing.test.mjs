@@ -36,6 +36,7 @@ test('begins a hosted normalized millisecond YouTube time range', async () => {
   assert.equal(client.calls[0][1].p_normalized_url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
   assert.equal(client.calls[0][1].p_video_title, 'Video');
   assert.equal(client.calls[0][1].p_channel_name, 'Channel');
+  assert.equal(client.calls[0][1].p_title, null);
   assert.equal(Object.hasOwn(client.calls[0][1], 'user_id'), false);
 });
 
@@ -58,9 +59,10 @@ test('allows empty typed commentary when a recorded voice clip is present', asyn
   await beginHostedYouTubeAnnotation(client, {
     sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     title: 'Video', channelName: 'Channel', startMs: 1_000, endMs: 8_000,
-    commentaryText: '', hasRecordedCommentary: true,
+    commentaryText: '', hasRecordedCommentary: true, annotationTitle: '  Voice take  ',
   });
   assert.equal(client.calls[0][1].p_commentary_text, '');
+  assert.equal(client.calls[0][1].p_title, 'Voice take');
   await assert.rejects(
     beginHostedYouTubeAnnotation(client, {
       sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',

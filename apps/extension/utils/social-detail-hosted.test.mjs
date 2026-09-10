@@ -51,6 +51,11 @@ test('detail UI prefers the hosted player and transcript for ready media', async
     detail.indexOf('export function AnnotationDetailView'),
     detail.indexOf('export function ProfileView'),
   );
+  assert.match(annotationDetail, /className="annotation-title"/);
+  assert.ok(
+    annotationDetail.indexOf('className="annotation-title"') < annotationDetail.indexOf('className="detail-audio"'),
+    "creator title leads the annotation block when present",
+  );
   assert.ok(
     annotationDetail.indexOf('className="detail-commentary"') < annotationDetail.indexOf('className="detail-audio"'),
     "typed commentary must precede voice commentary",

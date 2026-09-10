@@ -89,6 +89,7 @@ test('allows empty typed commentary when a recorded voice clip is present', asyn
     hasRecordedCommentary: true,
   });
   assert.equal(fake.calls[0][1].p_commentary_text, '');
+  assert.equal(fake.calls[0][1].p_title, null);
   await assert.rejects(
     beginHostedAudioClipAnnotation(fake.client, { ...input, commentaryText: '' }),
     /typed commentary, a voice clip, or both/,

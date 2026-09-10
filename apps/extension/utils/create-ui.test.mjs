@@ -146,3 +146,19 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(source, /The Spotify player could not seek to the clip start/);
   assert.doesNotMatch(source, /Sign in to Spotify in this tab to capture an episode/);
 });
+
+test('Create offers one quiet title field for Text, Video, and Audio', async () => {
+  const source = await readFile(APP_URL, 'utf8');
+  assert.match(source, /function TitleField\(/);
+  assert.match(source, /placeholder="Add a title…"/);
+  assert.match(source, /<TitleField id="youtube-title"/);
+  assert.match(source, /<TitleField id="audio-clip-title"/);
+  assert.match(source, /<TitleField id="annotation-title"/);
+  assert.match(source, /annotationTitle: videoDraftState\.title/);
+  assert.match(source, /annotationTitle: audioDraftState\.title/);
+  assert.match(source, /annotationTitle: title/);
+  assert.doesNotMatch(source, />TITLE</);
+  assert.doesNotMatch(source, />AUDIO TITLE</);
+  assert.doesNotMatch(source, />Video title</);
+  assert.match(source, /className="visually-hidden" htmlFor=\{id\}>Title</);
+});

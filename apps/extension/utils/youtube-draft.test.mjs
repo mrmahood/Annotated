@@ -9,9 +9,11 @@ import {
 const WATCH = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 
 test('persists clip identity, time range, and commentary', () => {
-  const draft = serializeYouTubeClipDraft(`${WATCH}&t=42`, 42_000, 73_000, 'Commentary', 123);
+  const draft = serializeYouTubeClipDraft(`${WATCH}&t=42`, 42_000, 73_000, 'Commentary', 123, 'Headline');
   assert.equal(draft.source.normalizedUrl, WATCH);
+  assert.equal(draft.title, 'Headline');
   assert.deepEqual(deserializeYouTubeClipDraft(structuredClone(draft)), draft);
+  assert.equal(deserializeYouTubeClipDraft({ ...draft, title: undefined }).title, '');
 });
 
 test('restores only onto the same normalized YouTube video', () => {

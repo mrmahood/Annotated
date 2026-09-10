@@ -64,6 +64,7 @@ test('allows empty typed commentary when a recorded voice clip is present', asyn
     startMs: 1_000, endMs: 8_000, commentaryText: '', hasRecordedCommentary: true,
   });
   assert.equal(client.calls[0][1].p_commentary_text, '');
+  assert.equal(client.calls[0][1].p_title, null);
   await assert.rejects(
     beginHostedTikTokAnnotation(client, {
       sourceUrl: CANONICAL, title: 'BBC clip', author: 'bbcnews',
