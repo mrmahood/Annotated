@@ -96,6 +96,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .social-avatar-fallback { font-size: 10px; font-weight: 700; }
 .annotation-card-body { display: grid; gap: 10px; padding: 10px 12px 8px; }
 .commentary-lead { margin: 0; color: var(--text-primary); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; white-space: pre-wrap; }
+.commentary-audio { display: block; width: 100%; height: 32px; margin-top: 8px; color-scheme: dark; }
 .nested-source { display: grid; gap: 8px; margin-left: 2px; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--background-elevated); }
 .nested-source-body { width: 100%; display: grid; gap: 6px; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .nested-source-body:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
@@ -244,8 +245,9 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .detail-clip-range > span:last-child { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
 .detail-passage { border-block: 1px solid var(--border); }
 .detail-passage blockquote { margin: 8px 0 0; padding-left: 11px; border-left: 2px solid var(--border-strong); color: var(--text-evidence); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
-.detail-commentary p { margin: 8px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail-commentary p { margin: 8px 0 0; color: var(--text-primary); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-audio { display: grid; gap: 8px; border-top: 1px solid var(--border); }
+.detail-source { border-top: 1px solid var(--border); }
 .detail-audio .audio-duration { text-align: right; }
 .detail-hosted-media, .detail-transcript, .detail-media-removed { display: grid; gap: 8px; border-top: 1px solid var(--border); }
 .detail-hosted-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }

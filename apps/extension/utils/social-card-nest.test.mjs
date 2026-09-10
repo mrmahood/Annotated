@@ -14,7 +14,17 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
 
   assert.match(card, /function AnnotationCard/);
   assert.match(card, /className="commentary-lead"/);
+  assert.match(card, /className="commentary-audio"/);
   assert.match(card, /className="nested-source"/);
+  assert.ok(
+    card.indexOf('className="commentary-lead"') < card.indexOf('className="commentary-audio"'),
+    "typed commentary must appear before voice commentary",
+  );
+  assert.ok(
+    card.indexOf('className="commentary-audio"') < card.indexOf('className="nested-source"'),
+    "voice commentary must appear above nested source clip or passage",
+  );
+  assert.doesNotMatch(card, /expanded && hasCommentaryAudio && audioUrl &&/);
   assert.match(card, /aria-expanded=\{expanded\}/);
   assert.match(card, /Open source ↗/);
   assert.match(card, /sourceOpenHref\(annotation\)/);
@@ -73,6 +83,7 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.doesNotMatch(card, /createSignedUrl|processed_storage_path|console\.(?:log|info|debug|warn)/);
 
   assert.match(styles, /\.commentary-lead/);
+  assert.match(styles, /\.commentary-audio/);
   assert.match(styles, /\.nested-source/);
   assert.match(styles, /\.open-source-link/);
   assert.match(styles, /\.card-hosted-media\[data-orientation="portrait"\] video/);
