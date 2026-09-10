@@ -618,15 +618,15 @@ end;
 $$;
 
 comment on function public.begin_hosted_audio_annotation(
-  text, text, text, text, text, text, integer, integer, text, text, text
+  text, text, text, text, text, text, integer, integer, text, text
 ) is
   'Atomically creates a private draft podcast annotation, target, generated route identity, and capture-pending hosted-media row for auth.uid(). Inserts or reuses only the podcast source for (normalized_url, source_type). Rejects Spotify episode identity.';
 
 revoke all on function public.begin_hosted_audio_annotation(
-  text, text, text, text, text, text, integer, integer, text, text, text
+  text, text, text, text, text, text, integer, integer, text, text
 ) from public, anon, authenticated;
 grant execute on function public.begin_hosted_audio_annotation(
-  text, text, text, text, text, text, integer, integer, text, text, text
+  text, text, text, text, text, text, integer, integer, text, text
 ) to authenticated;
 create or replace function public.begin_hosted_spotify_annotation(
   p_normalized_url text,
@@ -817,15 +817,15 @@ end;
 $$;
 
 comment on function public.begin_hosted_spotify_annotation(
-  text, text, text, text, text, text, integer, integer, text, text, text
+  text, text, text, text, text, text, integer, integer, text, text
 ) is
   'Atomically creates a private draft Spotify episode annotation, target, generated route identity, and capture-pending hosted-audio row for auth.uid(). Reuses only the spotify source for (normalized_url, source_type). Episode-URL identity stays spotify and is not merged with podcast or article rows.';
 
 revoke all on function public.begin_hosted_spotify_annotation(
-  text, text, text, text, text, text, integer, integer, text, text, text
+  text, text, text, text, text, text, integer, integer, text, text
 ) from public, anon, authenticated;
 grant execute on function public.begin_hosted_spotify_annotation(
-  text, text, text, text, text, text, integer, integer, text, text, text
+  text, text, text, text, text, text, integer, integer, text, text
 ) to authenticated;
 
 -- Generic podcast begin must not steal Spotify episode identity.
