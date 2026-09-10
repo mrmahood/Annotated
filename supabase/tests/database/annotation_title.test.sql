@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(16);
+select plan(18);
 
 select has_column(
   'public',
@@ -16,6 +16,16 @@ select ok(
     'public.publish_article_annotation(text,text,text,text,text,text,text,text,text,text)'
   ) is not null,
   'article publish accepts optional p_title'
+);
+
+select ok(
+  has_function_privilege('authenticated', 'private.normalize_annotation_title(text)', 'execute'),
+  'authenticated can execute title normalize from invoker article publish'
+);
+
+select ok(
+  not has_function_privilege('anon', 'private.normalize_annotation_title(text)', 'execute'),
+  'anonymous clients cannot execute title normalize'
 );
 
 select ok(

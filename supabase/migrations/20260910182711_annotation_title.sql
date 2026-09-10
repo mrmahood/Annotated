@@ -47,6 +47,9 @@ comment on function private.normalize_annotation_title(text) is
 
 revoke all on function private.normalize_annotation_title(text)
   from public, anon, authenticated;
+-- SECURITY INVOKER article publish calls this helper; match attach_annotation_audio.
+grant execute on function private.normalize_annotation_title(text)
+  to authenticated;
 
 drop function if exists public.publish_article_annotation_with_audio(
   text, text, text, text, text, text, text, text, text, text, integer, text, integer
