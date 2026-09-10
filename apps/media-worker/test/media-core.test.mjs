@@ -60,6 +60,24 @@ test('capture metadata v1 always requires recapture', async () => {
   assert.throws(() => validateCaptureMetadataV2(metadata, 'audio', 15_000), errorCode('recapture_required'));
 });
 
+test('Staging 77s Spotify timing passes the recorder metadata gate', async () => {
+  const metadata = await loadMetadata('safe-audio.json');
+  metadata.timing.requested_start_ms = 28_000;
+  metadata.timing.requested_end_ms = 105_000;
+  metadata.timing.requested_duration_ms = 77_000;
+  metadata.timing.lead_in_ms = 4.900000000372529;
+  metadata.timing.recorder_elapsed_ms = 77_017;
+  metadata.timing.player_start_ms = 30_000;
+  metadata.timing.player_end_ms = 106_000;
+  assert.deepEqual(validateCaptureMetadataV2(metadata, 'audio', 77_000), {
+    requestedStartMs: 28_000,
+    requestedEndMs: 105_000,
+    requestedDurationMs: 77_000,
+    leadInMs: 4.900000000372529,
+    recorderElapsedMs: 77_017,
+  });
+});
+
 test('safe landscape, portrait, and letterboxed geometry produces bounded even crops', async () => {
   const landscape = calculateVideoCrop(await loadMetadata('safe-landscape.json'), 640, 360);
   assert.deepEqual(landscape, { x: 80, y: 44, width: 480, height: 272, scaleX: 0.5, scaleY: 0.5, offsetX: 0, offsetY: 0 });
@@ -316,6 +334,91 @@ test('Chrome N/A priming packet plus 1s-quantized playhead recovers 77s encoded 
   assert.ok(facts.durationMs >= 76_984.9 && facts.durationMs <= 79_004.9);
   assert.equal(inferNaOpusContentMs(Array.from({ length: packetCount }, (_, index) => ({
     pts: 30 + (index / (packetCount - 1)) * 76,
+    duration: 0,
+  }))), packetCount * 20);
+});
+
+function chromeTimesliceNaOpusLines({
+  clusterCount = 77,
+  packetsPerCluster = 50,
+  originSeconds = 0,
+  tailPts = null,
+  primingPts = [],
+} = {}) {
+  const lines = primingPts.map((pts) => `${Number(pts).toFixed(6)},N/A`);
+  for (let cluster = 0; cluster < clusterCount; cluster += 1) {
+    const pts = originSeconds + cluster;
+    for (let index = 0; index < packetsPerCluster; index += 1) {
+      lines.push(`${pts.toFixed(6)},N/A`);
+    }
+  }
+  if (tailPts !== null) lines.push(`${Number(tailPts).toFixed(6)},N/A`);
+  return lines;
+}
+
+test('1s timeslice Cluster timestamps are not a media-clock origin or Duration tail', () => {
+  assert.equal(inferPacketTimelineOriginSeconds([0, 1, 2, 76]), 0);
+  assert.equal(inferPacketTimelineOriginSeconds([0, 0.02, 0.04, 28, 28.02, 28.04, 105]), 28);
+  assert.equal(inferPacketTimelineEndSeconds([
+    { pts: 0, duration: 0 },
+    { pts: 1, duration: 0 },
+    { pts: 76, duration: 0 },
+    { pts: 105, duration: 0 },
+  ], 0), 76);
+  assert.equal(inferPacketTimelineEndSeconds([
+    { pts: 0, duration: 0 },
+    { pts: 0.02, duration: 0 },
+    { pts: 77, duration: 0 },
+    { pts: 105, duration: 0 },
+  ], 0), 77);
+});
+
+test('Chrome 1s timeslice N/A clusters plus a 105s media-clock tail recover 77s', () => {
+  const packetCount = 77 * 50;
+  const lines = chromeTimesliceNaOpusLines({ tailPts: 105 });
+  assert.equal(inferPacketTimelineOriginSeconds(lines.map((line) => Number(line.split(',')[0]))), 0);
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(durationMs >= 76_984.9 && durationMs <= 79_004.9);
+  assert.deepEqual(selectWebmDurationMs(105_025, durationMs), {
+    durationMs, source: 'packet_timestamps',
+  });
+
+  const audio = structuredClone(probeByName.get('audio-only.webm').probe);
+  audio.format.duration = (durationMs / 1_000).toFixed(6);
+  const facts = validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  });
+  assert.ok(facts.durationMs >= 76_984.9 && facts.durationMs <= 79_004.9);
+  assert.equal(inferNaOpusContentMs(Array.from({ length: packetCount }, (_, index) => ({
+    pts: Math.floor(index / 50),
+    duration: 0,
+  }))), packetCount * 20);
+});
+
+test('Chrome 1s timeslice clusters on a 30s–106s playhead recover 77s encoded content', () => {
+  const packetCount = 77 * 50;
+  const lines = chromeTimesliceNaOpusLines({
+    originSeconds: 30,
+    tailPts: null,
+    primingPts: [0, 0.02, 0.04],
+  });
+  assert.equal(inferPacketTimelineOriginSeconds(lines.map((line) => Number(line.split(',')[0]))), 30);
+  const durationMs = packetDurationMs(`${lines.join('\n')}\n`);
+  assert.ok(durationMs >= 76_984.9 && durationMs <= 79_004.9);
+  assert.deepEqual(selectWebmDurationMs(106_000, durationMs), {
+    durationMs, source: 'packet_timestamps',
+  });
+
+  const audio = structuredClone(probeByName.get('audio-only.webm').probe);
+  audio.format.duration = (durationMs / 1_000).toFixed(6);
+  const facts = validateRawProbe({
+    mediaType: 'audio', probe: audio, expectedByteSize: Number(audio.format.size),
+    requestedDurationMs: 77_000, leadInMs: 4.9,
+  });
+  assert.ok(facts.durationMs >= 76_984.9 && facts.durationMs <= 79_004.9);
+  assert.equal(inferNaOpusContentMs(Array.from({ length: packetCount }, (_, index) => ({
+    pts: 30 + Math.floor(index / 50),
     duration: 0,
   }))), packetCount * 20);
 });

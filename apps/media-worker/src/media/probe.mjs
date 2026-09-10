@@ -16,8 +16,14 @@ export const WEBM_DURATION_DISAGREEMENT_MS = 2_000;
 // Packet timelines that start at least 1 s after 0 are media-clock offsets, not
 // ordinary MediaRecorder priming (a few milliseconds around the origin).
 const PACKET_TIMELINE_OFFSET_MS = 1_000;
+// Production MediaRecorder uses a 1 s timeslice. Cluster boundaries therefore
+// jump by ~1 s. A media-clock origin (28 s) or Spotify currentTime tail (105 s)
+// jumps by tens of seconds. Require >1 s so the first/last timeslice is not
+// mistaken for priming or a Duration tail.
+const PACKET_TIMELINE_JUMP_MS = 2_000;
+const PACKET_TIMESLICE_SECONDS = 1;
 // A first Cluster at timecode 0 plus media-clock Blocks (28 s–105 s) must not
-// pin the origin at 0. Skip only a small prefix before a ≥1 s gap.
+// pin the origin at 0. Skip only a small prefix before a media-clock jump.
 const PACKET_ORIGIN_PREFIX_MAX_RATIO = 0.05;
 const PACKET_ORIGIN_PREFIX_MAX_SECONDS = 0.5;
 // Prefer summed packet duration_time when most packets report it. That is the
@@ -74,7 +80,7 @@ export function inferPacketTimelineOriginSeconds(sortedStartSeconds) {
     const previous = sortedStartSeconds[index - 1];
     const next = sortedStartSeconds[index];
     if (previous * 1_000 >= PACKET_TIMELINE_OFFSET_MS) break;
-    if (next - previous < PACKET_TIMELINE_OFFSET_MS / 1_000) continue;
+    if (next - previous < PACKET_TIMELINE_JUMP_MS / 1_000) continue;
     const prefixRatio = index / total;
     const prefixDuration = previous - minStart;
     const suffixCount = total - index;
@@ -97,7 +103,7 @@ export function inferPacketTimelineEndSeconds(sortedPackets, originSeconds) {
   if (originSeconds === 0) {
     for (let index = sortedPackets.length - 1; index > 0; index -= 1) {
       const gap = sortedPackets[index].pts - sortedPackets[index - 1].pts;
-      if (gap < PACKET_TIMELINE_OFFSET_MS / 1_000) continue;
+      if (gap < PACKET_TIMELINE_JUMP_MS / 1_000) continue;
       const suffixCount = sortedPackets.length - index;
       const mainCount = index;
       const mainSpanSeconds = sortedPackets[index - 1].pts - sortedPackets[0].pts;
@@ -137,8 +143,15 @@ function snapOpusFrameSeconds(medianGapSeconds) {
   return frame;
 }
 
-export function inferNaOpusContentMs(clusterPackets) {
-  if (!Array.isArray(clusterPackets) || clusterPackets.length < MIN_NA_OPUS_PACKETS) return null;
+function boundedOpusContentMs(packetCount, frameSeconds) {
+  const contentMs = packetCount * frameSeconds * 1_000;
+  if (!Number.isFinite(contentMs) || contentMs < 1_000 || contentMs > RAW_ABSOLUTE_MAX_DURATION_MS) {
+    return null;
+  }
+  return contentMs;
+}
+
+function inferNaOpusContentFromInterPacketGaps(clusterPackets) {
   const gaps = [];
   for (let index = 1; index < clusterPackets.length; index += 1) {
     const gap = clusterPackets[index].pts - clusterPackets[index - 1].pts;
@@ -147,11 +160,41 @@ export function inferNaOpusContentMs(clusterPackets) {
   if (gaps.length < MIN_NA_OPUS_PACKETS - 1) return null;
   const frameSeconds = snapOpusFrameSeconds(medianNumber(gaps));
   if (frameSeconds === null) return null;
-  const contentMs = clusterPackets.length * frameSeconds * 1_000;
-  if (!Number.isFinite(contentMs) || contentMs < 1_000 || contentMs > RAW_ABSOLUTE_MAX_DURATION_MS) {
+  return boundedOpusContentMs(clusterPackets.length, frameSeconds);
+}
+
+// Chrome 1 s timeslice WebM often stamps every Opus packet in a Cluster with
+// the Cluster timecode. Inter-packet gaps are then 0 or ~1 s, so the median
+// gap is not an Opus frame. Recover frame size as timeslice / packets-per-cluster.
+function inferNaOpusContentFromTimesliceClusters(clusterPackets) {
+  const uniquePts = [...new Set(clusterPackets.map((packet) => packet.pts))]
+    .filter((pts) => Number.isFinite(pts))
+    .sort((left, right) => left - right);
+  if (uniquePts.length < 2 || uniquePts.length > clusterPackets.length * (1 - PACKET_CONTENT_COVERAGE)) {
     return null;
   }
-  return contentMs;
+  const clusterGaps = [];
+  for (let index = 1; index < uniquePts.length; index += 1) {
+    const gap = uniquePts[index] - uniquePts[index - 1];
+    if (Number.isFinite(gap) && gap > 0) clusterGaps.push(gap);
+  }
+  if (clusterGaps.length < 1) return null;
+  const medianClusterGap = medianNumber(clusterGaps);
+  const timesliceRelative = Math.abs(medianClusterGap - PACKET_TIMESLICE_SECONDS) / PACKET_TIMESLICE_SECONDS;
+  if (!Number.isFinite(timesliceRelative) || timesliceRelative > OPUS_FRAME_SNAP_RELATIVE) {
+    return null;
+  }
+  const packetsPerCluster = clusterPackets.length / uniquePts.length;
+  if (!Number.isFinite(packetsPerCluster) || packetsPerCluster < 2) return null;
+  const frameSeconds = snapOpusFrameSeconds(PACKET_TIMESLICE_SECONDS / packetsPerCluster);
+  if (frameSeconds === null) return null;
+  return boundedOpusContentMs(clusterPackets.length, frameSeconds);
+}
+
+export function inferNaOpusContentMs(clusterPackets) {
+  if (!Array.isArray(clusterPackets) || clusterPackets.length < MIN_NA_OPUS_PACKETS) return null;
+  return inferNaOpusContentFromInterPacketGaps(clusterPackets)
+    ?? inferNaOpusContentFromTimesliceClusters(clusterPackets);
 }
 
 export function packetDurationMs(output) {
