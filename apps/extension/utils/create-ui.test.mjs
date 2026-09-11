@@ -150,7 +150,9 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
 test('Create offers one quiet title field for Text, Video, and Audio', async () => {
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /function TitleField\(/);
+  assert.match(source, /<input/);
   assert.match(source, /placeholder="Add a title…"/);
+  assert.doesNotMatch(source, /<TextWithLogoMark/);
   assert.match(source, /<TitleField id="youtube-title"/);
   assert.match(source, /<TitleField id="audio-clip-title"/);
   assert.match(source, /<TitleField id="annotation-title"/);
