@@ -184,6 +184,11 @@ function withPage(callback, overrides = {}) {
   progress.setAttribute('data-testid', 'playback-progressbar');
   progress.rect = overrides.progressRect ?? PROGRESS_RECT;
 
+  const durationClock = new ElementStub('span');
+  durationClock.setAttribute('data-testid', 'playback-duration');
+  durationClock.textContent = overrides.durationText ?? '10:00';
+  durationClock.rect = { left: 910, top: 698, right: 960, bottom: 714, width: 50, height: 16 };
+
   const play = new ElementStub('button');
   play.setAttribute('data-testid', 'control-button-playpause');
   play.setAttribute('aria-label', 'Play');
@@ -237,6 +242,8 @@ function withPage(callback, overrides = {}) {
     footer.appendChild(playerRow);
     documentElement.appendChild(footer);
   }
+
+  documentElement.appendChild(durationClock);
 
   const values = {
     location: { href: overrides.url ?? EPISODE },
@@ -446,4 +453,25 @@ test('serialized hover functions stay closure-free and do not throw', () => {
     assert.equal(apply(null).ok, false);
   });
   assert.equal(SPOTIFY_HOVER_ROOT_ID, 'annotated-sp-hover-root');
+});
+
+test('range strength paints the progress-bar cue without dimming the page', () => {
+  withPage(({ documentElement }) => {
+    const duration = documentElement.querySelector('[data-testid="playback-duration"]');
+    duration.textContent = '1:40';
+    assert.equal(applySpotifyHoverHighlightOnPage({
+      expectedEpisodeId: EPISODE_ID,
+      strength: 'range',
+      startMs: 10_000,
+      endMs: 40_000,
+    }).ok, true);
+    const root = documentElement.querySelector('#annotated-sp-hover-root');
+    assert.equal(root.dataset.strength, 'range');
+    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /display:none/);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /display:none/);
+    const cue = parseBox(root.querySelector('[data-annotated-hover-range="1"]').style.cssText);
+    assert.equal(cue.left, PROGRESS_RECT.left + PROGRESS_RECT.width * 0.1);
+    assert.equal(cue.width, PROGRESS_RECT.width * 0.3);
+    assert.equal(cue.top, PROGRESS_RECT.top);
+  });
 });
