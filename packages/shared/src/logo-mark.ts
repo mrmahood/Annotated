@@ -48,8 +48,9 @@ export function splitLogoShortcode(text: string): LogoMarkSegment[] {
   const parts = text.split(LOGO_SHORTCODE);
   const segments: LogoMarkSegment[] = [];
   for (let index = 0; index < parts.length; index += 1) {
-    if (parts[index]) {
-      segments.push({ type: 'text', value: parts[index] });
+    const part = parts[index];
+    if (part !== undefined && part !== '') {
+      segments.push({ type: 'text', value: part });
     }
     if (index < parts.length - 1) {
       segments.push({ type: 'mark' });
