@@ -65,25 +65,28 @@ button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
 button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-.panel { min-height: 100vh; }
+.panel { min-height: 100vh; display: flex; flex-direction: column; }
 .app-header { position: sticky; z-index: 10; top: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--background) 92%, transparent); backdrop-filter: blur(10px); }
 .app-bar { min-height: 40px; display: grid; grid-template-columns: 92px 1fr 92px; align-items: center; padding: 0 14px; }
 .logo-mark { display: block; width: 1.4em; height: 1.4em; flex: 0 0 auto; color: var(--text-primary); overflow: visible; }
 .logo-mark-inline { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -.22em; }
 .brand-lockup {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: .28em;
-  margin: 18px 0 0;
-  color: var(--text-muted);
+  width: 100%;
+  margin-top: auto;
+  padding-top: 18px;
+  color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 11px;
-  font-weight: 550;
+  font-weight: 650;
   letter-spacing: -.01em;
   line-height: 1;
 }
-.brand-lockup .logo-mark { width: 1em; height: 1em; color: inherit; }
-.account-view .brand-lockup { margin-top: 2px; }
+.brand-lockup .logo-mark { width: 1.15em; height: 1.15em; color: inherit; }
+.brand-lockup .logo-mark line { stroke-width: 5; }
 .view-title { grid-column: 2; text-align: center; font-size: 12px; font-weight: 650; }
 .back-button { grid-column: 1; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-small); color: var(--text-secondary); background: transparent; cursor: pointer; }
 .back-button:hover { color: var(--text-primary); background: var(--surface); }
@@ -94,6 +97,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .top-tabs button.active::after { content: ""; position: absolute; right: 18px; bottom: -1px; left: 18px; height: 1px; background: var(--text-primary); }
 
 .root-view, .detail-view, .profile-view, .view-state { padding: 18px 16px 32px; }
+.root-view { flex: 1 0 auto; display: flex; flex-direction: column; }
 .detail-source h1, .profile-header h1 { margin: 0; font-size: 20px; line-height: 1.2; letter-spacing: -.025em; }
 .visually-hidden {
   position: absolute;
@@ -348,7 +352,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .secondary-link:hover { color: var(--text-primary); text-decoration: underline; }
 .profile-view > .social-list-section { margin-top: 15px; }
 
-.account-view { display: grid; gap: 14px; }
+.account-view { flex: 1 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .account-identity { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: center; padding: 0; border: 0; background: transparent; }
 .account-avatar { width: 44px; height: 44px; font-weight: 700; }
 .account-identity div { min-width: 0; display: grid; gap: 3px; }

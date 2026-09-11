@@ -31,15 +31,25 @@ test('extension root header omits the duplicate wordmark; Me and Create keep a f
   assert.doesNotMatch(createBlock, /create-actions[\s\S]*<BrandLockup \/>[\s\S]*create-actions/);
   assert.match(config, /name: 'Annotated'/);
   assert.match(config, /default_title: 'Open Annotated'/);
+  assert.match(style, /\.panel \{ min-height: 100vh; display: flex; flex-direction: column; \}/);
+  assert.match(style, /\.root-view \{ flex: 1 0 auto; display: flex; flex-direction: column; \}/);
+  assert.match(style, /\.account-view \{ flex: 1 0 auto; display: flex; flex-direction: column; gap: 14px; \}/);
   assert.match(style, /\.brand-lockup \{/);
+  assert.match(style, /justify-content: center/);
+  assert.match(style, /margin-top: auto/);
+  assert.match(style, /color: var\(--text-primary\)/);
+  assert.match(style, /font-weight: 650/);
+  assert.match(style, /\.brand-lockup \.logo-mark \{ width: 1\.15em; height: 1\.15em; color: inherit; \}/);
+  assert.match(style, /\.brand-lockup \.logo-mark line \{ stroke-width: 5; \}/);
   assert.match(style, /\.logo-mark \{/);
   assert.match(style, /width: 1\.4em/);
-  assert.match(style, /color: var\(--text-primary\)/);
   assert.match(style, /\.logo-mark-inline \{/);
   assert.match(style, /width: 1\.2em/);
   assert.match(style, /vertical-align: -\.22em/);
   assert.doesNotMatch(style, /\.wordmark \{/);
   assert.doesNotMatch(style, /\.app-bar-root \{/);
+  assert.doesNotMatch(style, /\.account-view \.brand-lockup/);
+  assert.doesNotMatch(style, /color: var\(--text-muted\);\s*font-family: var\(--font-sans\);\s*font-size: 11px;\s*font-weight: 550/);
 });
 
 test('extension titles, commentary, and comment bodies expand |* display-only', async () => {
