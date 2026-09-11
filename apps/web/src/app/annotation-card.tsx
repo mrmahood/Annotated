@@ -8,6 +8,7 @@ import type { PublicAnnotationCardData } from "@/lib/data/public-discovery";
 import { getInitial, truncateExcerpt } from "@/lib/public-content";
 import { getPublicAnnotationPath } from "@/lib/public-routes";
 import { HostedMediaPlayer } from "./hosted-media-player";
+import { TextWithLogoMark } from "./logo-mark";
 import { PublishedAudioPlayer } from "./published-audio-player";
 
 const PASSAGE_EXCERPT_LENGTH = 360;
@@ -105,7 +106,7 @@ export function AnnotationCard({
         ) : null}
         {commentaryLead ? (
           <p className="card-commentary-lead" id={annotation.title ? undefined : headingId}>
-            {commentaryLead}
+            <TextWithLogoMark text={commentaryLead} />
           </p>
         ) : null}
         {annotation.audio && (

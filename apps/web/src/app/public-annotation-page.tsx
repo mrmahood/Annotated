@@ -16,6 +16,7 @@ import { CommentsSection } from "./a/[annotationId]/comments-section";
 import { PublishedAudioPlayer } from "./published-audio-player";
 import { FollowButton } from "./follow-button";
 import { HostedMediaPlayer } from "./hosted-media-player";
+import { TextWithLogoMark } from "./logo-mark";
 import { SiteHeader } from "./site-header";
 import { VoteControls } from "./vote-controls";
 
@@ -102,7 +103,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
                 </h1>
               )}
               {annotation.commentaryText.trim() ? (
-                <p className="commentary-text">{annotation.commentaryText}</p>
+                <p className="commentary-text"><TextWithLogoMark text={annotation.commentaryText} /></p>
               ) : null}
               {annotation.audio && (
                 <PublishedAudioPlayer publicUrl={annotation.audio.publicUrl} durationMs={annotation.audio.durationMs} />

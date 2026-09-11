@@ -8,6 +8,7 @@ import {
 import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-time-display';
 import { getTypedClipFieldError } from '../../utils/clip-range-entry';
 import { ClipRangeFields, useTypedClipRange } from './clip-range-fields';
+import { LogoMark } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
@@ -3596,7 +3597,7 @@ function App() {
     <main className="panel">
       <header className="app-header">
         <div className={`app-bar${currentScreen.kind === 'root' ? ' app-bar-root' : ''}`}>
-          {currentScreen.kind !== 'root' ? <button className="back-button" type="button" onClick={() => dispatchNavigation({ type: 'back' })} aria-label="Go back">←</button> : <span className="wordmark">ANNOTATED</span>}
+          {currentScreen.kind !== 'root' ? <button className="back-button" type="button" onClick={() => dispatchNavigation({ type: 'back' })} aria-label="Go back">←</button> : <span className="wordmark"><LogoMark />Annotated</span>}
           {currentScreen.kind !== 'root' && <span className="view-title">{currentScreen.kind === 'profile' ? 'Creator' : 'Annotation'}</span>}
         </div>
         <nav className="top-tabs" aria-label="Primary">

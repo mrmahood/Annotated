@@ -16,6 +16,7 @@ import {
 import { getInitial } from "@/lib/public-content";
 import { createClient } from "@/lib/supabase/client";
 import { ProviderSignInActions } from "../../provider-sign-in-actions";
+import { TextWithLogoMark } from "../../logo-mark";
 
 export function CommentsSection({
   annotationId,
@@ -162,7 +163,7 @@ export function CommentsSection({
                     <Link href={`/p/${comment.userId}`}>{comment.author.displayName}</Link>
                     <time dateTime={comment.createdAt}>{dateLabel}</time>
                   </div>
-                  <p className="comment-body">{comment.body}</p>
+                  <p className="comment-body"><TextWithLogoMark text={comment.body} /></p>
                   {currentUserId === comment.userId && (
                     <div className="comment-delete">
                       {confirmDeleteId === comment.id ? (
