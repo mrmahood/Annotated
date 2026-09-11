@@ -78,3 +78,6 @@ Recorded Annotated audio commentary remains article-only. Future composition
 could reuse the existing one-to-one `annotation_audio` metadata model, but it
 would require a dedicated atomic audio-clip-with-commentary publishing path;
 source audio must still remain on the original site.
+
+Store release, semver, and Staging-vs-Prod packaging are in
+`docs/product/extension-release-versioning.md`.
