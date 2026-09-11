@@ -196,7 +196,9 @@ later hover-link fades. No spring/bounce presets.
   the current playback position, plus typed start and end fields
   (`m:ss` / `h:mm:ss`, e.g. `1:00`–`2:30`) that validate 1–90 s and
   clip bounds and stay in sync with the buttons. See
-  `docs/product/roadmap.md`.
+  `docs/product/roadmap.md`. A later Pre–Phase G planned follow-on
+  (max-90s slider and 30s/60s presets; details not locked) is recorded
+  on that roadmap; it is not part of this brief.
 
 ### 5.2 Annotation cards
 
