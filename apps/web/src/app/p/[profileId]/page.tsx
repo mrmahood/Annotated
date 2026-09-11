@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 import { AnnotationCard } from "../../annotation-card";
+import { AppearanceControl } from "../../appearance-control";
 import { FollowButton } from "../../follow-button";
 import { PaginationNav } from "../../pagination-nav";
 import { SiteHeader } from "../../site-header";
@@ -113,6 +114,7 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
               initialFollowerCount={socialCounts?.followerCount ?? null}
               returnTo={getPageHref(basePath, page)}
             />
+            {currentUserId === profile.id && <AppearanceControl />}
           </div>
         </header>
 
