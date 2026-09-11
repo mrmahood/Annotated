@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  /* Sprint 1 ships dark-first. A later [data-theme] or color-scheme switch can remap these. */
+  /* Dark-first tokens. [data-theme="light"] remaps the same names. */
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --background: #0a0a0b;
   --background-elevated: #111113;
@@ -30,6 +30,31 @@
   --motion-easing: cubic-bezier(0.33, 1, 0.68, 1);
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f4f4f5;
+  --background-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-active: #e8e8eb;
+  --border: #e2e2e6;
+  --border-strong: #c8c8ce;
+  --text-primary: #111113;
+  --text-secondary: #3f3f46;
+  --text-muted: #6d6d74;
+  --text-disabled: #9a9aa1;
+  --text-evidence: #2a2a2e;
+  --accent: #4b5563;
+  --accent-fill: color-mix(in srgb, var(--accent) 14%, transparent);
+  --control-primary: #171717;
+  --control-primary-hover: #000000;
+  --control-primary-text: #fafafa;
+  --control-background: #ffffff;
+  --destructive: #dc2626;
+  --destructive-border: #fecaca;
+  --destructive-surface: #fef2f2;
+  --success: #166534;
 }
 
 * { box-sizing: border-box; }
@@ -108,7 +133,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .annotation-card-body { display: grid; gap: 10px; padding: 10px 12px 8px; }
 .annotation-title { margin: 0; color: var(--text-primary); font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .commentary-lead { margin: 0; color: var(--text-primary); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; white-space: pre-wrap; }
-.commentary-audio { display: block; width: 100%; height: 32px; color-scheme: dark; }
+.commentary-audio { display: block; width: 100%; height: 32px; color-scheme: inherit; }
 .nested-source { display: grid; gap: 8px; margin-left: 2px; padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--background-elevated); }
 .nested-source-body { width: 100%; display: grid; gap: 6px; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .nested-source-body:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
@@ -139,7 +164,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   aspect-ratio: var(--hosted-video-aspect, 9 / 16);
   object-fit: contain;
 }
-.card-hosted-media audio, .nested-source audio { width: 100%; height: 32px; color-scheme: dark; }
+.card-hosted-media audio, .nested-source audio { width: 100%; height: 32px; color-scheme: inherit; }
 .transcript-peek { margin: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .transcript-peek-segments { margin: 0; padding: 0; display: grid; gap: 4px; list-style: none; }
 .transcript-peek-segments .transcript-peek { -webkit-line-clamp: 2; }
@@ -228,7 +253,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .audio-preview { display: grid; gap: 8px; }
 .audio-preview-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .audio-preview-meta strong { font-size: 10px; }
-.audio-preview audio, .detail-audio audio { width: 100%; height: 32px; color-scheme: dark; }
+.audio-preview audio, .detail-audio audio { width: 100%; height: 32px; color-scheme: inherit; }
 .audio-preview-actions { display: flex; gap: 7px; }
 .audio-error .inline-error { margin: 0 0 8px; }
 .create-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
@@ -276,7 +301,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   aspect-ratio: var(--hosted-video-aspect, 9 / 16);
   object-fit: contain;
 }
-.detail-hosted-media audio { width: 100%; height: 32px; color-scheme: dark; }
+.detail-hosted-media audio { width: 100%; height: 32px; color-scheme: inherit; }
 .detail-transcript .transcript-text, .detail-media-removed p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .transcript-segments { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .transcript-segments li { display: grid; gap: 3px; }
@@ -320,6 +345,43 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .signed-out-account { padding: 0; border: 0; background: transparent; }
 .signed-out-account p { margin: 0 0 12px; color: var(--text-secondary); line-height: 1.5; }
 .account-sign-in-actions { display: grid; gap: 8px; }
+.appearance-control { margin: 0; padding: 0; border: 0; min-width: 0; }
+.appearance-control > .section-label { margin-bottom: 8px; }
+.appearance-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--control-background);
+}
+.appearance-segment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 6px;
+  border-radius: calc(var(--radius-small) - 2px);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.appearance-segment:hover { color: var(--text-primary); }
+.appearance-segment.selected {
+  color: var(--text-primary);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.appearance-segment input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
 
 @media (max-width: 390px) {
   .create-mode-segment { min-height: 32px; padding: 0 4px; gap: 4px; }

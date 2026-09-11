@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getHttpUrl, getOptionalText } from "@/lib/public-content";
 import { createClient } from "@/lib/supabase/server";
+import { AppearanceControl } from "./appearance-control";
 import { LogoMark } from "./logo-mark";
 import { SiteHeaderAuth, type HeaderUser } from "./site-header-auth";
 
@@ -45,7 +46,10 @@ export async function SiteHeader({
           Feed
         </Link>
       </nav>
-      <SiteHeaderAuth user={user} returnTo={returnTo} />
+      <div className="site-chrome">
+        <AppearanceControl compact />
+        <SiteHeaderAuth user={user} returnTo={returnTo} />
+      </div>
     </header>
   );
 }
