@@ -2,21 +2,44 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-test('extension root wordmark is the logo C mark plus Annotated', async () => {
-  const [app, style] = await Promise.all([
+test('extension root header omits the duplicate wordmark; Me and Create keep a footer lockup', async () => {
+  const [app, style, mark, config] = await Promise.all([
     readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/sidepanel/style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../entrypoints/sidepanel/logo-mark.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
   ]);
 
-  assert.match(app, /import \{ LogoMark \} from '\.\/logo-mark'/);
-  assert.match(app, /<span className="wordmark"><LogoMark \/>Annotated<\/span>/);
+  assert.match(app, /import \{ BrandLockup \} from '\.\/logo-mark'/);
+  assert.doesNotMatch(app, /className="wordmark"/);
+  assert.doesNotMatch(app, /app-bar-root/);
+  assert.doesNotMatch(app, /<LogoMark \/>Annotated/);
   assert.doesNotMatch(app, />ANNOTATED</);
+  assert.match(mark, /function BrandLockup/);
+  assert.match(mark, /className="brand-lockup"/);
+  assert.match(mark, /<LogoMark \/>\s*Annotated/);
+  assert.match(app, /<AppearanceControl \/>\s*<BrandLockup \/>/);
+  assert.equal(app.match(/<BrandLockup \/>/g)?.length, 2);
+  const feedBlock = app.slice(
+    app.indexOf("currentScreen.view === 'feed'"),
+    app.indexOf("currentScreen.view === 'account'"),
+  );
+  assert.doesNotMatch(feedBlock, /BrandLockup/);
+  const createBlock = app.slice(app.indexOf("currentScreen.view === 'context'"));
+  assert.match(createBlock, /<BrandLockup \/>/);
+  assert.match(createBlock, /className="create-actions"/);
+  assert.doesNotMatch(createBlock, /create-actions[\s\S]*<BrandLockup \/>[\s\S]*create-actions/);
+  assert.match(config, /name: 'Annotated'/);
+  assert.match(config, /default_title: 'Open Annotated'/);
+  assert.match(style, /\.brand-lockup \{/);
   assert.match(style, /\.logo-mark \{/);
   assert.match(style, /width: 1\.4em/);
   assert.match(style, /color: var\(--text-primary\)/);
   assert.match(style, /\.logo-mark-inline \{/);
   assert.match(style, /width: 1\.2em/);
   assert.match(style, /vertical-align: -\.22em/);
+  assert.doesNotMatch(style, /\.wordmark \{/);
+  assert.doesNotMatch(style, /\.app-bar-root \{/);
 });
 
 test('extension titles, commentary, and comment bodies expand |* display-only', async () => {

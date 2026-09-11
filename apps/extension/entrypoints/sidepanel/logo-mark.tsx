@@ -39,6 +39,15 @@ export function LogoMark({ className = 'logo-mark' }: { className?: string }) {
   );
 }
 
+export function BrandLockup() {
+  return (
+    <p className="brand-lockup">
+      <LogoMark />
+      Annotated
+    </p>
+  );
+}
+
 export function TextWithLogoMark({ text }: { text: string }) {
   return (
     <>
