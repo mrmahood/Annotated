@@ -6,7 +6,7 @@ back in Staging. Phase F F0–F5 implementation is merged on protected `main`;
 F6 owner-authorized Staging acceptance is recorded 2026-09-04. Exact Storage
 cleanup-to-zero for the media-worker buckets is recorded 2026-09-07/08 after
 an owner one-shot of `annotated-media-reconciler-staging` (schedules stayed
-paused; Production was not accessed). Updated 2026-09-08. Sprint 1 UI polish
+paused; Production was not accessed). Updated 2026-09-11. Sprint 1 UI polish
 and Sprint 2 YouTube hover linking are merged and owner-accepted on `main`;
 Sprint 3 (article/text) hover is implemented on `main`. Sprint 4
 (audio/podcast) hover is implemented pending owner Chrome acceptance. Sprint
@@ -24,9 +24,14 @@ acceptance. The Spotify hover promo/outline fix is merged as PR #90. A
 separate Create UX follow-on is **typed clip range entry** (keep Set start
 / Set end, and also type start/end such as `1:00`–`2:30`); implemented on
 `main`. The Matt-only `/ops` operator console is implemented and merged as
-PR #91. Fox / Brightcove / proprietary cross-origin news-site embeds are
-**tabled indefinitely** (Phase G / later-horizon) and are not a
-mid-September bounty blocker. X OAuth is out of Sprint 6. Staging-only X
+PR #91. Owner Q&A (2026-09-11) **locked** five **Pre–Phase G** product
+items before Production on `annotated.cbandcoop.com`: **clip range UI**
+first, then the social slice (**Share**, **Bookmark**, **What’s
+Trending**, **Who to Follow**). They are not bounty must-haves.
+Staging acceptance is required before Phase G. Fox / Brightcove /
+proprietary cross-origin news-site embeds are **tabled indefinitely**
+(Phase G / later-horizon) and are not a mid-September bounty blocker.
+X OAuth is out of Sprint 6. Staging-only X
 OAuth re-enable for the bounty submit is implemented on `main`; Production
 remains separately authorized. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
@@ -600,7 +605,11 @@ Phase F implementation, owner-authorized Staging acceptance, and
 product work is not Phase G. Default recommendation, unless the owner
 pulls an item forward: remaining **extension UI polish** (owner Chrome
 acceptance where still pending) and **X OAuth re-enable for the
-mid-September bounty submit**. Fox / Brightcove / proprietary
+mid-September bounty submit**. Owner Q&A (2026-09-11) **locked** five
+**Pre–Phase G** items so they land before Production on
+`annotated.cbandcoop.com`: clip range UI first, then the social slice;
+see Pre–Phase G below. They are not bounty must-haves. Staging
+acceptance is required before Phase G. Fox / Brightcove / proprietary
 cross-origin news-site embeds are tabled indefinitely and are not in
 this near-term sequence. Phase G Production launch and hardening remain
 separately authorized.
@@ -754,7 +763,10 @@ separately authorized.
   1,000–90,000 ms; duration 1–90 s). Set start / Set end remain
   alternate paths and stay in sync with the typed fields. Applies to
   YouTube, TikTok, Spotify episode, podcast / audio, and webpage
-  video/audio as those paths exist.
+  video/audio as those paths exist. Pre–Phase G **clip range UI**
+  (locked; ships first before the social slice) replaces Set start /
+  Set end **entirely** with a dual-handle max-90s range slider. See
+  Pre–Phase G below.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit. Owner-authorized 2026-09-05/06. This
   increment turns the existing E2b/E2c/Gate 3 Staging capability back on
@@ -799,13 +811,70 @@ separately authorized.
   - Out of scope: multi-operator RBAC, public appeals, email, analytics
     dashboards, editing claims content, Production-only features.
 - **Phase G Production launch and hardening** remains a separate phase with
-  its own authorization; it is not the next increment after F. Fox /
-  Brightcove / proprietary cross-origin news-site embeds live on that
-  later-horizon, not in the mid-September bounty sequence.
+  its own authorization; it is not the next increment after F. Owner Q&A
+  (2026-09-11) locked **clip range UI**, then the **social slice**,
+  before this phase. They are not bounty must-haves. Staging acceptance
+  is required before Phase G. Fox / Brightcove / proprietary
+  cross-origin news-site embeds live on that later-horizon, not in the
+  mid-September bounty sequence.
+
+## Pre–Phase G — locked
+
+Owner Q&A completed 2026-09-11. These items land **before Phase G**
+(Production on `annotated.cbandcoop.com`). Sequence: **clip range UI
+first**, then the **social slice**, then Phase G. They are not
+mid-September bounty must-haves. This section locks the product
+contract; it does not implement the features or authorize Staging apply
+or Production. Staging acceptance is required before Phase G. Hosted
+range limits remain 1,000–90,000 ms. Article publication, draft-first
+hosted media, and the accepted capture/upload pipeline are unchanged.
+
+### Clip range UI (extension Create) — ship first
+
+Replace **Set start** / **Set end** **entirely**. No fallback start/end
+buttons.
+
+- Dual-handle **range** slider; max span **90s**.
+- Preset buttons **30s** and **60s**: place a window from the **current
+  playhead forward**, then the user adjusts handles side-to-side.
+- Applies to **Video Create and Audio Create** (Spotify / podcasts).
+- Extension **Preview play**: seeks and plays **only the selected
+  range** in the connected browser tab and **stops at end**. Native
+  YouTube / audio controls remain normal; the selected range stays
+  marked on the page.
+- Chrome: start/end **timecode readout**; **snap to whole seconds**;
+  **remaining-to-90** indicator; **disable Publish** until a valid
+  ≤90s range is set.
+
+### Social slice — ship second (after clip UI)
+
+**Share an annotation.** In-ecosystem **reshare** onto the signed-in
+user’s Annotated feed. Requires an Annotated profile / auth. Optional
+comment / annotate-on-share. Followers may see the share in their
+feed. **Not** copy-link, Web Share, or X intent for v1. Surfaces:
+**web + extension**.
+
+**Bookmark an annotation.** **Private** for the signed-in user only.
+If logged out, prompt Google / X sign-in. Flat list on **Me**. No
+folders and no public save counts in v1.
+
+**What’s Trending.** **Web Feed homepage section**. **7-day** window.
+v1 score: `3×comments_7d + 2×unique_commenters_7d + 2×follows_on_author_7d + 1×reshares_7d + recency_boost (~48h half-life) + manual /ops boost`.
+
+**Max one card per author.** No new view-telemetry for v1. Production
+or demo may need seeded demo data.
+
+**Who to Follow.** **Curated** placeholders (X-lookalike) until the
+accounts exist; resolve when they sign in with that X identity.
+Seeds: **@jason** (Jason Calacanis), **@davidscornik**, **@chamath**,
+**@friedberg**, plus **Matt** when a public Annotated / X profile
+exists.
 
 ## Phase G — future
 
-Production launch and hardening:
+Production launch and hardening. Locked Pre–Phase G items above (clip
+UI first, then the social slice) land first per owner Q&A (2026-09-11);
+this phase remains separately authorized. Staging before Phase G.
 
 - The Production hostname is `annotated.cbandcoop.com`. `cbandcoop.com` remains
   the consultancy site managed through Lovable and Bluehost WordPress Plus;
@@ -880,4 +949,8 @@ section. Exact Storage cleanup-to-zero for the media-worker buckets is
 recorded 2026-09-07/08 after a one-shot `annotated-media-reconciler-staging`
 run. Production was not accessed; worker schedules remain paused. Legacy
 `annotation-audio` objects remain an optional follow-up, not an F6
-cleanup-to-zero blocker.
+cleanup-to-zero blocker. Owner Q&A (2026-09-11) locked five Pre–Phase G
+items (clip range UI first, then Share / Bookmark / What’s Trending /
+Who to Follow) so they land before Production on
+`annotated.cbandcoop.com`; they are not bounty must-haves. Staging
+before Phase G.
