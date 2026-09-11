@@ -137,7 +137,8 @@ test('Create Video and Audio use a dual-handle clip slider instead of Set start 
   assert.match(fields, /aria-label="Clip start"/);
   assert.match(fields, /aria-label="Clip end"/);
   assert.match(fields, /CLIP_PRESETS/);
-  assert.match(fields, /Preview range/);
+  assert.match(fields, /previewLabel/);
+  assert.match(source, /Preview range/);
   assert.match(fields, /id=\{startId\}/);
   assert.match(fields, /id=\{endId\}/);
   assert.match(fields, /placeholder="1:00"/);
