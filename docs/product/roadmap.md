@@ -28,7 +28,10 @@ PR #91. Owner Q&A (2026-09-11) **locked** five **Pre–Phase G** product
 items before Production on `annotated.cbandcoop.com`: **clip range UI**
 first, then the social slice (**Share**, **Bookmark**, **What’s
 Trending**, **Who to Follow**). They are not bounty must-haves.
-Staging acceptance is required before Phase G. Fox / Brightcove /
+This increment implements the locked **clip range UI**: dual-handle
+range, 30s/60s presets from the playhead, preview that stops at end,
+and typed start/end as secondary. Set start / Set end buttons are
+replaced. Staging acceptance is required before Phase G. Fox / Brightcove /
 proprietary cross-origin news-site embeds are **tabled indefinitely**
 (Phase G / later-horizon) and are not a mid-September bounty blocker.
 X OAuth is out of Sprint 6. Staging-only X
@@ -763,10 +766,20 @@ separately authorized.
   1,000–90,000 ms; duration 1–90 s). Set start / Set end remain
   alternate paths and stay in sync with the typed fields. Applies to
   YouTube, TikTok, Spotify episode, podcast / audio, and webpage
-  video/audio as those paths exist. Pre–Phase G **clip range UI**
-  (locked; ships first before the social slice) replaces Set start /
-  Set end **entirely** with a dual-handle max-90s range slider. See
-  Pre–Phase G below.
+  video/audio as those paths exist.
+- **Clip range slider** (Pre–Phase G clip range UI; Video + Audio
+  Create; implemented in this increment). Dual-handle range slider
+  replaces Set start / Set end entirely per the locked Pre–Phase G
+  contract. Preset buttons **30s** and **60s** set a window from the
+  current playhead forward, clamped to media duration and the
+  90-second product ceiling. Handles snap to whole seconds. Chrome
+  shows a start/end timecode readout and remaining-to-90 budget.
+  Publish stays disabled until a valid ≤90s range exists. Preview
+  plays only the selected range on the host player and stops at the
+  end; native page controls still work. Typed `m:ss` / `h:mm:ss`
+  fields remain as secondary input and stay in sync with the slider.
+  Applies to YouTube, TikTok, Spotify episode, podcast / audio, and
+  webpage video/audio. Not Text Create. See Pre–Phase G below.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
   the mid-September bounty submit. Owner-authorized 2026-09-05/06. This
   increment turns the existing E2b/E2c/Gate 3 Staging capability back on
@@ -824,15 +837,17 @@ Owner Q&A completed 2026-09-11. These items land **before Phase G**
 (Production on `annotated.cbandcoop.com`). Sequence: **clip range UI
 first**, then the **social slice**, then Phase G. They are not
 mid-September bounty must-haves. This section locks the product
-contract; it does not implement the features or authorize Staging apply
-or Production. Staging acceptance is required before Phase G. Hosted
+contract; it does not authorize Staging apply or Production. Clip
+range UI is implemented in this increment (owner Chrome acceptance
+still required). The social slice remains unimplemented. Staging
+acceptance is required before Phase G. Hosted
 range limits remain 1,000–90,000 ms. Article publication, draft-first
 hosted media, and the accepted capture/upload pipeline are unchanged.
 
 ### Clip range UI (extension Create) — ship first
 
-Replace **Set start** / **Set end** **entirely**. No fallback start/end
-buttons.
+Implemented in this increment. Replace **Set start** / **Set end**
+**entirely**. No fallback start/end buttons.
 
 - Dual-handle **range** slider; max span **90s**.
 - Preset buttons **30s** and **60s**: place a window from the **current

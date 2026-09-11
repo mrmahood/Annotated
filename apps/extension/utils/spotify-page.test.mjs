@@ -301,6 +301,82 @@ test('Jump seeks a logged-out preview-window slider from 5:59 to 5:00', async ()
   }
 });
 
+test('preview stops the now-playing bar at the selected end', async () => {
+  const episodeId = '6EMoFpxEsLelogfZz8eAC2';
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < episodeId.length; index += 1) {
+    hash ^= episodeId.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  const identity = `spotify-now-playing:1:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  const names = ['location', 'document', 'window', 'HTMLElement', 'HTMLInputElement'];
+  const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  class FakeElement {
+    constructor(text, label) {
+      this.textContent = text ?? '';
+      this.label = label ?? '';
+      this.clicked = false;
+    }
+    getAttribute(name) { return name === 'aria-label' ? this.label : null; }
+    getBoundingClientRect() {
+      return { x: 0, y: 640, width: 1280, height: 80, top: 640, right: 1280, bottom: 720, left: 0 };
+    }
+    click() { this.clicked = true; this.label = 'Play'; }
+    querySelector(selector) { return selector.includes('input') ? slider : null; }
+  }
+  class FakeInput {
+    constructor() {
+      this.min = '0';
+      this.max = '90';
+      this.type = 'range';
+      this.value = '8';
+    }
+    dispatchEvent() {
+      position.textContent = '0:08';
+      return true;
+    }
+  }
+  const position = new FakeElement('0:08');
+  const duration = new FakeElement('1:00:06');
+  const playButton = new FakeElement('', 'Pause');
+  const progress = new FakeElement();
+  const slider = new FakeInput();
+  const host = { setTimeout, setInterval, clearInterval, innerWidth: 1280, innerHeight: 720 };
+  try {
+    Object.defineProperty(globalThis, 'location', { configurable: true, value: { href: `https://open.spotify.com/episode/${episodeId}` } });
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        querySelector(selector) {
+          if (selector.includes('playback-position')) return position;
+          if (selector.includes('playback-duration')) return duration;
+          if (selector.includes('control-button-playpause')) return playButton;
+          if (selector.includes('playback-progressbar') && selector.includes('input')) return slider;
+          if (selector.includes('playback-progressbar')) return progress;
+          return null;
+        },
+        elementFromPoint() { return progress; },
+      },
+    });
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: host });
+    Object.defineProperty(globalThis, 'HTMLElement', { configurable: true, value: FakeElement });
+    Object.defineProperty(globalThis, 'HTMLInputElement', { configurable: true, value: FakeInput });
+    const started = await actOnSpotifyPlayer(identity, episodeId, 'preview', 8, 12);
+    assert.equal(started.ok, true);
+    position.textContent = '0:12';
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(playButton.clicked, true);
+    assert.equal(playButton.label, 'Play');
+  } finally {
+    if (typeof host.__annotatedClipPreview?.stop === 'function') host.__annotatedClipPreview.stop();
+    for (const name of names) {
+      const descriptor = previous.get(name);
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  }
+});
+
 test('player state fails closed on unreadable or inverted times', () => {
   assert.deepEqual(validateSpotifyPlayerState({
     currentTime: 12.4, duration: 90, paused: false,

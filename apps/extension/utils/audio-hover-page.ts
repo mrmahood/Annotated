@@ -1,6 +1,6 @@
 export const AUDIO_HOVER_ROOT_ID = 'annotated-audio-hover-root';
 
-export type AudioHoverStrength = 'soft' | 'strong';
+export type AudioHoverStrength = 'soft' | 'strong' | 'range';
 
 export type AudioHoverPageRequest = {
   expectedNormalizedUrl: string;
@@ -174,7 +174,7 @@ export function applyAudioHoverHighlightOnPage(
       !request ||
       typeof request.expectedNormalizedUrl !== 'string' ||
       !request.expectedNormalizedUrl.trim() ||
-      (request.strength !== 'soft' && request.strength !== 'strong')
+      (request.strength !== 'soft' && request.strength !== 'strong' && request.strength !== 'range')
     ) {
       removeRoot();
       return { ok: false, reason: 'invalid-request' };
@@ -414,6 +414,7 @@ export function applyAudioHoverHighlightOnPage(
       };
     };
 
+    const rangeOnly = request.strength === 'range';
     const strong = request.strength === 'strong';
     const dimOpacity = strong ? 0.12 : 0.09;
     const ringWidth = strong ? 3 : 2;
@@ -455,21 +456,26 @@ export function applyAudioHoverHighlightOnPage(
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
-      writeCss(dim, [
-        'position:fixed',
-        'inset:0',
-        `background:rgba(0,0,0,${dimOpacity})`,
-        `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
-      ].join(';'));
-      writeCss(ring, [
-        'position:fixed',
-        `top:${rect.top}px`,
-        `left:${rect.left}px`,
-        `width:${Math.max(0, rect.width)}px`,
-        `height:${Math.max(0, rect.height)}px`,
-        `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
-        'border-radius:2px',
-      ].join(';'));
+      if (rangeOnly) {
+        writeCss(dim, 'display:none');
+        writeCss(ring, 'display:none');
+      } else {
+        writeCss(dim, [
+          'position:fixed',
+          'inset:0',
+          `background:rgba(0,0,0,${dimOpacity})`,
+          `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
+        ].join(';'));
+        writeCss(ring, [
+          'position:fixed',
+          `top:${rect.top}px`,
+          `left:${rect.left}px`,
+          `width:${Math.max(0, rect.width)}px`,
+          `height:${Math.max(0, rect.height)}px`,
+          `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
+          'border-radius:2px',
+        ].join(';'));
+      }
 
       const bar = findScrubber(player);
       const durationMs = mediaDurationMs(media) ?? sliderDurationMs(bar);

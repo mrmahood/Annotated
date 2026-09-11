@@ -428,12 +428,13 @@ export function readSpotifyPlayerDiscovery() {
   };
 }
 
-// Serialized into the connected tab for Set start / Set end / preview / capture.
+// Serialized into the connected tab for preview / capture / playhead reads.
 export async function actOnSpotifyPlayer(
   expectedIdentity: string,
   expectedEpisodeId: string,
-  action: 'read' | 'play',
+  action: 'read' | 'play' | 'preview',
   startSeconds: number | null,
+  endSeconds: number | null = null,
 ): Promise<PlayerActionResult> {
   const digest = (value: string) => {
     let hash = 0x811c9dc5;
@@ -470,7 +471,11 @@ export async function actOnSpotifyPlayer(
     return hours * 3_600 + minutes * 60 + seconds;
   };
   if (!expectedIdentity || !/^[A-Za-z0-9]{22}$/.test(expectedEpisodeId) ||
-    (action === 'play' && (startSeconds === null || !Number.isFinite(startSeconds) || startSeconds < 0))
+    ((action === 'play' || action === 'preview') && (
+      startSeconds === null || !Number.isFinite(startSeconds) || startSeconds < 0
+    )) || (action === 'preview' && (
+      endSeconds === null || !Number.isFinite(endSeconds) || endSeconds <= startSeconds!
+    ))
   ) {
     return { ok: false, reason: 'invalid-request' };
   }
@@ -616,10 +621,41 @@ export async function actOnSpotifyPlayer(
     }
     return true;
   };
-  if (action === 'play') {
+  if (action === 'play' || action === 'preview') {
+    const host = window as Window & { __annotatedClipPreview?: { stop: () => void } };
+    if (host.__annotatedClipPreview && typeof host.__annotatedClipPreview.stop === 'function') {
+      host.__annotatedClipPreview.stop();
+    }
     const sought = await seekNowPlaying(startSeconds!);
     if (!sought.ok) return { ok: false, reason: sought.reason };
     if (!pressPlayIfPaused()) return { ok: false, reason: 'playback-failed' };
+    if (action === 'preview') {
+      const stopAt = endSeconds!;
+      let stopped = false;
+      const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        window.clearInterval(timer);
+        if (host.__annotatedClipPreview?.stop === stop) delete host.__annotatedClipPreview;
+      };
+      const timer = window.setInterval(() => {
+        const clock = readClock();
+        if (clock.position === null) return;
+        const playButton = document.querySelector<HTMLElement>('[data-testid="control-button-playpause"]');
+        const playLabel = clean(playButton?.getAttribute('aria-label'));
+        if (playButton && /play/i.test(playLabel) && !/pause/i.test(playLabel) && clock.position + 0.05 < stopAt) {
+          stop();
+          return;
+        }
+        if (clock.position + 0.05 >= stopAt) {
+          if (playButton && /pause/i.test(playLabel)) {
+            try { playButton.click(); } catch { /* Best-effort stop. */ }
+          }
+          stop();
+        }
+      }, 100);
+      host.__annotatedClipPreview = { stop };
+    }
     const next = readClock();
     return {
       ok: true,

@@ -10,7 +10,7 @@ import {
   typedClipFieldsAllowPublish,
 } from './clip-range-entry.ts';
 
-test('typing a valid m:ss start commits milliseconds and stays in sync with Set start', () => {
+test('typing a valid m:ss start commits milliseconds and stays in sync with the slider', () => {
   const typed = applyTypedClipFieldInput('1:00', false);
   assert.equal(typed.updateMilliseconds, true);
   assert.equal(typed.milliseconds, 60_000);

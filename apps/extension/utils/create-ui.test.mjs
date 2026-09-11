@@ -43,7 +43,7 @@ test('the switcher and editor actions have explicit 390 and 340 pixel contracts'
   assert.match(style, /@media \(max-width: 340px\)/);
   assert.match(style, /\.create-mode-segment \{ min-height: 32px;/);
   assert.match(style, /\.create-mode-segmented \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
-  assert.match(style, /\.clip-control-row \{ grid-template-columns: 1fr; \}/);
+  assert.match(style, /\.clip-preset-row \{ grid-template-columns: 1fr; \}/);
   assert.match(style, /\.clip-time-grid-editable \{ grid-template-columns: 1fr; \}/);
   assert.match(style, /\.create-actions \{ grid-template-columns: 1fr; \}/);
   assert.match(style, /--accent:/);
@@ -61,20 +61,21 @@ test('player selection is a bounded native radio group and gates every clip acti
   assert.match(source, /type="radio"\s+name=\{`\$\{mode\}-player`\}/);
   assert.match(source, /\{index \+ 1\} of \{discovery\.candidates\.length\}/);
   assert.match(source, /Too many \{label\} players/);
-  assert.match(source, /disabled=\{!videoPlayerSelected/);
-  assert.match(source, /disabled=\{!audioPlayerSelected/);
+  assert.match(source, /playerSelected=\{videoPlayerSelected\}/);
+  assert.match(source, /playerSelected=\{audioPlayerSelected\}/);
   assert.match(source, /getPlayerActionToken\('video'/);
   assert.match(source, /getPlayerActionToken\('audio'/);
   assert.match(source, /runSelectedPlayerAction\(token,/);
   assert.match(source, /playerTokenIsCurrent\(token\)/);
   assert.match(source, /videoRangeDisplay\.length/);
   assert.match(source, /audioRangeDisplay\.length/);
-  assert.match(source, /<ClipRangeFields/);
+  assert.match(source, /<ClipRangeEditor/);
   assert.match(source, /idPrefix="video"/);
   assert.match(source, /idPrefix="audio"/);
-  assert.match(source, /Set start/);
-  assert.match(source, /Set end/);
-  assert.match(source, /type times such as 1:00 and 2:30/);
+  assert.match(source, /Preview range/);
+  assert.doesNotMatch(source, /Set start/);
+  assert.doesNotMatch(source, /Set end/);
+  assert.match(source, /Drag the clip range/);
   assert.match(style, /\.player-option-label[^}]*overflow-wrap: anywhere/);
 });
 
@@ -116,7 +117,7 @@ test('generic webpage video publishes through the article-backed hosted begin pa
   assert.doesNotMatch(source, /Brightcove|brightcove|cross-origin adapter/);
 });
 
-test('Create Video and Audio keep Set start / Set end and add typed clip fields', async () => {
+test('Create Video and Audio use a dual-handle clip slider instead of Set start / Set end', async () => {
   const [source, fields, style, capabilities] = await Promise.all([
     readFile(APP_URL, 'utf8'),
     readFile(new URL('../entrypoints/sidepanel/clip-range-fields.tsx', import.meta.url), 'utf8'),
@@ -128,13 +129,23 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(source, /commitAudioRange/);
   assert.match(source, /videoRangeEntry\.allowsPublish/);
   assert.match(source, /audioRangeEntry\.allowsPublish/);
-  assert.match(source, />Set start</);
-  assert.match(source, />Set end</);
+  assert.match(source, /applyMediaClipPreset/);
+  assert.match(source, /applyClipPresetFromPlayhead/);
+  assert.doesNotMatch(source, />Set start</);
+  assert.doesNotMatch(source, />Set end</);
+  assert.match(fields, /ClipRangeEditor/);
+  assert.match(fields, /aria-label="Clip start"/);
+  assert.match(fields, /aria-label="Clip end"/);
+  assert.match(fields, /CLIP_PRESETS/);
+  assert.match(fields, /Preview range/);
   assert.match(fields, /id=\{startId\}/);
   assert.match(fields, /id=\{endId\}/);
   assert.match(fields, /placeholder="1:00"/);
   assert.match(fields, /placeholder="2:30"/);
   assert.match(fields, /htmlFor=\{startId\}/);
+  assert.match(style, /\.clip-range-slider input\[type="range"\]/);
+  assert.match(style, /\.clip-range-readout/);
+  assert.match(style, /\.clip-preset-row/);
   assert.match(style, /\.clip-time-grid input \{/);
   assert.match(style, /\.clip-field-error/);
   assert.match(source, /getSpotifyEpisodeIdentity/);
@@ -142,7 +153,8 @@ test('Create Video and Audio keep Set start / Set end and add typed clip fields'
   assert.match(source, /Spotify episode/);
   assert.match(source, /kind: 'spotify'/);
   assert.match(capabilities, /Start the preview, or sign in if it is gated/);
-  assert.match(source, /Preview \/ Jump to start and Publish seek the now-playing bar to the clip start/);
+  assert.equal([...source.matchAll(/<ClipRangeEditor/g)].length, 2);
+  assert.match(source, /Preview plays only that range on the now-playing bar and stops at the end/);
   assert.match(source, /The Spotify player could not seek to the clip start/);
   assert.doesNotMatch(source, /Sign in to Spotify in this tab to capture an episode/);
 });

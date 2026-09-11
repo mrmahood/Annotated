@@ -1,6 +1,6 @@
 export const YOUTUBE_HOVER_ROOT_ID = 'annotated-yt-hover-root';
 
-export type YouTubeHoverStrength = 'soft' | 'strong';
+export type YouTubeHoverStrength = 'soft' | 'strong' | 'range';
 
 export type YouTubeHoverPageRequest = {
   expectedVideoId: string;
@@ -67,7 +67,7 @@ export function applyYouTubeHoverHighlightOnPage(
       !request ||
       typeof request.expectedVideoId !== 'string' ||
       !/^[A-Za-z0-9_-]{11}$/.test(request.expectedVideoId) ||
-      (request.strength !== 'soft' && request.strength !== 'strong')
+      (request.strength !== 'soft' && request.strength !== 'strong' && request.strength !== 'range')
     ) {
       removeRoot();
       return { ok: false, reason: 'invalid-request' };
@@ -144,6 +144,7 @@ export function applyYouTubeHoverHighlightOnPage(
     // Same inset amber grammar as TikTok Feed hover. Keep these tokens
     // duplicated here: this function is serialized into the tab and must
     // stay self-contained.
+    const rangeOnly = request.strength === 'range';
     const strong = request.strength === 'strong';
     const dimOpacity = strong ? 0.14 : 0.1;
     const ringWidth = strong ? 4 : 3;
@@ -186,23 +187,28 @@ export function applyYouTubeHoverHighlightOnPage(
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
-      writeCss(dim, [
-        'position:fixed',
-        'inset:0',
-        `background:rgba(0,0,0,${dimOpacity})`,
-        `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
-      ].join(';'));
-      const insetX = Math.min(ringInset, Math.max(0, (rect.width - 24) / 2));
-      const insetY = Math.min(ringInset, Math.max(0, (rect.height - 24) / 2));
-      writeCss(ring, [
-        'position:fixed',
-        `top:${rect.top + insetY}px`,
-        `left:${rect.left + insetX}px`,
-        `width:${Math.max(0, rect.width - insetX * 2)}px`,
-        `height:${Math.max(0, rect.height - insetY * 2)}px`,
-        `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
-        'border-radius:4px',
-      ].join(';'));
+      if (rangeOnly) {
+        writeCss(dim, 'display:none');
+        writeCss(ring, 'display:none');
+      } else {
+        writeCss(dim, [
+          'position:fixed',
+          'inset:0',
+          `background:rgba(0,0,0,${dimOpacity})`,
+          `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
+        ].join(';'));
+        const insetX = Math.min(ringInset, Math.max(0, (rect.width - 24) / 2));
+        const insetY = Math.min(ringInset, Math.max(0, (rect.height - 24) / 2));
+        writeCss(ring, [
+          'position:fixed',
+          `top:${rect.top + insetY}px`,
+          `left:${rect.left + insetX}px`,
+          `width:${Math.max(0, rect.width - insetX * 2)}px`,
+          `height:${Math.max(0, rect.height - insetY * 2)}px`,
+          `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
+          'border-radius:4px',
+        ].join(';'));
+      }
 
       const bar = player.querySelector('.ytp-progress-bar, .ytp-progress-bar-container, .ytp-chrome-bottom');
       const video = player.querySelector('video') ?? document.querySelector('video');
@@ -263,6 +269,7 @@ export function applyYouTubeHoverHighlightOnPage(
 
     if (
       request.strength !== 'soft' &&
+      request.strength !== 'range' &&
       typeof request.seekMs === 'number' &&
       Number.isFinite(request.seekMs) &&
       request.seekMs >= 0

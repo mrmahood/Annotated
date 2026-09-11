@@ -14,7 +14,11 @@ episode audio capture + hover is implemented on `main`
 fix is PR #90. Typed clip range entry
 (type start/end such as `1:00`–`2:30` in addition to Set start /
 Set end) is a separate Create UX follow-on; it is implemented on
-`main`. Fox / Brightcove / proprietary cross-origin news-site embeds
+`main`. Pre–Phase G **clip range UI** (locked; dual-handle slider,
+30s/60s playhead-forward presets, Preview stop-at-end; no Set
+start / Set end) is implemented in this increment, with typed
+start/end as secondary. Fox / Brightcove /
+proprietary cross-origin news-site embeds
 are tabled indefinitely (Phase G / later-horizon) and are not a
 bounty blocker. Approving the polish sections does not authorize
 Staging apply, Production, or Phase G. X OAuth Staging re-enable is a separate
@@ -192,14 +196,17 @@ later hover-link fades. No spring/bounce presets.
   capture/upload. The confirm UI is the mode-switch dialog in `App.tsx`.
 - Independent per-mode drafts, recommended vs selected vs available, and
   honest restart/recovery are Phase E behavior and stay.
-- Hosted Video / Audio range entry is **Set start** / **Set end** at
-  the current playback position, plus typed start and end fields
-  (`m:ss` / `h:mm:ss`, e.g. `1:00`–`2:30`) that validate 1–90 s and
-  clip bounds and stay in sync with the buttons. See
-  `docs/product/roadmap.md`. Pre–Phase G **clip range UI** (locked;
-  ships first in that sequence) replaces Set start / Set end entirely
-  with a dual-handle max-90s range slider, 30s/60s playhead-forward
-  presets, and Preview play; it is not part of this brief.
+- Hosted Video / Audio range entry on `main` was **Set start** /
+  **Set end** at the current playback position, plus typed start
+  and end fields (`m:ss` / `h:mm:ss`, e.g. `1:00`–`2:30`) that
+  validate 1–90 s and clip bounds and stay in sync with the
+  buttons. This increment implements the locked Pre–Phase G
+  **clip range UI**: a dual-handle **clip slider** (30s / 60s
+  presets from the playhead, ≤90 s, snap to whole seconds) with
+  typed start and end fields as secondary input. Set start /
+  Set end buttons are gone. Preview plays the selected range
+  and stops at end. See `docs/product/roadmap.md`. The control
+  is not part of this brief’s polish sprint slices.
 
 ### 5.2 Annotation cards
 
@@ -574,7 +581,9 @@ Out of this brief’s implementation slices:
 - Spotify Production apply or Cloud Run unpause. Staging apply for
   `20260906031846_begin_hosted_spotify_annotation` is owner-only.
 - Typed clip range entry is implemented as a separate Create UX
-  increment, not as part of the hover sprints.
+  increment, not as part of the hover sprints. Pre–Phase G clip
+  range UI (dual-handle slider replacing Set start / Set end) is
+  implemented in the clip-slider increment, not here.
 
 Later options (not Sprint 1 unless noted):
 
@@ -591,7 +600,8 @@ Staging acceptance. Spotify episode capture + hover is implemented
 on `main` (hover promo/outline fix PR #90) pending owner Chrome and
 Staging acceptance. Typed
 start/end clip fields are a separate Create UX follow-on and are
-not authorized here. Do not treat this brief as permission to
+not authorized here. Pre–Phase G clip range UI is implemented
+in a separate increment, not by this brief. Do not treat this brief as permission to
 change capture, hosted-media publication, claims, or extension
 permissions beyond the later owner-authorized webpage-video
 publication increment and the owner-authorized Sprint 6 TikTok

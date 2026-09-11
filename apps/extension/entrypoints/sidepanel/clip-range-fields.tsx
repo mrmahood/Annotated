@@ -2,11 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import {
   applyTypedClipFieldInput,
   fieldFromMilliseconds,
-  getTypedClipFieldError,
   syncTypedClipFieldFromMilliseconds,
   typedClipFieldsAllowPublish,
   type TypedClipField,
 } from '../../utils/clip-range-entry';
+import {
+  CLIP_PRESETS,
+  formatClipBudgetLabel,
+  formatClipSpanReadout,
+  getClipBudget,
+  mediaDurationSliderMaxMs,
+  moveClipHandle,
+  snapMsToWholeSeconds,
+} from '../../utils/clip-range';
 
 export function useTypedClipRange(
   startMs: number | null,
@@ -56,14 +64,24 @@ export function useTypedClipRange(
 
   const commitStart = () => {
     const result = applyTypedClipFieldInput(startFieldRef.current.text, true);
-    setStartField(result.field);
-    if (result.updateMilliseconds) onCommitRef.current(result.milliseconds, endMsRef.current);
+    const milliseconds = result.milliseconds === null ? null : snapMsToWholeSeconds(result.milliseconds);
+    setStartField(
+      result.updateMilliseconds && milliseconds !== result.milliseconds
+        ? fieldFromMilliseconds(milliseconds)
+        : result.field,
+    );
+    if (result.updateMilliseconds) onCommitRef.current(milliseconds, endMsRef.current);
   };
 
   const commitEnd = () => {
     const result = applyTypedClipFieldInput(endFieldRef.current.text, true);
-    setEndField(result.field);
-    if (result.updateMilliseconds) onCommitRef.current(startMsRef.current, result.milliseconds);
+    const milliseconds = result.milliseconds === null ? null : snapMsToWholeSeconds(result.milliseconds);
+    setEndField(
+      result.updateMilliseconds && milliseconds !== result.milliseconds
+        ? fieldFromMilliseconds(milliseconds)
+        : result.field,
+    );
+    if (result.updateMilliseconds) onCommitRef.current(startMsRef.current, milliseconds);
   };
 
   return {
@@ -153,5 +171,161 @@ export function ClipRangeFields({
         <dd>{lengthDisplay}</dd>
       </div>
     </dl>
+  );
+}
+
+export function ClipRangeEditor({
+  idPrefix,
+  startMs,
+  endMs,
+  durationMs,
+  startField,
+  endField,
+  lengthDisplay,
+  startError,
+  endError,
+  rangeError,
+  disabled,
+  playerSelected,
+  playerReading,
+  previewEnabled,
+  previewLabel,
+  onCommitRange,
+  onStartChange,
+  onEndChange,
+  onStartBlur,
+  onEndBlur,
+  onPreset,
+  onPreview,
+  onRefresh,
+}: {
+  idPrefix: string;
+  startMs: number | null;
+  endMs: number | null;
+  durationMs: number | null;
+  startField: TypedClipField;
+  endField: TypedClipField;
+  lengthDisplay: string;
+  startError: string | null;
+  endError: string | null;
+  rangeError: string | null;
+  disabled: boolean;
+  playerSelected: boolean;
+  playerReading: boolean;
+  previewEnabled: boolean;
+  previewLabel: string;
+  onCommitRange: (startMs: number, endMs: number) => void;
+  onStartChange: (text: string) => void;
+  onEndChange: (text: string) => void;
+  onStartBlur: () => void;
+  onEndBlur: () => void;
+  onPreset: (durationMs: number) => void;
+  onPreview: () => void;
+  onRefresh: () => void;
+}) {
+  const maxMs = mediaDurationSliderMaxMs(durationMs);
+  const maxSeconds = maxMs === null ? 0 : maxMs / 1_000;
+  const startSeconds = startMs === null ? 0 : Math.round(startMs / 1_000);
+  const endSeconds = endMs === null ? 0 : Math.round(endMs / 1_000);
+  const hasRange = startMs !== null && endMs !== null && endMs > startMs;
+  const budget = getClipBudget(startMs, endMs);
+  const startPercent = maxSeconds > 0 ? (startSeconds / maxSeconds) * 100 : 0;
+  const widthPercent = maxSeconds > 0 ? (Math.max(0, endSeconds - startSeconds) / maxSeconds) * 100 : 0;
+  const sliderDisabled = disabled || maxSeconds < 1;
+  const actionsDisabled = disabled || !playerSelected || playerReading;
+
+  const moveHandle = (handle: 'start' | 'end', nextSeconds: number) => {
+    const next = moveClipHandle({
+      startMs,
+      endMs,
+      durationMs,
+      handle,
+      nextMs: nextSeconds * 1_000,
+    });
+    onCommitRange(next.startMs, next.endMs);
+  };
+
+  return (
+    <div className="clip-range-editor">
+      <div className="clip-range-readout">
+        <strong>{formatClipSpanReadout(startMs, endMs)}</strong>
+        <span>{formatClipBudgetLabel(budget)}</span>
+      </div>
+      <div className="clip-range-slider" data-empty={hasRange ? undefined : 'true'}>
+        <div className="clip-range-rail" aria-hidden="true">
+          {hasRange && maxSeconds > 0 && (
+            <span
+              className="clip-range-fill"
+              style={{ left: `${startPercent}%`, width: `${widthPercent}%` }}
+            />
+          )}
+        </div>
+        <input
+          className="clip-range-thumb clip-range-thumb-start"
+          type="range"
+          min={0}
+          max={maxSeconds}
+          step={1}
+          value={Math.min(startSeconds, maxSeconds)}
+          disabled={sliderDisabled}
+          aria-label="Clip start"
+          onChange={(event) => moveHandle('start', Number(event.target.value))}
+        />
+        <input
+          className="clip-range-thumb clip-range-thumb-end"
+          type="range"
+          min={0}
+          max={maxSeconds}
+          step={1}
+          value={Math.min(endSeconds, maxSeconds)}
+          disabled={sliderDisabled}
+          aria-label="Clip end"
+          onChange={(event) => moveHandle('end', Number(event.target.value))}
+        />
+      </div>
+      <div className="clip-preset-row">
+        {CLIP_PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            className="button button-secondary"
+            type="button"
+            disabled={actionsDisabled}
+            onClick={() => onPreset(preset.durationMs)}
+          >
+            {preset.label}
+          </button>
+        ))}
+        <button
+          className="text-button"
+          type="button"
+          disabled={actionsDisabled}
+          onClick={onRefresh}
+        >
+          {playerReading ? 'Reading…' : 'Refresh time'}
+        </button>
+      </div>
+      <ClipRangeFields
+        idPrefix={idPrefix}
+        startField={startField}
+        endField={endField}
+        lengthDisplay={lengthDisplay}
+        startError={startError}
+        endError={endError}
+        disabled={disabled}
+        onStartChange={onStartChange}
+        onEndChange={onEndChange}
+        onStartBlur={onStartBlur}
+        onEndBlur={onEndBlur}
+      />
+      <button
+        className="button button-secondary preview-clip"
+        type="button"
+        onClick={onPreview}
+        disabled={!previewEnabled || actionsDisabled}
+      >
+        {previewLabel}
+      </button>
+      {rangeError && <p className="inline-error" role="alert">{rangeError}</p>}
+    </div>
   );
 }
