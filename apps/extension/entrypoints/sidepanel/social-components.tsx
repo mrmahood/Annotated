@@ -5,6 +5,7 @@ import {
   EXTENSION_AUTH_CAPABILITIES,
   type AuthProvider,
 } from '../../utils/auth-boundary';
+import { TextWithLogoMark } from './logo-mark';
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import { formatMediaTime } from '@annotated/shared/media-time';
@@ -1095,7 +1096,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
           <p className="annotation-title">{annotation.title}</p>
         ) : null}
         {annotation.commentaryText.trim() ? (
-          <p className="commentary-lead">{annotation.commentaryText.trim()}</p>
+          <p className="commentary-lead"><TextWithLogoMark text={annotation.commentaryText.trim()} /></p>
         ) : null}
         {hasCommentaryAudio && audioUrl && (
           <audio className="commentary-audio" controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" />
@@ -1547,7 +1548,7 @@ function Comments({ supabase, annotationId, currentUserId, onSignIn, onProfile, 
               <Avatar name={comment.author.displayName} url={comment.author.avatarUrl} size={26} />
               <div>
                 <div className="comment-meta"><button className="text-button" type="button" onClick={() => onProfile(comment.userId)}>{comment.author.displayName}</button><time dateTime={comment.createdAt}>{formatTimestamp(comment.createdAt)}</time></div>
-                <p>{comment.body}</p>
+                <p><TextWithLogoMark text={comment.body} /></p>
                 {comment.userId === currentUserId && (confirmDeleteId === comment.id ? (
                   <div className="inline-confirm" role="group" aria-label="Confirm comment deletion"><span>Delete permanently?</span><button className="text-button danger-text" type="button" disabled={deletingId === comment.id} onClick={() => void remove(comment)}>{deletingId === comment.id ? 'Deleting…' : 'Delete'}</button><button className="text-button" type="button" disabled={Boolean(deletingId)} onClick={() => setConfirmDeleteId(null)}>Cancel</button></div>
                 ) : <button className="text-button comment-delete" type="button" onClick={() => setConfirmDeleteId(comment.id)}>Delete</button>)}
@@ -1712,7 +1713,7 @@ export function AnnotationDetailView({
         <button className="text-button creator-button" type="button" onClick={() => navigation.openProfile(annotation.creator.id)}><Avatar name={annotation.creator.displayName} url={annotation.creator.avatarUrl} size={34} /><span><strong>{annotation.creator.displayName}</strong><time dateTime={annotation.publishedAt}>Published {formatTimestamp(annotation.publishedAt)}</time></span></button>
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
-      {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" aria-label={annotation.title || (annotation.commentaryText.trim() ? 'Annotation' : 'Voice commentary')} {...commentaryHover}>{annotation.title ? <p className="annotation-title">{annotation.title}</p> : null}{annotation.commentaryText.trim() ? <p>{annotation.commentaryText}</p> : null}{annotation.audio && audioUrl && <div className="detail-audio"><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</div>}</section>}
+      {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" aria-label={annotation.title || (annotation.commentaryText.trim() ? 'Annotation' : 'Voice commentary')} {...commentaryHover}>{annotation.title ? <p className="annotation-title">{annotation.title}</p> : null}{annotation.commentaryText.trim() ? <p><TextWithLogoMark text={annotation.commentaryText} /></p> : null}{annotation.audio && audioUrl && <div className="detail-audio"><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</div>}</section>}
       {annotation.kind === 'article' ? <>
         <section className="detail-source" {...sourceHover}><span className="visually-hidden">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection)}>View original source ↗</a><ArticlePendingConnectHint show={showHint} /></section>
         <section className="detail-passage" {...sourceHover}><span className="visually-hidden">Captured passage</span><blockquote>{annotation.selectedText}</blockquote><ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} /></section>

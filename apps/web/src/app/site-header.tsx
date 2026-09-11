@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getHttpUrl, getOptionalText } from "@/lib/public-content";
 import { createClient } from "@/lib/supabase/server";
+import { LogoMark } from "./logo-mark";
 import { SiteHeaderAuth, type HeaderUser } from "./site-header-auth";
 
 export async function SiteHeader({
@@ -37,7 +38,8 @@ export async function SiteHeader({
     <header className="site-header">
       <nav className="site-nav" aria-label="Primary navigation">
         <Link className="site-wordmark" href="/" aria-label="Annotated home">
-          ANNOTATED
+          <LogoMark />
+          Annotated
         </Link>
         <Link className="site-feed-link" href="/" aria-current={active === "feed" ? "page" : undefined}>
           Feed

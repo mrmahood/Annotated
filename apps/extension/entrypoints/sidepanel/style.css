@@ -44,7 +44,9 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .app-header { position: sticky; z-index: 10; top: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--background) 92%, transparent); backdrop-filter: blur(10px); }
 .app-bar { min-height: 40px; display: grid; grid-template-columns: 92px 1fr 92px; align-items: center; padding: 0 14px; }
 .app-bar-root { grid-template-columns: 1fr; min-height: 36px; }
-.wordmark { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; font-weight: 650; letter-spacing: .12em; }
+.wordmark { display: inline-flex; align-items: center; gap: .35em; color: var(--text-primary); font-family: var(--font-sans); font-size: 13px; font-weight: 600; letter-spacing: -.02em; }
+.logo-mark { display: block; width: 1.1em; height: 1.1em; flex: 0 0 auto; }
+.logo-mark-inline { display: inline-block; width: 1em; height: 1em; vertical-align: -.18em; }
 .view-title { grid-column: 2; text-align: center; font-size: 12px; font-weight: 650; }
 .back-button { grid-column: 1; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-small); color: var(--text-secondary); background: transparent; cursor: pointer; }
 .back-button:hover { color: var(--text-primary); background: var(--surface); }
