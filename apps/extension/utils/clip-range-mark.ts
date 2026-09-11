@@ -64,8 +64,9 @@ export async function applyCreateClipRangeMark(input: {
       return;
     }
     if (source.classification === 'Web page') {
-      let normalizedUrl = source.url;
-      try { normalizedUrl = normalizePageVideoHoverPageUrl(source.url); } catch { /* Keep the page URL. */ }
+      let normalizedUrl: string | null = null;
+      try { normalizedUrl = normalizePageVideoHoverPageUrl(source.url); } catch { /* Fail closed. */ }
+      if (!normalizedUrl) return;
       await applyPageVideoHoverOnConnectedTab(connection as PageVideoHoverConnection, {
         canonicalUrl: source.url,
         normalizedUrl,
