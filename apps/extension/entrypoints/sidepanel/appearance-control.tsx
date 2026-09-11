@@ -10,6 +10,7 @@ import {
 import {
   applyAppearancePreference,
   dispatchAppearanceChange,
+  getExtensionChrome,
   persistAppearancePreference,
   readLocalAppearancePreference,
 } from '../../utils/appearance';
@@ -44,7 +45,7 @@ export function AppearanceControl() {
     setPreference(saved);
     applyAppearancePreference(saved, document.documentElement, systemPrefersLightNow());
     dispatchAppearanceChange(saved);
-    void persistAppearancePreference(saved, chrome, storageOrNull());
+    void persistAppearancePreference(saved, getExtensionChrome(), storageOrNull());
   };
 
   return (

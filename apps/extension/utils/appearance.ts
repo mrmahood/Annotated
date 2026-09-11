@@ -106,6 +106,14 @@ export async function persistAppearancePreference(
   return next;
 }
 
+export function getExtensionChrome(): AppearanceChrome | null {
+  try {
+    return (globalThis as typeof globalThis & { chrome?: AppearanceChrome }).chrome ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function dispatchAppearanceChange(preference: AppearancePreference): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(APPEARANCE_CHANGE_EVENT, { detail: preference }));

@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { installAppearanceRuntime } from '../../utils/appearance';
+import { getExtensionChrome, installAppearanceRuntime } from '../../utils/appearance';
 import App from './App';
 import './style.css';
 
@@ -14,7 +14,7 @@ function localStorageOrNull() {
 
 installAppearanceRuntime(
   document.documentElement,
-  chrome,
+  getExtensionChrome(),
   localStorageOrNull(),
   window.matchMedia.bind(window),
 );

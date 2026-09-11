@@ -96,9 +96,9 @@ test('Me tab and sidepanel styles wire the shared appearance control', async () 
   assert.match(control, /role="radiogroup"/);
   assert.match(control, /aria-label="Appearance"/);
   assert.match(control, /APPEARANCE_PREFERENCES\.map/);
-  assert.match(control, /persistAppearancePreference\(saved, chrome/);
+  assert.match(control, /persistAppearancePreference\(saved, getExtensionChrome\(\)/);
   assert.match(main, /installAppearanceRuntime/);
-  assert.match(main, /chrome,/);
+  assert.match(main, /getExtensionChrome\(\)/);
   assert.match(html, /annotated\.appearance/);
   assert.ok(html.includes(getAppearanceBootstrapScript()));
   assert.match(style, /:root\[data-theme="light"\]/);

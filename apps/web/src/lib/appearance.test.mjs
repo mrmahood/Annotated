@@ -63,6 +63,7 @@ test("web header, layout, and profile chrome wire the shared appearance control"
   assert.match(control, /role="radiogroup"/);
   assert.match(control, /aria-label="Appearance"/);
   assert.match(control, /type="radio"/);
+  assert.match(control, /useSyncExternalStore/);
   assert.match(control, /persistAppearancePreference/);
   assert.match(control, /applyStoredAppearance/);
   assert.match(control, /matchMedia/);

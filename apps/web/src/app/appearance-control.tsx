@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import {
   APPEARANCE_CHANGE_EVENT,
   APPEARANCE_PREFERENCE_LABELS,
   APPEARANCE_PREFERENCES,
   SYSTEM_LIGHT_MEDIA_QUERY,
   appearancePreferenceIndex,
-  parseAppearancePreference,
   type AppearancePreference,
 } from "@annotated/shared/appearance";
 import {
@@ -53,18 +52,25 @@ export function AppearanceRuntime() {
   return null;
 }
 
+function subscribeAppearance(onStoreChange: () => void) {
+  window.addEventListener(APPEARANCE_CHANGE_EVENT, onStoreChange);
+  return () => window.removeEventListener(APPEARANCE_CHANGE_EVENT, onStoreChange);
+}
+
+function getAppearanceSnapshot() {
+  return readStoredAppearancePreference(storageOrNull(), document.cookie);
+}
+
+function getAppearanceServerSnapshot(): AppearancePreference {
+  return "system";
+}
+
 export function AppearanceControl({ compact = false }: { compact?: boolean }) {
-  const [preference, setPreference] = useState<AppearancePreference>("system");
-
-  useEffect(() => {
-    setPreference(readStoredAppearancePreference(storageOrNull(), document.cookie));
-
-    const onChange = (event: Event) => {
-      setPreference(parseAppearancePreference((event as CustomEvent<unknown>).detail));
-    };
-    window.addEventListener(APPEARANCE_CHANGE_EVENT, onChange);
-    return () => window.removeEventListener(APPEARANCE_CHANGE_EVENT, onChange);
-  }, []);
+  const preference = useSyncExternalStore(
+    subscribeAppearance,
+    getAppearanceSnapshot,
+    getAppearanceServerSnapshot,
+  );
 
   const selectPreference = (next: AppearancePreference) => {
     const saved = persistAppearancePreference(
@@ -77,7 +83,6 @@ export function AppearanceControl({ compact = false }: { compact?: boolean }) {
     );
     applyStoredAppearance(document.documentElement, saved, systemPrefersLightNow());
     dispatchAppearanceChange(saved);
-    setPreference(saved);
   };
 
   return (
