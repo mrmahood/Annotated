@@ -9,7 +9,7 @@ import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-t
 import { getTypedClipFieldError } from '../../utils/clip-range-entry';
 import { ClipRangeFields, useTypedClipRange } from './clip-range-fields';
 import { AppearanceControl } from './appearance-control';
-import { LogoMark } from './logo-mark';
+import { BrandLockup } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
@@ -3597,10 +3597,12 @@ function App() {
   return (
     <main className="panel">
       <header className="app-header">
-        <div className={`app-bar${currentScreen.kind === 'root' ? ' app-bar-root' : ''}`}>
-          {currentScreen.kind !== 'root' ? <button className="back-button" type="button" onClick={() => dispatchNavigation({ type: 'back' })} aria-label="Go back">←</button> : <span className="wordmark"><LogoMark />Annotated</span>}
-          {currentScreen.kind !== 'root' && <span className="view-title">{currentScreen.kind === 'profile' ? 'Creator' : 'Annotation'}</span>}
-        </div>
+        {currentScreen.kind !== 'root' && (
+          <div className="app-bar">
+            <button className="back-button" type="button" onClick={() => dispatchNavigation({ type: 'back' })} aria-label="Go back">←</button>
+            <span className="view-title">{currentScreen.kind === 'profile' ? 'Creator' : 'Annotation'}</span>
+          </div>
+        )}
         <nav className="top-tabs" aria-label="Primary">
           {(['context', 'feed', 'account'] as const).map((view) => <button key={view} type="button" className={currentScreen.kind === 'root' && currentScreen.view === view ? 'active' : ''} aria-current={currentScreen.kind === 'root' && currentScreen.view === view ? 'page' : undefined} onClick={() => selectRoot(view)}>{view === 'context' ? 'Create' : view === 'account' ? 'Me' : 'Feed'}</button>)}
         </nav>
@@ -3624,6 +3626,7 @@ function App() {
           {authState.status === 'error' && <div className="compact-state compact-state-error" role="alert"><strong>Account unavailable</strong><span>{authState.message}</span><button className="button button-secondary" type="button" onClick={() => void retryAuthentication()}>Try again</button></div>}
           {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span></div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="text-button danger-text" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button></>}
           <AppearanceControl />
+          <BrandLockup />
         </section></div>
       )}
 
@@ -3732,6 +3735,7 @@ function App() {
           )}
           {hostedMediaPanel}
           {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? spotifySource?.normalizedUrl ?? contextUrl} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle={youtubeSource || tiktokSource ? 'No clips on this video yet' : exclusivePodcast || spotifySource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource || tiktokSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast || spotifySource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource || tiktokSource ? 'Clips on this video' : exclusivePodcast || spotifySource ? 'Clips on this episode' : 'On this source'} />}
+          <BrandLockup />
         </div>
       )}
       {pendingModeSwitch && (

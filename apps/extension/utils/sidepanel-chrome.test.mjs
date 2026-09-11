@@ -16,8 +16,12 @@ test('Create, Feed, and Me drop redundant view intros and let tabs name the surf
   assert.match(app, /<h1 className="visually-hidden">Create<\/h1>/);
   assert.match(app, /<h1 className="visually-hidden">Feed<\/h1>/);
   assert.match(app, /<h1 className="visually-hidden">Me<\/h1>/);
-  assert.match(app, /className=\{`app-bar\$\{currentScreen\.kind === 'root' \? ' app-bar-root' : ''\}`\}/);
-  assert.match(app, /currentScreen\.kind !== 'root' && <span className="view-title">\{currentScreen\.kind === 'profile' \? 'Creator' : 'Annotation'\}<\/span>/);
+  assert.match(app, /currentScreen\.kind !== 'root' && \(/);
+  assert.match(app, /className="app-bar"/);
+  assert.match(app, /<span className="view-title">\{currentScreen\.kind === 'profile' \? 'Creator' : 'Annotation'\}<\/span>/);
+  assert.match(app, /<nav className="top-tabs" aria-label="Primary">/);
+  assert.doesNotMatch(app, /app-bar-root/);
+  assert.doesNotMatch(app, /className="wordmark"/);
   assert.doesNotMatch(app, />Public activity</);
   assert.doesNotMatch(app, />Recent annotations</);
   assert.doesNotMatch(app, />Private account</);
@@ -25,7 +29,10 @@ test('Create, Feed, and Me drop redundant view intros and let tabs name the surf
   assert.doesNotMatch(app, />Connected source</);
   assert.doesNotMatch(app, /className="view-intro"/);
   assert.match(style, /\.visually-hidden \{/);
-  assert.match(style, /\.app-bar-root \{/);
+  assert.match(style, /\.app-header \{/);
+  assert.match(style, /position: sticky/);
+  assert.match(style, /\.top-tabs \{/);
+  assert.doesNotMatch(style, /\.app-bar-root \{/);
   assert.match(style, /--accent:/);
   assert.match(style, /--motion-duration: 180ms/);
 });
