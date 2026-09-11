@@ -810,6 +810,9 @@ Production launch and hardening:
 - The Production hostname is `annotated.cbandcoop.com`. `cbandcoop.com` remains
   the consultancy site managed through Lovable and Bluehost WordPress Plus;
   Bluehost is currently the domain/DNS and WordPress hosting authority.
+- Chrome Web Store is the end-user update channel for the extension. Staging
+  stays load-unpacked. Operator checklist:
+  `docs/product/extension-release-versioning.md`.
 - Do not assume WordPress Plus can host Annotated's trusted Next.js runtime.
   Evaluate that runtime independently, with Google Cloud Run as the first
   candidate because the project already uses Google Cloud.
