@@ -14,7 +14,8 @@ export const LOGO_MARK_ASTERISK = {
   radius: 11,
 } as const;
 
-export const LOGO_MARK_STROKE_WIDTH = 1.6;
+/** Thick enough that 16–32px chrome icons and inline ~1em marks stay readable. */
+export const LOGO_MARK_STROKE_WIDTH = 4;
 
 export type LogoMarkSegment =
   | { type: 'text'; value: string }

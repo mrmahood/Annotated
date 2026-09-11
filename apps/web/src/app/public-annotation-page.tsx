@@ -96,7 +96,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
           {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && (
             <section className="commentary-section" aria-labelledby="commentary-heading">
               {annotation.title ? (
-                <h1 id="commentary-heading" className="annotation-title">{annotation.title}</h1>
+                <h1 id="commentary-heading" className="annotation-title"><TextWithLogoMark text={annotation.title} /></h1>
               ) : (
                 <h1 id="commentary-heading" className="visually-hidden">
                   {annotation.commentaryText.trim() ? "Annotation" : "Voice commentary"}

@@ -101,7 +101,7 @@ export function AnnotationCard({
       <div className="card-body">
         {annotation.title ? (
           <p className="card-annotation-title" id={headingId}>
-            {annotation.title}
+            <TextWithLogoMark text={annotation.title} />
           </p>
         ) : null}
         {commentaryLead ? (

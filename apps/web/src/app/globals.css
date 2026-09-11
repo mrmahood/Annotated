@@ -188,15 +188,17 @@ a { color: inherit; }
 }
 .logo-mark {
   display: block;
-  width: 1.15em;
-  height: 1.15em;
+  width: 1.4em;
+  height: 1.4em;
   flex: 0 0 auto;
+  color: var(--text-primary);
+  overflow: visible;
 }
 .logo-mark-inline {
   display: inline-block;
-  width: 1em;
-  height: 1em;
-  vertical-align: -0.18em;
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: -0.22em;
 }
 .site-feed-link {
   position: relative;

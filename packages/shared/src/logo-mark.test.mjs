@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   LOGO_MARK_ASTERISK,
   LOGO_MARK_RULE,
+  LOGO_MARK_STROKE_WIDTH,
   LOGO_MARK_VIEWBOX,
   LOGO_SHORTCODE,
   asteriskRays,
@@ -12,6 +13,7 @@ import {
 test('logo C geometry is a left margin rule plus an 8-spoke asterisk', () => {
   assert.equal(LOGO_MARK_VIEWBOX, '0 0 64 64');
   assert.equal(LOGO_SHORTCODE, '|*');
+  assert.equal(LOGO_MARK_STROKE_WIDTH, 4);
   assert.ok(LOGO_MARK_RULE.x < LOGO_MARK_ASTERISK.cx);
   assert.ok(LOGO_MARK_RULE.y1 < LOGO_MARK_ASTERISK.cy);
   assert.ok(LOGO_MARK_RULE.y2 > LOGO_MARK_ASTERISK.cy);
@@ -44,4 +46,13 @@ test('splitLogoShortcode expands only the literal |* shortcode', () => {
   ]);
   assert.deepEqual(splitLogoShortcode('| *'), [{ type: 'text', value: '| *' }]);
   assert.deepEqual(splitLogoShortcode('*|'), [{ type: 'text', value: '*|' }]);
+  assert.deepEqual(splitLogoShortcode('line\n|*\nnext'), [
+    { type: 'text', value: 'line\n' },
+    { type: 'mark' },
+    { type: 'text', value: '\nnext' },
+  ]);
+  assert.deepEqual(splitLogoShortcode('|* testing commentary'), [
+    { type: 'mark' },
+    { type: 'text', value: ' testing commentary' },
+  ]);
 });
