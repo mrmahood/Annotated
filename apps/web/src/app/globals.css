@@ -557,6 +557,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .discovery-state { text-align: center; }
 .discovery-state h2, .discovery-state h3 { margin: 0; color: var(--text-primary); font-size: 1rem; font-weight: 600; }
 .discovery-state p { margin: 7px 0 0; line-height: 1.5; }
+.discovery-state .provider-sign-in-actions { justify-content: center; margin-top: 14px; }
 .discovery-error { border-color: var(--destructive-border); background: var(--destructive-surface); }
 .pagination { justify-content: space-between; gap: 12px; margin-top: 24px; }
 .pagination a, .pagination > span:not(.pagination-current) { min-width: 84px; }

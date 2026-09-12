@@ -253,6 +253,35 @@ export function parseCurrentReshareIds(value: unknown): Set<string> {
   return ids;
 }
 
+export function parseCurrentBookmarkIds(value: unknown): Set<string> {
+  return parseCurrentReshareIds(value);
+}
+
+export type BookmarkListRow = {
+  annotationId: string;
+  bookmarkedAt: string;
+};
+
+export function parseBookmarkListRow(value: unknown): BookmarkListRow | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const row = value as Record<string, unknown>;
+  const annotationId = getOptionalText(row.annotation_id);
+  const bookmarkedAt = getOptionalText(row.bookmarked_at);
+  const bookmarkedDate = bookmarkedAt ? new Date(bookmarkedAt) : null;
+  if (
+    !annotationId ||
+    !isUuid(annotationId) ||
+    !bookmarkedDate ||
+    Number.isNaN(bookmarkedDate.getTime())
+  ) {
+    return null;
+  }
+  return {
+    annotationId,
+    bookmarkedAt: bookmarkedDate.toISOString(),
+  };
+}
+
 export function feedItemKey(item: {
   annotation: { id: string };
   reshare: { id: string } | null;

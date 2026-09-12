@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/public-content";
+import { parseCurrentBookmarkIds } from "./bookmark";
 import { parseCurrentReshareIds } from "./reshare";
 import {
   queryPublicCommentCounts,
@@ -102,6 +103,22 @@ export async function getCurrentUserReshareState(
       p_annotation_ids: [annotationId],
     });
     return error ? false : parseCurrentReshareIds(data).has(annotationId);
+  } catch {
+    return false;
+  }
+}
+
+export async function getCurrentUserBookmarkState(
+  annotationId: string,
+  currentUserId: string | null,
+): Promise<boolean> {
+  if (!currentUserId || !isUuid(annotationId)) return false;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("get_current_annotation_bookmarks", {
+      p_annotation_ids: [annotationId],
+    });
+    return error ? false : parseCurrentBookmarkIds(data).has(annotationId);
   } catch {
     return false;
   }

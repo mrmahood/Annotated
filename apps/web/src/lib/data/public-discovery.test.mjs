@@ -41,7 +41,10 @@ test("public and profile feeds load mixed timeline items through the trusted res
   assert.match(source, /get_current_annotation_reshares/);
   assert.match(source, /itemKind === "reshare"/);
   assert.match(source, /viewerHasReshared/);
+  assert.match(source, /get_current_annotation_bookmarks/);
+  assert.match(source, /viewerHasBookmarked/);
   assert.doesNotMatch(source, /from\("annotation_reshares"\)/);
+  assert.doesNotMatch(source, /from\("annotation_bookmarks"\)/);
   assert.doesNotMatch(source, /from\("profile_follows"\)/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });

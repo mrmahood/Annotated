@@ -62,7 +62,7 @@ test("constructs canonical paths only from validated stored route identity", () 
     () => getCanonicalAnnotationPath({ creatorHandle: "../admin", annotationSlug: "source-title" }),
     /Invalid public annotation route identity/,
   );
-  for (const creatorHandle of ["api", "auth", "_next", "ops"]) {
+  for (const creatorHandle of ["api", "auth", "_next", "ops", "me"]) {
     assert.throws(
       () => getCanonicalAnnotationPath({ creatorHandle, annotationSlug: "source-title" }),
       /Invalid public annotation route identity/,

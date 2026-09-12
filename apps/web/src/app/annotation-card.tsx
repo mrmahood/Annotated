@@ -13,6 +13,7 @@ import { getPublicAnnotationPath } from "@/lib/public-routes";
 import { HostedMediaPlayer } from "./hosted-media-player";
 import { TextWithLogoMark } from "./logo-mark";
 import { PublishedAudioPlayer } from "./published-audio-player";
+import { BookmarkControl } from "./bookmark-control";
 import { ShareControl } from "./share-control";
 
 const PASSAGE_EXCERPT_LENGTH = 360;
@@ -41,6 +42,7 @@ export function AnnotationCard({
   reshare = null,
   currentUserId = null,
   initialShared = false,
+  initialBookmarked = false,
   returnTo,
 }: {
   annotation: PublicAnnotationCardData;
@@ -48,6 +50,7 @@ export function AnnotationCard({
   reshare?: PublicReshareAttribution | null;
   currentUserId?: string | null;
   initialShared?: boolean;
+  initialBookmarked?: boolean;
   returnTo: string;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -198,6 +201,12 @@ export function AnnotationCard({
             annotationId={annotation.id}
             currentUserId={currentUserId}
             initialShared={initialShared}
+            returnTo={returnTo}
+          />
+          <BookmarkControl
+            annotationId={annotation.id}
+            currentUserId={currentUserId}
+            initialBookmarked={initialBookmarked}
             returnTo={returnTo}
           />
         </div>

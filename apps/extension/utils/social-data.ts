@@ -24,6 +24,8 @@ import {
   isPublicCreatorHandle,
   isUuid,
   normalizeReshareComment,
+  parseBookmarkListRow,
+  parseCurrentBookmarkIds,
   parseCurrentReshareIds,
   parseTimelineRow,
   PUBLIC_COMMENT_STATUS,
@@ -113,6 +115,7 @@ export type TimelineItem = {
   annotation: PublicAnnotation;
   reshare: PublicReshareAttribution | null;
   viewerHasReshared: boolean;
+  viewerHasBookmarked: boolean;
 };
 
 export type AnnotationPage = {
@@ -437,14 +440,16 @@ export async function queryAnnotations(
     annotation.commentCount = counts.get(annotation.id) ?? 0;
   }
 
-  const viewerShares = await queryCurrentReshares(
-    supabase,
-    annotations.map(({ id }) => id),
-  );
+  const annotationIds = annotations.map(({ id }) => id);
+  const [viewerShares, viewerBookmarks] = await Promise.all([
+    queryCurrentReshares(supabase, annotationIds),
+    queryCurrentBookmarks(supabase, annotationIds),
+  ]);
   const items = annotations.map((annotation) => ({
     annotation,
     reshare: null,
     viewerHasReshared: viewerShares.has(annotation.id),
+    viewerHasBookmarked: viewerBookmarks.has(annotation.id),
   }));
 
   return {
@@ -471,6 +476,23 @@ export async function queryCurrentReshares(
   });
   if (error) return new Set();
   return parseCurrentReshareIds(data);
+}
+
+export async function queryCurrentBookmarks(
+  supabase: SupabaseClient,
+  annotationIds: string[],
+): Promise<Set<string>> {
+  if (annotationIds.length === 0) return new Set();
+  if (annotationIds.length > 100 || annotationIds.some((id) => !isUuid(id))) {
+    throw new Error('Invalid bookmark state request.');
+  }
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) return new Set();
+  const { data, error } = await supabase.rpc('get_current_annotation_bookmarks', {
+    p_annotation_ids: annotationIds,
+  });
+  if (error) return new Set();
+  return parseCurrentBookmarkIds(data);
 }
 
 export async function queryTimeline(
@@ -533,7 +555,10 @@ export async function queryTimeline(
     }
   }
 
-  const viewerShares = await queryCurrentReshares(supabase, annotationIds);
+  const [viewerShares, viewerBookmarks] = await Promise.all([
+    queryCurrentReshares(supabase, annotationIds),
+    queryCurrentBookmarks(supabase, annotationIds),
+  ]);
   const items: TimelineItem[] = [];
   for (const row of timeline) {
     const annotation = annotationsById.get(row.annotationId);
@@ -543,6 +568,7 @@ export async function queryTimeline(
         annotation,
         reshare: null,
         viewerHasReshared: viewerShares.has(annotation.id),
+        viewerHasBookmarked: viewerBookmarks.has(annotation.id),
       });
       continue;
     }
@@ -557,6 +583,7 @@ export async function queryTimeline(
         resharer,
       },
       viewerHasReshared: viewerShares.has(annotation.id),
+      viewerHasBookmarked: viewerBookmarks.has(annotation.id),
     });
   }
 
@@ -837,4 +864,90 @@ export async function removeAnnotationReshare(
     p_annotation_id: annotationId,
   });
   if (error || data !== true) throw new Error('The share could not be removed.');
+}
+
+export async function createAnnotationBookmark(
+  supabase: SupabaseClient,
+  annotationId: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error('That annotation is unavailable.');
+  await requireCurrentUser(supabase);
+  const { error } = await supabase.rpc('create_annotation_bookmark', {
+    p_annotation_id: annotationId,
+  });
+  if (error) {
+    if (error.code === '23505') throw new Error('You have already bookmarked this annotation.');
+    if (error.message.includes('unavailable')) throw new Error('That annotation is unavailable.');
+    throw new Error('The annotation could not be bookmarked.');
+  }
+}
+
+export async function removeAnnotationBookmark(
+  supabase: SupabaseClient,
+  annotationId: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error('That annotation is unavailable.');
+  await requireCurrentUser(supabase);
+  const { data, error } = await supabase.rpc('remove_annotation_bookmark', {
+    p_annotation_id: annotationId,
+  });
+  if (error || data !== true) throw new Error('The bookmark could not be removed.');
+}
+
+export async function queryBookmarks(
+  supabase: SupabaseClient,
+  options: { offset?: number } = {},
+): Promise<AnnotationPage> {
+  const offset = options.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid page offset.');
+  await requireCurrentUser(supabase);
+
+  const { data, error } = await supabase.rpc('list_current_annotation_bookmarks', {
+    p_limit: ANNOTATION_PAGE_SIZE + 1,
+    p_offset: offset,
+  });
+  if (error || !Array.isArray(data)) throw new Error('Bookmarks are unavailable.');
+
+  const rows = data.slice(0, ANNOTATION_PAGE_SIZE).map(parseBookmarkListRow);
+  if (rows.some((row) => row === null)) throw new Error('A bookmark response was malformed.');
+  const bookmarks = rows.filter((row): row is NonNullable<typeof row> => Boolean(row));
+  const annotationIds = bookmarks.map((row) => row.annotationId);
+
+  const annotationsById = new Map<string, PublicAnnotation>();
+  if (annotationIds.length > 0) {
+    const { data: annotationRows, error: annotationError } = await supabase
+      .from('annotations')
+      .select(buildAnnotationSelect())
+      .eq('status', 'published')
+      .in('id', annotationIds);
+    if (annotationError || !annotationRows) throw new Error('Annotations are unavailable.');
+    for (const row of annotationRows) {
+      const annotation = mapPublicAnnotation(row);
+      if (annotation) annotationsById.set(annotation.id, annotation);
+    }
+    const counts = await queryCommentCounts(supabase, [...annotationsById.keys()]);
+    for (const annotation of annotationsById.values()) {
+      annotation.commentCount = counts.get(annotation.id) ?? 0;
+    }
+  }
+
+  const viewerShares = await queryCurrentReshares(supabase, annotationIds);
+  const items: TimelineItem[] = [];
+  for (const row of bookmarks) {
+    const annotation = annotationsById.get(row.annotationId);
+    if (!annotation) continue;
+    items.push({
+      annotation,
+      reshare: null,
+      viewerHasReshared: viewerShares.has(annotation.id),
+      viewerHasBookmarked: true,
+    });
+  }
+
+  return {
+    annotations: items.map((item) => item.annotation),
+    items,
+    total: null,
+    hasMore: data.length > ANNOTATION_PAGE_SIZE,
+  };
 }
