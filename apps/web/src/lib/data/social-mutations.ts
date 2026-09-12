@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "@/lib/public-content";
+import { normalizeReshareComment } from "./reshare";
 import { COMMENT_BODY_LIMIT, PUBLIC_COMMENT_STATUS } from "./social-query";
 
 async function requireUserId(supabase: SupabaseClient): Promise<string> {
@@ -68,4 +69,35 @@ export async function deleteComment(
     .eq("id", commentId)
     .eq("user_id", userId);
   if (error || count !== 1) throw new Error("The comment could not be deleted.");
+}
+
+export async function createAnnotationReshare(
+  supabase: SupabaseClient,
+  annotationId: string,
+  comment?: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error("That annotation is unavailable.");
+  await requireUserId(supabase);
+  const { error } = await supabase.rpc("create_annotation_reshare", {
+    p_annotation_id: annotationId,
+    p_comment: normalizeReshareComment(comment),
+  });
+  if (error) {
+    if (error.code === "23505") throw new Error("You have already shared this annotation.");
+    if (error.message.includes("unavailable")) throw new Error("That annotation is unavailable.");
+    if (error.message.includes("1,000")) throw new Error("Reshare comments cannot exceed 1,000 characters.");
+    throw new Error("The annotation could not be shared.");
+  }
+}
+
+export async function removeAnnotationReshare(
+  supabase: SupabaseClient,
+  annotationId: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error("That annotation is unavailable.");
+  await requireUserId(supabase);
+  const { data, error } = await supabase.rpc("remove_annotation_reshare", {
+    p_annotation_id: annotationId,
+  });
+  if (error || data !== true) throw new Error("The share could not be removed.");
 }

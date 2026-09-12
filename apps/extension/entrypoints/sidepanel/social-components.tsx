@@ -28,29 +28,37 @@ import {
 } from '../../utils/hosted-playback';
 import { resolveHostedPlaybackSrc } from '../../utils/hosted-playback-src';
 import {
+  createAnnotationReshare,
   createComment,
   deleteComment,
   followProfile,
   queryAnnotation,
   queryAnnotations,
+  queryCurrentReshares,
   queryComments,
   queryFollowState,
   queryProfile,
   queryPublicHostedExcerpt,
+  queryTimeline,
+  removeAnnotationReshare,
   unfollowProfile,
   type AnnotationPage,
   type CommentPage,
   type PublicAnnotation,
   type PublicComment,
   type PublicProfile,
+  type PublicReshareAttribution,
+  type TimelineItem,
 } from '../../utils/social-data';
 import {
   ANNOTATION_PAGE_SIZE,
   COMMENT_BODY_LIMIT,
+  feedItemKey,
   formatTimestamp,
   getPublicAnnotationPath,
   getInitial,
   RequestRevision,
+  RESHARE_COMMENT_LIMIT,
   mergeCommentPages,
 } from '../../utils/social-helpers';
 import {
@@ -970,8 +978,128 @@ function sourceChipLabel(annotation: PublicAnnotation): string {
   return 'Text';
 }
 
-function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null, tiktokHover = null, spotifyHover = null }: {
+function ShareControl({
+  supabase,
+  annotationId,
+  currentUserId,
+  onSignIn,
+  initialShared,
+}: {
+  supabase: SupabaseClient;
+  annotationId: string;
+  initialShared: boolean;
+} & AuthProps) {
+  const [shared, setShared] = useState(initialShared);
+  const [mode, setMode] = useState<'idle' | 'compose' | 'unshare'>('idle');
+  const [comment, setComment] = useState('');
+  const [pending, setPending] = useState<'share' | 'unshare' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const composeId = `reshare-comment-${annotationId}`;
+
+  const submitShare = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!currentUserId || pending) return;
+    if (comment.length > RESHARE_COMMENT_LIMIT) {
+      setError('Reshare comments cannot exceed 1,000 characters.');
+      return;
+    }
+    setPending('share');
+    setError(null);
+    try {
+      await createAnnotationReshare(supabase, annotationId, comment);
+      setShared(true);
+      setMode('idle');
+      setComment('');
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : 'The annotation could not be shared.');
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const confirmUnshare = async () => {
+    if (!currentUserId || pending) return;
+    setPending('unshare');
+    setError(null);
+    try {
+      await removeAnnotationReshare(supabase, annotationId);
+      setShared(false);
+      setMode('idle');
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : 'The share could not be removed.');
+    } finally {
+      setPending(null);
+    }
+  };
+
+  if (!currentUserId) {
+    return (
+      <div className="share-control">
+        {mode === 'compose' ? (
+          <div className="signed-out-action">
+            <span>Sign in to share.</span>
+            <SignInButtons onSignIn={onSignIn} />
+            <button className="text-button" type="button" onClick={() => setMode('idle')}>Cancel</button>
+          </div>
+        ) : (
+          <button className="text-button" type="button" onClick={() => setMode('compose')}>Share</button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="share-control">
+      {shared && mode === 'unshare' ? (
+        <span className="inline-confirm" role="group" aria-label="Confirm unshare">
+          <span>Unshare?</span>
+          <button className="text-button danger-text" type="button" disabled={pending !== null} onClick={() => void confirmUnshare()}>
+            {pending === 'unshare' ? 'Removing…' : 'Unshare'}
+          </button>
+          <button className="text-button" type="button" disabled={pending !== null} onClick={() => setMode('idle')}>Keep</button>
+        </span>
+      ) : shared ? (
+        <button className="text-button" type="button" aria-pressed="true" disabled={pending !== null} onClick={() => setMode('unshare')}>
+          Shared
+        </button>
+      ) : mode === 'compose' ? (
+        <form className="share-composer" onSubmit={(event) => void submitShare(event)}>
+          <label className="visually-hidden" htmlFor={composeId}>Optional comment</label>
+          <textarea
+            id={composeId}
+            value={comment}
+            rows={2}
+            maxLength={RESHARE_COMMENT_LIMIT}
+            placeholder="Add an optional comment…"
+            onChange={(event) => {
+              setComment(event.target.value);
+              setError(null);
+            }}
+          />
+          <div className="composer-footer">
+            <span aria-live="polite">{comment.length.toLocaleString()} / 1,000</span>
+            <button className="button button-primary button-small" type="submit" disabled={pending !== null}>
+              {pending === 'share' ? 'Sharing…' : 'Share to feed'}
+            </button>
+            <button className="text-button" type="button" disabled={pending !== null} onClick={() => { setMode('idle'); setComment(''); }}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button className="text-button" type="button" aria-pressed="false" disabled={pending !== null} onClick={() => setMode('compose')}>
+          Share
+        </button>
+      )}
+      {error && <p className="inline-error" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+function AnnotationCard({ annotation, reshare = null, navigation, supabase, getPublicUrl, currentUserId, onSignIn, initialShared = false, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null, tiktokHover = null, spotifyHover = null }: {
   annotation: PublicAnnotation;
+  reshare?: PublicReshareAttribution | null;
+  initialShared?: boolean;
   navigation: NavigationCallbacks;
   supabase: SupabaseClient;
   getPublicUrl: (path: string) => string | null;
@@ -981,7 +1109,7 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
   pageVideoHover?: PageVideoHoverConnection | null;
   tiktokHover?: TikTokHoverConnection | null;
   spotifyHover?: SpotifyHoverConnection | null;
-}) {
+} & AuthProps) {
   const [expanded, setExpanded] = useState(false);
   const [hosted, setHosted] = useState<HostedExcerpt | null>(
     annotation.kind === 'article' ? null : annotation.hosted,
@@ -1083,7 +1211,17 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
         : youtubeHoverNestedChipHandlers(youtubeHover, clipTarget);
 
   return (
-    <article className="social-card">
+    <article className={reshare ? 'social-card social-card-reshare' : 'social-card'}>
+      {reshare && (
+        <p className="reshare-attribution">
+          <button className="text-button" type="button" onClick={() => navigation.openProfile(reshare.resharer.id)}>
+            {reshare.resharer.displayName}
+          </button>
+          {' shared'}
+          <time dateTime={reshare.createdAt}>{formatTimestamp(reshare.createdAt)}</time>
+        </p>
+      )}
+      {reshare?.comment ? <p className="reshare-comment"><TextWithLogoMark text={reshare.comment} /></p> : null}
       <header className="social-card-header">
         <button className="text-button creator-button" type="button" onClick={() => navigation.openProfile(annotation.creator.id)}>
           <Avatar name={annotation.creator.displayName} url={annotation.creator.avatarUrl} />
@@ -1237,6 +1375,13 @@ function AnnotationCard({ annotation, navigation, supabase, getPublicUrl, youtub
         <button className="text-button" type="button" onClick={() => navigation.openAnnotation(annotation.id)}>
           View annotation
         </button>
+        <ShareControl
+          supabase={supabase}
+          annotationId={annotation.id}
+          currentUserId={currentUserId}
+          onSignIn={onSignIn}
+          initialShared={initialShared}
+        />
       </footer>
     </article>
   );
@@ -1253,6 +1398,8 @@ export function AnnotationCollection({
   emptyTitle,
   emptyMessage,
   compactHeading,
+  currentUserId,
+  onSignIn,
   youtubeHover = null,
   articleHover = null,
   audioHover = null,
@@ -1276,7 +1423,7 @@ export function AnnotationCollection({
   pageVideoHover?: PageVideoHoverConnection | null;
   tiktokHover?: TikTokHoverConnection | null;
   spotifyHover?: SpotifyHoverConnection | null;
-}) {
+} & AuthProps) {
   const [page, setPage] = useState<AnnotationPage | null>(() => cache.get(cacheKey) ?? null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(page ? 'ready' : 'loading');
   const [loadingMore, setLoadingMore] = useState(false);
@@ -1303,7 +1450,9 @@ export function AnnotationCollection({
       setError(null);
     }
     try {
-      const result = await queryAnnotations(supabase, { sourceUrl, profileId });
+      const result = sourceUrl
+        ? await queryAnnotations(supabase, { sourceUrl, profileId })
+        : await queryTimeline(supabase, { profileId });
       if (!revisions.current.isCurrent(revision)) return;
       cache.set(cacheKey, result);
       setPage(result);
@@ -1314,7 +1463,7 @@ export function AnnotationCollection({
       setStatus('error');
       setError('Annotations could not be loaded. Check your connection and try again.');
     }
-  }, [cache, cacheKey, profileId, sourceUrl, supabase]);
+  }, [cache, cacheKey, currentUserId, profileId, sourceUrl, supabase]);
 
   useEffect(() => {
     void loadInitial();
@@ -1326,13 +1475,23 @@ export function AnnotationCollection({
     setLoadingMore(true);
     setError(null);
     try {
-      const next = await queryAnnotations(supabase, {
-        sourceUrl,
-        profileId,
-        offset: page.annotations.length,
-      });
+      const next = sourceUrl
+        ? await queryAnnotations(supabase, {
+          sourceUrl,
+          profileId,
+          offset: page.items.length,
+        })
+        : await queryTimeline(supabase, {
+          profileId,
+          offset: page.items.length,
+        });
       const merged = {
         annotations: [...page.annotations, ...next.annotations],
+        items: [...(page.items ?? page.annotations.map((annotation) => ({
+          annotation,
+          reshare: null,
+          viewerHasReshared: false,
+        }))), ...next.items],
         total: next.total,
         hasMore: next.hasMore,
       };
@@ -1351,7 +1510,7 @@ export function AnnotationCollection({
   if (status === 'error') {
     return <div className="compact-state compact-state-error" role="alert"><strong>Annotations unavailable</strong><span>{error}</span><button className="button button-secondary" type="button" onClick={() => void loadInitial(true)}>Try again</button></div>;
   }
-  if (!page || page.annotations.length === 0) {
+  if (!page || (page.items ?? page.annotations).length === 0) {
     return <div className="compact-state"><strong>{emptyTitle}</strong><span>{emptyMessage}</span></div>;
   }
 
@@ -1359,7 +1518,29 @@ export function AnnotationCollection({
     <section className="social-list-section" aria-label={compactHeading ?? 'Annotations'}>
       {compactHeading && <div className="section-heading"><h2>{compactHeading}</h2><span>{page.total ?? page.annotations.length}</span></div>}
       <div className="social-list">
-        {page.annotations.map((annotation) => <AnnotationCard key={annotation.id} annotation={annotation} navigation={navigation} supabase={supabase} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} />)}
+        {(page.items ?? page.annotations.map((annotation): TimelineItem => ({
+          annotation,
+          reshare: null,
+          viewerHasReshared: false,
+        }))).map((item) => (
+          <AnnotationCard
+            key={feedItemKey(item)}
+            annotation={item.annotation}
+            reshare={item.reshare}
+            initialShared={item.viewerHasReshared}
+            currentUserId={currentUserId}
+            onSignIn={onSignIn}
+            navigation={navigation}
+            supabase={supabase}
+            getPublicUrl={getPublicUrl}
+            youtubeHover={youtubeHover}
+            articleHover={articleHover}
+            audioHover={audioHover}
+            pageVideoHover={pageVideoHover}
+            tiktokHover={tiktokHover}
+            spotifyHover={spotifyHover}
+          />
+        ))}
       </div>
       {page.hasMore && (
         <button className="button button-secondary load-more" type="button" onClick={() => void loadMore()} disabled={loadingMore}>
@@ -1617,6 +1798,7 @@ export function AnnotationDetailView({
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [audioError, setAudioError] = useState<string | null>(null);
   const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
+  const [hasReshared, setHasReshared] = useState(false);
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover, annotation);
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
   const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
@@ -1634,13 +1816,19 @@ export function AnnotationDetailView({
         setAnnotation(result);
         setStatus('ready');
         try {
-          const creator = await queryProfile(supabase, result.creator.id);
-          if (current) setProfile(creator);
+          const [creator, shareTargets] = await Promise.all([
+            queryProfile(supabase, result.creator.id),
+            currentUserId ? queryCurrentReshares(supabase, [result.id]) : Promise.resolve(new Set<string>()),
+          ]);
+          if (current) {
+            setProfile(creator);
+            setHasReshared(shareTargets.has(result.id));
+          }
         } catch { /* Detail remains readable if social counts fail. */ }
       })
       .catch(() => { if (current) setStatus('error'); });
     return () => { current = false; };
-  }, [annotationId, supabase]);
+  }, [annotationId, currentUserId, supabase]);
 
   if (status === 'loading') return <div className="compact-state view-state" role="status"><strong>Loading annotation</strong><span>Retrieving published detail…</span></div>;
   if (status === 'missing') return <div className="compact-state view-state"><strong>Annotation unavailable</strong><span>It may have been removed or is not public.</span></div>;
@@ -1741,7 +1929,18 @@ export function AnnotationDetailView({
           <p>This archived excerpt is no longer available. The annotation and original source remain accessible.</p>
         </section>
       )}
-      <div className="detail-secondary-actions"><span>{annotation.commentCount.toLocaleString()} comments</span>{publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Share / public page ↗</a>}</div>
+      <div className="detail-secondary-actions">
+        <span>{annotation.commentCount.toLocaleString()} comments</span>
+        {publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Public page ↗</a>}
+      </div>
+      <ShareControl
+        key={`${annotation.id}:${String(hasReshared)}:${currentUserId ?? 'signed-out'}`}
+        supabase={supabase}
+        annotationId={annotation.id}
+        currentUserId={currentUserId}
+        onSignIn={onSignIn}
+        initialShared={hasReshared}
+      />
       <Comments supabase={supabase} annotationId={annotation.id} currentUserId={currentUserId} onSignIn={onSignIn} onProfile={navigation.openProfile} autoFocus={focusComments} onCountChange={(commentCount) => setAnnotation((current) => current ? { ...current, commentCount } : current)} onMutation={onSocialMutation} />
     </article>
   );
@@ -1798,7 +1997,7 @@ export function ProfileView({
         <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} onCountChange={(followerCount) => setProfile((current) => current ? { ...current, followerCount } : current)} />
         {publicUrl && <a className="secondary-link" href={publicUrl} target="_blank" rel="noopener noreferrer">Open public profile ↗</a>}
       </header>
-      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
+      <AnnotationCollection supabase={supabase} cache={cache} cacheKey={`profile:${profile.id}`} profileId={profile.id} currentUserId={currentUserId} onSignIn={onSignIn} navigation={navigation} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle="No published annotations" emptyMessage="This creator has not published an annotation yet." compactHeading="Published annotations" />
     </div>
   );
 }

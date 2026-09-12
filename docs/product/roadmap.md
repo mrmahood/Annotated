@@ -842,7 +842,9 @@ first**, then the **social slice**, then Phase G. They are not
 mid-September bounty must-haves. This section locks the product
 contract; it does not authorize Staging apply or Production. Clip
 range UI is implemented in this increment (owner Chrome acceptance
-still required). The social slice remains unimplemented. Staging
+still required). **Share v1** (in-ecosystem reshare) is implemented in
+this increment; Bookmark / What’s Trending / Who to Follow remain
+unimplemented. Staging
 acceptance is required before Phase G. Hosted
 range limits remain 1,000–90,000 ms. Article publication, draft-first
 hosted media, and the accepted capture/upload pipeline are unchanged.
@@ -870,11 +872,20 @@ Implemented in this increment. Replace **Set start** / **Set end**
 
 ### Social slice — ship second (after clip UI)
 
-**Share an annotation.** In-ecosystem **reshare** onto the signed-in
-user’s Annotated feed. Requires an Annotated profile / auth. Optional
-comment / annotate-on-share. Followers may see the share in their
-feed. **Not** copy-link, Web Share, or X intent for v1. Surfaces:
-**web + extension**.
+**Share an annotation.** Locked 2026-09-12. In-ecosystem **reshare**
+onto the signed-in user’s Annotated feed. Requires an Annotated
+profile / auth. Optional **plain-text comment on the reshare row** —
+not a new annotation. Surfaces: **web + extension**, control on
+**Feed cards and detail**. Users **may reshare their own** published
+annotations. Users **may reshare reshares** (nested). Uniqueness is
+**at most one reshare per user per target annotation** (the immediate
+target row). Owner can **remove / unshare** later. Followers may see
+the share in their signed-in feed (home timeline mixes published
+annotations with reshares from the viewer and followed profiles;
+anonymous home stays annotation-only; profile timelines include that
+actor’s reshares). **Not** copy-link, Web Share API, or X intent for
+v1. Bookmark / What’s Trending / Who to Follow are separate later
+PRs.
 
 **Bookmark an annotation.** **Private** for the signed-in user only.
 If logged out, prompt Google / X sign-in. Flat list on **Me**. No

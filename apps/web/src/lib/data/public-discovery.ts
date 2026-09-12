@@ -21,11 +21,15 @@ import {
   type PublicAnnotationRoute,
 } from "@/lib/public-routes";
 import {
-  buildPublicFeedQueryPlan,
-  buildPublicProfileAnnotationsQueryPlan,
+  PUBLIC_ANNOTATION_CARD_SELECT,
   PUBLIC_ANNOTATION_STATUS,
-  type PublicAnnotationQueryPlan,
 } from "./public-discovery-query";
+import {
+  feedItemKey,
+  parseCurrentReshareIds,
+  parseTimelineRow,
+  type PublicReshareAttribution,
+} from "./reshare";
 import { queryPublicCommentCounts } from "./social-query";
 
 type PublicAnnotationCardBase = {
@@ -99,9 +103,17 @@ export type PublicProfile = {
   createdAt: string;
 };
 
+export type PublicFeedItem = {
+  annotation: PublicAnnotationCardData;
+  reshare: PublicReshareAttribution | null;
+  viewerHasReshared: boolean;
+};
+
 export type PublicAnnotationPage =
-  | { status: "available"; annotations: PublicAnnotationCardData[]; hasNext: boolean }
+  | { status: "available"; items: PublicFeedItem[]; hasNext: boolean }
   | { status: "unavailable" };
+
+export { feedItemKey, type PublicReshareAttribution };
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -310,56 +322,152 @@ export function mapPublicAnnotation(
   return null;
 }
 
-async function getPublicAnnotationPage(
+function mapAnnotationRow(
+  item: unknown,
+  audioPublicUrl: string | null,
+): PublicAnnotationCardData | null {
+  return mapPublicAnnotation(item, audioPublicUrl);
+}
+
+function audioPublicUrlFor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  item: unknown,
+): string | null {
+  const audioMetadata = isRecord(item) ? parsePublicAnnotationAudio(item.audio) : null;
+  return audioMetadata
+    ? getHttpUrl(
+      supabase.storage
+        .from(ANNOTATION_AUDIO_BUCKET)
+        .getPublicUrl(audioMetadata.storagePath).data.publicUrl,
+    )?.href ?? null
+    : null;
+}
+
+async function loadPublishedAnnotationsByIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  annotationIds: string[],
+): Promise<Map<string, PublicAnnotationCardData>> {
+  const uniqueIds = [...new Set(annotationIds.filter((id) => isUuid(id)))];
+  const mapped = new Map<string, PublicAnnotationCardData>();
+  if (uniqueIds.length === 0) return mapped;
+
+  const { data, error } = await supabase
+    .from("annotations")
+    .select(PUBLIC_ANNOTATION_CARD_SELECT)
+    .eq("status", PUBLIC_ANNOTATION_STATUS)
+    .in("id", uniqueIds);
+  if (error || !data) throw new Error("Annotations are unavailable.");
+
+  for (const row of data) {
+    const annotation = mapAnnotationRow(row, audioPublicUrlFor(supabase, row));
+    if (annotation) mapped.set(annotation.id, annotation);
+  }
+
+  const commentCounts = await queryPublicCommentCounts(supabase, [...mapped.keys()]);
+  for (const annotation of mapped.values()) {
+    annotation.commentCount = commentCounts.get(annotation.id) ?? 0;
+  }
+  return mapped;
+}
+
+async function loadResharerProfiles(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  profileIds: string[],
+): Promise<Map<string, PublicReshareAttribution["resharer"]>> {
+  const uniqueIds = [...new Set(profileIds.filter((id) => isUuid(id)))];
+  const profiles = new Map<string, PublicReshareAttribution["resharer"]>();
+  if (uniqueIds.length === 0) return profiles;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url")
+    .in("id", uniqueIds);
+  if (error || !data) throw new Error("Reshare profiles are unavailable.");
+
+  for (const row of data) {
+    if (!isUuid(row.id)) continue;
+    profiles.set(row.id, {
+      id: row.id,
+      displayName: getOptionalText(row.display_name) ?? "Annotated reader",
+      avatarUrl: getHttpUrl(row.avatar_url)?.href ?? null,
+    });
+  }
+  return profiles;
+}
+
+async function getPublicTimelinePage(
   page: number,
-  queryPlan: PublicAnnotationQueryPlan,
+  actorId: string | null,
 ): Promise<PublicAnnotationPage> {
   try {
     const supabase = await createClient();
-    let query = supabase.from(queryPlan.table).select(queryPlan.select);
-
-    for (const filter of queryPlan.filters) query = query.eq(filter.column, filter.value);
-    for (const order of queryPlan.orders) {
-      query = query.order(order.column, { ascending: order.ascending });
-    }
-
     const { from, to } = getPageRange(page);
-    const { data, error } = await query.range(from, to);
-
-    if (error || !data) return { status: "unavailable" };
+    const { data, error } = await supabase.rpc("list_public_timeline_items", {
+      p_limit: to - from + 1,
+      p_offset: from,
+      p_actor_id: actorId,
+    });
+    if (error || !Array.isArray(data)) return { status: "unavailable" };
 
     const hasNext = data.length > PUBLIC_PAGE_SIZE;
-    const annotations = data
-      .slice(0, PUBLIC_PAGE_SIZE)
-      .map((item) => {
-        const audioMetadata = isRecord(item) ? parsePublicAnnotationAudio(item.audio) : null;
-        const audioPublicUrl = audioMetadata
-          ? getHttpUrl(
-            supabase.storage
-              .from(ANNOTATION_AUDIO_BUCKET)
-              .getPublicUrl(audioMetadata.storagePath).data.publicUrl,
-          )?.href ?? null
-          : null;
-        return mapPublicAnnotation(item, audioPublicUrl);
-      })
-      .filter((item): item is PublicAnnotationCardData => Boolean(item));
+    const rows = data.slice(0, PUBLIC_PAGE_SIZE).map(parseTimelineRow);
+    if (rows.some((row) => row === null)) return { status: "unavailable" };
+    const timeline = rows.filter((row): row is NonNullable<typeof row> => Boolean(row));
 
-    const commentCounts = await queryPublicCommentCounts(
+    const annotations = await loadPublishedAnnotationsByIds(
       supabase,
-      annotations.map((annotation) => annotation.id),
+      timeline.map((row) => row.annotationId),
     );
-    for (const annotation of annotations) {
-      annotation.commentCount = commentCounts.get(annotation.id) ?? 0;
+    const resharers = await loadResharerProfiles(
+      supabase,
+      timeline.flatMap((row) => (row.resharerUserId ? [row.resharerUserId] : [])),
+    );
+
+    const { data: userData } = await supabase.auth.getUser();
+    const viewerIds = [...new Set(timeline.map((row) => row.annotationId))];
+    let viewerShares = new Set<string>();
+    if (userData.user && isUuid(userData.user.id) && viewerIds.length > 0) {
+      const { data: shareData, error: shareError } = await supabase.rpc(
+        "get_current_annotation_reshares",
+        { p_annotation_ids: viewerIds },
+      );
+      if (!shareError) viewerShares = parseCurrentReshareIds(shareData);
     }
 
-    return { status: "available", annotations, hasNext };
+    const items: PublicFeedItem[] = [];
+    for (const row of timeline) {
+      const annotation = annotations.get(row.annotationId);
+      if (!annotation) continue;
+      if (row.itemKind === "annotation") {
+        items.push({
+          annotation,
+          reshare: null,
+          viewerHasReshared: viewerShares.has(annotation.id),
+        });
+        continue;
+      }
+      const resharer = row.resharerUserId ? resharers.get(row.resharerUserId) : null;
+      if (!resharer) continue;
+      items.push({
+        annotation,
+        reshare: {
+          id: row.itemId,
+          createdAt: row.occurredAt,
+          comment: row.reshareComment,
+          resharer,
+        },
+        viewerHasReshared: viewerShares.has(annotation.id),
+      });
+    }
+
+    return { status: "available", items, hasNext };
   } catch {
     return { status: "unavailable" };
   }
 }
 
 export async function getPublicFeedPage(page: number): Promise<PublicAnnotationPage> {
-  return getPublicAnnotationPage(page, buildPublicFeedQueryPlan());
+  return getPublicTimelinePage(page, null);
 }
 
 export async function getPublicProfile(profileId: string): Promise<PublicProfile | null> {
@@ -398,7 +506,7 @@ export async function getPublicProfileAnnotations(
   page: number,
 ): Promise<PublicAnnotationPage> {
   if (!isUuid(profileId)) return { status: "unavailable" };
-  return getPublicAnnotationPage(page, buildPublicProfileAnnotationsQueryPlan(profileId));
+  return getPublicTimelinePage(page, profileId);
 }
 
 export async function getPublicAnnotationCount(profileId: string): Promise<number | null> {

@@ -34,3 +34,14 @@ test("feed discovery projects webpage video_clip rows on the article source as V
   assert.match(source, /audio: \{ publicUrl: string; durationMs: number \} \| null/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });
+
+test("public and profile feeds load mixed timeline items through the trusted reshare RPC", async () => {
+  const source = await readFile(new URL("./public-discovery.ts", import.meta.url), "utf8");
+  assert.match(source, /list_public_timeline_items/);
+  assert.match(source, /get_current_annotation_reshares/);
+  assert.match(source, /itemKind === "reshare"/);
+  assert.match(source, /viewerHasReshared/);
+  assert.doesNotMatch(source, /from\("annotation_reshares"\)/);
+  assert.doesNotMatch(source, /from\("profile_follows"\)/);
+  assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
+});

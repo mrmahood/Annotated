@@ -9,6 +9,7 @@ export const PUBLIC_COMMENT_STATUS = 'public' as const;
 export const ANNOTATION_PAGE_SIZE = 10;
 export const COMMENT_PAGE_SIZE = 20;
 export const COMMENT_BODY_LIMIT = 1_000;
+export const RESHARE_COMMENT_LIMIT = 1_000;
 
 export type PublicAnnotationRoute = {
   creatorHandle: string;
@@ -180,6 +181,83 @@ export function getCommentPageRange(offset: number): { from: number; to: number 
 export function requireParticipation(userId: string | null): string {
   if (!userId || !isUuid(userId)) throw new Error('Authentication is required.');
   return userId;
+}
+
+export function normalizeReshareComment(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > RESHARE_COMMENT_LIMIT) {
+    throw new Error('Reshare comments cannot exceed 1,000 characters.');
+  }
+  return trimmed;
+}
+
+export type PublicTimelineRow = {
+  itemKind: 'annotation' | 'reshare';
+  itemId: string;
+  occurredAt: string;
+  annotationId: string;
+  resharerUserId: string | null;
+  reshareComment: string | null;
+};
+
+export function parseTimelineRow(value: unknown): PublicTimelineRow | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const row = value as Record<string, unknown>;
+  const itemKind = row.item_kind === 'annotation' || row.item_kind === 'reshare'
+    ? row.item_kind
+    : null;
+  const itemId = getOptionalText(row.item_id);
+  const annotationId = getOptionalText(row.annotation_id);
+  const occurredAt = getOptionalText(row.occurred_at);
+  const occurredDate = occurredAt ? new Date(occurredAt) : null;
+  const resharerUserId = getOptionalText(row.resharer_user_id);
+  const comment = typeof row.reshare_comment === 'string' ? row.reshare_comment : null;
+
+  if (
+    !itemKind || !itemId || !isUuid(itemId) || !annotationId || !isUuid(annotationId) ||
+    !occurredDate || Number.isNaN(occurredDate.getTime())
+  ) {
+    return null;
+  }
+
+  if (itemKind === 'reshare') {
+    if (!resharerUserId || !isUuid(resharerUserId)) return null;
+    if (comment !== null && (!comment.trim() || comment.length > RESHARE_COMMENT_LIMIT)) {
+      return null;
+    }
+  } else if (resharerUserId || comment) {
+    return null;
+  }
+
+  return {
+    itemKind,
+    itemId,
+    occurredAt: occurredDate.toISOString(),
+    annotationId,
+    resharerUserId: itemKind === 'reshare' ? resharerUserId : null,
+    reshareComment: itemKind === 'reshare' ? (comment?.trim() || null) : null,
+  };
+}
+
+export function parseCurrentReshareIds(value: unknown): Set<string> {
+  const ids = new Set<string>();
+  if (!Array.isArray(value)) return ids;
+  for (const row of value) {
+    const annotationId = typeof row === 'object' && row !== null
+      ? getOptionalText((row as Record<string, unknown>).annotation_id)
+      : getOptionalText(row);
+    if (annotationId && isUuid(annotationId)) ids.add(annotationId);
+  }
+  return ids;
+}
+
+export function feedItemKey(item: {
+  annotation: { id: string };
+  reshare: { id: string } | null;
+}): string {
+  return item.reshare ? `reshare:${item.reshare.id}` : `annotation:${item.annotation.id}`;
 }
 
 export class RequestRevision {

@@ -485,6 +485,65 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .card-actions a { color: var(--text-secondary); font-size: 0.73rem; font-weight: 550; text-decoration: none; }
 .card-actions a:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
 .card-detail-link { color: var(--text-muted) !important; }
+.annotation-card-reshare { display: grid; }
+.reshare-attribution {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 18px 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 550;
+}
+.reshare-actor { color: var(--text-secondary); text-decoration: none; }
+.reshare-actor:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.reshare-comment {
+  margin: 0;
+  padding: 6px 18px 0;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.share-control { min-width: 0; }
+.card-share-button {
+  padding: 0;
+  border: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 0.73rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+.card-share-button:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.card-share-button:disabled { color: var(--text-disabled); cursor: not-allowed; }
+.card-share-sign-in { font-size: 0.73rem; }
+.share-signed-out { display: grid; gap: 8px; }
+.share-composer { display: grid; gap: 8px; width: min(100%, 420px); }
+.share-composer textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  color: inherit;
+  background: var(--background-elevated);
+  font: inherit;
+  resize: vertical;
+}
+.share-composer-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.share-composer-footer span { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.67rem; }
+.share-confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 0.73rem; }
+.card-share-message { margin: 4px 0 0; color: var(--text-secondary); font-size: 0.7rem; }
+.share-section { border-top: 1px solid var(--border); scroll-margin-top: 20px; }
+.share-control-detail { display: grid; gap: 12px; }
+.share-heading-row { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 14px 20px; }
+.share-heading-row h2 { margin: 0; font-size: 1.28rem; font-weight: 600; letter-spacing: -0.02em; }
+.share-help { max-width: 620px; margin: 0; color: var(--text-muted); font-size: 0.78rem; line-height: 1.5; }
 
 .discovery-state,
 .comments-state,
@@ -516,6 +575,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .media-removed-section,
 .transcript-section,
 .vote-section,
+.share-section,
 .comments-section,
 .claim-section { padding: clamp(20px, 4vw, 34px); }
 .annotation-header { display: flex; align-items: center; min-height: 68px; border-bottom: 1px solid var(--border); }
@@ -878,7 +938,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .card-body { padding-inline: 14px; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .annotation-shell { padding: 14px 10px 36px; }
-  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .vote-section, .comments-section, .claim-section { padding: 18px; }
+  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .share-section, .vote-section, .comments-section, .claim-section { padding: 18px; }
   .source-attribution { grid-template-columns: 1fr; align-items: stretch; gap: 18px; }
   .source-link, .public-button-claim { width: 100%; }
   .annotator-line { align-items: flex-start; flex-wrap: wrap; }
@@ -893,6 +953,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .comment-form-footer .public-button, .comment-sign-in .public-button { width: 100%; }
   .comment-sign-in .provider-sign-in-actions,
   .follow-control .provider-sign-in-actions,
+  .share-heading-row .provider-sign-in-actions,
   .vote-heading-row .provider-sign-in-actions {
     width: 100%;
     flex-direction: column;
