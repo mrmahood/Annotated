@@ -28,18 +28,22 @@ import {
 } from '../../utils/hosted-playback';
 import { resolveHostedPlaybackSrc } from '../../utils/hosted-playback-src';
 import {
+  createAnnotationBookmark,
   createAnnotationReshare,
   createComment,
   deleteComment,
   followProfile,
   queryAnnotation,
   queryAnnotations,
+  queryBookmarks,
+  queryCurrentBookmarks,
   queryCurrentReshares,
   queryComments,
   queryFollowState,
   queryProfile,
   queryPublicHostedExcerpt,
   queryTimeline,
+  removeAnnotationBookmark,
   removeAnnotationReshare,
   unfollowProfile,
   type AnnotationPage,
@@ -1096,10 +1100,102 @@ function ShareControl({
   );
 }
 
-function AnnotationCard({ annotation, reshare = null, navigation, supabase, getPublicUrl, currentUserId, onSignIn, initialShared = false, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null, tiktokHover = null, spotifyHover = null }: {
+function BookmarkControl({
+  supabase,
+  annotationId,
+  currentUserId,
+  onSignIn,
+  initialBookmarked,
+  onChanged,
+}: {
+  supabase: SupabaseClient;
+  annotationId: string;
+  initialBookmarked: boolean;
+  onChanged?: () => void;
+} & AuthProps) {
+  const [bookmarked, setBookmarked] = useState(initialBookmarked);
+  const [mode, setMode] = useState<'idle' | 'sign-in' | 'remove'>('idle');
+  const [pending, setPending] = useState<'bookmark' | 'remove' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const saveBookmark = async () => {
+    if (!currentUserId || pending) return;
+    setPending('bookmark');
+    setError(null);
+    try {
+      await createAnnotationBookmark(supabase, annotationId);
+      setBookmarked(true);
+      setMode('idle');
+      onChanged?.();
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : 'The annotation could not be bookmarked.');
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const confirmRemove = async () => {
+    if (!currentUserId || pending) return;
+    setPending('remove');
+    setError(null);
+    try {
+      await removeAnnotationBookmark(supabase, annotationId);
+      setBookmarked(false);
+      setMode('idle');
+      onChanged?.();
+    } catch (mutationError) {
+      setError(mutationError instanceof Error ? mutationError.message : 'The bookmark could not be removed.');
+    } finally {
+      setPending(null);
+    }
+  };
+
+  if (!currentUserId) {
+    return (
+      <div className="share-control">
+        {mode === 'sign-in' ? (
+          <div className="signed-out-action">
+            <span>Sign in to bookmark.</span>
+            <SignInButtons onSignIn={onSignIn} />
+            <button className="text-button" type="button" onClick={() => setMode('idle')}>Cancel</button>
+          </div>
+        ) : (
+          <button className="text-button" type="button" onClick={() => setMode('sign-in')}>Bookmark</button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="share-control">
+      {bookmarked && mode === 'remove' ? (
+        <span className="inline-confirm" role="group" aria-label="Confirm remove bookmark">
+          <span>Unbookmark?</span>
+          <button className="text-button danger-text" type="button" disabled={pending !== null} onClick={() => void confirmRemove()}>
+            {pending === 'remove' ? 'Removing…' : 'Unbookmark'}
+          </button>
+          <button className="text-button" type="button" disabled={pending !== null} onClick={() => setMode('idle')}>Keep</button>
+        </span>
+      ) : bookmarked ? (
+        <button className="text-button" type="button" aria-pressed="true" disabled={pending !== null} onClick={() => setMode('remove')}>
+          Bookmarked
+        </button>
+      ) : (
+        <button className="text-button" type="button" aria-pressed="false" disabled={pending !== null} onClick={() => void saveBookmark()}>
+          {pending === 'bookmark' ? 'Saving…' : 'Bookmark'}
+        </button>
+      )}
+      {error && <p className="inline-error" role="alert">{error}</p>}
+    </div>
+  );
+}
+
+function AnnotationCard({ annotation, reshare = null, navigation, supabase, getPublicUrl, currentUserId, onSignIn, initialShared = false, initialBookmarked = false, onBookmarkChange, youtubeHover = null, articleHover = null, audioHover = null, pageVideoHover = null, tiktokHover = null, spotifyHover = null }: {
   annotation: PublicAnnotation;
   reshare?: PublicReshareAttribution | null;
   initialShared?: boolean;
+  initialBookmarked?: boolean;
+  onBookmarkChange?: () => void;
   navigation: NavigationCallbacks;
   supabase: SupabaseClient;
   getPublicUrl: (path: string) => string | null;
@@ -1382,6 +1478,14 @@ function AnnotationCard({ annotation, reshare = null, navigation, supabase, getP
           onSignIn={onSignIn}
           initialShared={initialShared}
         />
+        <BookmarkControl
+          supabase={supabase}
+          annotationId={annotation.id}
+          currentUserId={currentUserId}
+          onSignIn={onSignIn}
+          initialBookmarked={initialBookmarked}
+          onChanged={onBookmarkChange}
+        />
       </footer>
     </article>
   );
@@ -1400,6 +1504,7 @@ export function AnnotationCollection({
   compactHeading,
   currentUserId,
   onSignIn,
+  onBookmarkChange,
   youtubeHover = null,
   articleHover = null,
   audioHover = null,
@@ -1423,6 +1528,7 @@ export function AnnotationCollection({
   pageVideoHover?: PageVideoHoverConnection | null;
   tiktokHover?: TikTokHoverConnection | null;
   spotifyHover?: SpotifyHoverConnection | null;
+  onBookmarkChange?: () => void;
 } & AuthProps) {
   const [page, setPage] = useState<AnnotationPage | null>(() => cache.get(cacheKey) ?? null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(page ? 'ready' : 'loading');
@@ -1491,6 +1597,7 @@ export function AnnotationCollection({
           annotation,
           reshare: null,
           viewerHasReshared: false,
+          viewerHasBookmarked: false,
         }))), ...next.items],
         total: next.total,
         hasMore: next.hasMore,
@@ -1522,12 +1629,15 @@ export function AnnotationCollection({
           annotation,
           reshare: null,
           viewerHasReshared: false,
+          viewerHasBookmarked: false,
         }))).map((item) => (
           <AnnotationCard
             key={feedItemKey(item)}
             annotation={item.annotation}
             reshare={item.reshare}
             initialShared={item.viewerHasReshared}
+            initialBookmarked={item.viewerHasBookmarked}
+            onBookmarkChange={onBookmarkChange}
             currentUserId={currentUserId}
             onSignIn={onSignIn}
             navigation={navigation}
@@ -1539,6 +1649,134 @@ export function AnnotationCollection({
             pageVideoHover={pageVideoHover}
             tiktokHover={tiktokHover}
             spotifyHover={spotifyHover}
+          />
+        ))}
+      </div>
+      {page.hasMore && (
+        <button className="button button-secondary load-more" type="button" onClick={() => void loadMore()} disabled={loadingMore}>
+          {loadingMore ? 'Loading…' : `Load ${ANNOTATION_PAGE_SIZE} more`}
+        </button>
+      )}
+      {error && <p className="inline-error" role="alert">{error}</p>}
+    </section>
+  );
+}
+
+export function BookmarkCollection({
+  supabase,
+  cache,
+  navigation,
+  getPublicUrl,
+  currentUserId,
+  onSignIn,
+}: {
+  supabase: SupabaseClient;
+  cache: SessionSocialCache;
+  navigation: NavigationCallbacks;
+  getPublicUrl: (path: string) => string | null;
+} & AuthProps) {
+  const cacheKey = 'bookmarks';
+  const [page, setPage] = useState<AnnotationPage | null>(() => cache.get(cacheKey) ?? null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(page ? 'ready' : 'loading');
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const revisions = useRef(new RequestRevision());
+
+  const loadInitial = useCallback(async (force = false) => {
+    const revision = revisions.current.begin();
+    const cached = !force ? cache.get(cacheKey) : undefined;
+    if (cached) {
+      setPage(cached);
+      setStatus('ready');
+    } else {
+      setStatus('loading');
+      setError(null);
+    }
+    try {
+      const result = await queryBookmarks(supabase);
+      if (!revisions.current.isCurrent(revision)) return;
+      cache.set(cacheKey, result);
+      setPage(result);
+      setStatus('ready');
+    } catch {
+      if (!revisions.current.isCurrent(revision)) return;
+      if (cached) return;
+      setStatus('error');
+      setError('Bookmarks could not be loaded. Check your connection and try again.');
+    }
+  }, [cache, currentUserId, supabase]);
+
+  useEffect(() => {
+    void loadInitial();
+    return () => revisions.current.invalidate();
+  }, [loadInitial]);
+
+  const loadMore = async () => {
+    if (!page || loadingMore) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const next = await queryBookmarks(supabase, { offset: page.items.length });
+      const merged = {
+        annotations: [...page.annotations, ...next.annotations],
+        items: [...page.items, ...next.items],
+        total: next.total,
+        hasMore: next.hasMore,
+      };
+      cache.set(cacheKey, merged);
+      setPage(merged);
+    } catch {
+      setError('More bookmarks could not be loaded. Try again.');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const refreshAfterChange = () => {
+    cache.delete(cacheKey);
+    void loadInitial(true);
+  };
+
+  if (status === 'loading') {
+    return <div className="compact-state" role="status"><strong>Loading bookmarks</strong><span>Reading your private saved annotations…</span></div>;
+  }
+  if (status === 'error') {
+    return <div className="compact-state compact-state-error" role="alert"><strong>Bookmarks unavailable</strong><span>{error}</span><button className="button button-secondary" type="button" onClick={() => void loadInitial(true)}>Try again</button></div>;
+  }
+  if (!page || page.items.length === 0) {
+    return (
+      <section className="social-list-section" aria-labelledby="bookmarks-heading">
+        <div className="section-heading">
+          <h2 id="bookmarks-heading">Bookmarks</h2>
+        </div>
+        <div className="compact-state">
+          <strong>No bookmarks yet</strong>
+          <span>Bookmark a published annotation from Feed or detail. This list is private and newest-first.</span>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="social-list-section" aria-labelledby="bookmarks-heading">
+      <div className="section-heading">
+        <h2 id="bookmarks-heading">Bookmarks</h2>
+        <span>{page.annotations.length}{page.hasMore ? '+' : ''}</span>
+      </div>
+      <div className="social-list">
+        {page.items.map((item) => (
+          <AnnotationCard
+            key={feedItemKey(item)}
+            annotation={item.annotation}
+            reshare={item.reshare}
+            initialShared={item.viewerHasReshared}
+            initialBookmarked={item.viewerHasBookmarked}
+            onBookmarkChange={refreshAfterChange}
+            currentUserId={currentUserId}
+            onSignIn={onSignIn}
+            navigation={navigation}
+            supabase={supabase}
+            getPublicUrl={getPublicUrl}
           />
         ))}
       </div>
@@ -1799,6 +2037,7 @@ export function AnnotationDetailView({
   const [audioError, setAudioError] = useState<string | null>(null);
   const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
   const [hasReshared, setHasReshared] = useState(false);
+  const [hasBookmarked, setHasBookmarked] = useState(false);
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover, annotation);
   const { showHint, onAwaitingConnection } = useArticlePendingConnectHint(annotation);
   const { showHint: showAudioHint, onAwaitingConnection: onAudioAwaitingConnection } = useAudioPendingConnectHint(annotation);
@@ -1816,13 +2055,15 @@ export function AnnotationDetailView({
         setAnnotation(result);
         setStatus('ready');
         try {
-          const [creator, shareTargets] = await Promise.all([
+          const [creator, shareTargets, bookmarkTargets] = await Promise.all([
             queryProfile(supabase, result.creator.id),
             currentUserId ? queryCurrentReshares(supabase, [result.id]) : Promise.resolve(new Set<string>()),
+            currentUserId ? queryCurrentBookmarks(supabase, [result.id]) : Promise.resolve(new Set<string>()),
           ]);
           if (current) {
             setProfile(creator);
             setHasReshared(shareTargets.has(result.id));
+            setHasBookmarked(bookmarkTargets.has(result.id));
           }
         } catch { /* Detail remains readable if social counts fail. */ }
       })
@@ -1940,6 +2181,15 @@ export function AnnotationDetailView({
         currentUserId={currentUserId}
         onSignIn={onSignIn}
         initialShared={hasReshared}
+      />
+      <BookmarkControl
+        key={`${annotation.id}:bookmark:${String(hasBookmarked)}:${currentUserId ?? 'signed-out'}`}
+        supabase={supabase}
+        annotationId={annotation.id}
+        currentUserId={currentUserId}
+        onSignIn={onSignIn}
+        initialBookmarked={hasBookmarked}
+        onChanged={onSocialMutation}
       />
       <Comments supabase={supabase} annotationId={annotation.id} currentUserId={currentUserId} onSignIn={onSignIn} onProfile={navigation.openProfile} autoFocus={focusComments} onCountChange={(commentCount) => setAnnotation((current) => current ? { ...current, commentCount } : current)} onMutation={onSocialMutation} />
     </article>

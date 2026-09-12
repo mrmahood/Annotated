@@ -7,6 +7,7 @@ import { getPublicAnnotationPath } from "@/lib/public-routes";
 import {
   getCurrentUserFollowState,
   getCurrentUserId,
+  getCurrentUserBookmarkState,
   getCurrentUserReshareState,
   getProfileSocialCounts,
   getPublicAnnotationComments,
@@ -19,6 +20,7 @@ import { FollowButton } from "./follow-button";
 import { HostedMediaPlayer } from "./hosted-media-player";
 import { TextWithLogoMark } from "./logo-mark";
 import { SiteHeader } from "./site-header";
+import { BookmarkControl } from "./bookmark-control";
 import { ShareControl } from "./share-control";
 import { VoteControls } from "./vote-controls";
 
@@ -28,12 +30,13 @@ function getDurationDateTime(durationMs: number): string {
 
 export async function PublicAnnotationPage({ annotation }: { annotation: PublicAnnotation }) {
   const currentUserId = await getCurrentUserId();
-  const [socialCounts, isFollowing, comments, voteSnapshot, hasReshared] = await Promise.all([
+  const [socialCounts, isFollowing, comments, voteSnapshot, hasReshared, hasBookmarked] = await Promise.all([
     getProfileSocialCounts(annotation.annotator.id),
     getCurrentUserFollowState(annotation.annotator.id, currentUserId),
     getPublicAnnotationComments(annotation.id),
     getAnnotationVoteSnapshot(annotation.id, currentUserId),
     getCurrentUserReshareState(annotation.id, currentUserId),
+    getCurrentUserBookmarkState(annotation.id, currentUserId),
   ]);
   const publicPath = getPublicAnnotationPath(annotation.route, annotation.id);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
@@ -192,6 +195,16 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
               annotationId={annotation.id}
               currentUserId={currentUserId}
               initialShared={hasReshared}
+              returnTo={publicPath}
+              variant="detail"
+            />
+          </section>
+
+          <section className="share-section" id="bookmark" aria-labelledby="bookmark-heading">
+            <BookmarkControl
+              annotationId={annotation.id}
+              currentUserId={currentUserId}
+              initialBookmarked={hasBookmarked}
               returnTo={publicPath}
               variant="detail"
             />

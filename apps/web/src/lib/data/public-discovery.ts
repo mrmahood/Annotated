@@ -25,6 +25,10 @@ import {
   PUBLIC_ANNOTATION_STATUS,
 } from "./public-discovery-query";
 import {
+  parseBookmarkListRow,
+  parseCurrentBookmarkIds,
+} from "./bookmark";
+import {
   feedItemKey,
   parseCurrentReshareIds,
   parseTimelineRow,
@@ -107,6 +111,7 @@ export type PublicFeedItem = {
   annotation: PublicAnnotationCardData;
   reshare: PublicReshareAttribution | null;
   viewerHasReshared: boolean;
+  viewerHasBookmarked: boolean;
 };
 
 export type PublicAnnotationPage =
@@ -426,12 +431,17 @@ async function getPublicTimelinePage(
     const { data: userData } = await supabase.auth.getUser();
     const viewerIds = [...new Set(timeline.map((row) => row.annotationId))];
     let viewerShares = new Set<string>();
+    let viewerBookmarks = new Set<string>();
     if (userData.user && isUuid(userData.user.id) && viewerIds.length > 0) {
-      const { data: shareData, error: shareError } = await supabase.rpc(
-        "get_current_annotation_reshares",
-        { p_annotation_ids: viewerIds },
-      );
+      const [
+        { data: shareData, error: shareError },
+        { data: bookmarkData, error: bookmarkError },
+      ] = await Promise.all([
+        supabase.rpc("get_current_annotation_reshares", { p_annotation_ids: viewerIds }),
+        supabase.rpc("get_current_annotation_bookmarks", { p_annotation_ids: viewerIds }),
+      ]);
       if (!shareError) viewerShares = parseCurrentReshareIds(shareData);
+      if (!bookmarkError) viewerBookmarks = parseCurrentBookmarkIds(bookmarkData);
     }
 
     const items: PublicFeedItem[] = [];
@@ -450,6 +460,7 @@ async function getPublicTimelinePage(
             resharer,
           },
           viewerHasReshared: viewerShares.has(annotation.id),
+          viewerHasBookmarked: viewerBookmarks.has(annotation.id),
         });
         continue;
       }
@@ -457,6 +468,7 @@ async function getPublicTimelinePage(
         annotation,
         reshare: null,
         viewerHasReshared: viewerShares.has(annotation.id),
+        viewerHasBookmarked: viewerBookmarks.has(annotation.id),
       });
     }
 
@@ -507,6 +519,58 @@ export async function getPublicProfileAnnotations(
 ): Promise<PublicAnnotationPage> {
   if (!isUuid(profileId)) return { status: "unavailable" };
   return getPublicTimelinePage(page, profileId);
+}
+
+export async function getCurrentUserBookmarksPage(
+  page: number,
+): Promise<PublicAnnotationPage> {
+  try {
+    const supabase = await createClient();
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user || !isUuid(userData.user.id)) return { status: "unavailable" };
+
+    const { from, to } = getPageRange(page);
+    const { data, error } = await supabase.rpc("list_current_annotation_bookmarks", {
+      p_limit: to - from + 1,
+      p_offset: from,
+    });
+    if (error || !Array.isArray(data)) return { status: "unavailable" };
+
+    const hasNext = data.length > PUBLIC_PAGE_SIZE;
+    const rows = data.slice(0, PUBLIC_PAGE_SIZE).map(parseBookmarkListRow);
+    if (rows.some((row) => row === null)) return { status: "unavailable" };
+    const bookmarks = rows.filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+    const annotations = await loadPublishedAnnotationsByIds(
+      supabase,
+      bookmarks.map((row) => row.annotationId),
+    );
+    const viewerIds = [...new Set(bookmarks.map((row) => row.annotationId))];
+    let viewerShares = new Set<string>();
+    if (viewerIds.length > 0) {
+      const { data: shareData, error: shareError } = await supabase.rpc(
+        "get_current_annotation_reshares",
+        { p_annotation_ids: viewerIds },
+      );
+      if (!shareError) viewerShares = parseCurrentReshareIds(shareData);
+    }
+
+    const items: PublicFeedItem[] = [];
+    for (const row of bookmarks) {
+      const annotation = annotations.get(row.annotationId);
+      if (!annotation) continue;
+      items.push({
+        annotation,
+        reshare: null,
+        viewerHasReshared: viewerShares.has(annotation.id),
+        viewerHasBookmarked: true,
+      });
+    }
+
+    return { status: "available", items, hasNext };
+  } catch {
+    return { status: "unavailable" };
+  }
 }
 
 export async function getPublicAnnotationCount(profileId: string): Promise<number | null> {

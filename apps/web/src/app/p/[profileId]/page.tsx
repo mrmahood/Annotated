@@ -141,6 +141,7 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
                   showCreator={item.reshare ? true : false}
                   currentUserId={currentUserId}
                   initialShared={item.viewerHasReshared}
+                  initialBookmarked={item.viewerHasBookmarked}
                   returnTo={getPageHref(basePath, page)}
                 />
               ))}

@@ -101,3 +101,31 @@ export async function removeAnnotationReshare(
   });
   if (error || data !== true) throw new Error("The share could not be removed.");
 }
+
+export async function createAnnotationBookmark(
+  supabase: SupabaseClient,
+  annotationId: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error("That annotation is unavailable.");
+  await requireUserId(supabase);
+  const { error } = await supabase.rpc("create_annotation_bookmark", {
+    p_annotation_id: annotationId,
+  });
+  if (error) {
+    if (error.code === "23505") throw new Error("You have already bookmarked this annotation.");
+    if (error.message.includes("unavailable")) throw new Error("That annotation is unavailable.");
+    throw new Error("The annotation could not be bookmarked.");
+  }
+}
+
+export async function removeAnnotationBookmark(
+  supabase: SupabaseClient,
+  annotationId: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error("That annotation is unavailable.");
+  await requireUserId(supabase);
+  const { data, error } = await supabase.rpc("remove_annotation_bookmark", {
+    p_annotation_id: annotationId,
+  });
+  if (error || data !== true) throw new Error("The bookmark could not be removed.");
+}

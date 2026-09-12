@@ -36,6 +36,7 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(card, /getYouTubeTimestampUrl\(annotation\.source\.canonicalUrl, annotation\.startMs\)/);
   assert.match(card, /View annotation/);
   assert.match(card, /ShareControl/);
+  assert.match(card, /BookmarkControl/);
   assert.match(card, /reshare-attribution/);
   assert.match(card, /annotation-card-reshare/);
   assert.match(card, /returnTo=\{returnTo\}/);

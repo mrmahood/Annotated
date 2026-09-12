@@ -68,6 +68,7 @@ export default async function Home({ searchParams }: HomePageProps) {
                 reshare={item.reshare}
                 currentUserId={currentUserId}
                 initialShared={item.viewerHasReshared}
+                initialBookmarked={item.viewerHasBookmarked}
                 returnTo={returnTo}
               />
             ))}

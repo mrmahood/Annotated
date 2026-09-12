@@ -9,7 +9,7 @@ export async function SiteHeader({
   active,
   returnTo,
 }: {
-  active?: "feed";
+  active?: "feed" | "me";
   returnTo: string;
 }) {
   let user: HeaderUser | null = null;
@@ -44,6 +44,9 @@ export async function SiteHeader({
         </Link>
         <Link className="site-feed-link" href="/" aria-current={active === "feed" ? "page" : undefined}>
           Feed
+        </Link>
+        <Link className="site-feed-link" href="/me" aria-current={active === "me" ? "page" : undefined}>
+          Me
         </Link>
       </nav>
       <div className="site-chrome">

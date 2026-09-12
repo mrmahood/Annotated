@@ -842,9 +842,9 @@ first**, then the **social slice**, then Phase G. They are not
 mid-September bounty must-haves. This section locks the product
 contract; it does not authorize Staging apply or Production. Clip
 range UI is implemented in this increment (owner Chrome acceptance
-still required). **Share v1** (in-ecosystem reshare) is implemented in
-this increment; Bookmark / What’s Trending / Who to Follow remain
-unimplemented. Staging
+still required). **Share v1** (in-ecosystem reshare) is implemented on
+`main` via PR #117. **Bookmark v1** is implemented in this increment;
+What’s Trending / Who to Follow remain unimplemented. Staging
 acceptance is required before Phase G. Hosted
 range limits remain 1,000–90,000 ms. Article publication, draft-first
 hosted media, and the accepted capture/upload pipeline are unchanged.
@@ -887,9 +887,16 @@ actor’s reshares). **Not** copy-link, Web Share API, or X intent for
 v1. Bookmark / What’s Trending / Who to Follow are separate later
 PRs.
 
-**Bookmark an annotation.** **Private** for the signed-in user only.
-If logged out, prompt Google / X sign-in. Flat list on **Me**. No
-folders and no public save counts in v1.
+**Bookmark an annotation.** Locked 2026-09-12. **Private** for the
+signed-in user only. If logged out, prompt Google / X sign-in (match
+existing auth patterns). Surfaces: **web + extension**, control on
+**Feed cards and detail**. Users **may bookmark their own** published
+annotations. Uniqueness is **at most one bookmark per user per
+annotation**. Owner can **remove** a bookmark later. Flat list on
+**Me**, **newest-first**. **No** bookmark notes, folders, or public
+save counts in v1. Published-only; hidden/removed targets drop off
+the owner list. What’s Trending / Who to Follow are separate later
+PRs.
 
 **What’s Trending.** **Web Feed homepage section**. **7-day** window.
 v1 score: `3×comments_7d + 2×unique_commenters_7d + 2×follows_on_author_7d + 1×reshares_7d + recency_boost (~48h half-life) + manual /ops boost`.

@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   feedItemKey,
   normalizeReshareComment,
+  parseBookmarkListRow,
+  parseCurrentBookmarkIds,
   parseCurrentReshareIds,
   parseTimelineRow,
   RESHARE_COMMENT_LIMIT,
@@ -43,4 +45,21 @@ test('extension social data uses trusted reshare RPCs instead of table reads', a
   assert.match(source, /remove_annotation_reshare/);
   assert.match(source, /get_current_annotation_reshares/);
     assert.doesNotMatch(source, /from\('annotation_reshares'\)/);
+});
+
+test('extension bookmark helpers parse owner list rows and stay off the table', async () => {
+  assert.deepEqual([...parseCurrentBookmarkIds([{ annotation_id: ANNOTATION_ID }])], [ANNOTATION_ID]);
+  assert.deepEqual(parseBookmarkListRow({
+    annotation_id: ANNOTATION_ID,
+    bookmarked_at: '2026-09-12T13:00:00.000Z',
+  }), {
+    annotationId: ANNOTATION_ID,
+    bookmarkedAt: '2026-09-12T13:00:00.000Z',
+  });
+  const source = await readFile(new URL('./social-data.ts', import.meta.url), 'utf8');
+  assert.match(source, /create_annotation_bookmark/);
+  assert.match(source, /remove_annotation_bookmark/);
+  assert.match(source, /get_current_annotation_bookmarks/);
+  assert.match(source, /list_current_annotation_bookmarks/);
+  assert.doesNotMatch(source, /from\('annotation_bookmarks'\)/);
 });
