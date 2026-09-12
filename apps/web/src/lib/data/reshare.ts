@@ -1,4 +1,4 @@
-import { isUuid } from "../public-content";
+import { isUuid } from "../public-content.ts";
 
 export const RESHARE_COMMENT_LIMIT = 1_000;
 
