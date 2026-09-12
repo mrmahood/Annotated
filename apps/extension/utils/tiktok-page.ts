@@ -121,7 +121,7 @@ export function validateTikTokPageMetadata(
   }
 }
 
-// Invoked only for Set start, Set end, or an explicit refresh action.
+// Invoked for an explicit playhead refresh.
 export function readTikTokPlayerState() {
   const video = document.querySelector('video');
   if (!(video instanceof HTMLVideoElement)) return null;

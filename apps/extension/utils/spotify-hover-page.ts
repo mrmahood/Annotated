@@ -1,6 +1,6 @@
 export const SPOTIFY_HOVER_ROOT_ID = 'annotated-sp-hover-root';
 
-export type SpotifyHoverStrength = 'soft' | 'strong';
+export type SpotifyHoverStrength = 'soft' | 'strong' | 'range';
 
 export type SpotifyHoverPageRequest = {
   expectedEpisodeId: string;
@@ -60,7 +60,7 @@ export function applySpotifyHoverHighlightOnPage(
       !request ||
       typeof request.expectedEpisodeId !== 'string' ||
       !/^[A-Za-z0-9]{22}$/.test(request.expectedEpisodeId) ||
-      (request.strength !== 'soft' && request.strength !== 'strong')
+      (request.strength !== 'soft' && request.strength !== 'strong' && request.strength !== 'range')
     ) {
       removeRoot();
       return { ok: false, reason: 'invalid-request' };
@@ -302,6 +302,7 @@ export function applySpotifyHoverHighlightOnPage(
       try { player.scrollIntoView(true); } catch { /* Scroll is best-effort. */ }
     }
 
+    const rangeOnly = request.strength === 'range';
     const strong = request.strength === 'strong';
     const dimOpacity = strong ? 0.12 : 0.08;
     const ringWidth = strong ? 4 : 3;
@@ -317,6 +318,7 @@ export function applySpotifyHoverHighlightOnPage(
       document.documentElement.appendChild(root);
     }
     root.setAttribute('data-annotated-hover-surface', 'player-bar');
+    root.dataset.strength = request.strength;
 
     const layer = (selector: string, attribute: string): HTMLElement => {
       const existing = root.querySelector(selector);
@@ -328,6 +330,7 @@ export function applySpotifyHoverHighlightOnPage(
     };
     const dim = layer('[data-annotated-hover-dim="1"]', 'data-annotated-hover-dim');
     const ring = layer('[data-annotated-hover-ring="1"]', 'data-annotated-hover-ring');
+    const range = layer('[data-annotated-hover-range="1"]', 'data-annotated-hover-range');
     // Duplicated in every serialized injector. Keep aligned with hover-overlay-paint.ts.
     const writeCss = (element: HTMLElement & { __annotatedHoverCss?: string }, next: string) => {
       if (element.__annotatedHoverCss === next) return;
@@ -336,6 +339,18 @@ export function applySpotifyHoverHighlightOnPage(
     };
     writeCss(root, 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;');
 
+    const parseClock = (value: string) => {
+      const text = value.replace(/\s+/g, '').trim();
+      const match = text.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+      if (!match) return null;
+      const hours = match[1] ? Number(match[1]) : 0;
+      const minutes = Number(match[2]);
+      const seconds = Number(match[3]);
+      if (![hours, minutes, seconds].every((part) => Number.isFinite(part))) return null;
+      if (minutes > 59 || seconds > 59) return null;
+      return ((hours * 60 + minutes) * 60 + seconds) * 1_000;
+    };
+
     const position = () => {
       const next = measurePlayer();
       const rect = next?.rect ?? measured.rect;
@@ -343,21 +358,62 @@ export function applySpotifyHoverHighlightOnPage(
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
-      writeCss(dim, [
-        'position:fixed',
-        'inset:0',
-        `background:rgba(0,0,0,${dimOpacity})`,
-        `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
-      ].join(';'));
-      writeCss(ring, [
-        'position:fixed',
-        `top:${rect.top}px`,
-        `left:${rect.left}px`,
-        `width:${Math.max(0, rect.width)}px`,
-        `height:${Math.max(0, rect.height)}px`,
-        `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
-        'border-radius:8px',
-      ].join(';'));
+      if (rangeOnly) {
+        writeCss(dim, 'display:none');
+        writeCss(ring, 'display:none');
+      } else {
+        writeCss(dim, [
+          'position:fixed',
+          'inset:0',
+          `background:rgba(0,0,0,${dimOpacity})`,
+          `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
+        ].join(';'));
+        writeCss(ring, [
+          'position:fixed',
+          `top:${rect.top}px`,
+          `left:${rect.left}px`,
+          `width:${Math.max(0, rect.width)}px`,
+          `height:${Math.max(0, rect.height)}px`,
+          `box-shadow:0 0 0 ${ringWidth}px ${ringColor},0 0 0 ${ringWidth + 2}px ${ringContrast}`,
+          'border-radius:8px',
+        ].join(';'));
+      }
+
+      const bar = document.querySelector('[data-testid="playback-progressbar"]');
+      const durationText = document.querySelector('[data-testid="playback-duration"]')?.textContent ?? '';
+      const durationMs = parseClock(durationText ?? '');
+      const cue = durationMs !== null &&
+        typeof request.startMs === 'number' &&
+        typeof request.endMs === 'number' &&
+        request.endMs > request.startMs &&
+        durationMs > 0
+        ? {
+          leftPercent: Math.min(100, Math.max(0, (request.startMs / durationMs) * 100)),
+          widthPercent: Math.min(
+            100,
+            Math.max(0.4, ((request.endMs - request.startMs) / durationMs) * 100),
+          ),
+        }
+        : null;
+      const barVisible = bar instanceof HTMLElement &&
+        bar.getClientRects().length > 0 &&
+        bar.getBoundingClientRect().width > 16;
+      if (barVisible && cue) {
+        const barRect = bar.getBoundingClientRect();
+        writeCss(range, [
+          'position:fixed',
+          `top:${barRect.top}px`,
+          `left:${barRect.left + (barRect.width * cue.leftPercent) / 100}px`,
+          `width:${(barRect.width * cue.widthPercent) / 100}px`,
+          `height:${Math.max(3, barRect.height)}px`,
+          'background:rgba(154,167,181,0.72)',
+          'border-radius:999px',
+        ].join(';'));
+        range.hidden = false;
+      } else {
+        writeCss(range, 'display:none');
+        range.hidden = true;
+      }
     };
 
     position();

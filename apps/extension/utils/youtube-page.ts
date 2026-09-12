@@ -99,7 +99,7 @@ export function validateYouTubePageMetadata(
   }
 }
 
-// Invoked only for Set start, Set end, or an explicit refresh action.
+// Invoked for an explicit playhead refresh.
 export function readYouTubePlayerState() {
   const video = document.querySelector('video');
   if (!(video instanceof HTMLVideoElement)) return null;

@@ -7,7 +7,9 @@ import {
 } from '@annotated/shared/media-time';
 import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-time-display';
 import { getTypedClipFieldError } from '../../utils/clip-range-entry';
-import { ClipRangeFields, useTypedClipRange } from './clip-range-fields';
+import { applyClipPresetFromPlayhead } from '../../utils/clip-range';
+import { applyCreateClipRangeMark, clearCreateClipRangeMark } from '../../utils/clip-range-mark';
+import { ClipRangeEditor, useTypedClipRange } from './clip-range-fields';
 import { AppearanceControl } from './appearance-control';
 import { BrandLockup } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
@@ -836,6 +838,14 @@ function App() {
   const clearVideoDraft = useCallback(async () => {
     videoCommentaryRecorder.discard();
     const source = sourceState.status === 'connected' ? sourceState.source : null;
+    const context = connectedContextRef.current;
+    if (source && context) {
+      void clearCreateClipRangeMark({
+        source,
+        connection: { tabId: context.tabId, tabUrl: source.url },
+        mode: 'video',
+      });
+    }
     if (source?.classification === 'YouTube' && youtubeDraftRef.current) await clearYoutubeDraft();
     else if (source?.classification === 'TikTok' && tiktokDraftRef.current) await clearTikTokDraft();
     else if (source && isWebpageVideoCapableSource(source) && webVideoDraftRef.current) await clearWebVideoDraft();
@@ -892,6 +902,15 @@ function App() {
 
   const clearAudioDraft = useCallback(async () => {
     audioCommentaryRecorder.discard();
+    const source = sourceState.status === 'connected' ? sourceState.source : null;
+    const context = connectedContextRef.current;
+    if (source && context) {
+      void clearCreateClipRangeMark({
+        source,
+        connection: { tabId: context.tabId, tabUrl: source.url },
+        mode: 'audio',
+      });
+    }
     audioDraftRef.current = null;
     spotifyDraftRef.current = null;
     dispatchCreateDraft({ type: 'reset-mode', mode: 'audio' });
@@ -902,7 +921,7 @@ function App() {
         SPOTIFY_CLIP_DRAFT_STORAGE_KEY,
       ]);
     } catch { console.warn('Unable to clear the audio clip draft.'); }
-  }, [audioCommentaryRecorder.discard]);
+  }, [audioCommentaryRecorder.discard, sourceState]);
 
   const applyAuthenticatedUser = useCallback(async (user: User | null) => {
     const revision = ++authRevisionRef.current;
@@ -1231,8 +1250,9 @@ function App() {
 
   const runSelectedPlayerAction = useCallback(async (
     token: PlayerActionToken,
-    action: 'read' | 'play',
+    action: 'read' | 'play' | 'preview',
     startSeconds: number | null,
+    endSeconds: number | null = null,
   ) => {
     const { mode, playerIdentity: identity } = token;
     if (!playerTokenIsCurrent(token)) throw new Error('This player action is no longer current.');
@@ -1249,7 +1269,7 @@ function App() {
       ? await chrome.scripting.executeScript({
         target: { tabId: context.tabId, frameIds: [0] },
         func: actOnSpotifyPlayer,
-        args: [identity, spotifyIdentity.episodeId, action, startSeconds],
+        args: [identity, spotifyIdentity.episodeId, action, startSeconds, endSeconds],
       })
       : await chrome.scripting.executeScript({
       target: { tabId: context.tabId, frameIds: [0] },
@@ -1268,6 +1288,7 @@ function App() {
         action,
         startSeconds,
         genericVideo,
+        endSeconds,
       ],
     });
     const result = execution[0]?.result;
@@ -1294,79 +1315,88 @@ function App() {
     return result;
   }, [playerTokenIsCurrent, sourceState]);
 
-  const readConnectedPlayer = useCallback(async (action: 'start' | 'end' | 'refresh') => {
+  const readConnectedPlayer = useCallback(async () => {
     if (
       sourceState.status !== 'connected'
-    ) return;
+    ) return null;
     const mode: PlayerMode | null = modeSelection?.selectedMode === 'video'
       ? 'video'
       : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
     const audioIdentity = connectedAudioSource(sourceState.source);
     const spotifyIdentity = connectedSpotifySource(sourceState.source);
-    if (!mode || (mode === 'audio' && !audioIdentity && !spotifyIdentity)) return;
+    if (!mode || (mode === 'audio' && !audioIdentity && !spotifyIdentity)) return null;
     const draft = mode === 'video' ? videoDraftState : audioDraftState;
     let token: PlayerActionToken;
-    try { token = getPlayerActionToken(mode, draft.playerIdentity); } catch { return; }
+    try { token = getPlayerActionToken(mode, draft.playerIdentity); } catch { return null; }
     dispatchCreateDraft({ type: 'set-player-read-state', mode, state: 'reading' });
     try {
       const player = await runSelectedPlayerAction(token, 'read', null);
-      if (!playerTokenIsCurrent(token)) return;
-      const patch = {
-        sourceKey: mode === 'video'
-          ? videoPlayerSourceKey(sourceState.source)
-          : spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? '',
-        playerIdentity: draft.playerIdentity,
-        playerTimeMs: player.currentTimeMs,
-        durationMs: player.durationMs,
-        playerReadState: 'idle' as const,
-      };
+      if (!playerTokenIsCurrent(token)) return null;
       dispatchCreateDraft({
         type: 'patch-media', mode,
-        patch: action === 'start' ? { ...patch, startMs: player.currentTimeMs }
-          : action === 'end' ? { ...patch, endMs: player.currentTimeMs } : patch,
+        patch: {
+          sourceKey: mode === 'video'
+            ? videoPlayerSourceKey(sourceState.source)
+            : spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? '',
+          playerIdentity: draft.playerIdentity,
+          playerTimeMs: player.currentTimeMs,
+          durationMs: player.durationMs,
+          playerReadState: 'idle',
+        },
       });
-      if (mode === 'video' && sourceState.source.classification === 'YouTube') {
-        persistYoutubeDraft(
-          sourceState.source.url,
-          action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
-          action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
-          videoDraftState.commentary,
-        );
-      } else if (mode === 'video' && sourceState.source.classification === 'TikTok') {
-        persistTikTokDraft(
-          sourceState.source.url,
-          action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
-          action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
-          videoDraftState.commentary,
-        );
-      } else if (mode === 'video') {
-        persistWebVideoDraft(
-          sourceState.source.url,
-          action === 'start' ? player.currentTimeMs : videoDraftState.startMs,
-          action === 'end' ? player.currentTimeMs : videoDraftState.endMs,
-          videoDraftState.commentary,
-        );
-      } else if (mode === 'audio' && spotifyIdentity) {
-        persistSpotifyDraft(
-          spotifyIdentity.url,
-          action === 'start' ? player.currentTimeMs : audioDraftState.startMs,
-          action === 'end' ? player.currentTimeMs : audioDraftState.endMs,
-          audioDraftState.commentary,
-        );
-      } else if (mode === 'audio' && audioIdentity) {
-        persistAudioDraft(
-          audioIdentity,
-          action === 'start' ? player.currentTimeMs : audioDraftState.startMs,
-          action === 'end' ? player.currentTimeMs : audioDraftState.endMs,
-          audioDraftState.commentary,
-        );
-      }
+      return player;
     } catch {
       if (playerTokenIsCurrent(token)) {
         dispatchCreateDraft({ type: 'set-player-read-state', mode, state: 'error' });
       }
+      return null;
     }
-  }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, persistAudioDraft, persistSpotifyDraft, persistTikTokDraft, persistWebVideoDraft, persistYoutubeDraft, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
+  }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
+
+  const applyMediaClipPreset = useCallback(async (presetMs: number) => {
+    const player = await readConnectedPlayer();
+    if (!player) return;
+    const mode: PlayerMode | null = modeSelection?.selectedMode === 'video'
+      ? 'video'
+      : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
+    if (!mode) return;
+    const range = applyClipPresetFromPlayhead(player.currentTimeMs, player.durationMs, presetMs);
+    const sourceKey = sourceState.status === 'connected'
+      ? (mode === 'video'
+        ? videoPlayerSourceKey(sourceState.source)
+        : connectedSpotifySource(sourceState.source)?.normalizedUrl
+          ?? connectedAudioSource(sourceState.source)?.normalizedUrl
+          ?? '')
+      : '';
+    dispatchCreateDraft({
+      type: 'patch-media',
+      mode,
+      patch: { startMs: range.startMs, endMs: range.endMs, sourceKey, durationMs: player.durationMs, playerTimeMs: player.currentTimeMs },
+    });
+    if (sourceState.status !== 'connected') return;
+    const context = connectedContextRef.current;
+    if (context) {
+      void applyCreateClipRangeMark({
+        source: sourceState.source,
+        connection: { tabId: context.tabId, tabUrl: sourceState.source.url },
+        startMs: range.startMs,
+        endMs: range.endMs,
+        mode,
+      });
+    }
+    if (mode === 'video' && sourceState.source.classification === 'YouTube') {
+      persistYoutubeDraft(sourceState.source.url, range.startMs, range.endMs, videoDraftState.commentary);
+    } else if (mode === 'video' && sourceState.source.classification === 'TikTok') {
+      persistTikTokDraft(sourceState.source.url, range.startMs, range.endMs, videoDraftState.commentary);
+    } else if (mode === 'video') {
+      persistWebVideoDraft(sourceState.source.url, range.startMs, range.endMs, videoDraftState.commentary);
+    } else if (mode === 'audio') {
+      const spotifyIdentity = connectedSpotifySource(sourceState.source);
+      const persistable = persistableAudioIdentity(sourceState.source);
+      if (spotifyIdentity) persistSpotifyDraft(spotifyIdentity.url, range.startMs, range.endMs, audioDraftState.commentary);
+      else if (persistable) persistAudioDraft(persistable, range.startMs, range.endMs, audioDraftState.commentary);
+    }
+  }, [audioDraftState.commentary, modeSelection?.selectedMode, persistAudioDraft, persistSpotifyDraft, persistTikTokDraft, persistWebVideoDraft, persistYoutubeDraft, readConnectedPlayer, sourceState, videoDraftState.commentary]);
 
   const changeYoutubeTitle = (value: string) => {
     const sourceKey = sourceState.status === 'connected'
@@ -2319,7 +2349,7 @@ function App() {
 
   const previewYoutubeDraft = useCallback(async () => {
     if (
-      videoDraftState.startMs === null || sourceState.status !== 'connected'
+      videoDraftState.startMs === null || videoDraftState.endMs === null || sourceState.status !== 'connected'
     ) return;
     const context = connectedContextRef.current;
     if (!context) return;
@@ -2327,7 +2357,19 @@ function App() {
     try { token = getPlayerActionToken('video', videoDraftState.playerIdentity); } catch { return; }
     dispatchCreateDraft({ type: 'set-player-read-state', mode: 'video', state: 'reading' });
     try {
-      await runSelectedPlayerAction(token, 'play', videoDraftState.startMs / 1_000);
+      await applyCreateClipRangeMark({
+        source: sourceState.source,
+        connection: { tabId: context.tabId, tabUrl: sourceState.source.url },
+        startMs: videoDraftState.startMs,
+        endMs: videoDraftState.endMs,
+        mode: 'video',
+      });
+      await runSelectedPlayerAction(
+        token,
+        'preview',
+        videoDraftState.startMs / 1_000,
+        videoDraftState.endMs / 1_000,
+      );
       if (playerTokenIsCurrent(token)) {
         dispatchCreateDraft({ type: 'set-player-read-state', mode: 'video', state: 'idle' });
       }
@@ -2336,11 +2378,11 @@ function App() {
         dispatchCreateDraft({ type: 'set-player-read-state', mode: 'video', state: 'error' });
       }
     }
-  }, [getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState.playerIdentity, videoDraftState.startMs]);
+  }, [getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState.endMs, videoDraftState.playerIdentity, videoDraftState.startMs]);
 
   const previewAudioDraft = useCallback(async () => {
     if (
-      audioDraftState.startMs === null || sourceState.status !== 'connected' ||
+      audioDraftState.startMs === null || audioDraftState.endMs === null || sourceState.status !== 'connected' ||
       (!connectedAudioSource(sourceState.source) && !connectedSpotifySource(sourceState.source))
     ) return;
     const context = connectedContextRef.current;
@@ -2349,7 +2391,19 @@ function App() {
     try { token = getPlayerActionToken('audio', audioDraftState.playerIdentity); } catch { return; }
     dispatchCreateDraft({ type: 'set-player-read-state', mode: 'audio', state: 'reading' });
     try {
-      await runSelectedPlayerAction(token, 'play', audioDraftState.startMs / 1_000);
+      await applyCreateClipRangeMark({
+        source: sourceState.source,
+        connection: { tabId: context.tabId, tabUrl: sourceState.source.url },
+        startMs: audioDraftState.startMs,
+        endMs: audioDraftState.endMs,
+        mode: 'audio',
+      });
+      await runSelectedPlayerAction(
+        token,
+        'preview',
+        audioDraftState.startMs / 1_000,
+        audioDraftState.endMs / 1_000,
+      );
       if (playerTokenIsCurrent(token)) {
         dispatchCreateDraft({ type: 'set-player-read-state', mode: 'audio', state: 'idle' });
         if (connectedSpotifySource(sourceState.source)) {
@@ -2367,7 +2421,7 @@ function App() {
         }
       }
     }
-  }, [audioDraftState.playerIdentity, audioDraftState.startMs, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState]);
+  }, [audioDraftState.endMs, audioDraftState.playerIdentity, audioDraftState.startMs, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState]);
 
   useEffect(() => {
     if (
@@ -3214,6 +3268,16 @@ function App() {
     } else if (sourceState.status === 'connected') {
       persistWebVideoDraft(sourceState.source.url, startMs, endMs, videoDraftState.commentary);
     }
+    const context = connectedContextRef.current;
+    if (sourceState.status === 'connected' && context && startMs !== null && endMs !== null && endMs > startMs) {
+      void applyCreateClipRangeMark({
+        source: sourceState.source,
+        connection: { tabId: context.tabId, tabUrl: sourceState.source.url },
+        startMs,
+        endMs,
+        mode: 'video',
+      });
+    }
   };
 
   const commitAudioRange = (startMs: number | null, endMs: number | null) => {
@@ -3229,6 +3293,16 @@ function App() {
     dispatchCreateDraft({ type: 'patch-media', mode: 'audio', patch: { startMs, endMs, sourceKey } });
     if (spotifyIdentity) persistSpotifyDraft(spotifyIdentity.url, startMs, endMs, audioDraftState.commentary);
     else if (persistable) persistAudioDraft(persistable, startMs, endMs, audioDraftState.commentary);
+    const context = connectedContextRef.current;
+    if (sourceState.status === 'connected' && context && startMs !== null && endMs !== null && endMs > startMs) {
+      void applyCreateClipRangeMark({
+        source: sourceState.source,
+        connection: { tabId: context.tabId, tabUrl: sourceState.source.url },
+        startMs,
+        endMs,
+        mode: 'audio',
+      });
+    }
   };
 
   const videoRangeEntry = useTypedClipRange(
@@ -3668,25 +3742,38 @@ function App() {
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading" key="create-video">
               <h2 id="create-heading" className="visually-hidden">Create clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
-                <p className="create-help">Play the connected video, then Set start / Set end or type times such as 1:00 and 2:30.</p>
+                <p className="create-help">Drag the clip range, or set 30s / 60s from the current playhead. Type times if you prefer. Clips can be at most 90 seconds.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
-                <ClipRangeFields
+                {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTimeTenths(videoDraftState.durationMs)}</>}</p>}
+                <ClipRangeEditor
                   idPrefix="video"
+                  startMs={videoDraftState.startMs}
+                  endMs={videoDraftState.endMs}
+                  durationMs={videoDraftState.durationMs}
                   startField={videoRangeEntry.startField}
                   endField={videoRangeEntry.endField}
                   lengthDisplay={videoRangeDisplay.length}
                   startError={videoStartError}
                   endError={videoEndError}
+                  rangeError={showVideoRangeError ? videoClipRangeError : null}
                   disabled={mediaEditorLocked}
+                  playerSelected={videoPlayerSelected}
+                  playerReading={videoDraftState.playerReadState === 'reading'}
+                  previewEnabled={
+                    videoDraftState.startMs !== null
+                    && videoDraftState.endMs !== null
+                    && videoDraftState.endMs > videoDraftState.startMs
+                  }
+                  previewLabel="Preview range"
+                  onCommitRange={(startMs, endMs) => commitVideoRange(startMs, endMs)}
                   onStartChange={videoRangeEntry.changeStart}
                   onEndChange={videoRangeEntry.changeEnd}
                   onStartBlur={videoRangeEntry.commitStart}
                   onEndBlur={videoRangeEntry.commitEnd}
+                  onPreset={(presetMs) => void applyMediaClipPreset(presetMs)}
+                  onPreview={() => void previewYoutubeDraft()}
+                  onRefresh={() => { void readConnectedPlayer(); }}
                 />
-                {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTimeTenths(videoDraftState.durationMs)}</>}</p>}
-                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>{videoDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
-                {videoDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewYoutubeDraft()} disabled={!videoPlayerSelected || videoDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview from start</button>}
-                {showVideoRangeError && <p className="inline-error" role="alert">{videoClipRangeError}</p>}
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
                 <TitleField id="youtube-title" value={videoDraftState.title} disabled={mediaEditorLocked} onChange={changeYoutubeTitle} />
                 <CommentaryField id="youtube-commentary" value={videoDraftState.commentary} disabled={mediaEditorLocked} onChange={changeYoutubeCommentary} />
@@ -3699,25 +3786,38 @@ function App() {
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
               <h2 id="create-heading" className="visually-hidden">Create audio clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
-                <p className="create-help">{spotifySource ? 'Play the connected Spotify episode, then Set start / Set end or type times such as 1:00 and 2:30. Preview / Jump to start and Publish seek the now-playing bar to the clip start.' : 'Play the connected page audio, then Set start / Set end or type times such as 1:00 and 2:30.'}</p>
+                <p className="create-help">{spotifySource ? 'Drag the clip range, or set 30s / 60s from the current playhead. Preview plays only that range on the now-playing bar and stops at the end. Type times if you prefer. Clips can be at most 90 seconds.' : 'Drag the clip range, or set 30s / 60s from the current playhead. Type times if you prefer. Clips can be at most 90 seconds.'}</p>
                 <PlayerSelector mode="audio" discovery={audioPlayerDiscovery} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
-                <ClipRangeFields
+                {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTimeTenths(audioDraftState.durationMs)}</>}</p>}
+                <ClipRangeEditor
                   idPrefix="audio"
+                  startMs={audioDraftState.startMs}
+                  endMs={audioDraftState.endMs}
+                  durationMs={audioDraftState.durationMs}
                   startField={audioRangeEntry.startField}
                   endField={audioRangeEntry.endField}
                   lengthDisplay={audioRangeDisplay.length}
                   startError={audioStartError}
                   endError={audioEndError}
+                  rangeError={showAudioRangeError ? audioClipRangeError : null}
                   disabled={mediaEditorLocked}
+                  playerSelected={audioPlayerSelected}
+                  playerReading={audioDraftState.playerReadState === 'reading'}
+                  previewEnabled={
+                    audioDraftState.startMs !== null
+                    && audioDraftState.endMs !== null
+                    && audioDraftState.endMs > audioDraftState.startMs
+                  }
+                  previewLabel="Preview range"
+                  onCommitRange={(startMs, endMs) => commitAudioRange(startMs, endMs)}
                   onStartChange={audioRangeEntry.changeStart}
                   onEndChange={audioRangeEntry.changeEnd}
                   onStartBlur={audioRangeEntry.commitStart}
                   onEndBlur={audioRangeEntry.commitEnd}
+                  onPreset={(presetMs) => void applyMediaClipPreset(presetMs)}
+                  onPreview={() => void previewAudioDraft()}
+                  onRefresh={() => { void readConnectedPlayer(); }}
                 />
-                {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTimeTenths(audioDraftState.durationMs)}</>}</p>}
-                <div className="clip-control-row"><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('start')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set start</button><button className="button button-secondary" type="button" onClick={() => void readConnectedPlayer('end')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Set end</button><button className="text-button" type="button" onClick={() => void readConnectedPlayer('refresh')} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>{audioDraftState.playerReadState === 'reading' ? 'Reading…' : 'Refresh time'}</button></div>
-                {audioDraftState.startMs !== null && <button className="button button-secondary preview-clip" type="button" onClick={() => void previewAudioDraft()} disabled={!audioPlayerSelected || audioDraftState.playerReadState === 'reading' || mediaEditorLocked}>Preview / Jump to start</button>}
-                {showAudioRangeError && <p className="inline-error" role="alert">{audioClipRangeError}</p>}
                 {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
                 <TitleField id="audio-clip-title" value={audioDraftState.title} disabled={mediaEditorLocked} onChange={changeAudioTitle} />
                 <CommentaryField id="audio-clip-commentary" value={audioDraftState.commentary} disabled={mediaEditorLocked} onChange={changeAudioCommentary} />

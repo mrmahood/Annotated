@@ -249,6 +249,23 @@ test('page injector paints an idempotent ring and dim on the matched watch playe
   });
 });
 
+test('range strength paints the scrubber cue without dimming the page', () => {
+  withPage(({ documentElement }) => {
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'range',
+      startMs: 1_000,
+      endMs: 4_000,
+      seekMs: null,
+    }).ok, true);
+    const root = documentElement.querySelector('#annotated-yt-hover-root');
+    assert.equal(root.dataset.strength, 'range');
+    assert.match(root.querySelector('[data-annotated-hover-dim="1"]').style.cssText, /display:none/);
+    assert.match(root.querySelector('[data-annotated-hover-ring="1"]').style.cssText, /display:none/);
+    assert.match(root.querySelector('[data-annotated-hover-range="1"]').style.cssText, /width:10\.6/);
+  });
+});
+
 test('inset amber ring stays inside a flush laptop-width player on all four sides', () => {
   const flush = { left: 0, top: 56, right: 800, bottom: 506, width: 800, height: 450 };
   withPage(({ documentElement }) => {

@@ -31,6 +31,15 @@ async function withPlayers(players, callback, url = pageUrl) {
     }
     getClientRects() { return [{}]; }
     async play() { this.paused = false; }
+    pause() { this.paused = true; }
+    addEventListener(name, listener) {
+      this.listeners ??= {};
+      (this.listeners[name] ??= []).push(listener);
+    }
+    removeEventListener(name, listener) {
+      if (!this.listeners?.[name]) return;
+      this.listeners[name] = this.listeners[name].filter((entry) => entry !== listener);
+    }
   }
   class Audio extends Media {}
   class Video extends Media {
@@ -141,4 +150,44 @@ test('hidden paused audio-only video is excluded from discovery', async () => {
     instances[0].getBoundingClientRect = () => ({ width: 0, height: 0 });
     assert.deepEqual(readTopFramePlayerDiscovery('audio').candidates, []);
   }, 'https://www.foxnews.com/us/article');
+});
+
+test('preview plays the selected range and pauses at the end', async () => {
+  const discover = Function(`return (${readTopFramePlayerDiscovery.toString()})`)();
+  const act = Function(`return (${actOnTopFramePlayer.toString()})`)();
+  await withPlayers([
+    { kind: 'video', source: 'blob:main', label: 'YouTube Video Player' },
+  ], async (instances) => {
+    const identity = discover('video').candidates[0].identity;
+    const video = instances[0];
+    const started = await act('video', identity, 'abcdefghijk', 'preview', 5, false, 8);
+    assert.equal(started.ok, true);
+    assert.equal(video.paused, false);
+    assert.equal(video.currentTime, 5);
+    video.currentTime = 7.96;
+    for (const listener of video.listeners.timeupdate ?? []) listener();
+    assert.equal(video.paused, true);
+    assert.equal((video.listeners.timeupdate ?? []).length, 0);
+  });
+});
+
+test('preview stop-at-end watcher releases if the user pauses earlier', async () => {
+  const discover = Function(`return (${readTopFramePlayerDiscovery.toString()})`)();
+  const act = Function(`return (${actOnTopFramePlayer.toString()})`)();
+  await withPlayers([
+    { kind: 'video', source: 'blob:main', label: 'YouTube Video Player' },
+  ], async (instances) => {
+    const identity = discover('video').candidates[0].identity;
+    const video = instances[0];
+    const started = await act('video', identity, 'abcdefghijk', 'preview', 5, false, 8);
+    assert.equal(started.ok, true);
+    video.currentTime = 6;
+    video.paused = true;
+    for (const listener of [...(video.listeners.pause ?? [])]) listener();
+    assert.equal((video.listeners.timeupdate ?? []).length, 0);
+    video.paused = false;
+    video.currentTime = 9;
+    for (const listener of video.listeners.timeupdate ?? []) listener();
+    assert.equal(video.paused, false);
+  });
 });

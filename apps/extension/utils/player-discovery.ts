@@ -277,13 +277,16 @@ export async function actOnTopFramePlayer(
   mode: PlayerMode,
   expectedIdentity: string,
   expectedSourceKey: string,
-  action: 'read' | 'play',
+  action: 'read' | 'play' | 'preview',
   startSeconds: number | null,
   genericVideo = false,
+  endSeconds: number | null = null,
 ): Promise<PlayerActionResult> {
   const limit = 5;
-  if (!expectedIdentity || (action === 'play' && (
+  if (!expectedIdentity || ((action === 'play' || action === 'preview') && (
     startSeconds === null || !Number.isFinite(startSeconds) || startSeconds < 0
+  )) || (action === 'preview' && (
+    endSeconds === null || !Number.isFinite(endSeconds) || endSeconds <= startSeconds!
   ))) return { ok: false, reason: 'invalid-request' };
   const pageSourceKey = (value: string) => {
     try {
@@ -450,13 +453,45 @@ export async function actOnTopFramePlayer(
   if (!Number.isFinite(player.currentTime) || player.currentTime < 0) {
     return { ok: false, reason: 'player-not-ready' };
   }
-  if (action === 'play') {
+  if (action === 'play' || action === 'preview') {
     if (Number.isFinite(player.duration) && startSeconds! > player.duration) {
       return { ok: false, reason: 'player-not-ready' };
     }
+    if (action === 'preview' && Number.isFinite(player.duration) && endSeconds! > player.duration + 0.25) {
+      return { ok: false, reason: 'player-not-ready' };
+    }
     try {
+      const host = window as Window & { __annotatedClipPreview?: { stop: () => void } };
+      if (host.__annotatedClipPreview && typeof host.__annotatedClipPreview.stop === 'function') {
+        host.__annotatedClipPreview.stop();
+      }
       player.currentTime = startSeconds!;
       await player.play();
+      if (action === 'preview') {
+        const stopAt = endSeconds!;
+        let stopped = false;
+        const stop = () => {
+          if (stopped) return;
+          stopped = true;
+          try { player.removeEventListener('timeupdate', onTime); } catch { /* Best-effort. */ }
+          try { player.removeEventListener('pause', onPause); } catch { /* Best-effort. */ }
+          try { player.removeEventListener('ended', stop); } catch { /* Best-effort. */ }
+          if (host.__annotatedClipPreview?.stop === stop) delete host.__annotatedClipPreview;
+        };
+        const onTime = () => {
+          if (player.currentTime + 0.05 >= stopAt) {
+            try { player.pause(); } catch { /* Best-effort stop. */ }
+            stop();
+          }
+        };
+        const onPause = () => {
+          if (player.currentTime + 0.05 < stopAt) stop();
+        };
+        player.addEventListener('timeupdate', onTime);
+        player.addEventListener('pause', onPause);
+        player.addEventListener('ended', stop);
+        host.__annotatedClipPreview = { stop };
+      }
     } catch { return { ok: false, reason: 'playback-failed' }; }
   }
   return {

@@ -253,9 +253,24 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .clip-time-grid input:disabled { color: var(--text-disabled); }
 .clip-field-error { margin: 6px 0 0; font-size: 10px; }
 .player-readout { margin: -4px 0 10px; color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
-.clip-control-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.clip-control-row .text-button { grid-column: 1 / -1; justify-self: start; }
-.preview-clip { width: 100%; margin: 8px 0 12px; }
+.clip-range-editor { display: grid; gap: 8px; margin: 12px 0; }
+.clip-range-readout { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.clip-range-readout strong { color: var(--text-evidence); font-size: 13px; font-weight: 650; }
+.clip-range-readout span { color: var(--text-muted); font-size: 10px; }
+.clip-range-slider { position: relative; height: 28px; }
+.clip-range-rail { position: absolute; left: 0; right: 0; top: 12px; height: 4px; border-radius: 999px; background: var(--border); }
+.clip-range-fill { position: absolute; top: 0; height: 4px; border-radius: 999px; background: var(--accent); }
+.clip-range-slider input[type="range"] { position: absolute; inset: 0; margin: 0; background: none; pointer-events: none; appearance: none; -webkit-appearance: none; }
+.clip-range-slider input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: transparent; border: 0; }
+.clip-range-slider input[type="range"]::-moz-range-track { height: 4px; background: transparent; border: 0; }
+.clip-range-slider input[type="range"]::-webkit-slider-thumb { pointer-events: auto; appearance: none; -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border: 2px solid var(--background); border-radius: 50%; background: var(--control-primary); cursor: grab; }
+.clip-range-slider input[type="range"]::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border: 2px solid var(--background); border-radius: 50%; background: var(--control-primary); cursor: grab; }
+.clip-range-thumb-start { z-index: 2; }
+.clip-range-thumb-end { z-index: 3; }
+.clip-range-slider[data-empty="true"] .clip-range-thumb-start { z-index: 3; }
+.clip-preset-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.clip-preset-row .text-button { grid-column: 1 / -1; justify-self: start; }
+.preview-clip { width: 100%; margin: 0 0 4px; }
 .audio-recorder { display: grid; gap: 8px; margin-top: 10px; padding: 0; border: 0; background: transparent; }
 .audio-recorder-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .audio-recorder-heading > div { display: flex; align-items: center; gap: 7px; }
@@ -413,8 +428,8 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   .create-mode-segment { min-height: 30px; gap: 3px; }
   .create-mode-icon { width: 12px; height: 12px; }
   .create-actions { grid-template-columns: 1fr; }
-  .clip-control-row { grid-template-columns: 1fr; }
-  .clip-control-row .text-button { grid-column: auto; }
+  .clip-preset-row { grid-template-columns: 1fr; }
+  .clip-preset-row .text-button { grid-column: auto; }
   .clip-time-grid-editable { grid-template-columns: 1fr; }
   .clip-time-grid-editable div + div { border-left: 0; border-top: 1px solid var(--border); }
   .mode-switch-dialog { width: calc(100vw - 20px); padding: 13px; }

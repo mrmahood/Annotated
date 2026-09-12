@@ -63,7 +63,7 @@ test('keeps in-progress typed times incomplete and rejects invalid clocks', () =
   assert.equal(parseMediaTime('90').status, 'incomplete');
 });
 
-test('formats typed fields so Set start values can round-trip', () => {
+test('formats typed fields so committed clip times can round-trip', () => {
   assert.equal(formatTypedMediaTime(60_000), '01:00');
   assert.equal(formatTypedMediaTime(150_000), '02:30');
   assert.equal(formatTypedMediaTime(3_737_000), '1:02:17');

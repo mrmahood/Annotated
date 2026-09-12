@@ -1,6 +1,6 @@
 export const PAGE_VIDEO_HOVER_ROOT_ID = 'annotated-page-video-hover-root';
 
-export type PageVideoHoverStrength = 'soft' | 'strong';
+export type PageVideoHoverStrength = 'soft' | 'strong' | 'range';
 
 export type PageVideoHoverPageRequest = {
   expectedNormalizedUrl: string;
@@ -178,7 +178,7 @@ export function applyPageVideoHoverHighlightOnPage(
       !request ||
       typeof request.expectedNormalizedUrl !== 'string' ||
       !request.expectedNormalizedUrl.trim() ||
-      (request.strength !== 'soft' && request.strength !== 'strong')
+      (request.strength !== 'soft' && request.strength !== 'strong' && request.strength !== 'range')
     ) {
       removeRoot();
       return { ok: false, reason: 'invalid-request' };
@@ -450,6 +450,7 @@ export function applyPageVideoHoverHighlightOnPage(
       };
     };
 
+    const rangeOnly = request.strength === 'range';
     const strong = request.strength === 'strong';
     const dimOpacity = strong ? 0.12 : 0.09;
     const ringWidth = strong ? 3 : 2;
@@ -491,21 +492,26 @@ export function applyPageVideoHoverHighlightOnPage(
       const top = Math.max(0, rect.top);
       const right = Math.min(window.innerWidth, rect.right);
       const bottom = Math.min(window.innerHeight, rect.bottom);
-      writeCss(dim, [
-        'position:fixed',
-        'inset:0',
-        `background:rgba(0,0,0,${dimOpacity})`,
-        `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
-      ].join(';'));
-      writeCss(ring, [
-        'position:fixed',
-        `top:${rect.top}px`,
-        `left:${rect.left}px`,
-        `width:${Math.max(0, rect.width)}px`,
-        `height:${Math.max(0, rect.height)}px`,
-        `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
-        'border-radius:2px',
-      ].join(';'));
+      if (rangeOnly) {
+        writeCss(dim, 'display:none');
+        writeCss(ring, 'display:none');
+      } else {
+        writeCss(dim, [
+          'position:fixed',
+          'inset:0',
+          `background:rgba(0,0,0,${dimOpacity})`,
+          `clip-path:polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${left}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${left}px ${bottom}px, ${left}px ${top}px)`,
+        ].join(';'));
+        writeCss(ring, [
+          'position:fixed',
+          `top:${rect.top}px`,
+          `left:${rect.left}px`,
+          `width:${Math.max(0, rect.width)}px`,
+          `height:${Math.max(0, rect.height)}px`,
+          `box-shadow:0 0 0 ${ringWidth}px ${ringColor}`,
+          'border-radius:2px',
+        ].join(';'));
+      }
 
       const bar = findScrubber(player);
       const durationMs = mediaDurationMs(media) ?? sliderDurationMs(bar);
