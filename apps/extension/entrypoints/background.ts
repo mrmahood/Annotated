@@ -6,7 +6,10 @@ import { applyPendingArticleHoverOnTab } from '../utils/article-hover-pending';
 import { applyPendingAudioHoverOnTab } from '../utils/audio-hover-pending';
 import { applyPendingPageVideoHoverOnTab } from '../utils/page-video-hover-pending';
 import { applyPendingSpotifyHoverOnTab } from '../utils/spotify-hover-pending';
-import { installMediaCapture } from '../utils/media-capture-background';
+import {
+  installMediaCapture,
+  reserveTabCaptureStreamIdFromInvoke,
+} from '../utils/media-capture-background';
 import {
   followBrowsingTab,
   installSurfFollow,
@@ -42,6 +45,10 @@ export default defineBackground(() => {
     }
 
     const openPromise = chrome.sidePanel.open({ tabId: tab.id });
+
+    // getMediaStreamId must start in this click turn. Chrome treats the
+    // toolbar action as the invocation grant; the ID expires if unused.
+    void reserveTabCaptureStreamIdFromInvoke(chrome, tab.id, tab.url);
 
     actionContextRevision += 1;
 

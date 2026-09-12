@@ -22,6 +22,8 @@ import {
   isMediaCaptureCancelMessage,
   isMediaCaptureStartMessage,
   isCurrentCaptureId,
+  mapTabCaptureStartFailure,
+  reservedTabCaptureStreamIsFresh,
   sourceIdentityMatchesUrl,
   usesMainWorldCapture,
   type CaptureFailureCode,
@@ -33,8 +35,60 @@ import {
 
 type ExtensionChrome = typeof browser;
 type ActiveCapture = { captureId: string; request: CaptureStartRequest };
+type ReservedTabCaptureStream = { tabId: number; streamId: string; reservedAt: number };
 const OFFSCREEN_URL = 'offscreen.html';
 export const ACTIVE_CAPTURE_KEY = 'annotated.mediaCapture.active.v1';
+
+let reservedTabCaptureStream: ReservedTabCaptureStream | null = null;
+let reserveTabCaptureInFlight: Promise<ReservedTabCaptureStream | null> | null = null;
+let reserveTabCaptureGeneration = 0;
+
+function isCapturablePageUrl(url: string | undefined): url is string {
+  return typeof url === 'string' && /^https?:\/\//.test(url);
+}
+
+export function reserveTabCaptureStreamIdFromInvoke(
+  chrome: Pick<ExtensionChrome, 'tabCapture'>,
+  tabId: number,
+  pageUrl?: string,
+): Promise<ReservedTabCaptureStream | null> {
+  if (!Number.isInteger(tabId) || tabId < 0 || (pageUrl !== undefined && !isCapturablePageUrl(pageUrl))) {
+    reservedTabCaptureStream = null;
+    reserveTabCaptureInFlight = null;
+    return Promise.resolve(null);
+  }
+  const generation = reserveTabCaptureGeneration;
+  const pending = chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }).then((streamId) => {
+    if (generation !== reserveTabCaptureGeneration) return null;
+    if (!streamId) {
+      reservedTabCaptureStream = null;
+      return null;
+    }
+    const reserved = { tabId, streamId, reservedAt: Date.now() };
+    reservedTabCaptureStream = reserved;
+    return reserved;
+  }).catch(() => {
+    if (generation !== reserveTabCaptureGeneration) return null;
+    reservedTabCaptureStream = null;
+    return null;
+  }).finally(() => {
+    if (reserveTabCaptureInFlight === pending) reserveTabCaptureInFlight = null;
+  });
+  reserveTabCaptureInFlight = pending;
+  return pending;
+}
+
+async function takeReservedTabCaptureStreamId(tabId: number): Promise<string | null> {
+  if (reserveTabCaptureInFlight) await reserveTabCaptureInFlight;
+  const reserved = reservedTabCaptureStream;
+  if (!reserved) return null;
+  if (!reservedTabCaptureStreamIsFresh(reserved, tabId, Date.now())) {
+    if (reserved.tabId === tabId) reservedTabCaptureStream = null;
+    return null;
+  }
+  reservedTabCaptureStream = null;
+  return reserved.streamId;
+}
 
 function failure(code: CaptureFailureCode, message: string, captureId: string | null = null, diagnosticCode?: PreparationDiagnosticCode): CaptureSnapshot {
   return { status: 'error', code, message, captureId, ...(diagnosticCode ? { diagnosticCode } : {}) };
@@ -51,6 +105,9 @@ function captureFailureCode(code: PreparationDiagnosticCode): CaptureFailureCode
 }
 
 export function installMediaCapture(chrome: ExtensionChrome) {
+  reservedTabCaptureStream = null;
+  reserveTabCaptureInFlight = null;
+  reserveTabCaptureGeneration += 1;
   let active: ActiveCapture | null = null;
   let lastSnapshot: CaptureSnapshot = { status: 'idle' };
   let creatingOffscreen: Promise<void> | null = null;
@@ -242,6 +299,17 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     await persistActive(capture);
     emit(preparing);
     try {
+      // Chrome gates getMediaStreamId like activeTab. Take a toolbar-reserved
+      // ID or obtain one before prepare/offscreen so the grant check is not
+      // buried after scripting and document setup.
+      const streamId = await takeReservedTabCaptureStreamId(request.tabId) ??
+        await chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId });
+      if (!streamId) {
+        const snapshot = failure('stream-id-unavailable', 'Chrome returned an empty tab capture stream ID.', captureId);
+        await clearActiveIfCurrent(captureId);
+        emit(snapshot);
+        return { ok: false, snapshot };
+      }
       const prepared = await validateAndPrepare(captureId, request);
       if (!prepared.ok) {
         await clearActiveIfCurrent(captureId);
@@ -255,8 +323,6 @@ export function installMediaCapture(chrome: ExtensionChrome) {
         return { ok: false, snapshot };
       }
       await ensureOffscreenDocument();
-      const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId });
-      if (!streamId) throw failure('stream-id-unavailable', 'Chrome returned an empty tab capture stream ID.', captureId);
       const started = await chrome.runtime.sendMessage({
         target: 'offscreen',
         type: MEDIA_CAPTURE_OFFSCREEN_START,
@@ -295,15 +361,13 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       });
       return { ok: true, snapshot: started };
     } catch (error) {
+      const snapshot = typeof error === 'object' && error && 'status' in error &&
+        (error as CaptureSnapshot).status === 'error'
+        ? error as Extract<CaptureSnapshot, { status: 'error' }>
+        : mapTabCaptureStartFailure(error, captureId);
       try {
-        await cancelActive(
-          /permission|denied/i.test(errorText(error)) ? 'tab-capture-denied' : 'unexpected',
-          `Capture could not start: ${errorText(error)}`,
-        );
+        await cancelActive(snapshot.code, snapshot.message);
       } catch { /* Cancellation is best-effort; the start failure is authoritative. */ }
-      const snapshot = typeof error === 'object' && error && 'status' in error
-        ? error as CaptureSnapshot
-        : failure('unexpected', `Capture could not start: ${errorText(error)}`, captureId);
       emit(snapshot, request.operation);
       return { ok: false, snapshot };
     }
@@ -314,11 +378,7 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       void begin(message.request).then(sendResponse, (error: unknown) => {
         sendResponse({
           ok: false,
-          snapshot: failure(
-            'unexpected',
-            `Capture could not start: ${errorText(error)}`,
-            message.request.captureId,
-          ),
+          snapshot: mapTabCaptureStartFailure(error, message.request.captureId),
         });
       });
       return true;

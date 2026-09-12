@@ -560,9 +560,11 @@ panel:
 2. Extension calls a media-begin endpoint/RPC with its bearer token. The
    user-context RPC normalizes source identity and atomically creates source,
    draft annotation, target, slug, and `capture_pending` media row.
-3. Background revalidates the connected top-level tab and range, samples start
-   geometry, seeks/pauses the player, creates the offscreen document, obtains the
-   tab-capture stream ID, and starts the recorder.
+3. Background obtains the tab-capture stream ID as early as possible after the
+   user-driven start (reusing a short-lived ID reserved from the toolbar invoke
+   when still valid), then revalidates the connected top-level tab and range,
+   samples start geometry, seeks/pauses the player, creates the offscreen
+   document, and starts the recorder.
 4. Background starts page playback and acknowledges it to offscreen. Offscreen
    measures the recorder lead-in on its own clock, runs the requested-duration
    timer from that acknowledgement, records with audible loopback, and owns the

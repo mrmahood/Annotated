@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
+  CHROME_TAB_CAPTURE_INVOKE_ERROR,
   MEDIA_CAPTURE_FAILSAFE_MS,
   MEDIA_CAPTURE_START,
+  RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+  TAB_CAPTURE_INVOKE_MESSAGE,
   buildCaptureMetadataV2,
   captureRequestMatchesConnectedTab,
   executeHostedMediaUpload,
@@ -15,10 +18,17 @@ import {
   isMediaCaptureCancelMessage,
   isMediaCaptureStartMessage,
   isOffscreenStartMessage,
+  isTabCaptureInvocationError,
+  mapTabCaptureStartFailure,
+  reservedTabCaptureStreamIsFresh,
   selectCaptureMimeType,
   sourceIdentityMatchesUrl,
+  userFacingCaptureMessage,
 } from './media-capture.ts';
-import { installMediaCapture } from './media-capture-background.ts';
+import {
+  installMediaCapture,
+  reserveTabCaptureStreamIdFromInvoke,
+} from './media-capture-background.ts';
 
 const operation = {
   annotationId: '11111111-1111-4111-8111-111111111111',
@@ -57,9 +67,76 @@ test('stale capture identifiers are rejected before capture can advance', () => 
   assert.equal(isCurrentCaptureId(null, 'capture-old'), false);
 });
 
-test('tabCapture is never requested when top-frame preparation fails', async () => {
+test('Chrome tab-capture invocation errors map to toolbar Recapture copy', () => {
+  assert.equal(isTabCaptureInvocationError(CHROME_TAB_CAPTURE_INVOKE_ERROR), true);
+  assert.equal(isTabCaptureInvocationError(`Capture could not start: ${CHROME_TAB_CAPTURE_INVOKE_ERROR}`), true);
+  assert.equal(isTabCaptureInvocationError('Permission denied by the user.'), false);
+  assert.equal(reservedTabCaptureStreamIsFresh({ tabId: 42, reservedAt: 1_000 }, 42, 1_000 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), true);
+  assert.equal(reservedTabCaptureStreamIsFresh({ tabId: 42, reservedAt: 1_000 }, 42, 1_001 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), false);
+  assert.equal(reservedTabCaptureStreamIsFresh({ tabId: 7, reservedAt: 1_000 }, 42, 1_100), false);
+  const mapped = mapTabCaptureStartFailure(new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR), request.captureId);
+  assert.equal(mapped.status, 'error');
+  assert.equal(mapped.code, 'tab-capture-denied');
+  assert.equal(mapped.message, TAB_CAPTURE_INVOKE_MESSAGE);
+  assert.doesNotMatch(mapped.message, /activeTab|Chrome pages|invoked for the current page/i);
+  assert.equal(userFacingCaptureMessage({
+    status: 'error',
+    captureId: request.captureId,
+    code: 'unexpected',
+    message: `Capture could not start: ${CHROME_TAB_CAPTURE_INVOKE_ERROR}`,
+  }), TAB_CAPTURE_INVOKE_MESSAGE);
+  const other = mapTabCaptureStartFailure(new Error('The offscreen recorder did not accept the capture start.'), request.captureId);
+  assert.equal(other.code, 'unexpected');
+  assert.match(other.message, /offscreen recorder/);
+});
+
+test('offscreen start is never requested when top-frame preparation fails', async () => {
   let onMessage;
-  let tabCaptureCalls = 0;
+  const calls = [];
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [],
+      sendMessage: async (message) => {
+        calls.push(message?.type ?? 'message');
+        return undefined;
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {}, async remove() {},
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript() {
+      calls.push('prepare');
+      return [{ frameId: 0, result: { ok: false, code: 'PLAYER_NOT_FOUND', message: 'Player missing.' } }];
+    } },
+    tabCapture: { async getMediaStreamId() { calls.push('stream'); return 'stream'; } },
+    offscreen: { async createDocument() { calls.push('offscreen'); } },
+  };
+  installMediaCapture(fakeChrome);
+  const response = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  assert.equal(response.ok, false);
+  assert.equal(response.snapshot.diagnosticCode, 'PLAYER_NOT_FOUND');
+  assert.equal(calls.includes('stream'), true);
+  assert.ok(calls.indexOf('stream') < calls.indexOf('prepare'));
+  assert.equal(calls.includes('offscreen'), false);
+  assert.equal(calls.includes('annotated.mediaCapture.offscreenStart.v1'), false);
+});
+
+test('tabCapture invocation failure is mapped before page preparation', async () => {
+  let onMessage;
+  let prepareCalls = 0;
   const fakeChrome = {
     runtime: {
       getURL: (path) => `chrome-extension://test/${path}`,
@@ -80,17 +157,165 @@ test('tabCapture is never requested when top-frame preparation fails', async () 
       onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
     },
     scripting: { async executeScript() {
-      return [{ frameId: 0, result: { ok: false, code: 'PLAYER_NOT_FOUND', message: 'Player missing.' } }];
+      prepareCalls += 1;
+      return [{ frameId: 0, result: { ok: true } }];
     } },
-    tabCapture: { async getMediaStreamId() { tabCaptureCalls += 1; return 'must-not-run'; } },
-    offscreen: { async createDocument() {} },
+    tabCapture: { async getMediaStreamId() { throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR); } },
+    offscreen: { async createDocument() { throw new Error('offscreen must not run'); } },
   };
   installMediaCapture(fakeChrome);
   const response = await new Promise((resolve) => {
     assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
   });
   assert.equal(response.ok, false);
-  assert.equal(response.snapshot.diagnosticCode, 'PLAYER_NOT_FOUND');
+  assert.equal(response.snapshot.status, 'error');
+  assert.equal(response.snapshot.code, 'tab-capture-denied');
+  assert.equal(response.snapshot.message, TAB_CAPTURE_INVOKE_MESSAGE);
+  assert.equal(prepareCalls, 0);
+});
+
+test('toolbar-reserved stream ID is used instead of a later getMediaStreamId', async () => {
+  let onMessage;
+  const streamIds = [];
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [],
+      sendMessage: async (message) => {
+        if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+          streamIds.push(message.streamId);
+          return { status: 'capturing', captureId: message.captureId };
+        }
+        return { ok: true };
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {}, async remove() {},
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript({ func }) {
+      if (func.name.includes('prepare')) return [{ frameId: 0, result: {
+        ok: true,
+        prepared: {
+          sourceKind: 'youtube', requestedStartMs: 5_000, requestedEndMs: 20_000,
+          requestedDurationMs: 15_000, playerCurrentTimeBeforeRecordingMs: 5_000,
+          mediaDurationMs: 120_000, pageUrl: source.pageUrl,
+          geometry: {
+            viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+            boundingClientRect: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+            videoWidth: 1920, videoHeight: 1080, objectFit: 'contain', objectPosition: '50% 50%',
+            fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+          },
+        },
+      } }];
+      return [{ frameId: 0, result: { ok: true, acknowledgedAtMs: 1, currentTimeMs: 5_000 } }];
+    } },
+    tabCapture: {
+      async getMediaStreamId() {
+        streamIds.push('reserved-from-invoke');
+        return 'reserved-from-invoke';
+      },
+    },
+    offscreen: { async createDocument() {} },
+  };
+  installMediaCapture(fakeChrome);
+  await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, source.pageUrl);
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    throw new Error('begin must reuse the toolbar-reserved stream ID');
+  };
+  const response = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  assert.equal(response.ok, true);
+  assert.deepEqual(streamIds, ['reserved-from-invoke', 'reserved-from-invoke']);
+});
+
+test('an in-flight toolbar reserve is awaited instead of a second getMediaStreamId', async () => {
+  let onMessage;
+  let releaseReserve;
+  const reserveGate = new Promise((resolve) => { releaseReserve = resolve; });
+  let getMediaStreamIdCalls = 0;
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [],
+      sendMessage: async (message) => {
+        if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+          return { status: 'capturing', captureId: message.captureId, streamId: message.streamId };
+        }
+        return { ok: true };
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {}, async remove() {},
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript({ func }) {
+      if (func.name.includes('prepare')) return [{ frameId: 0, result: {
+        ok: true,
+        prepared: {
+          sourceKind: 'youtube', requestedStartMs: 5_000, requestedEndMs: 20_000,
+          requestedDurationMs: 15_000, playerCurrentTimeBeforeRecordingMs: 5_000,
+          mediaDurationMs: 120_000, pageUrl: source.pageUrl,
+          geometry: {
+            viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+            boundingClientRect: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+            videoWidth: 1920, videoHeight: 1080, objectFit: 'contain', objectPosition: '50% 50%',
+            fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+          },
+        },
+      } }];
+      return [{ frameId: 0, result: { ok: true, acknowledgedAtMs: 1, currentTimeMs: 5_000 } }];
+    } },
+    tabCapture: {
+      async getMediaStreamId() {
+        getMediaStreamIdCalls += 1;
+        await reserveGate;
+        return 'in-flight-reserve';
+      },
+    },
+    offscreen: { async createDocument() {} },
+  };
+  installMediaCapture(fakeChrome);
+  const reserved = reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, source.pageUrl);
+  const started = new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(getMediaStreamIdCalls, 1);
+  releaseReserve();
+  const [response, reservedResult] = await Promise.all([started, reserved]);
+  assert.equal(response.ok, true);
+  assert.equal(response.snapshot.status, 'capturing');
+  assert.equal(reservedResult?.streamId, 'in-flight-reserve');
+  assert.equal(getMediaStreamIdCalls, 1);
+});
+
+test('chrome:// and other non-http pages never reserve a tab-capture stream ID', async () => {
+  let tabCaptureCalls = 0;
+  const fakeChrome = {
+    tabCapture: { async getMediaStreamId() { tabCaptureCalls += 1; return 'must-not-run'; } },
+  };
+  assert.equal(await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, 'chrome://extensions'), null);
+  assert.equal(await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, 'about:blank'), null);
   assert.equal(tabCaptureCalls, 0);
 });
 
@@ -732,9 +957,10 @@ test('completion failure remains a failure and success advances only to verifica
 });
 
 test('production manifest and capture source keep the required security shape', async () => {
-  const [config, background, offscreen] = await Promise.all([
+  const [config, background, serviceWorker, offscreen] = await Promise.all([
     readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
     readFile(new URL('./media-capture-background.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../entrypoints/background.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/offscreen/main.ts', import.meta.url), 'utf8'),
   ]);
   assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
@@ -743,7 +969,14 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(background, /getContexts/);
   assert.match(background, /createDocument/);
   assert.match(background, /getMediaStreamId/);
-  assert.ok(background.indexOf('if (!prepared.ok)') < background.indexOf('getMediaStreamId'));
+  const beginBody = background.slice(background.indexOf('async function begin'));
+  assert.ok(beginBody.indexOf('takeReservedTabCaptureStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
+  assert.ok(beginBody.indexOf('getMediaStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
+  assert.match(serviceWorker, /openPanelOnActionClick: false/);
+  assert.ok(serviceWorker.indexOf('sidePanel.open') < serviceWorker.indexOf('reserveTabCaptureStreamIdFromInvoke'));
+  assert.ok(serviceWorker.indexOf('reserveTabCaptureStreamIdFromInvoke') < serviceWorker.indexOf('followBrowsingTab'));
+  const panel = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
+  assert.match(panel, /userFacingCaptureMessage\(mediaCaptureState\)/);
   assert.equal(
     background.match(/world: usesMainWorldCapture\((?:capture\.request|request)\.source\.kind\) \? 'MAIN' : 'ISOLATED'/g)?.length,
     3,

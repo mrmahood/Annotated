@@ -192,6 +192,67 @@ export type CaptureFailureCode =
   | 'stream-id-unavailable' | 'tab-capture-denied' | 'upload-failed'
   | 'authorization-failed' | 'completion-failed' | 'recapture-required'
   | 'raw-capture-unavailable' | 'unexpected';
+
+export const TAB_CAPTURE_INVOKE_MESSAGE =
+  'Click the Annotated toolbar icon on this tab, then Recapture.';
+export const CHROME_TAB_CAPTURE_INVOKE_ERROR =
+  'Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.';
+export const RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS = 8_000;
+
+export function isTabCaptureInvocationError(value: string): boolean {
+  const text = value.toLowerCase();
+  return text.includes('has not been invoked for the current page') ||
+    text.includes('see activetab permission');
+}
+
+export function reservedTabCaptureStreamIsFresh(
+  reserved: { tabId: number; reservedAt: number },
+  tabId: number,
+  now: number,
+  maxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+): boolean {
+  return reserved.tabId === tabId &&
+    Number.isFinite(reserved.reservedAt) &&
+    now - reserved.reservedAt >= 0 &&
+    now - reserved.reservedAt <= maxAgeMs;
+}
+
+export function mapTabCaptureStartFailure(
+  error: unknown,
+  captureId: string | null,
+): Extract<CaptureSnapshot, { status: 'error' }> {
+  const text = error instanceof Error ? error.message : String(error);
+  if (isTabCaptureInvocationError(text)) {
+    return {
+      status: 'error',
+      captureId,
+      code: 'tab-capture-denied',
+      message: TAB_CAPTURE_INVOKE_MESSAGE,
+    };
+  }
+  if (/permission|denied/i.test(text)) {
+    return {
+      status: 'error',
+      captureId,
+      code: 'tab-capture-denied',
+      message: `Capture could not start: ${text}`,
+    };
+  }
+  return {
+    status: 'error',
+    captureId,
+    code: 'unexpected',
+    message: `Capture could not start: ${text}`,
+  };
+}
+
+export function userFacingCaptureMessage(
+  snapshot: Extract<CaptureSnapshot, { status: 'error' | 'cancelled' }>,
+): string {
+  return isTabCaptureInvocationError(snapshot.message)
+    ? TAB_CAPTURE_INVOKE_MESSAGE
+    : snapshot.message;
+}
 export type PreparationDiagnosticCode =
   | 'PLAYER_NOT_FOUND' | 'PLAYER_NOT_READY' | 'SOURCE_CHANGED' | 'RANGE_INVALID'
   | 'SCRIPT_INJECTION_FAILED' | 'PREPARATION_RESULT_MISSING'

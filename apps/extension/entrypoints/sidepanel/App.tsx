@@ -208,6 +208,7 @@ import {
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
   isAudioOnlyCaptureSourceKind,
+  userFacingCaptureMessage,
   type CaptureSnapshot,
   type CaptureSourceIdentity,
   type HostedMediaOperation,
@@ -1564,10 +1565,11 @@ function App() {
     const attempt = createHostedAttemptToken(operation, captureId);
     let responseSnapshot: CaptureSnapshot | null = null;
     try {
+      const sessionPromise = supabase.auth.getSession();
       await chrome.storage.local.set({ [HOSTED_MEDIA_SESSION_KEY]: session });
       const context = connectedContextRef.current;
       if (!context || context.url !== source.pageUrl) throw new Error(RECONNECT_MESSAGE);
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await sessionPromise;
       const accessToken = data.session?.access_token;
       if (error || !accessToken) throw new Error('The authenticated session is unavailable.');
       const response = await chrome.runtime.sendMessage({
@@ -3649,7 +3651,7 @@ function App() {
       {mediaCaptureState.status === 'waiting-to-upload' && <span>{mediaCaptureState.message}</span>}
       {mediaCaptureState.status === 'verifying-upload' && <span>Checking the owner-visible server state before showing Processing.</span>}
       {mediaCaptureState.status === 'processing' && <span>Uploaded and queued. Processing is in progress.</span>}
-      {mediaCaptureState.status === 'error' && <span>{mediaCaptureState.message}</span>}
+      {mediaCaptureState.status === 'error' && <span>{userFacingCaptureMessage(mediaCaptureState)}</span>}
       {mediaCaptureState.status === 'waiting-to-upload' && !isCancellingHostedMedia && (
         <button className="button button-secondary" type="button" onClick={() => void retryHostedUpload()}>Retry upload</button>
       )}
