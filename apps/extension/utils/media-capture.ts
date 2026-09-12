@@ -217,6 +217,7 @@ export const TAB_CAPTURE_INVOKE_MESSAGE =
 export const CHROME_TAB_CAPTURE_INVOKE_ERROR =
   'Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.';
 export const RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS = 8_000;
+export const TAB_CAPTURE_STREAM_ID_TIMEOUT_MS = 4_000;
 
 export function isTabCaptureInvocationError(value: string): boolean {
   const text = value.toLowerCase();
@@ -230,10 +231,46 @@ export function reservedTabCaptureStreamIsFresh(
   now: number,
   maxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
 ): boolean {
+  return reservedTabCaptureStreamMatchesTab(reserved, tabId, now) &&
+    now - reserved.reservedAt <= maxAgeMs;
+}
+
+export function reservedTabCaptureStreamMatchesTab(
+  reserved: { tabId: number; reservedAt: number },
+  tabId: number,
+  now: number,
+): boolean {
   return reserved.tabId === tabId &&
     Number.isFinite(reserved.reservedAt) &&
-    now - reserved.reservedAt >= 0 &&
-    now - reserved.reservedAt <= maxAgeMs;
+    now - reserved.reservedAt >= 0;
+}
+
+export function tabCaptureStreamIdTimeoutError(): Error {
+  return new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR);
+}
+
+export async function raceTabCaptureStreamId<T>(
+  pending: Promise<T>,
+  timeoutMs = TAB_CAPTURE_STREAM_ID_TIMEOUT_MS,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(tabCaptureStreamIdTimeoutError()), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export function canClearPreparingCaptureWithoutBackgroundCancel(
+  status: CaptureSnapshot['status'],
+  backgroundCancelled: boolean,
+): boolean {
+  return backgroundCancelled || status === 'preparing' || status === 'idle';
 }
 
 export function mapTabCaptureStartFailure(

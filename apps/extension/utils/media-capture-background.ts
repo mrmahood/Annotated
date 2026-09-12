@@ -23,7 +23,10 @@ import {
   isMediaCaptureStartMessage,
   isCurrentCaptureId,
   mapTabCaptureStartFailure,
-  reservedTabCaptureStreamIsFresh,
+  TAB_CAPTURE_STREAM_ID_TIMEOUT_MS,
+  raceTabCaptureStreamId,
+  reservedTabCaptureStreamMatchesTab,
+  tabCaptureStreamIdTimeoutError,
   sourceIdentityMatchesUrl,
   usesMainWorldCapture,
   type CaptureErrorSnapshot,
@@ -43,6 +46,9 @@ export const ACTIVE_CAPTURE_KEY = 'annotated.mediaCapture.active.v1';
 let reservedTabCaptureStream: ReservedTabCaptureStream | null = null;
 let reserveTabCaptureInFlight: Promise<ReservedTabCaptureStream | null> | null = null;
 let reserveTabCaptureGeneration = 0;
+let activeStreamIdTimeoutMs = TAB_CAPTURE_STREAM_ID_TIMEOUT_MS;
+const cancelledCaptureIds = new Set<string>();
+const CANCELLED_CAPTURE_ID_LIMIT = 32;
 
 function isCapturablePageUrl(url: string | undefined): url is string {
   return typeof url === 'string' && /^https?:\/\//.test(url);
@@ -58,8 +64,14 @@ export function reserveTabCaptureStreamIdFromInvoke(
     reserveTabCaptureInFlight = null;
     return Promise.resolve(null);
   }
+  if (reservedTabCaptureStream && reservedTabCaptureStream.tabId === tabId) {
+    return Promise.resolve(reservedTabCaptureStream);
+  }
   const generation = reserveTabCaptureGeneration;
-  const pending = chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }).then((streamId) => {
+  const pending = raceTabCaptureStreamId(
+    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }),
+    activeStreamIdTimeoutMs,
+  ).then((streamId) => {
     if (generation !== reserveTabCaptureGeneration) return null;
     if (!streamId) {
       reservedTabCaptureStream = null;
@@ -79,12 +91,37 @@ export function reserveTabCaptureStreamIdFromInvoke(
   return pending;
 }
 
+export function invalidateReservedTabCaptureStream(): void {
+  reserveTabCaptureGeneration += 1;
+  reservedTabCaptureStream = null;
+  reserveTabCaptureInFlight = null;
+}
+
+function rememberCancelledCaptureId(captureId: string | null): void {
+  if (!captureId) return;
+  cancelledCaptureIds.add(captureId);
+  if (cancelledCaptureIds.size > CANCELLED_CAPTURE_ID_LIMIT) {
+    const oldest = cancelledCaptureIds.values().next().value;
+    if (oldest) cancelledCaptureIds.delete(oldest);
+  }
+}
+
+function consumeCancelledCaptureId(captureId: string): boolean {
+  const cancelled = cancelledCaptureIds.has(captureId);
+  if (cancelled) cancelledCaptureIds.delete(captureId);
+  return cancelled;
+}
+
 async function takeReservedTabCaptureStreamId(tabId: number): Promise<string | null> {
-  if (reserveTabCaptureInFlight) await reserveTabCaptureInFlight;
+  if (reserveTabCaptureInFlight) {
+    try {
+      await raceTabCaptureStreamId(reserveTabCaptureInFlight, activeStreamIdTimeoutMs);
+    } catch {
+      if (!reservedTabCaptureStream) throw tabCaptureStreamIdTimeoutError();
+    }
+  }
   const reserved = reservedTabCaptureStream;
-  if (!reserved) return null;
-  if (!reservedTabCaptureStreamIsFresh(reserved, tabId, Date.now())) {
-    if (reserved.tabId === tabId) reservedTabCaptureStream = null;
+  if (!reserved || !reservedTabCaptureStreamMatchesTab(reserved, tabId, Date.now())) {
     return null;
   }
   reservedTabCaptureStream = null;
@@ -105,10 +142,15 @@ function captureFailureCode(code: PreparationDiagnosticCode): CaptureFailureCode
   return 'unexpected';
 }
 
-export function installMediaCapture(chrome: ExtensionChrome) {
+export function installMediaCapture(
+  chrome: ExtensionChrome,
+  options?: { streamIdTimeoutMs?: number },
+) {
   reservedTabCaptureStream = null;
   reserveTabCaptureInFlight = null;
   reserveTabCaptureGeneration += 1;
+  cancelledCaptureIds.clear();
+  activeStreamIdTimeoutMs = options?.streamIdTimeoutMs ?? TAB_CAPTURE_STREAM_ID_TIMEOUT_MS;
   let active: ActiveCapture | null = null;
   let lastSnapshot: CaptureSnapshot = { status: 'idle' };
   let creatingOffscreen: Promise<void> | null = null;
@@ -153,6 +195,10 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     return true;
   }
 
+  function liveCaptureId(): string | null {
+    return active?.captureId ?? null;
+  }
+
   async function hasOffscreenDocument() {
     return (await chrome.runtime.getContexts({
       contextTypes: ['OFFSCREEN_DOCUMENT'],
@@ -171,15 +217,24 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     const capture = active;
     if (!capture) return;
     if (lastSnapshot.status === 'preparing' && lastSnapshot.captureId === capture.captureId) return;
+    if (
+      lastSnapshot.status === 'idle' ||
+      lastSnapshot.status === 'verifying-upload' ||
+      lastSnapshot.status === 'processing' ||
+      lastSnapshot.status === 'cancelled'
+    ) {
+      await clearActiveIfCurrent(capture.captureId);
+      return;
+    }
     if (!await hasOffscreenDocument()) {
       await clearActiveIfCurrent(capture.captureId);
       return;
     }
     try {
-      const response = await chrome.runtime.sendMessage({
+      const response = await raceTabCaptureStreamId(chrome.runtime.sendMessage({
         target: 'offscreen',
         type: MEDIA_CAPTURE_OFFSCREEN_STATUS,
-      });
+      }), activeStreamIdTimeoutMs);
       const offscreenSnapshot = response?.snapshot as CaptureSnapshot | undefined;
       if (!offscreenSnapshot || typeof offscreenSnapshot !== 'object') return;
       if (
@@ -300,11 +355,38 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     await persistActive(capture);
     emit(preparing);
     try {
+      if (consumeCancelledCaptureId(captureId) || !isCurrentCaptureId(liveCaptureId(), captureId)) {
+        await clearActiveIfCurrent(captureId);
+        const snapshot = {
+          status: 'cancelled' as const,
+          captureId,
+          code: 'unexpected' as const,
+          message: 'Capture cancelled by the user.',
+        };
+        emit(snapshot, request.operation);
+        return { ok: false, snapshot };
+      }
       // Chrome gates getMediaStreamId like activeTab. Take a toolbar-reserved
       // ID or obtain one before prepare/offscreen so the grant check is not
-      // buried after scripting and document setup.
+      // buried after scripting and document setup. Reuse a same-tab reserved
+      // ID even after the freshness window so Chrome is not left with an
+      // unused pending capturer that hangs a later getMediaStreamId.
       const streamId = await takeReservedTabCaptureStreamId(request.tabId) ??
-        await chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId });
+        await raceTabCaptureStreamId(
+          chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
+          activeStreamIdTimeoutMs,
+        );
+      if (consumeCancelledCaptureId(captureId) || !isCurrentCaptureId(liveCaptureId(), captureId)) {
+        await clearActiveIfCurrent(captureId);
+        const snapshot = {
+          status: 'cancelled' as const,
+          captureId,
+          code: 'unexpected' as const,
+          message: 'Capture cancelled by the user.',
+        };
+        emit(snapshot, request.operation);
+        return { ok: false, snapshot };
+      }
       if (!streamId) {
         const snapshot = failure('stream-id-unavailable', 'Chrome returned an empty tab capture stream ID.', captureId);
         await clearActiveIfCurrent(captureId);
@@ -391,16 +473,29 @@ export function installMediaCapture(chrome: ExtensionChrome) {
     if (isMediaCaptureCancelMessage(message)) {
       void (async () => {
         await restoreActive;
+        rememberCancelledCaptureId(message.captureId);
         const capture = active;
         const sameOperation = Boolean(
           capture && capture.request.operation.annotationId === message.operation.annotationId &&
           capture.request.operation.mediaId === message.operation.mediaId,
         );
         const sameCapture = message.captureId === null || message.captureId === capture?.captureId;
-        if (!capture || !sameOperation || !sameCapture) {
+        if (!capture) {
+          const preparingMatches = lastSnapshot.status === 'preparing' &&
+            (message.captureId === null || lastSnapshot.captureId === message.captureId);
+          if (preparingMatches) {
+            lastSnapshot = { status: 'idle' };
+            sendResponse({ ok: true, cancelled: true });
+            return;
+          }
           sendResponse({ ok: true, cancelled: false });
           return;
         }
+        if (!sameOperation || !sameCapture) {
+          sendResponse({ ok: true, cancelled: false });
+          return;
+        }
+        invalidateReservedTabCaptureStream();
         const cancelled = await cancelActive('unexpected', 'Capture cancelled by the user.');
         sendResponse({ ok: true, cancelled });
       })();
