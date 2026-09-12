@@ -3750,6 +3750,7 @@ function App() {
                   startMs={videoDraftState.startMs}
                   endMs={videoDraftState.endMs}
                   durationMs={videoDraftState.durationMs}
+                  playheadMs={videoDraftState.playerTimeMs}
                   startField={videoRangeEntry.startField}
                   endField={videoRangeEntry.endField}
                   lengthDisplay={videoRangeDisplay.length}
@@ -3794,6 +3795,7 @@ function App() {
                   startMs={audioDraftState.startMs}
                   endMs={audioDraftState.endMs}
                   durationMs={audioDraftState.durationMs}
+                  playheadMs={audioDraftState.playerTimeMs}
                   startField={audioRangeEntry.startField}
                   endField={audioRangeEntry.endField}
                   lengthDisplay={audioRangeDisplay.length}

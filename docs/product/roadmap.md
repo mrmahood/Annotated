@@ -30,8 +30,9 @@ first, then the social slice (**Share**, **Bookmark**, **What’s
 Trending**, **Who to Follow**). They are not bounty must-haves.
 This increment implements the locked **clip range UI**: dual-handle
 range, 30s/60s presets from the playhead, preview that stops at end,
-and typed start/end as secondary. Set start / Set end buttons are
-replaced. Staging acceptance is required before Phase G. Fox / Brightcove /
+and typed start/end as secondary. On long media the slider shows a
+few minutes around the current range, with pan and recenter. Set
+start / Set end buttons are replaced. Staging acceptance is required before Phase G. Fox / Brightcove /
 proprietary cross-origin news-site embeds are **tabled indefinitely**
 (Phase G / later-horizon) and are not a mid-September bounty blocker.
 X OAuth is out of Sprint 6. Staging-only X
@@ -778,6 +779,8 @@ separately authorized.
   plays only the selected range on the host player and stops at the
   end; native page controls still work. Typed `m:ss` / `h:mm:ss`
   fields remain as secondary input and stay in sync with the slider.
+  On media longer than four minutes the track zooms to a ~240s window
+  around the selection (or playhead); the user can pan and recenter.
   Applies to YouTube, TikTok, Spotify episode, podcast / audio, and
   webpage video/audio. Not Text Create. See Pre–Phase G below.
 - **Re-enable X OAuth** on the user-facing web and extension surfaces before
@@ -860,6 +863,10 @@ Implemented in this increment. Replace **Set start** / **Set end**
 - Chrome: start/end **timecode readout**; **snap to whole seconds**;
   **remaining-to-90** indicator; **disable Publish** until a valid
   ≤90s range is set.
+- Long media (owner 2026-09-12): the slider track shows only a **few
+  minutes around the current range**, not the full episode. The user
+  can **pan** the window and **recenter** on the selection or
+  playhead. Short media keeps the full timeline.
 
 ### Social slice — ship second (after clip UI)
 

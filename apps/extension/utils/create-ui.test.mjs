@@ -137,6 +137,13 @@ test('Create Video and Audio use a dual-handle clip slider instead of Set start 
   assert.match(fields, /aria-label="Clip start"/);
   assert.match(fields, /aria-label="Clip end"/);
   assert.match(fields, /CLIP_PRESETS/);
+  assert.match(fields, /formatClipSliderWindowCue/);
+  assert.match(fields, /Recenter/);
+  assert.match(fields, /Pan earlier/);
+  assert.match(fields, /Pan later/);
+  assert.match(fields, /playheadMs/);
+  assert.match(source, /playheadMs=\{videoDraftState\.playerTimeMs\}/);
+  assert.match(source, /playheadMs=\{audioDraftState\.playerTimeMs\}/);
   assert.match(fields, /previewLabel/);
   assert.match(source, /Preview range/);
   assert.match(fields, /id=\{startId\}/);
@@ -146,6 +153,8 @@ test('Create Video and Audio use a dual-handle clip slider instead of Set start 
   assert.match(fields, /htmlFor=\{startId\}/);
   assert.match(style, /\.clip-range-slider input\[type="range"\]/);
   assert.match(style, /\.clip-range-readout/);
+  assert.match(style, /\.clip-range-window-cue/);
+  assert.match(style, /\.clip-range-window-actions/);
   assert.match(style, /\.clip-preset-row/);
   assert.match(style, /\.clip-time-grid input \{/);
   assert.match(style, /\.clip-field-error/);
