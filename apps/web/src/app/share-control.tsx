@@ -85,9 +85,10 @@ export function ShareControl({
 
   const signedOut = !currentUserId;
   const heading = variant === "detail" ? "Share" : undefined;
+  const cardPrompt = variant === "card" && signedOut && mode === "compose";
 
   return (
-    <div className={variant === "detail" ? "share-control share-control-detail" : "share-control"}>
+    <div className={variant === "detail" ? "share-control share-control-detail" : cardPrompt ? "share-control share-control-prompt" : "share-control"}>
       {heading ? (
         <div className="share-heading-row">
           <div>

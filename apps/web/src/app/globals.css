@@ -588,6 +588,10 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   white-space: pre-wrap;
 }
 .share-control { min-width: 0; }
+.share-control-prompt {
+  flex: 1 1 100%;
+  width: 100%;
+}
 .card-share-button {
   padding: 0;
   border: 0;
@@ -602,15 +606,16 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .card-share-button:disabled { color: var(--text-disabled); cursor: not-allowed; }
 .share-signed-out {
   display: grid;
-  justify-items: start;
+  justify-items: stretch;
   gap: 8px;
-  flex: 1 1 100%;
+  width: 100%;
   min-width: 0;
   color: var(--text-secondary);
   font-size: 0.73rem;
 }
 .share-signed-out p { margin: 0; line-height: 1.45; }
 .share-signed-out .provider-sign-in-actions { width: 100%; }
+.share-signed-out .card-share-button { justify-self: start; }
 .share-composer { display: grid; gap: 8px; width: min(100%, 420px); }
 .share-composer textarea {
   width: 100%;
@@ -1021,6 +1026,14 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .site-account-link span:last-child { display: none; }
   .site-sign-out { padding-inline: 8px; }
   .site-auth-button { max-width: 142px; white-space: normal; }
+  .share-signed-out .site-auth-button,
+  .share-heading-row .site-auth-button {
+    max-width: none;
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+  }
   .discovery-main { width: min(calc(100% - 28px), 840px); padding-top: 30px; }
   .discovery-intro { margin-bottom: 22px; }
   .trending-strip { margin-bottom: 22px; padding: 14px; }
