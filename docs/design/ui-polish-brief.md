@@ -203,10 +203,12 @@ later hover-link fades. No spring/bounce presets.
   buttons. This increment implements the locked Pre–Phase G
   **clip range UI**: a dual-handle **clip slider** (30s / 60s
   presets from the playhead, ≤90 s, snap to whole seconds) with
-  typed start and end fields as secondary input. Set start /
-  Set end buttons are gone. Preview plays the selected range
-  and stops at end. See `docs/product/roadmap.md`. The control
-  is not part of this brief’s polish sprint slices.
+  typed start and end fields as secondary input. On long media
+  the track zooms to a few minutes around the range, with pan
+  and recenter. Set start / Set end buttons are gone. Preview
+  plays the selected range and stops at end. See
+  `docs/product/roadmap.md`. The control is not part of this
+  brief’s polish sprint slices.
 
 ### 5.2 Annotation cards
 

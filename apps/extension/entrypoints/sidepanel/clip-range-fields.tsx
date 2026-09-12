@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
   applyTypedClipFieldInput,
   fieldFromMilliseconds,
@@ -8,11 +8,19 @@ import {
 } from '../../utils/clip-range-entry';
 import {
   CLIP_PRESETS,
+  CLIP_SLIDER_PAN_MS,
+  clampClipSliderWindowStart,
+  clipSliderWindowContainsRange,
+  clipSliderWindowDurationMs,
+  clipSliderWindowIsZoomed,
   formatClipBudgetLabel,
+  formatClipSliderWindowCue,
   formatClipSpanReadout,
   getClipBudget,
   mediaDurationSliderMaxMs,
   moveClipHandle,
+  panClipSliderWindow,
+  recenterClipSliderWindow,
   snapMsToWholeSeconds,
 } from '../../utils/clip-range';
 
@@ -179,6 +187,7 @@ export function ClipRangeEditor({
   startMs,
   endMs,
   durationMs,
+  playheadMs = null,
   startField,
   endField,
   lengthDisplay,
@@ -203,6 +212,7 @@ export function ClipRangeEditor({
   startMs: number | null;
   endMs: number | null;
   durationMs: number | null;
+  playheadMs?: number | null;
   startField: TypedClipField;
   endField: TypedClipField;
   lengthDisplay: string;
@@ -224,15 +234,78 @@ export function ClipRangeEditor({
   onRefresh: () => void;
 }) {
   const maxMs = mediaDurationSliderMaxMs(durationMs);
-  const maxSeconds = maxMs === null ? 0 : maxMs / 1_000;
-  const startSeconds = startMs === null ? 0 : Math.round(startMs / 1_000);
-  const endSeconds = endMs === null ? 0 : Math.round(endMs / 1_000);
+  const windowDurationMs = clipSliderWindowDurationMs(durationMs, startMs, endMs) ?? 0;
+  const zoomed = clipSliderWindowIsZoomed(durationMs);
+  const [windowStartMs, setWindowStartMs] = useState(0);
+  const [panning, setPanning] = useState(false);
+  const userAdjustedWindow = useRef(false);
+  const initializedDurationMs = useRef<number | null>(null);
+  const rangeKeyRef = useRef(`${startMs}:${endMs}`);
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const panDrag = useRef<{ pointerId: number; x: number; startMs: number } | null>(null);
+
+  useEffect(() => {
+    const rangeKey = `${startMs}:${endMs}`;
+    const rangeChanged = rangeKeyRef.current !== rangeKey;
+    rangeKeyRef.current = rangeKey;
+    const hasCommittedRange = startMs !== null && endMs !== null && endMs > startMs;
+
+    if (maxMs === null || windowDurationMs <= 0) {
+      initializedDurationMs.current = null;
+      userAdjustedWindow.current = false;
+      setWindowStartMs(0);
+      return;
+    }
+    if (initializedDurationMs.current !== maxMs) {
+      initializedDurationMs.current = maxMs;
+      userAdjustedWindow.current = false;
+      const next = recenterClipSliderWindow({ startMs, endMs, playheadMs, durationMs });
+      setWindowStartMs(next?.startMs ?? 0);
+      return;
+    }
+    setWindowStartMs((current) => {
+      const clamped = clampClipSliderWindowStart(current, windowDurationMs, durationMs);
+      if (
+        rangeChanged
+        && hasCommittedRange
+        && !clipSliderWindowContainsRange(clamped, windowDurationMs, startMs, endMs)
+      ) {
+        userAdjustedWindow.current = false;
+        return recenterClipSliderWindow({ startMs, endMs, playheadMs, durationMs })?.startMs ?? clamped;
+      }
+      if (!userAdjustedWindow.current && !hasCommittedRange) {
+        return recenterClipSliderWindow({ startMs, endMs, playheadMs, durationMs })?.startMs ?? clamped;
+      }
+      return clamped;
+    });
+  }, [durationMs, endMs, maxMs, playheadMs, startMs, windowDurationMs]);
+
+  const windowEndMs = windowStartMs + windowDurationMs;
+  const sliderMinSeconds = windowDurationMs > 0 ? windowStartMs / 1_000 : 0;
+  const sliderMaxSeconds = windowDurationMs > 0 ? windowEndMs / 1_000 : 0;
+  const sliderSpanSeconds = sliderMaxSeconds - sliderMinSeconds;
+  const fallbackSeconds = playheadMs !== null
+    ? Math.min(sliderMaxSeconds, Math.max(sliderMinSeconds, Math.round(playheadMs / 1_000)))
+    : sliderMinSeconds;
+  const startSeconds = startMs === null ? fallbackSeconds : Math.round(startMs / 1_000);
+  const endSeconds = endMs === null ? fallbackSeconds : Math.round(endMs / 1_000);
   const hasRange = startMs !== null && endMs !== null && endMs > startMs;
   const budget = getClipBudget(startMs, endMs);
-  const startPercent = maxSeconds > 0 ? (startSeconds / maxSeconds) * 100 : 0;
-  const widthPercent = maxSeconds > 0 ? (Math.max(0, endSeconds - startSeconds) / maxSeconds) * 100 : 0;
-  const sliderDisabled = disabled || maxSeconds < 1;
+  const startPercent = sliderSpanSeconds > 0
+    ? ((startSeconds - sliderMinSeconds) / sliderSpanSeconds) * 100
+    : 0;
+  const endPercent = sliderSpanSeconds > 0
+    ? ((endSeconds - sliderMinSeconds) / sliderSpanSeconds) * 100
+    : 0;
+  const fillLeft = Math.max(0, Math.min(100, startPercent));
+  const fillRight = Math.max(0, Math.min(100, endPercent));
+  const sliderDisabled = disabled || sliderSpanSeconds < 1;
   const actionsDisabled = disabled || !playerSelected || playerReading;
+  const canPanEarlier = zoomed && windowStartMs > 0;
+  const canPanLater = zoomed && maxMs !== null && windowEndMs < maxMs;
+  const windowCue = zoomed
+    ? formatClipSliderWindowCue(windowStartMs, windowDurationMs, durationMs)
+    : '';
 
   const moveHandle = (handle: 'start' | 'end', nextSeconds: number) => {
     const next = moveClipHandle({
@@ -245,28 +318,88 @@ export function ClipRangeEditor({
     onCommitRange(next.startMs, next.endMs);
   };
 
+  const applyWindow = (next: { startMs: number } | null, userAdjusted: boolean) => {
+    if (!next) return;
+    userAdjustedWindow.current = userAdjusted;
+    setWindowStartMs(next.startMs);
+  };
+
+  const panWindow = (deltaMs: number) => {
+    applyWindow(panClipSliderWindow({
+      windowStartMs,
+      deltaMs,
+      startMs,
+      endMs,
+      durationMs,
+    }), true);
+  };
+
+  const recenterWindow = () => {
+    applyWindow(recenterClipSliderWindow({ startMs, endMs, playheadMs, durationMs }), false);
+  };
+
+  const onSliderPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!zoomed || sliderDisabled) return;
+    if ((event.target as HTMLElement).closest('input[type="range"]')) return;
+    event.preventDefault();
+    panDrag.current = { pointerId: event.pointerId, x: event.clientX, startMs: windowStartMs };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPanning(true);
+  };
+
+  const onSliderPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = panDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const width = sliderRef.current?.clientWidth ?? 0;
+    if (width <= 0 || windowDurationMs <= 0) return;
+    const deltaMs = -((event.clientX - drag.x) / width) * windowDurationMs;
+    applyWindow(panClipSliderWindow({
+      windowStartMs: drag.startMs,
+      deltaMs,
+      startMs,
+      endMs,
+      durationMs,
+    }), true);
+  };
+
+  const endSliderPan = (event: PointerEvent<HTMLDivElement>) => {
+    if (panDrag.current?.pointerId !== event.pointerId) return;
+    panDrag.current = null;
+    setPanning(false);
+  };
+
   return (
     <div className="clip-range-editor">
       <div className="clip-range-readout">
         <strong>{formatClipSpanReadout(startMs, endMs)}</strong>
         <span>{formatClipBudgetLabel(budget)}</span>
       </div>
-      <div className="clip-range-slider" data-empty={hasRange ? undefined : 'true'}>
+      <div
+        ref={sliderRef}
+        className="clip-range-slider"
+        data-empty={hasRange ? undefined : 'true'}
+        data-zoomed={zoomed ? 'true' : undefined}
+        data-panning={panning ? 'true' : undefined}
+        onPointerDown={onSliderPointerDown}
+        onPointerMove={onSliderPointerMove}
+        onPointerUp={endSliderPan}
+        onPointerCancel={endSliderPan}
+      >
         <div className="clip-range-rail" aria-hidden="true">
-          {hasRange && maxSeconds > 0 && (
+          {hasRange && sliderSpanSeconds > 0 && fillRight > fillLeft && (
             <span
               className="clip-range-fill"
-              style={{ left: `${startPercent}%`, width: `${widthPercent}%` }}
+              style={{ left: `${fillLeft}%`, width: `${fillRight - fillLeft}%` }}
             />
           )}
         </div>
         <input
           className="clip-range-thumb clip-range-thumb-start"
           type="range"
-          min={0}
-          max={maxSeconds}
+          min={sliderMinSeconds}
+          max={sliderMaxSeconds}
           step={1}
-          value={Math.min(startSeconds, maxSeconds)}
+          value={Math.min(sliderMaxSeconds, Math.max(sliderMinSeconds, startSeconds))}
           disabled={sliderDisabled}
           aria-label="Clip start"
           onChange={(event) => moveHandle('start', Number(event.target.value))}
@@ -274,15 +407,49 @@ export function ClipRangeEditor({
         <input
           className="clip-range-thumb clip-range-thumb-end"
           type="range"
-          min={0}
-          max={maxSeconds}
+          min={sliderMinSeconds}
+          max={sliderMaxSeconds}
           step={1}
-          value={Math.min(endSeconds, maxSeconds)}
+          value={Math.min(sliderMaxSeconds, Math.max(sliderMinSeconds, endSeconds))}
           disabled={sliderDisabled}
           aria-label="Clip end"
           onChange={(event) => moveHandle('end', Number(event.target.value))}
         />
       </div>
+      {zoomed && (
+        <div className="clip-range-window">
+          <p className="clip-range-window-cue">{windowCue}</p>
+          <div className="clip-range-window-actions">
+            <button
+              className="text-button"
+              type="button"
+              disabled={sliderDisabled || !canPanEarlier}
+              aria-label="Pan earlier"
+              onClick={() => panWindow(-CLIP_SLIDER_PAN_MS)}
+            >
+              ‹
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              disabled={sliderDisabled}
+              aria-label={hasRange ? 'Recenter on selection' : 'Recenter on playhead'}
+              onClick={recenterWindow}
+            >
+              Recenter
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              disabled={sliderDisabled || !canPanLater}
+              aria-label="Pan later"
+              onClick={() => panWindow(CLIP_SLIDER_PAN_MS)}
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      )}
       <div className="clip-preset-row">
         {CLIP_PRESETS.map((preset) => (
           <button
