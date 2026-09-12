@@ -5,6 +5,7 @@ import { ACTIVE_TAB_CONTEXT_KEY, ACTIVE_TAB_CONTEXT_MESSAGE } from './active-tab
 import { ACTIVE_CAPTURE_KEY } from './media-capture-background.ts';
 import {
   activeCaptureHoldsContext,
+  followActiveBrowsingTab,
   followBrowsingTab,
   installSurfFollow,
   shouldFollowTabChange,
@@ -146,6 +147,43 @@ test('followBrowsingTab holds context when a capture is active on another tab', 
   assert.equal(await followBrowsingTab(chrome, tab({ id: 44, url: OTHER, title: 'Other' }), NOW), 'held');
   assert.deepEqual(chrome.store[ACTIVE_TAB_CONTEXT_KEY], context());
   assert.deepEqual(chrome.messages, []);
+});
+
+test('followActiveBrowsingTab rebinds after a cancelled capture hold', async () => {
+  const podcast = tab({
+    id: 44,
+    title: 'Episode — Apple Podcasts',
+    url: 'https://podcasts.apple.com/us/podcast/example/id123?i=456',
+    active: true,
+  });
+  const youtube = tab({
+    id: 17,
+    title: 'YouTube',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    active: false,
+  });
+  const chrome = fakeChrome({
+    context: context({
+      tabId: 17,
+      title: 'YouTube',
+      url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    }),
+    capture: { captureId: 'cap-1', request: { tabId: 17 } },
+    tabs: [youtube, podcast],
+  });
+
+  assert.equal(await followActiveBrowsingTab(chrome, NOW), 'held');
+  assert.equal(chrome.store[ACTIVE_TAB_CONTEXT_KEY].tabId, 17);
+
+  assert.equal(
+    await followActiveBrowsingTab(chrome, NOW + 10, { ignoreActiveCapture: true }),
+    'updated',
+  );
+  assert.equal(chrome.store[ACTIVE_TAB_CONTEXT_KEY].tabId, 44);
+  assert.equal(
+    chrome.store[ACTIVE_TAB_CONTEXT_KEY].url,
+    'https://podcasts.apple.com/us/podcast/example/id123?i=456',
+  );
 });
 
 test('installSurfFollow updates context and applies pending on activate/complete without an action click', async () => {

@@ -95,6 +95,24 @@ export function createPublishStateAfterHostedFailure(
   return hostedSession ? { status: 'idle' } : { status: 'error', message };
 }
 
+export type HostedCancelCreateReset = {
+  clearVideoDraft: boolean;
+  clearAudioDraft: boolean;
+  followActiveTab: boolean;
+  ignoreActiveCaptureHold: boolean;
+};
+
+export function hostedCancelCreateReset(
+  mediaType: HostedMediaSession['mediaType'],
+): HostedCancelCreateReset {
+  return {
+    clearVideoDraft: mediaType === 'video',
+    clearAudioDraft: mediaType === 'audio',
+    followActiveTab: true,
+    ignoreActiveCaptureHold: true,
+  };
+}
+
 export function presentHostedMediaSnapshot(snapshot: CaptureSnapshot): CaptureSnapshot {
   if (snapshot.status === 'processing') {
     return {
