@@ -156,8 +156,8 @@ test('tabCapture invocation failure is mapped before page preparation', async ()
       async get() { return { id: 42, url: source.pageUrl }; },
       onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
     },
-    scripting: { async executeScript() {
-      prepareCalls += 1;
+    scripting: { async executeScript({ func }) {
+      if (String(func?.name ?? '').includes('prepare')) prepareCalls += 1;
       return [{ frameId: 0, result: { ok: true } }];
     } },
     tabCapture: { async getMediaStreamId() { throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR); } },
@@ -973,8 +973,9 @@ test('production manifest and capture source keep the required security shape', 
   assert.ok(beginBody.indexOf('takeReservedTabCaptureStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
   assert.ok(beginBody.indexOf('getMediaStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
   assert.match(serviceWorker, /openPanelOnActionClick: false/);
-  assert.ok(serviceWorker.indexOf('sidePanel.open') < serviceWorker.indexOf('reserveTabCaptureStreamIdFromInvoke'));
-  assert.ok(serviceWorker.indexOf('reserveTabCaptureStreamIdFromInvoke') < serviceWorker.indexOf('followBrowsingTab'));
+  const clickBody = serviceWorker.slice(serviceWorker.indexOf('chrome.action.onClicked'));
+  assert.ok(clickBody.indexOf('sidePanel.open') < clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke'));
+  assert.ok(clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke') < clickBody.indexOf('followBrowsingTab'));
   const panel = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   assert.match(panel, /userFacingCaptureMessage\(mediaCaptureState\)/);
   assert.equal(

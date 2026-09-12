@@ -192,6 +192,25 @@ export type CaptureFailureCode =
   | 'stream-id-unavailable' | 'tab-capture-denied' | 'upload-failed'
   | 'authorization-failed' | 'completion-failed' | 'recapture-required'
   | 'raw-capture-unavailable' | 'unexpected';
+export type PreparationDiagnosticCode =
+  | 'PLAYER_NOT_FOUND' | 'PLAYER_NOT_READY' | 'SOURCE_CHANGED' | 'RANGE_INVALID'
+  | 'SCRIPT_INJECTION_FAILED' | 'PREPARATION_RESULT_MISSING'
+  | 'PREPARATION_RESULT_INVALID' | 'STALE_CAPTURE' | 'NAVIGATION_CHANGED';
+export type CaptureSnapshot =
+  | { status: 'idle' }
+  | { status: 'preparing' | 'capturing' | 'stopping'; captureId: string; requestedDurationMs?: number }
+  | { status: 'uploading'; captureId: string; progress: number }
+  | { status: 'waiting-to-upload'; captureId: string; message: string }
+  | { status: 'verifying-upload'; captureId: string; annotationId: string; mediaId: string }
+  | { status: 'processing'; captureId: string; annotationId: string; mediaId: string }
+  | { status: 'error' | 'cancelled'; captureId: string | null; code: CaptureFailureCode; message: string; diagnosticCode?: PreparationDiagnosticCode };
+export type CaptureErrorSnapshot = {
+  status: 'error';
+  captureId: string | null;
+  code: CaptureFailureCode;
+  message: string;
+  diagnosticCode?: PreparationDiagnosticCode;
+};
 
 export const TAB_CAPTURE_INVOKE_MESSAGE =
   'Click the Annotated toolbar icon on this tab, then Recapture.';
@@ -220,7 +239,7 @@ export function reservedTabCaptureStreamIsFresh(
 export function mapTabCaptureStartFailure(
   error: unknown,
   captureId: string | null,
-): Extract<CaptureSnapshot, { status: 'error' }> {
+): CaptureErrorSnapshot {
   const text = error instanceof Error ? error.message : String(error);
   if (isTabCaptureInvocationError(text)) {
     return {
@@ -253,18 +272,6 @@ export function userFacingCaptureMessage(
     ? TAB_CAPTURE_INVOKE_MESSAGE
     : snapshot.message;
 }
-export type PreparationDiagnosticCode =
-  | 'PLAYER_NOT_FOUND' | 'PLAYER_NOT_READY' | 'SOURCE_CHANGED' | 'RANGE_INVALID'
-  | 'SCRIPT_INJECTION_FAILED' | 'PREPARATION_RESULT_MISSING'
-  | 'PREPARATION_RESULT_INVALID' | 'STALE_CAPTURE' | 'NAVIGATION_CHANGED';
-export type CaptureSnapshot =
-  | { status: 'idle' }
-  | { status: 'preparing' | 'capturing' | 'stopping'; captureId: string; requestedDurationMs?: number }
-  | { status: 'uploading'; captureId: string; progress: number }
-  | { status: 'waiting-to-upload'; captureId: string; message: string }
-  | { status: 'verifying-upload'; captureId: string; annotationId: string; mediaId: string }
-  | { status: 'processing'; captureId: string; annotationId: string; mediaId: string }
-  | { status: 'error' | 'cancelled'; captureId: string | null; code: CaptureFailureCode; message: string; diagnosticCode?: PreparationDiagnosticCode };
 export type CaptureStartResponse = { ok: boolean; snapshot: CaptureSnapshot };
 export type OffscreenStartMessage = {
   target: 'offscreen'; type: typeof MEDIA_CAPTURE_OFFSCREEN_START; captureId: string;

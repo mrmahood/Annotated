@@ -26,6 +26,7 @@ import {
   reservedTabCaptureStreamIsFresh,
   sourceIdentityMatchesUrl,
   usesMainWorldCapture,
+  type CaptureErrorSnapshot,
   type CaptureFailureCode,
   type CaptureSnapshot,
   type CaptureStartRequest,
@@ -361,12 +362,16 @@ export function installMediaCapture(chrome: ExtensionChrome) {
       });
       return { ok: true, snapshot: started };
     } catch (error) {
-      const snapshot = typeof error === 'object' && error && 'status' in error &&
-        (error as CaptureSnapshot).status === 'error'
-        ? error as Extract<CaptureSnapshot, { status: 'error' }>
+      const snapshot: CaptureErrorSnapshot = typeof error === 'object' && error && 'status' in error &&
+        (error as CaptureSnapshot).status === 'error' && 'code' in error && 'message' in error
+        ? error as CaptureErrorSnapshot
         : mapTabCaptureStartFailure(error, captureId);
       try {
-        await cancelActive(snapshot.code, snapshot.message);
+        if (await hasOffscreenDocument()) {
+          await cancelActive(snapshot.code, snapshot.message);
+        } else {
+          await clearActiveIfCurrent(captureId);
+        }
       } catch { /* Cancellation is best-effort; the start failure is authoritative. */ }
       emit(snapshot, request.operation);
       return { ok: false, snapshot };
