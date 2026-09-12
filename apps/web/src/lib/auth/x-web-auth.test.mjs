@@ -262,11 +262,13 @@ test('callback rejects disabled, missing, malformed, future, expired, and alread
 });
 
 test('web sign-in surfaces include X next to Google without rewriting the OAuth boundary', async () => {
-  const [header, comments, follow, votes, actions] = await Promise.all([
+  const [header, comments, follow, votes, share, bookmark, actions] = await Promise.all([
     readFile(new URL('../../app/site-header-auth.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../app/a/[annotationId]/comments-section.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../app/follow-button.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../app/vote-controls.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../app/share-control.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../app/bookmark-control.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../app/provider-sign-in-actions.tsx', import.meta.url), 'utf8'),
   ]);
 
@@ -274,6 +276,8 @@ test('web sign-in surfaces include X next to Google without rewriting the OAuth 
   assert.match(comments, /ProviderSignInActions/);
   assert.match(follow, /ProviderSignInActions/);
   assert.match(votes, /ProviderSignInActions/);
+  assert.match(share, /ProviderSignInActions/);
+  assert.match(bookmark, /ProviderSignInActions/);
   assert.match(actions, /provider="x"/);
   assert.match(actions, /provider="google"/);
 });

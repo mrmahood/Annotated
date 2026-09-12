@@ -92,6 +92,9 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(source, /removeAnnotationBookmark/);
   assert.match(source, /Sign in to share/);
   assert.match(source, /Sign in to bookmark/);
+  assert.match(source, /<SignInButtons onSignIn=\{onSignIn\} \/>/);
+  assert.match(source, /Continue with Google/);
+  assert.match(source, /Continue with X/);
   assert.match(source, /BookmarkCollection/);
   const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /BookmarkCollection/);

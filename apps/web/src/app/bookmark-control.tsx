@@ -89,9 +89,9 @@ export function BookmarkControl({
           {signedOut && (
             <ProviderSignInActions
               returnTo={`${returnTo}#bookmark`}
-              googleLabel="Sign in to bookmark"
+              googleLabel="Continue with Google"
               xLabel="Continue with X"
-              className="public-button public-button-secondary"
+              className="site-auth-button"
             />
           )}
         </div>
@@ -104,12 +104,12 @@ export function BookmarkControl({
           </p>
         ) : mode === "sign-in" ? (
           <div className="share-signed-out">
-            <span>Sign in to bookmark.</span>
+            <p>Sign in to bookmark.</p>
             <ProviderSignInActions
               returnTo={returnTo}
-              googleLabel="Sign in to bookmark"
+              googleLabel="Continue with Google"
               xLabel="Continue with X"
-              className="card-share-sign-in"
+              className="site-auth-button"
             />
             <button className="card-share-button" type="button" onClick={() => setMode("idle")}>
               Cancel

@@ -521,8 +521,17 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 }
 .card-share-button:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
 .card-share-button:disabled { color: var(--text-disabled); cursor: not-allowed; }
-.card-share-sign-in { font-size: 0.73rem; }
-.share-signed-out { display: grid; gap: 8px; }
+.share-signed-out {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  flex: 1 1 100%;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+}
+.share-signed-out p { margin: 0; line-height: 1.45; }
+.share-signed-out .provider-sign-in-actions { width: 100%; }
 .share-composer { display: grid; gap: 8px; width: min(100%, 420px); }
 .share-composer textarea {
   width: 100%;
@@ -955,6 +964,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .comment-sign-in .provider-sign-in-actions,
   .follow-control .provider-sign-in-actions,
   .share-heading-row .provider-sign-in-actions,
+  .share-signed-out .provider-sign-in-actions,
   .vote-heading-row .provider-sign-in-actions {
     width: 100%;
     flex-direction: column;

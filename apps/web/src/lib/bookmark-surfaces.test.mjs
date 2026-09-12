@@ -22,6 +22,9 @@ test("web Me is a private newest-first bookmark list with sign-in prompt", async
   assert.match(control, /createAnnotationBookmark/);
   assert.match(control, /removeAnnotationBookmark/);
   assert.match(control, /Sign in to bookmark/);
+  assert.match(control, /googleLabel="Continue with Google"/);
+  assert.match(control, /xLabel="Continue with X"/);
+  assert.doesNotMatch(control, /googleLabel="Sign in to bookmark"/);
   assert.match(control, /Unbookmark/);
   assert.doesNotMatch(control, /folder|note|save count/i);
   assert.match(mutations, /create_annotation_bookmark/);
