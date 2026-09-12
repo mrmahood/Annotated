@@ -3,11 +3,13 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   cancelOwnedHostedMedia,
+  createPublishStateAfterHostedFailure,
   getHostedMediaCancelError,
   isHostedMediaSession,
   parseOwnedHostedMediaStatus,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
+  shouldShowCreatePublishError,
 } from './hosted-media.ts';
 
 const operation = {
@@ -38,6 +40,37 @@ function ownedStatus(processingStatus, processingStage = null) {
     annotationSlug: 'clip-11111111',
   };
 }
+
+test('a hosted session hides the Create publish error so Recapture cannot leave a stale banner', () => {
+  assert.equal(shouldShowCreatePublishError('error', null), true);
+  assert.equal(shouldShowCreatePublishError('error', session), false);
+  assert.equal(shouldShowCreatePublishError('idle', session), false);
+  assert.equal(shouldShowCreatePublishError('publishing', null), false);
+  assert.deepEqual(
+    createPublishStateAfterHostedFailure(session, 'Capture could not start: leftover.'),
+    { status: 'idle' },
+  );
+  assert.deepEqual(
+    createPublishStateAfterHostedFailure(null, 'Range is invalid.'),
+    { status: 'error', message: 'Range is invalid.' },
+  );
+});
+
+test('Recapture and capture start clear Create publish errors before the next attempt', async () => {
+  const [app, hosted] = await Promise.all([
+    readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./hosted-media.ts', import.meta.url), 'utf8'),
+  ]);
+  const recapture = app.slice(app.indexOf('const recaptureHostedMedia'));
+  assert.ok(recapture.indexOf("setYoutubePublishState({ status: 'idle' })") < recapture.indexOf('runSelectedPlayerAction'));
+  assert.ok(recapture.indexOf("setAudioPublishState({ status: 'idle' })") < recapture.indexOf('runSelectedPlayerAction'));
+  const start = app.slice(app.indexOf('const startHostedCapture'));
+  assert.ok(start.indexOf("setYoutubePublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
+  assert.ok(start.indexOf("setAudioPublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
+  assert.match(app, /shouldShowCreatePublishError\(youtubePublishState\.status, hostedMediaSession\)/);
+  assert.match(app, /shouldShowCreatePublishError\(audioPublishState\.status, hostedMediaSession\)/);
+  assert.match(hosted, /shouldShowCreatePublishError/);
+});
 
 test('persists only safe hosted-media restoration identifiers', () => {
   assert.equal(isHostedMediaSession(session), true);

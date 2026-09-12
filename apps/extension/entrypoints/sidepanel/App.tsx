@@ -216,11 +216,13 @@ import {
 import {
   HOSTED_MEDIA_SESSION_KEY,
   cancelOwnedHostedMedia,
+  createPublishStateAfterHostedFailure,
   getHostedMediaCancelError,
   getOwnedHostedMediaStatus,
   isHostedMediaSession,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
+  shouldShowCreatePublishError,
   type HostedMediaSession,
 } from '../../utils/hosted-media';
 import {
@@ -1559,6 +1561,8 @@ function App() {
     hostedMediaSessionRef.current = session;
     setHostedMediaSession(session);
     setMediaCaptureOperation(operation);
+    setYoutubePublishState({ status: 'idle' });
+    setAudioPublishState({ status: 'idle' });
     const captureId = crypto.randomUUID();
     activeCaptureIdRef.current = captureId;
     setMediaCaptureState({ status: 'preparing', captureId });
@@ -1684,10 +1688,10 @@ function App() {
       }, videoDraftState.startMs, videoDraftState.endMs);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
-      setYoutubePublishState({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'The YouTube clip could not be published.',
-      });
+      setYoutubePublishState(createPublishStateAfterHostedFailure(
+        hostedMediaSessionRef.current,
+        error instanceof Error ? error.message : 'The YouTube clip could not be published.',
+      ));
     } finally {
       publishInFlightRef.current = false;
       if (hostedBeginModeRef.current === 'video') {
@@ -1773,10 +1777,10 @@ function App() {
       }, videoDraftState.startMs, videoDraftState.endMs);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
-      setYoutubePublishState({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'The TikTok clip could not be published.',
-      });
+      setYoutubePublishState(createPublishStateAfterHostedFailure(
+        hostedMediaSessionRef.current,
+        error instanceof Error ? error.message : 'The TikTok clip could not be published.',
+      ));
     } finally {
       publishInFlightRef.current = false;
       if (hostedBeginModeRef.current === 'video') {
@@ -1875,10 +1879,10 @@ function App() {
       }, videoDraftState.startMs, videoDraftState.endMs);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
-      setYoutubePublishState({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'The webpage video clip could not be published.',
-      });
+      setYoutubePublishState(createPublishStateAfterHostedFailure(
+        hostedMediaSessionRef.current,
+        error instanceof Error ? error.message : 'The webpage video clip could not be published.',
+      ));
     } finally {
       publishInFlightRef.current = false;
       if (hostedBeginModeRef.current === 'video') {
@@ -1972,10 +1976,10 @@ function App() {
       }, audioDraftState.startMs, audioDraftState.endMs);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
-      setAudioPublishState({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'The Spotify clip could not be published.',
-      });
+      setAudioPublishState(createPublishStateAfterHostedFailure(
+        hostedMediaSessionRef.current,
+        error instanceof Error ? error.message : 'The Spotify clip could not be published.',
+      ));
     } finally {
       publishInFlightRef.current = false;
       if (hostedBeginModeRef.current === 'audio') {
@@ -2076,10 +2080,10 @@ function App() {
       await startHostedCapture(operation, captureSource, audioDraftState.startMs, audioDraftState.endMs);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
-      setAudioPublishState({
-        status: 'error',
-        message: error instanceof Error ? error.message : 'The audio clip could not be published.',
-      });
+      setAudioPublishState(createPublishStateAfterHostedFailure(
+        hostedMediaSessionRef.current,
+        error instanceof Error ? error.message : 'The audio clip could not be published.',
+      ));
     } finally {
       publishInFlightRef.current = false;
       if (hostedBeginModeRef.current === 'audio') {
@@ -2171,6 +2175,8 @@ function App() {
   const recaptureHostedMedia = useCallback(async () => {
     const session = hostedMediaSession;
     if (!session || sourceState.status !== 'connected') return;
+    setYoutubePublishState({ status: 'idle' });
+    setAudioPublishState({ status: 'idle' });
     if (session.mediaType === 'video' && sourceState.source.classification === 'YouTube') {
       let originalVideoId: string | null = null;
       try { originalVideoId = getYouTubeVideoIdentity(session.sourceUrl).videoId; } catch { /* Invalid persisted source. */ }
@@ -3782,7 +3788,7 @@ function App() {
                 <CommentaryField id="youtube-commentary" value={videoDraftState.commentary} disabled={mediaEditorLocked} onChange={changeYoutubeCommentary} />
                 <AudioRecorder controller={videoCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : tiktokSource ? <button className="button button-primary" type="button" onClick={() => void publishTikTokClip()} disabled={!canPublishTikTok}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
-                {youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
+                {shouldShowCreatePublishError(youtubePublishState.status, hostedMediaSession) && youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
               </>}
             </section>
           ) : selectedCreateMode === 'audio' && audioSource ? (
@@ -3827,7 +3833,7 @@ function App() {
                 <CommentaryField id="audio-clip-commentary" value={audioDraftState.commentary} disabled={mediaEditorLocked} onChange={changeAudioCommentary} />
                 <AudioRecorder controller={audioCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
-                {audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
+                {shouldShowCreatePublishError(audioPublishState.status, hostedMediaSession) && audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
               </>}
             </section>
           ) : selectedCreateMode === 'text' ? (
