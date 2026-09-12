@@ -164,7 +164,8 @@ export type ModerationErrorCode =
   | "SERVER_MISCONFIGURED"
   | "WITHDRAWAL_UNAVAILABLE"
   | "CLAIM_REVIEW_UNAVAILABLE"
-  | "ANNOTATION_MODERATION_UNAVAILABLE";
+  | "ANNOTATION_MODERATION_UNAVAILABLE"
+  | "TRENDING_BOOST_UNAVAILABLE";
 
 export class ModerationApiError extends Error {
   readonly code: ModerationErrorCode;
