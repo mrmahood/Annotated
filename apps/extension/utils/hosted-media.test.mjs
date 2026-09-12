@@ -5,6 +5,7 @@ import {
   cancelOwnedHostedMedia,
   createPublishStateAfterHostedFailure,
   getHostedMediaCancelError,
+  hostedCancelCreateReset,
   isHostedMediaSession,
   parseOwnedHostedMediaStatus,
   presentHostedMediaSnapshot,
@@ -82,6 +83,50 @@ test('Cancel draft can leave Preparing capture without a live background capture
   assert.ok(
     cancel.indexOf('canClearPreparingCaptureWithoutBackgroundCancel') <
       cancel.indexOf('cancelHostedSessionOnServer'),
+  );
+});
+
+test('Cancel draft clears the prior source Create draft and rebinds the current tab', async () => {
+  assert.deepEqual(hostedCancelCreateReset('video'), {
+    clearVideoDraft: true,
+    clearAudioDraft: false,
+    followActiveTab: true,
+    ignoreActiveCaptureHold: true,
+  });
+  assert.deepEqual(hostedCancelCreateReset('audio'), {
+    clearVideoDraft: false,
+    clearAudioDraft: true,
+    followActiveTab: true,
+    ignoreActiveCaptureHold: true,
+  });
+
+  const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
+  const cancel = app.slice(app.indexOf('const cancelHostedMedia'));
+  assert.match(cancel, /hostedCancelCreateReset\(session\.mediaType\)/);
+  assert.match(cancel, /if \(createReset\.clearVideoDraft\) await clearVideoDraft\(\)/);
+  assert.match(cancel, /if \(createReset\.clearAudioDraft\) await clearAudioDraft\(\)/);
+  assert.match(cancel, /followActiveBrowsingTab\(chrome,/);
+  assert.match(cancel, /ignoreActiveCapture: createReset\.ignoreActiveCaptureHold/);
+  assert.ok(cancel.indexOf("setMediaCaptureState({ status: 'idle' })") < cancel.indexOf('clearVideoDraft'));
+  assert.ok(cancel.indexOf('clearVideoDraft') < cancel.indexOf('followActiveBrowsingTab'));
+});
+
+test('mode-switch confirm treats a rebound page after successful cancel as done', async () => {
+  const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
+  const confirm = app.slice(app.indexOf('const confirmModeSwitch'));
+  const afterCancel = confirm.slice(confirm.indexOf('const cancelled = await cancelHostedMedia'));
+  assert.match(afterCancel, /if \(!cancelled\) \{/);
+  assert.match(
+    afterCancel,
+    /The hosted-media operation was not cancelled, so the mode did not change\./,
+  );
+  assert.doesNotMatch(
+    afterCancel,
+    /if \(!cancelled \|\| !current \|\| !modeSwitchIntentIsCurrent/,
+  );
+  assert.match(
+    afterCancel,
+    /if \(!current \|\| !modeSwitchIntentIsCurrent\(intent, current\.page, current\.selectedMode\)\) \{\s*return;/,
   );
 });
 

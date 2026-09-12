@@ -220,12 +220,14 @@ import {
   createPublishStateAfterHostedFailure,
   getHostedMediaCancelError,
   getOwnedHostedMediaStatus,
+  hostedCancelCreateReset,
   isHostedMediaSession,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
   shouldShowCreatePublishError,
   type HostedMediaSession,
 } from '../../utils/hosted-media';
+import { followActiveBrowsingTab } from '../../utils/surf-follow';
 import {
   createHostedAttemptToken,
   createModeSwitchIntent,
@@ -2101,6 +2103,7 @@ function App() {
     if (!session || !supabase || cancellingHostedMediaRef.current) return false;
     const attempt = expectedAttempt ?? createHostedAttemptToken(session.operation, captureId);
     if (!hostedAttemptTokenIsCurrent(attempt, session, captureId)) return false;
+    const createReset = hostedCancelCreateReset(session.mediaType);
     cancellingHostedMediaRef.current = true;
     setIsCancellingHostedMedia(true);
     try {
@@ -2137,6 +2140,14 @@ function App() {
       setMediaCaptureState({ status: 'idle' });
       setYoutubePublishState({ status: 'idle' });
       setAudioPublishState({ status: 'idle' });
+      draftRevisionRef.current += 1;
+      if (createReset.clearVideoDraft) await clearVideoDraft();
+      if (createReset.clearAudioDraft) await clearAudioDraft();
+      if (createReset.followActiveTab) {
+        await followActiveBrowsingTab(chrome, Date.now(), {
+          ignoreActiveCapture: createReset.ignoreActiveCaptureHold,
+        }).catch(() => undefined);
+      }
       return true;
     } catch (error) {
       setMediaCaptureState({
@@ -2150,7 +2161,7 @@ function App() {
       cancellingHostedMediaRef.current = false;
       setIsCancellingHostedMedia(false);
     }
-  }, [cancelHostedSessionOnServer, mediaCaptureState, supabase]);
+  }, [cancelHostedSessionOnServer, clearAudioDraft, clearVideoDraft, mediaCaptureState, supabase]);
 
   const retryHostedUpload = useCallback(async () => {
     const session = hostedMediaSessionRef.current;
@@ -3413,9 +3424,12 @@ function App() {
     const attempt = createHostedAttemptToken(session.operation, activeCaptureIdRef.current);
     setPendingModeSwitch(null);
     const cancelled = await cancelHostedMedia(attempt);
-    const current = modeSelectionRef.current;
-    if (!cancelled || !current || !modeSwitchIntentIsCurrent(intent, current.page, current.selectedMode)) {
+    if (!cancelled) {
       setModeAnnouncement('The hosted-media operation was not cancelled, so the mode did not change.');
+      return;
+    }
+    const current = modeSelectionRef.current;
+    if (!current || !modeSwitchIntentIsCurrent(intent, current.page, current.selectedMode)) {
       return;
     }
     if (current.capabilities[intent.toMode].status !== 'available') {

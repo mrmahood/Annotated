@@ -39,7 +39,12 @@ export type SurfFollowChrome = {
   };
   tabs: {
     get: (tabId: number) => Promise<SurfFollowTab>;
-    query: (queryInfo: { active?: boolean; windowId?: number }) => Promise<SurfFollowTab[]>;
+    query: (queryInfo: {
+      active?: boolean;
+      windowId?: number;
+      lastFocusedWindow?: boolean;
+      currentWindow?: boolean;
+    }) => Promise<SurfFollowTab[]>;
     onActivated: {
       addListener: (listener: (activeInfo: { tabId: number; windowId: number }) => void) => void;
     };
@@ -103,17 +108,25 @@ export async function persistAndNotifyActiveTabContext(
   }
 }
 
+export type FollowBrowsingTabOptions = {
+  ignoreActiveCapture?: boolean;
+};
+
 export async function followBrowsingTab(
   chromeApi: SurfFollowChrome,
   tab: SurfFollowTab,
   now = Date.now(),
+  options: FollowBrowsingTabOptions = {},
 ): Promise<'updated' | 'held' | 'unchanged' | 'skipped'> {
   const context = activeTabContextFromTab(tab, now);
   if (!context) return 'skipped';
 
   try {
     const stored = await chromeApi.storage.session.get([ACTIVE_CAPTURE_KEY, ACTIVE_TAB_CONTEXT_KEY]);
-    if (activeCaptureHoldsContext(stored[ACTIVE_CAPTURE_KEY], context.tabId)) {
+    if (
+      !options.ignoreActiveCapture &&
+      activeCaptureHoldsContext(stored[ACTIVE_CAPTURE_KEY], context.tabId)
+    ) {
       return 'held';
     }
     const current = stored[ACTIVE_TAB_CONTEXT_KEY];
@@ -126,6 +139,29 @@ export async function followBrowsingTab(
 
   await persistAndNotifyActiveTabContext(chromeApi, context);
   return 'updated';
+}
+
+export async function followActiveBrowsingTab(
+  chromeApi: SurfFollowChrome,
+  now = Date.now(),
+  options: FollowBrowsingTabOptions = {},
+): Promise<'updated' | 'held' | 'unchanged' | 'skipped'> {
+  let tabs: SurfFollowTab[] = [];
+  try {
+    tabs = await chromeApi.tabs.query({ active: true, lastFocusedWindow: true });
+  } catch {
+    tabs = [];
+  }
+  if (tabs.length === 0) {
+    try {
+      tabs = await chromeApi.tabs.query({ active: true, currentWindow: true });
+    } catch {
+      tabs = [];
+    }
+  }
+  const tab = tabs[0];
+  if (!tab) return 'skipped';
+  return followBrowsingTab(chromeApi, tab, now, options);
 }
 
 export function installSurfFollow(
