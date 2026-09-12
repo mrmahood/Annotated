@@ -79,6 +79,22 @@ export function ownedStatusMatchesSession(
     status.mediaId === session.operation.mediaId && status.mediaType === session.mediaType;
 }
 
+export type CreatePublishStatus = 'idle' | 'publishing' | 'error';
+
+export function shouldShowCreatePublishError(
+  publishStatus: CreatePublishStatus,
+  hostedSession: HostedMediaSession | null,
+): boolean {
+  return publishStatus === 'error' && hostedSession === null;
+}
+
+export function createPublishStateAfterHostedFailure(
+  hostedSession: HostedMediaSession | null,
+  message: string,
+): { status: 'idle' } | { status: 'error'; message: string } {
+  return hostedSession ? { status: 'idle' } : { status: 'error', message };
+}
+
 export function presentHostedMediaSnapshot(snapshot: CaptureSnapshot): CaptureSnapshot {
   if (snapshot.status === 'processing') {
     return {

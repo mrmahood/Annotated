@@ -204,6 +204,74 @@ export type CaptureSnapshot =
   | { status: 'verifying-upload'; captureId: string; annotationId: string; mediaId: string }
   | { status: 'processing'; captureId: string; annotationId: string; mediaId: string }
   | { status: 'error' | 'cancelled'; captureId: string | null; code: CaptureFailureCode; message: string; diagnosticCode?: PreparationDiagnosticCode };
+export type CaptureErrorSnapshot = {
+  status: 'error';
+  captureId: string | null;
+  code: CaptureFailureCode;
+  message: string;
+  diagnosticCode?: PreparationDiagnosticCode;
+};
+
+export const TAB_CAPTURE_INVOKE_MESSAGE =
+  'Click the Annotated toolbar icon on this tab, then Recapture.';
+export const CHROME_TAB_CAPTURE_INVOKE_ERROR =
+  'Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.';
+export const RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS = 8_000;
+
+export function isTabCaptureInvocationError(value: string): boolean {
+  const text = value.toLowerCase();
+  return text.includes('has not been invoked for the current page') ||
+    text.includes('see activetab permission');
+}
+
+export function reservedTabCaptureStreamIsFresh(
+  reserved: { tabId: number; reservedAt: number },
+  tabId: number,
+  now: number,
+  maxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+): boolean {
+  return reserved.tabId === tabId &&
+    Number.isFinite(reserved.reservedAt) &&
+    now - reserved.reservedAt >= 0 &&
+    now - reserved.reservedAt <= maxAgeMs;
+}
+
+export function mapTabCaptureStartFailure(
+  error: unknown,
+  captureId: string | null,
+): CaptureErrorSnapshot {
+  const text = error instanceof Error ? error.message : String(error);
+  if (isTabCaptureInvocationError(text)) {
+    return {
+      status: 'error',
+      captureId,
+      code: 'tab-capture-denied',
+      message: TAB_CAPTURE_INVOKE_MESSAGE,
+    };
+  }
+  if (/permission|denied/i.test(text)) {
+    return {
+      status: 'error',
+      captureId,
+      code: 'tab-capture-denied',
+      message: `Capture could not start: ${text}`,
+    };
+  }
+  return {
+    status: 'error',
+    captureId,
+    code: 'unexpected',
+    message: `Capture could not start: ${text}`,
+  };
+}
+
+export function userFacingCaptureMessage(
+  snapshot: Extract<CaptureSnapshot, { status: 'error' | 'cancelled' }>,
+): string {
+  return isTabCaptureInvocationError(snapshot.message)
+    ? TAB_CAPTURE_INVOKE_MESSAGE
+    : snapshot.message;
+}
 export type CaptureStartResponse = { ok: boolean; snapshot: CaptureSnapshot };
 export type OffscreenStartMessage = {
   target: 'offscreen'; type: typeof MEDIA_CAPTURE_OFFSCREEN_START; captureId: string;
