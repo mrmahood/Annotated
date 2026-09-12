@@ -18,7 +18,7 @@ test("web Me is a private newest-first bookmark list with sign-in prompt", async
   assert.match(page, /robots: \{ index: false, follow: false \}/);
   assert.match(page, /initialBookmarked=\{item\.viewerHasBookmarked\}/);
   assert.match(header, /href="\/me"/);
-  assert.match(header, />Me</);
+  assert.match(header, />\s*Me\s*</);
   assert.match(control, /createAnnotationBookmark/);
   assert.match(control, /removeAnnotationBookmark/);
   assert.match(control, /Sign in to bookmark/);
