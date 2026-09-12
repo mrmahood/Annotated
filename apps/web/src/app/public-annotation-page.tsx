@@ -7,6 +7,7 @@ import { getPublicAnnotationPath } from "@/lib/public-routes";
 import {
   getCurrentUserFollowState,
   getCurrentUserId,
+  getCurrentUserReshareState,
   getProfileSocialCounts,
   getPublicAnnotationComments,
 } from "@/lib/data/social";
@@ -18,6 +19,7 @@ import { FollowButton } from "./follow-button";
 import { HostedMediaPlayer } from "./hosted-media-player";
 import { TextWithLogoMark } from "./logo-mark";
 import { SiteHeader } from "./site-header";
+import { ShareControl } from "./share-control";
 import { VoteControls } from "./vote-controls";
 
 function getDurationDateTime(durationMs: number): string {
@@ -26,11 +28,12 @@ function getDurationDateTime(durationMs: number): string {
 
 export async function PublicAnnotationPage({ annotation }: { annotation: PublicAnnotation }) {
   const currentUserId = await getCurrentUserId();
-  const [socialCounts, isFollowing, comments, voteSnapshot] = await Promise.all([
+  const [socialCounts, isFollowing, comments, voteSnapshot, hasReshared] = await Promise.all([
     getProfileSocialCounts(annotation.annotator.id),
     getCurrentUserFollowState(annotation.annotator.id, currentUserId),
     getPublicAnnotationComments(annotation.id),
     getAnnotationVoteSnapshot(annotation.id, currentUserId),
+    getCurrentUserReshareState(annotation.id, currentUserId),
   ]);
   const publicPath = getPublicAnnotationPath(annotation.route, annotation.id);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
@@ -183,6 +186,16 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
               )}
             </section>
           )}
+
+          <section className="share-section" id="share" aria-labelledby="share-heading">
+            <ShareControl
+              annotationId={annotation.id}
+              currentUserId={currentUserId}
+              initialShared={hasReshared}
+              returnTo={publicPath}
+              variant="detail"
+            />
+          </section>
 
           <VoteControls
             annotationId={annotation.id}

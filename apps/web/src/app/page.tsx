@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { AnnotationCard } from "./annotation-card";
 import { PaginationNav } from "./pagination-nav";
 import { SiteHeader } from "./site-header";
-import { getPublicFeedPage } from "@/lib/data/public-discovery";
+import { feedItemKey, getPublicFeedPage } from "@/lib/data/public-discovery";
+import { getCurrentUserId } from "@/lib/data/social";
 import {
   getPageHref,
   isCanonicalPageQuery,
@@ -29,7 +30,10 @@ export default async function Home({ searchParams }: HomePageProps) {
     redirect(getPageHref("/", page));
   }
 
-  const feed = await getPublicFeedPage(page);
+  const [feed, currentUserId] = await Promise.all([
+    getPublicFeedPage(page),
+    getCurrentUserId(),
+  ]);
   const returnTo = getPageHref("/", page);
 
   return (
@@ -50,15 +54,22 @@ export default async function Home({ searchParams }: HomePageProps) {
             <h2>The public feed is temporarily unavailable.</h2>
             <p>Please try again in a little while.</p>
           </section>
-        ) : feed.annotations.length === 0 ? (
+        ) : feed.items.length === 0 ? (
           <section className="discovery-state">
             <h2>{page === 1 ? "No annotations have been published yet." : "There are no annotations on this page."}</h2>
             <p>{page === 1 ? "Published annotations will appear here." : "Use Previous to return to an earlier page."}</p>
           </section>
         ) : (
           <div className="annotation-list" aria-label="Published annotations">
-            {feed.annotations.map((annotation) => (
-              <AnnotationCard key={annotation.id} annotation={annotation} />
+            {feed.items.map((item) => (
+              <AnnotationCard
+                key={feedItemKey(item)}
+                annotation={item.annotation}
+                reshare={item.reshare}
+                currentUserId={currentUserId}
+                initialShared={item.viewerHasReshared}
+                returnTo={returnTo}
+              />
             ))}
           </div>
         )}

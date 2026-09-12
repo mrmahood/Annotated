@@ -23,6 +23,9 @@ import {
   isPublicAnnotationSlug,
   isPublicCreatorHandle,
   isUuid,
+  normalizeReshareComment,
+  parseCurrentReshareIds,
+  parseTimelineRow,
   PUBLIC_COMMENT_STATUS,
   requireParticipation,
   sortComments,
@@ -99,8 +102,22 @@ export type PublicAnnotation = PublicAnnotationBase & (
     }
 );
 
+export type PublicReshareAttribution = {
+  id: string;
+  createdAt: string;
+  comment: string | null;
+  resharer: { id: string; displayName: string; avatarUrl: string | null };
+};
+
+export type TimelineItem = {
+  annotation: PublicAnnotation;
+  reshare: PublicReshareAttribution | null;
+  viewerHasReshared: boolean;
+};
+
 export type AnnotationPage = {
   annotations: PublicAnnotation[];
+  items: TimelineItem[];
   total: number | null;
   hasMore: boolean;
 };
@@ -420,11 +437,134 @@ export async function queryAnnotations(
     annotation.commentCount = counts.get(annotation.id) ?? 0;
   }
 
+  const viewerShares = await queryCurrentReshares(
+    supabase,
+    annotations.map(({ id }) => id),
+  );
+  const items = annotations.map((annotation) => ({
+    annotation,
+    reshare: null,
+    viewerHasReshared: viewerShares.has(annotation.id),
+  }));
+
   return {
     annotations,
+    items,
     total: count,
     hasMore: data.length > ANNOTATION_PAGE_SIZE ||
       (count !== null && offset + annotations.length < count),
+  };
+}
+
+export async function queryCurrentReshares(
+  supabase: SupabaseClient,
+  annotationIds: string[],
+): Promise<Set<string>> {
+  if (annotationIds.length === 0) return new Set();
+  if (annotationIds.length > 100 || annotationIds.some((id) => !isUuid(id))) {
+    throw new Error('Invalid reshare state request.');
+  }
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) return new Set();
+  const { data, error } = await supabase.rpc('get_current_annotation_reshares', {
+    p_annotation_ids: annotationIds,
+  });
+  if (error) return new Set();
+  return parseCurrentReshareIds(data);
+}
+
+export async function queryTimeline(
+  supabase: SupabaseClient,
+  options: { profileId?: string; offset?: number } = {},
+): Promise<AnnotationPage> {
+  if (options.profileId && !isUuid(options.profileId)) {
+    throw new Error('Invalid profile identifier.');
+  }
+  const offset = options.offset ?? 0;
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid page offset.');
+
+  const { data, error } = await supabase.rpc('list_public_timeline_items', {
+    p_limit: ANNOTATION_PAGE_SIZE + 1,
+    p_offset: offset,
+    p_actor_id: options.profileId ?? null,
+  });
+  if (error || !Array.isArray(data)) throw new Error('Annotations are unavailable.');
+
+  const rows = data.slice(0, ANNOTATION_PAGE_SIZE).map(parseTimelineRow);
+  if (rows.some((row) => row === null)) throw new Error('A timeline response was malformed.');
+  const timeline = rows.filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  const annotationIds = [...new Set(timeline.map((row) => row.annotationId))];
+  const annotationsById = new Map<string, PublicAnnotation>();
+  if (annotationIds.length > 0) {
+    const { data: annotationRows, error: annotationError } = await supabase
+      .from('annotations')
+      .select(buildAnnotationSelect())
+      .eq('status', 'published')
+      .in('id', annotationIds);
+    if (annotationError || !annotationRows) throw new Error('Annotations are unavailable.');
+    for (const row of annotationRows) {
+      const annotation = mapPublicAnnotation(row);
+      if (annotation) annotationsById.set(annotation.id, annotation);
+    }
+    const counts = await queryCommentCounts(supabase, [...annotationsById.keys()]);
+    for (const annotation of annotationsById.values()) {
+      annotation.commentCount = counts.get(annotation.id) ?? 0;
+    }
+  }
+
+  const resharerIds = [...new Set(
+    timeline.flatMap((row) => (row.resharerUserId ? [row.resharerUserId] : [])),
+  )];
+  const resharers = new Map<string, PublicReshareAttribution['resharer']>();
+  if (resharerIds.length > 0) {
+    const { data: profileRows, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_url')
+      .in('id', resharerIds);
+    if (profileError || !profileRows) throw new Error('Reshare profiles are unavailable.');
+    for (const row of profileRows) {
+      if (!isUuid(row.id)) continue;
+      resharers.set(row.id, {
+        id: row.id,
+        displayName: getOptionalText(row.display_name) ?? 'Annotated reader',
+        avatarUrl: getHttpUrl(row.avatar_url),
+      });
+    }
+  }
+
+  const viewerShares = await queryCurrentReshares(supabase, annotationIds);
+  const items: TimelineItem[] = [];
+  for (const row of timeline) {
+    const annotation = annotationsById.get(row.annotationId);
+    if (!annotation) continue;
+    if (row.itemKind === 'annotation') {
+      items.push({
+        annotation,
+        reshare: null,
+        viewerHasReshared: viewerShares.has(annotation.id),
+      });
+      continue;
+    }
+    const resharer = row.resharerUserId ? resharers.get(row.resharerUserId) : null;
+    if (!resharer) continue;
+    items.push({
+      annotation,
+      reshare: {
+        id: row.itemId,
+        createdAt: row.occurredAt,
+        comment: row.reshareComment,
+        resharer,
+      },
+      viewerHasReshared: viewerShares.has(annotation.id),
+    });
+  }
+
+  return {
+    annotations: items.map((item) => item.annotation),
+    items,
+    total: null,
+    hasMore: data.length > ANNOTATION_PAGE_SIZE,
   };
 }
 
@@ -666,4 +806,35 @@ export async function unfollowProfile(
     p_followed_id: profileId,
   });
   if (error || data !== true) throw new Error('The profile could not be unfollowed.');
+}
+
+export async function createAnnotationReshare(
+  supabase: SupabaseClient,
+  annotationId: string,
+  comment?: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error('That annotation is unavailable.');
+  await requireCurrentUser(supabase);
+  const { error } = await supabase.rpc('create_annotation_reshare', {
+    p_annotation_id: annotationId,
+    p_comment: normalizeReshareComment(comment),
+  });
+  if (error) {
+    if (error.code === '23505') throw new Error('You have already shared this annotation.');
+    if (error.message.includes('unavailable')) throw new Error('That annotation is unavailable.');
+    if (error.message.includes('1,000')) throw new Error('Reshare comments cannot exceed 1,000 characters.');
+    throw new Error('The annotation could not be shared.');
+  }
+}
+
+export async function removeAnnotationReshare(
+  supabase: SupabaseClient,
+  annotationId: string,
+): Promise<void> {
+  if (!isUuid(annotationId)) throw new Error('That annotation is unavailable.');
+  await requireCurrentUser(supabase);
+  const { data, error } = await supabase.rpc('remove_annotation_reshare', {
+    p_annotation_id: annotationId,
+  });
+  if (error || data !== true) throw new Error('The share could not be removed.');
 }

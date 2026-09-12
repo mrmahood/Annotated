@@ -4,12 +4,16 @@ import { useState } from "react";
 import Link from "next/link";
 import { formatMediaTime } from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
-import type { PublicAnnotationCardData } from "@/lib/data/public-discovery";
+import type {
+  PublicAnnotationCardData,
+  PublicReshareAttribution,
+} from "@/lib/data/public-discovery";
 import { getInitial, truncateExcerpt } from "@/lib/public-content";
 import { getPublicAnnotationPath } from "@/lib/public-routes";
 import { HostedMediaPlayer } from "./hosted-media-player";
 import { TextWithLogoMark } from "./logo-mark";
 import { PublishedAudioPlayer } from "./published-audio-player";
+import { ShareControl } from "./share-control";
 
 const PASSAGE_EXCERPT_LENGTH = 360;
 const COMMENTARY_EXCERPT_LENGTH = 280;
@@ -34,9 +38,17 @@ function hostedClipMedia(annotation: PublicAnnotationCardData) {
 export function AnnotationCard({
   annotation,
   showCreator = true,
+  reshare = null,
+  currentUserId = null,
+  initialShared = false,
+  returnTo,
 }: {
   annotation: PublicAnnotationCardData;
   showCreator?: boolean;
+  reshare?: PublicReshareAttribution | null;
+  currentUserId?: string | null;
+  initialShared?: boolean;
+  returnTo: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
@@ -67,10 +79,29 @@ export function AnnotationCard({
 
   return (
     <article
-      className="annotation-card"
+      className={reshare ? "annotation-card annotation-card-reshare" : "annotation-card"}
       aria-labelledby={headingLead ? headingId : undefined}
       aria-label={headingLead ? undefined : annotation.audio ? "Voice commentary" : sourceTitle}
     >
+      {reshare && (
+        <p className="reshare-attribution">
+          <Link className="reshare-actor" href={`/p/${reshare.resharer.id}`}>
+            {reshare.resharer.displayName}
+          </Link>
+          {" shared"}
+          <time dateTime={reshare.createdAt}>
+            {new Intl.DateTimeFormat("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+              timeZone: "UTC",
+            }).format(new Date(reshare.createdAt))}
+          </time>
+        </p>
+      )}
+      {reshare?.comment ? (
+        <p className="reshare-comment"><TextWithLogoMark text={reshare.comment} /></p>
+      ) : null}
       <header className="card-header">
         {showCreator && (
           <Link className="card-creator" href={`/p/${annotation.annotator.id}`}>
@@ -163,6 +194,12 @@ export function AnnotationCard({
           <Link href={`${detailPath}#comments`}>
             {annotation.commentCount.toLocaleString()} {annotation.commentCount === 1 ? "comment" : "comments"}
           </Link>
+          <ShareControl
+            annotationId={annotation.id}
+            currentUserId={currentUserId}
+            initialShared={initialShared}
+            returnTo={returnTo}
+          />
         </div>
       </footer>
     </article>

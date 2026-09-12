@@ -187,6 +187,11 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .social-card-actions { min-height: 35px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 12px 10px; }
 .social-card-actions a, .social-card-actions button { color: var(--text-muted); font-size: 10px; text-decoration: none; }
 .social-card-actions a:hover, .social-card-actions button:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
+.reshare-attribution { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 0; padding: 8px 12px 0; color: var(--text-muted); font-size: 10px; font-weight: 550; }
+.reshare-comment { margin: 0; padding: 4px 12px 0; color: var(--text-primary); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.share-control { display: grid; gap: 6px; min-width: 0; }
+.share-composer { display: grid; gap: 6px; width: 100%; }
+.share-composer textarea { width: 100%; min-height: 48px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-small); color: inherit; background: var(--background-elevated); font: inherit; resize: vertical; }
 .load-more { width: 100%; margin-top: 10px; }
 
 .context-source { margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }

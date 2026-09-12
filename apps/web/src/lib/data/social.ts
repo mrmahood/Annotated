@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/public-content";
+import { parseCurrentReshareIds } from "./reshare";
 import {
   queryPublicCommentCounts,
   queryPublicComments,
@@ -87,5 +88,21 @@ export async function getPublicCommentCounts(
     return await queryPublicCommentCounts(supabase, annotationIds);
   } catch {
     return null;
+  }
+}
+
+export async function getCurrentUserReshareState(
+  annotationId: string,
+  currentUserId: string | null,
+): Promise<boolean> {
+  if (!currentUserId || !isUuid(annotationId)) return false;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("get_current_annotation_reshares", {
+      p_annotation_ids: [annotationId],
+    });
+    return error ? false : parseCurrentReshareIds(data).has(annotationId);
+  } catch {
+    return false;
   }
 }

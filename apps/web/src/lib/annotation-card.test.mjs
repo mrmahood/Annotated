@@ -35,6 +35,10 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(card, /Open source/);
   assert.match(card, /getYouTubeTimestampUrl\(annotation\.source\.canonicalUrl, annotation\.startMs\)/);
   assert.match(card, /View annotation/);
+  assert.match(card, /ShareControl/);
+  assert.match(card, /reshare-attribution/);
+  assert.match(card, /annotation-card-reshare/);
+  assert.match(card, /returnTo=\{returnTo\}/);
   assert.match(card, /import \{ HostedMediaPlayer \} from "\.\/hosted-media-player"/);
   assert.match(card, /expanded && clipMedia &&/);
   assert.match(card, /<HostedMediaPlayer/);
@@ -66,6 +70,9 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(styles, /max-height: none/);
   assert.doesNotMatch(styles, /\.card-hosted-media\[data-orientation="portrait"\] video[^}]*max-height: 220px/);
   assert.match(styles, /\.open-source-link/);
+  assert.match(styles, /\.reshare-attribution/);
+  assert.match(styles, /\.share-section/);
+  assert.match(styles, /\.card-share-button/);
   assert.match(styles, /\.site-header/);
   assert.match(styles, /\.site-wordmark/);
 });

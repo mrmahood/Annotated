@@ -223,6 +223,8 @@ test("route implementations share one renderer and preserve public-only redirect
   assert.doesNotMatch(loader + renderer, /SUPABASE_SERVICE_ROLE_KEY|processed_storage_path|raw_storage_path|createSignedUrl/);
   assert.doesNotMatch(renderer, /dangerouslySetInnerHTML/);
   assert.match(renderer, /returnTo=\{`\$\{publicPath\}#comments`\}/);
+  assert.match(renderer, /ShareControl/);
+  assert.match(renderer, /variant="detail"/);
   assert.match(renderer, /aria-label="Timestamped excerpt transcript"/);
   assert.match(renderer, /<time dateTime=\{getDurationDateTime\(segment\.startMs\)\}>/);
   assert.match(renderer, /aria-labelledby="media-removed-heading"/);

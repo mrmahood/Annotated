@@ -8,6 +8,7 @@ import { FollowButton } from "../../follow-button";
 import { PaginationNav } from "../../pagination-nav";
 import { SiteHeader } from "../../site-header";
 import {
+  feedItemKey,
   getPublicAnnotationCount,
   getPublicProfile,
   getPublicProfileAnnotations,
@@ -125,15 +126,23 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
               <h3>Annotations are temporarily unavailable.</h3>
               <p>Please try again in a little while.</p>
             </div>
-          ) : annotations.annotations.length === 0 ? (
+          ) : annotations.items.length === 0 ? (
             <div className="discovery-state">
               <h3>{page === 1 ? "No published annotations yet." : "There are no annotations on this page."}</h3>
               <p>{page === 1 ? "This creator’s published annotations will appear here." : "Use Previous to return to an earlier page."}</p>
             </div>
           ) : (
             <div className="annotation-list">
-              {annotations.annotations.map((annotation) => (
-                <AnnotationCard key={annotation.id} annotation={annotation} showCreator={false} />
+              {annotations.items.map((item) => (
+                <AnnotationCard
+                  key={feedItemKey(item)}
+                  annotation={item.annotation}
+                  reshare={item.reshare}
+                  showCreator={item.reshare ? true : false}
+                  currentUserId={currentUserId}
+                  initialShared={item.viewerHasReshared}
+                  returnTo={getPageHref(basePath, page)}
+                />
               ))}
             </div>
           )}

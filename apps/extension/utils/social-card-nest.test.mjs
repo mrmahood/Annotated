@@ -80,6 +80,13 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(source, /annotationMatchesConnectedArticle\(annotation, connection\.tabUrl\)/);
   assert.match(styles, /\.article-passage-miss/);
   assert.match(card, /View annotation/);
+  assert.match(card, /ShareControl/);
+  assert.match(card, /Share/);
+  assert.match(card, /reshare-attribution/);
+  assert.match(source, /queryTimeline/);
+  assert.match(source, /createAnnotationReshare/);
+  assert.match(source, /removeAnnotationReshare/);
+  assert.match(source, /Sign in to share/);
   assert.doesNotMatch(card, /className="annotation-card-main"/);
   assert.doesNotMatch(card, />Commentary</);
   assert.doesNotMatch(card, /hasCommentaryAudio \? 'Voice commentary'/);
@@ -96,6 +103,8 @@ test('Feed cards are commentary-led with a nested source and always-visible Open
   assert.match(styles, /\.commentary-audio/);
   assert.match(styles, /\.nested-source/);
   assert.match(styles, /\.open-source-link/);
+  assert.match(styles, /\.reshare-attribution/);
+  assert.match(styles, /\.share-control/);
   assert.match(styles, /\.card-hosted-media\[data-orientation="portrait"\] video/);
   assert.match(styles, /aspect-ratio: var\(--hosted-video-aspect, 9 \/ 16\)/);
   assert.match(styles, /max-height: none/);
@@ -128,11 +137,12 @@ test('Feed remount shows cache then revalidates so a newly published audio card 
   );
   const loader = collection.slice(
     collection.indexOf('const loadInitial'),
-    collection.indexOf('}, [cache, cacheKey, profileId, sourceUrl, supabase]);'),
+    collection.indexOf('}, [cache, cacheKey, currentUserId, profileId, sourceUrl, supabase]);'),
   );
   assert.match(loader, /const cached = !force \? cache\.get\(cacheKey\) : undefined/);
   assert.match(loader, /if \(cached\) \{/);
   assert.match(loader, /setPage\(cached\)/);
   assert.match(loader, /queryAnnotations\(supabase, \{ sourceUrl, profileId \}\)/);
+  assert.match(loader, /queryTimeline\(supabase, \{ profileId \}\)/);
   assert.doesNotMatch(loader, /setStatus\('ready'\);\s*return;/);
 });
