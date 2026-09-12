@@ -236,7 +236,7 @@ select results_eq(
   $$select item_kind, annotation_id, resharer_user_id
     from public.list_public_timeline_items(20, 0, '61000000-0000-4000-8000-000000000001')
     where item_kind = 'reshare'
-    order by annotation_id, resharer_user_id$$
+    order by annotation_id, resharer_user_id$$,
   $$values
     ('reshare'::text, '63000000-0000-4000-8000-000000000001'::uuid, '61000000-0000-4000-8000-000000000001'::uuid),
     ('reshare'::text, '63000000-0000-4000-8000-000000000004'::uuid, '61000000-0000-4000-8000-000000000001'::uuid)
@@ -251,7 +251,7 @@ select results_eq(
   $$select item_kind, annotation_id, resharer_user_id
     from public.list_public_timeline_items(20, 0, null)
     where item_kind = 'reshare'
-    order by annotation_id, resharer_user_id$$
+    order by annotation_id, resharer_user_id$$,
   $$values
     ('reshare'::text, '63000000-0000-4000-8000-000000000001'::uuid, '61000000-0000-4000-8000-000000000001'::uuid),
     ('reshare'::text, '63000000-0000-4000-8000-000000000001'::uuid, '61000000-0000-4000-8000-000000000002'::uuid),
