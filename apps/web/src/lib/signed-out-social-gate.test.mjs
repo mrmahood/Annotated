@@ -23,9 +23,9 @@ test("signed-out Share and Bookmark gates offer header Google and X actions", as
   }
 
   assert.match(share, /Sign in to share to your feed/);
-  assert.match(share, />Cancel</);
+  assert.match(share, />\s*Cancel\s*</);
   assert.match(bookmark, /Sign in to bookmark\./);
-  assert.match(bookmark, />Cancel</);
+  assert.match(bookmark, />\s*Cancel\s*</);
 
   assert.match(actions, /provider="google"/);
   assert.match(actions, /provider="x"/);
