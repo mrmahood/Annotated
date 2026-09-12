@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { AnnotationCard } from "./annotation-card";
 import { PaginationNav } from "./pagination-nav";
 import { SiteHeader } from "./site-header";
-import { feedItemKey, getPublicFeedPage } from "@/lib/data/public-discovery";
+import { TrendingStrip } from "./trending-strip";
+import { feedItemKey, getPublicFeedPage, getTrendingFeedItems } from "@/lib/data/public-discovery";
 import { getCurrentUserId } from "@/lib/data/social";
 import {
   getPageHref,
@@ -30,11 +31,15 @@ export default async function Home({ searchParams }: HomePageProps) {
     redirect(getPageHref("/", page));
   }
 
-  const [feed, currentUserId] = await Promise.all([
+  const [feed, currentUserId, trending] = await Promise.all([
     getPublicFeedPage(page),
     getCurrentUserId(),
+    page === 1 ? getTrendingFeedItems() : Promise.resolve(null),
   ]);
   const returnTo = getPageHref("/", page);
+  const trendingStrip = trending?.status === "available" && trending.visible
+    ? trending.items
+    : null;
 
   return (
     <>
@@ -48,6 +53,8 @@ export default async function Home({ searchParams }: HomePageProps) {
             and the original work in context.
           </p>
         </header>
+
+        {trendingStrip ? <TrendingStrip items={trendingStrip} /> : null}
 
         {feed.status === "unavailable" ? (
           <section className="discovery-state discovery-error" role="alert">

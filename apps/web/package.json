@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "node --test src/lib/auth/next-path.test.mjs src/lib/public-content.test.mjs src/lib/audio-commentary.test.mjs src/lib/data/public-discovery-query.test.mjs src/lib/data/public-discovery.test.mjs src/lib/data/public-annotation-model.test.mjs src/lib/data/reshare.test.mjs src/lib/data/bookmark.test.mjs src/lib/hosted-media-upload.test.mjs src/lib/media-playback.test.mjs src/lib/moderation.test.mjs src/lib/ops-console.test.mjs src/lib/annotation-card.test.mjs src/lib/bookmark-surfaces.test.mjs src/lib/signed-out-social-gate.test.mjs src/lib/logo-mark.test.mjs src/lib/appearance.test.mjs"
+    "test:unit": "node --test src/lib/auth/next-path.test.mjs src/lib/public-content.test.mjs src/lib/audio-commentary.test.mjs src/lib/data/public-discovery-query.test.mjs src/lib/data/public-discovery.test.mjs src/lib/data/public-annotation-model.test.mjs src/lib/data/reshare.test.mjs src/lib/data/bookmark.test.mjs src/lib/data/trending.test.mjs src/lib/hosted-media-upload.test.mjs src/lib/media-playback.test.mjs src/lib/moderation.test.mjs src/lib/ops-console.test.mjs src/lib/annotation-card.test.mjs src/lib/bookmark-surfaces.test.mjs src/lib/signed-out-social-gate.test.mjs src/lib/trending-surfaces.test.mjs src/lib/logo-mark.test.mjs src/lib/appearance.test.mjs"
   },
   "dependencies": {
     "@annotated/shared": "workspace:*",

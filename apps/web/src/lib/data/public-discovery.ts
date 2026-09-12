@@ -35,6 +35,11 @@ import {
   type PublicReshareAttribution,
 } from "./reshare";
 import { queryPublicCommentCounts } from "./social-query";
+import {
+  TRENDING_MAX_CARDS,
+  parseTrendingListRow,
+  shouldShowTrendingSurface,
+} from "./trending";
 
 type PublicAnnotationCardBase = {
   id: string;
@@ -116,6 +121,10 @@ export type PublicFeedItem = {
 
 export type PublicAnnotationPage =
   | { status: "available"; items: PublicFeedItem[]; hasNext: boolean }
+  | { status: "unavailable" };
+
+export type PublicTrendingPage =
+  | { status: "available"; items: PublicFeedItem[]; visible: boolean }
   | { status: "unavailable" };
 
 export { feedItemKey, type PublicReshareAttribution };
@@ -568,6 +577,60 @@ export async function getCurrentUserBookmarksPage(
     }
 
     return { status: "available", items, hasNext };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
+export async function getTrendingFeedItems(): Promise<PublicTrendingPage> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("list_trending_annotations", {
+      p_limit: TRENDING_MAX_CARDS,
+    });
+    if (error || !Array.isArray(data)) return { status: "unavailable" };
+
+    const rows = data.map(parseTrendingListRow);
+    if (rows.some((row) => row === null)) return { status: "unavailable" };
+    const trending = rows.filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+    const annotations = await loadPublishedAnnotationsByIds(
+      supabase,
+      trending.map((row) => row.annotationId),
+    );
+    const { data: userData } = await supabase.auth.getUser();
+    const viewerIds = [...new Set(trending.map((row) => row.annotationId))];
+    let viewerShares = new Set<string>();
+    let viewerBookmarks = new Set<string>();
+    if (userData.user && isUuid(userData.user.id) && viewerIds.length > 0) {
+      const [
+        { data: shareData, error: shareError },
+        { data: bookmarkData, error: bookmarkError },
+      ] = await Promise.all([
+        supabase.rpc("get_current_annotation_reshares", { p_annotation_ids: viewerIds }),
+        supabase.rpc("get_current_annotation_bookmarks", { p_annotation_ids: viewerIds }),
+      ]);
+      if (!shareError) viewerShares = parseCurrentReshareIds(shareData);
+      if (!bookmarkError) viewerBookmarks = parseCurrentBookmarkIds(bookmarkData);
+    }
+
+    const items: PublicFeedItem[] = [];
+    for (const row of trending) {
+      const annotation = annotations.get(row.annotationId);
+      if (!annotation) continue;
+      items.push({
+        annotation,
+        reshare: null,
+        viewerHasReshared: viewerShares.has(annotation.id),
+        viewerHasBookmarked: viewerBookmarks.has(annotation.id),
+      });
+    }
+
+    return {
+      status: "available",
+      items,
+      visible: shouldShowTrendingSurface(items.length),
+    };
   } catch {
     return { status: "unavailable" };
   }
