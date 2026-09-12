@@ -844,8 +844,8 @@ contract; it does not authorize Staging apply or Production. Clip
 range UI is implemented in this increment (owner Chrome acceptance
 still required). **Share v1** (in-ecosystem reshare) is implemented on
 `main` via PR #117. **Bookmark v1** is implemented on `main` via
-PR #118. **What’s Trending v1** is implemented in this increment;
-Who to Follow remains unimplemented. Staging
+PR #118. **What’s Trending v1** is implemented on `main` via PR #120.
+**Who to Follow v1** is implemented in this increment. Staging
 acceptance is required before Phase G. Hosted
 range limits remain 1,000–90,000 ms. Article publication, draft-first
 hosted media, and the accepted capture/upload pipeline are unchanged.
@@ -885,8 +885,8 @@ the share in their signed-in feed (home timeline mixes published
 annotations with reshares from the viewer and followed profiles;
 anonymous home stays annotation-only; profile timelines include that
 actor’s reshares). **Not** copy-link, Web Share API, or X intent for
-v1. Bookmark / What’s Trending / Who to Follow are separate later
-PRs.
+v1. Bookmark / What’s Trending / Who to Follow shipped as later
+PRs in this social slice.
 
 **Bookmark an annotation.** Locked 2026-09-12. **Private** for the
 signed-in user only. If logged out, prompt Google / X sign-in (match
@@ -896,8 +896,8 @@ annotations. Uniqueness is **at most one bookmark per user per
 annotation**. Owner can **remove** a bookmark later. Flat list on
 **Me**, **newest-first**. **No** bookmark notes, folders, or public
 save counts in v1. Published-only; hidden/removed targets drop off
-the owner list. What’s Trending / Who to Follow are separate later
-PRs.
+the owner list. What’s Trending / Who to Follow shipped as later
+PRs in this social slice.
 
 **What’s Trending.** Locked 2026-09-12. **Web only** — not extension
 Feed in v1. **7-day** window. v1 score:
@@ -909,14 +909,26 @@ view-telemetry for v1. Surfaces: dedicated **`/trending`** page with
 header/nav entry, plus a short strip at the **top of the web Feed
 homepage** (page 1). Users can browse Trending alone without the main
 Feed. Minimal Matt-only **`/ops` boost** set/clear on a published
-annotation. Who to Follow is a separate later PR. Production or demo
-may need seeded demo data.
+annotation. Production or demo may need seeded demo data.
 
-**Who to Follow.** **Curated** placeholders (X-lookalike) until the
-accounts exist; resolve when they sign in with that X identity.
+**Who to Follow.** Locked 2026-09-12. **Web only** — not extension
+Feed in v1. **Curated** seeds, not algorithmic recommendations.
 Seeds: **@jason** (Jason Calacanis), **@davidscornik**, **@chamath**,
-**@friedberg**, plus **Matt** when a public Annotated / X profile
-exists.
+**@friedberg**, plus **Matt**’s public Annotated profile when
+available. Resolve those handles / Matt’s known public profile against
+real public `profiles` rows; **skip missing quietly**. **Hide**
+accounts the viewer already follows (and the viewer’s own profile).
+**Signed-out:** still show resolved seeds; Follow prompts **Google + X**
+sign-in (same header / signed-out Share-Bookmark gate). Show about
+**3–5** suggestions (hard cap 5). Surfaces: a **side rail** on the
+**wide web Feed** only, plus a standalone **`/who-to-follow`** page
+with a header **Follow** tab (same navigation pattern as Trending).
+On **narrow/mobile**, do **not** stack the rail under the Feed; the
+header tab / standalone page is the mobile surface. X-lookalike cards:
+avatar, display name, handle, Follow / Following. Reuse the existing
+`profile_follows` follow/unfollow plumbing; do not invent a second
+follow graph. Profile links stay `/{handle}`-free (`/p/{id}`); handles
+are display-only with no `@` in paths.
 
 ## Phase G — future
 

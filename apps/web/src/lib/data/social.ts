@@ -7,6 +7,14 @@ import {
   queryPublicComments,
   type PublicCommentPage,
 } from "./social-query";
+import {
+  WHO_TO_FOLLOW_SEED_HANDLES,
+  WHO_TO_FOLLOW_SEED_PROFILE_IDS,
+  collectWhoToFollowProfiles,
+  selectWhoToFollowSuggestions,
+  uniqueWhoToFollowHandles,
+  type WhoToFollowProfile,
+} from "./who-to-follow";
 
 export type ProfileSocialCounts = {
   followerCount: number;
@@ -47,6 +55,64 @@ export async function getProfileSocialCounts(
       : { followerCount, followingCount };
   } catch {
     return null;
+  }
+}
+
+export type WhoToFollowPage =
+  | { status: "available"; suggestions: WhoToFollowProfile[] }
+  | { status: "unavailable" };
+
+export async function getWhoToFollowSuggestions(
+  currentUserId: string | null,
+): Promise<WhoToFollowPage> {
+  try {
+    const supabase = await createClient();
+    const seedHandles = uniqueWhoToFollowHandles(WHO_TO_FOLLOW_SEED_HANDLES);
+    const seedIds = WHO_TO_FOLLOW_SEED_PROFILE_IDS.filter((id) => isUuid(id));
+    const [handleResult, idResult] = await Promise.all([
+      seedHandles.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url")
+          .in("username", seedHandles),
+      seedIds.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+          .from("profiles")
+          .select("id, username, display_name, avatar_url")
+          .in("id", seedIds),
+    ]);
+    if (handleResult.error || idResult.error) return { status: "unavailable" };
+
+    const resolved = collectWhoToFollowProfiles({
+      handleRows: handleResult.data ?? [],
+      idRows: idResult.data ?? [],
+      seedHandles,
+      seedIds,
+    });
+    const followedIds = new Set<string>();
+    if (currentUserId) {
+      const states = await Promise.all(
+        resolved.map(async (profile) => [
+          profile.profileId,
+          await getCurrentUserFollowState(profile.profileId, currentUserId),
+        ] as const),
+      );
+      for (const [profileId, following] of states) {
+        if (following === true) followedIds.add(profileId);
+      }
+    }
+
+    return {
+      status: "available",
+      suggestions: selectWhoToFollowSuggestions(resolved, {
+        viewerId: currentUserId,
+        followedIds,
+      }),
+    };
+  } catch {
+    return { status: "unavailable" };
   }
 }
 

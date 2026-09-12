@@ -9,7 +9,7 @@ export async function SiteHeader({
   active,
   returnTo,
 }: {
-  active?: "feed" | "me" | "trending";
+  active?: "feed" | "me" | "trending" | "who-to-follow";
   returnTo: string;
 }) {
   let user: HeaderUser | null = null;
@@ -47,6 +47,13 @@ export async function SiteHeader({
         </Link>
         <Link className="site-feed-link" href="/trending" aria-current={active === "trending" ? "page" : undefined}>
           Trending
+        </Link>
+        <Link
+          className="site-feed-link site-who-to-follow-link"
+          href="/who-to-follow"
+          aria-current={active === "who-to-follow" ? "page" : undefined}
+        >
+          Follow
         </Link>
         <Link className="site-feed-link" href="/me" aria-current={active === "me" ? "page" : undefined}>
           Me
