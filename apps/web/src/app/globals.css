@@ -446,6 +446,98 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   color: var(--text-muted);
   font-size: 0.72rem;
 }
+.discovery-feed-column { min-width: 0; }
+.who-to-follow-rail { display: none; }
+.who-to-follow-head h2 {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.who-to-follow-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.who-to-follow-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+}
+.who-to-follow-card-prompt { grid-template-columns: minmax(0, 1fr); }
+.who-to-follow-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.who-to-follow-identity:hover .who-to-follow-name { text-decoration: underline; text-underline-offset: 3px; }
+.who-to-follow-copy { display: grid; min-width: 0; gap: 2px; }
+.who-to-follow-name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.who-to-follow-handle {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.who-to-follow-button { min-height: 32px; padding: 5px 10px; }
+.who-to-follow-signed-out {
+  display: grid;
+  justify-items: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+}
+.who-to-follow-signed-out p { margin: 0; line-height: 1.45; }
+.who-to-follow-signed-out .provider-sign-in-actions { width: 100%; }
+.who-to-follow-signed-out .card-share-button { justify-self: start; }
+.who-to-follow-card .form-error { grid-column: 1 / -1; }
+.who-to-follow-page-list {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--background-elevated);
+}
+.who-to-follow-page-list .who-to-follow-card {
+  padding: 10px 4px;
+}
+@media (min-width: 1100px) {
+  .discovery-main-with-rail {
+    width: min(calc(100% - 36px), 1120px);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 292px;
+    column-gap: 28px;
+    align-items: start;
+  }
+  .discovery-main-with-rail .discovery-intro { grid-column: 1 / -1; }
+  .who-to-follow-rail {
+    display: block;
+    position: sticky;
+    top: 20px;
+    padding: 16px 16px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-medium);
+    background: var(--background-elevated);
+  }
+}
 .annotation-card {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -1034,6 +1126,13 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
     padding: 6px 10px;
     font-size: 0.72rem;
   }
+  .who-to-follow-signed-out .site-auth-button {
+    max-width: none;
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+  }
   .discovery-main { width: min(calc(100% - 28px), 840px); padding-top: 30px; }
   .discovery-intro { margin-bottom: 22px; }
   .trending-strip { margin-bottom: 22px; padding: 14px; }
@@ -1058,6 +1157,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .follow-control .provider-sign-in-actions,
   .share-heading-row .provider-sign-in-actions,
   .share-signed-out .provider-sign-in-actions,
+  .who-to-follow-signed-out .provider-sign-in-actions,
   .vote-heading-row .provider-sign-in-actions {
     width: 100%;
     flex-direction: column;
@@ -1079,6 +1179,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 
 @media (max-width: 400px) {
   .site-feed-link { display: none; }
+  .site-feed-link.site-who-to-follow-link { display: inline; }
   .card-header { align-items: flex-start; flex-direction: column; gap: 6px; padding-inline: 14px; }
   .card-date { padding-left: 38px; }
   .card-actions, .card-internal-actions { width: 100%; padding-inline: 14px; }
