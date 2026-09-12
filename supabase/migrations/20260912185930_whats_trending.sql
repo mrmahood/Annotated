@@ -257,7 +257,7 @@ begin
     pg_catalog.now(),
     p_actor_id
   )
-  on conflict (annotation_id) do update
+  on conflict on constraint annotation_trending_boosts_pkey do update
   set
     boost = excluded.boost,
     updated_at = excluded.updated_at,
