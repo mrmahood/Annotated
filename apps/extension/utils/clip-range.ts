@@ -165,3 +165,133 @@ export function clipPreviewUserReleased(
 ): boolean {
   return paused && !clipPreviewReachedEnd(currentTimeSeconds, endSeconds);
 }
+
+/** Visible slider span on long media. Short media keeps the full timeline. */
+export const CLIP_SLIDER_WINDOW_MS = 240_000;
+/** Extra room around a selection when it would otherwise exceed the default window. */
+export const CLIP_SLIDER_WINDOW_PADDING_MS = 60_000;
+/** Button pan step. Track-gutter drag can move by any amount. */
+export const CLIP_SLIDER_PAN_MS = 60_000;
+
+export type ClipSliderWindow = {
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  zoomed: boolean;
+};
+
+export function clipSliderWindowIsZoomed(durationMs: number | null): boolean {
+  const maxMs = mediaDurationSliderMaxMs(durationMs);
+  return maxMs !== null && maxMs > CLIP_SLIDER_WINDOW_MS;
+}
+
+export function clipSliderWindowDurationMs(
+  durationMs: number | null,
+  startMs: number | null,
+  endMs: number | null,
+): number | null {
+  const maxMs = mediaDurationSliderMaxMs(durationMs);
+  if (maxMs === null) return null;
+  if (maxMs <= CLIP_SLIDER_WINDOW_MS) return maxMs;
+  const span = startMs !== null && endMs !== null && endMs > startMs
+    ? endMs - startMs
+    : 0;
+  return Math.min(
+    maxMs,
+    Math.max(CLIP_SLIDER_WINDOW_MS, span + CLIP_SLIDER_WINDOW_PADDING_MS),
+  );
+}
+
+export function clampClipSliderWindowStart(
+  windowStartMs: number,
+  windowDurationMs: number,
+  durationMs: number | null,
+): number {
+  const maxMs = mediaDurationSliderMaxMs(durationMs);
+  if (maxMs === null || windowDurationMs <= 0) return 0;
+  const maxStart = Math.max(0, maxMs - windowDurationMs);
+  return Math.min(maxStart, Math.max(0, snapMsToWholeSeconds(windowStartMs)));
+}
+
+export function clipSliderFocusMs(input: {
+  startMs: number | null;
+  endMs: number | null;
+  playheadMs: number | null;
+}): number {
+  if (input.startMs !== null && input.endMs !== null && input.endMs > input.startMs) {
+    return snapMsToWholeSeconds((input.startMs + input.endMs) / 2);
+  }
+  if (input.playheadMs !== null && Number.isFinite(input.playheadMs) && input.playheadMs >= 0) {
+    return snapMsToWholeSeconds(input.playheadMs);
+  }
+  return 0;
+}
+
+function clipSliderWindowFromStart(
+  windowStartMs: number,
+  windowDurationMs: number,
+  durationMs: number | null,
+): ClipSliderWindow | null {
+  const maxMs = mediaDurationSliderMaxMs(durationMs);
+  if (maxMs === null) return null;
+  const startMs = clampClipSliderWindowStart(windowStartMs, windowDurationMs, durationMs);
+  return {
+    startMs,
+    durationMs: windowDurationMs,
+    endMs: startMs + windowDurationMs,
+    zoomed: maxMs > CLIP_SLIDER_WINDOW_MS,
+  };
+}
+
+export function recenterClipSliderWindow(input: {
+  startMs: number | null;
+  endMs: number | null;
+  playheadMs: number | null;
+  durationMs: number | null;
+}): ClipSliderWindow | null {
+  const windowDurationMs = clipSliderWindowDurationMs(input.durationMs, input.startMs, input.endMs);
+  if (windowDurationMs === null) return null;
+  const focusMs = clipSliderFocusMs(input);
+  return clipSliderWindowFromStart(
+    focusMs - windowDurationMs / 2,
+    windowDurationMs,
+    input.durationMs,
+  );
+}
+
+export function panClipSliderWindow(input: {
+  windowStartMs: number;
+  deltaMs: number;
+  startMs: number | null;
+  endMs: number | null;
+  durationMs: number | null;
+}): ClipSliderWindow | null {
+  const windowDurationMs = clipSliderWindowDurationMs(input.durationMs, input.startMs, input.endMs);
+  if (windowDurationMs === null) return null;
+  return clipSliderWindowFromStart(
+    input.windowStartMs + input.deltaMs,
+    windowDurationMs,
+    input.durationMs,
+  );
+}
+
+export function clipSliderWindowContainsRange(
+  windowStartMs: number,
+  windowDurationMs: number,
+  startMs: number | null,
+  endMs: number | null,
+): boolean {
+  if (startMs === null || endMs === null || endMs <= startMs) return true;
+  return startMs >= windowStartMs && endMs <= windowStartMs + windowDurationMs;
+}
+
+export function formatClipSliderWindowCue(
+  windowStartMs: number,
+  windowDurationMs: number,
+  durationMs: number | null,
+): string {
+  const maxMs = mediaDurationSliderMaxMs(durationMs);
+  if (maxMs === null || windowDurationMs <= 0) return '';
+  const windowEndMs = Math.min(maxMs, windowStartMs + windowDurationMs);
+  return `showing ${formatClipClock(windowStartMs)}–${formatClipClock(windowEndMs)} of ${formatClipClock(maxMs)}`;
+}
