@@ -77,9 +77,10 @@ export function BookmarkControl({
   const signedOut = !currentUserId;
   const heading = variant === "detail" ? "Bookmark" : undefined;
   const buttonClass = variant === "detail" ? "public-button public-button-secondary" : "card-share-button";
+  const cardPrompt = variant === "card" && signedOut && mode === "sign-in";
 
   return (
-    <div className={variant === "detail" ? "share-control share-control-detail" : "share-control"}>
+    <div className={variant === "detail" ? "share-control share-control-detail" : cardPrompt ? "share-control share-control-prompt" : "share-control"}>
       {heading ? (
         <div className="share-heading-row">
           <div>

@@ -17,6 +17,7 @@ test("signed-out Share and Bookmark gates offer header Google and X actions", as
     assert.match(source, /googleLabel="Continue with Google"/);
     assert.match(source, /xLabel="Continue with X"/);
     assert.match(source, /className="site-auth-button"/);
+    assert.match(source, /share-control-prompt/);
     assert.doesNotMatch(source, /googleLabel="Sign in to share"/);
     assert.doesNotMatch(source, /googleLabel="Sign in to bookmark"/);
     assert.doesNotMatch(source, /card-share-sign-in/);
@@ -37,5 +38,8 @@ test("signed-out Share and Bookmark gates offer header Google and X actions", as
 
   assert.match(styles, /\.share-signed-out/);
   assert.match(styles, /\.share-signed-out \.provider-sign-in-actions/);
+  assert.match(styles, /\.share-control-prompt/);
+  assert.match(styles, /\.share-control-prompt \{\s*flex: 1 1 100%;\s*width: 100%;/);
+  assert.match(styles, /\.share-signed-out \.site-auth-button,\s*\.share-heading-row \.site-auth-button \{\s*max-width: none;\s*width: 100%;/);
   assert.doesNotMatch(styles, /\.card-share-sign-in/);
 });
