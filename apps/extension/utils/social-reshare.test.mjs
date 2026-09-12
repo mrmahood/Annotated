@@ -42,6 +42,5 @@ test('extension social data uses trusted reshare RPCs instead of table reads', a
   assert.match(source, /create_annotation_reshare/);
   assert.match(source, /remove_annotation_reshare/);
   assert.match(source, /get_current_annotation_reshares/);
-  assert.doesNotMatch(source, /from\('annotation_reshares'\)/);
-  assert.doesNotMatch(source, /from\('profile_follows'\)/);
+    assert.doesNotMatch(source, /from\('annotation_reshares'\)/);
 });

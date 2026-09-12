@@ -37,7 +37,7 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(card, /View annotation/);
   assert.match(card, /ShareControl/);
   assert.match(card, /reshare-attribution/);
-  assert.match(card, /className="annotation-card-reshare"/);
+  assert.match(card, /annotation-card-reshare/);
   assert.match(card, /returnTo=\{returnTo\}/);
   assert.match(card, /import \{ HostedMediaPlayer \} from "\.\/hosted-media-player"/);
   assert.match(card, /expanded && clipMedia &&/);

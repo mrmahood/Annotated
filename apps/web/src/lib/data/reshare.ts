@@ -1,4 +1,4 @@
-import { isUuid } from "@/lib/public-content";
+import { isUuid } from "../public-content";
 
 export const RESHARE_COMMENT_LIMIT = 1_000;
 

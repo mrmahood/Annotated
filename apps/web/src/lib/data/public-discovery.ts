@@ -438,24 +438,24 @@ async function getPublicTimelinePage(
     for (const row of timeline) {
       const annotation = annotations.get(row.annotationId);
       if (!annotation) continue;
-      if (row.itemKind === "annotation") {
+      if (row.itemKind === "reshare") {
+        const resharer = row.resharerUserId ? resharers.get(row.resharerUserId) : null;
+        if (!resharer) continue;
         items.push({
           annotation,
-          reshare: null,
+          reshare: {
+            id: row.itemId,
+            createdAt: row.occurredAt,
+            comment: row.reshareComment,
+            resharer,
+          },
           viewerHasReshared: viewerShares.has(annotation.id),
         });
         continue;
       }
-      const resharer = row.resharerUserId ? resharers.get(row.resharerUserId) : null;
-      if (!resharer) continue;
       items.push({
         annotation,
-        reshare: {
-          id: row.itemId,
-          createdAt: row.occurredAt,
-          comment: row.reshareComment,
-          resharer,
-        },
+        reshare: null,
         viewerHasReshared: viewerShares.has(annotation.id),
       });
     }
