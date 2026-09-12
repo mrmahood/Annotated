@@ -97,9 +97,9 @@ export function ShareControl({
           {signedOut && (
             <ProviderSignInActions
               returnTo={`${returnTo}#share`}
-              googleLabel="Sign in to share"
+              googleLabel="Continue with Google"
               xLabel="Continue with X"
-              className="public-button public-button-secondary"
+              className="site-auth-button"
             />
           )}
         </div>
@@ -112,12 +112,12 @@ export function ShareControl({
           </p>
         ) : mode === "compose" ? (
           <div className="share-signed-out">
-            <span>Sign in to share to your feed.</span>
+            <p>Sign in to share to your feed.</p>
             <ProviderSignInActions
               returnTo={returnTo}
-              googleLabel="Sign in to share"
+              googleLabel="Continue with Google"
               xLabel="Continue with X"
-              className="card-share-sign-in"
+              className="site-auth-button"
             />
             <button className="card-share-button" type="button" onClick={() => setMode("idle")}>
               Cancel
