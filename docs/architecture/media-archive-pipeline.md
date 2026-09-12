@@ -561,10 +561,12 @@ panel:
    user-context RPC normalizes source identity and atomically creates source,
    draft annotation, target, slug, and `capture_pending` media row.
 3. Background obtains the tab-capture stream ID as early as possible after the
-   user-driven start (reusing a short-lived ID reserved from the toolbar invoke
-   when still valid), then revalidates the connected top-level tab and range,
-   samples start geometry, seeks/pauses the player, creates the offscreen
-   document, and starts the recorder.
+   user-driven start (reusing a same-tab ID reserved from the toolbar invoke
+   instead of discarding it after a freshness window). Stream-ID acquisition is
+   bounded; an activeTab / invocation failure surfaces the toolbar Recapture
+   copy and must not leave Create on “Preparing capture…”. Then it revalidates
+   the connected top-level tab and range, samples start geometry, seeks/pauses
+   the player, creates the offscreen document, and starts the recorder.
 4. Background starts page playback and acknowledges it to offscreen. Offscreen
    measures the recorder lead-in on its own clock, runs the requested-duration
    timer from that acknowledgement, records with audible loopback, and owns the

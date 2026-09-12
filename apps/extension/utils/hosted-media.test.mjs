@@ -72,6 +72,19 @@ test('Recapture and capture start clear Create publish errors before the next at
   assert.match(hosted, /shouldShowCreatePublishError/);
 });
 
+test('Cancel draft can leave Preparing capture without a live background capture', async () => {
+  const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
+  const cancel = app.slice(app.indexOf('const cancelHostedMedia'));
+  assert.match(cancel, /canClearPreparingCaptureWithoutBackgroundCancel/);
+  assert.match(cancel, /setMediaCaptureState\(\{ status: 'idle' \}\)/);
+  assert.match(cancel, /setYoutubePublishState\(\{ status: 'idle' \}\)/);
+  assert.match(cancel, /setAudioPublishState\(\{ status: 'idle' \}\)/);
+  assert.ok(
+    cancel.indexOf('canClearPreparingCaptureWithoutBackgroundCancel') <
+      cancel.indexOf('cancelHostedSessionOnServer'),
+  );
+});
+
 test('persists only safe hosted-media restoration identifiers', () => {
   assert.equal(isHostedMediaSession(session), true);
   assert.equal(JSON.stringify(session).includes('accessToken'), false);

@@ -7,7 +7,9 @@ import {
   MEDIA_CAPTURE_START,
   RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
   TAB_CAPTURE_INVOKE_MESSAGE,
+  TAB_CAPTURE_STREAM_ID_TIMEOUT_MS,
   buildCaptureMetadataV2,
+  canClearPreparingCaptureWithoutBackgroundCancel,
   captureRequestMatchesConnectedTab,
   executeHostedMediaUpload,
   getCaptureRangeError,
@@ -20,13 +22,16 @@ import {
   isOffscreenStartMessage,
   isTabCaptureInvocationError,
   mapTabCaptureStartFailure,
+  raceTabCaptureStreamId,
   reservedTabCaptureStreamIsFresh,
+  reservedTabCaptureStreamMatchesTab,
   selectCaptureMimeType,
   sourceIdentityMatchesUrl,
   userFacingCaptureMessage,
 } from './media-capture.ts';
 import {
   installMediaCapture,
+  invalidateReservedTabCaptureStream,
   reserveTabCaptureStreamIdFromInvoke,
 } from './media-capture-background.ts';
 
@@ -74,6 +79,13 @@ test('Chrome tab-capture invocation errors map to toolbar Recapture copy', () =>
   assert.equal(reservedTabCaptureStreamIsFresh({ tabId: 42, reservedAt: 1_000 }, 42, 1_000 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), true);
   assert.equal(reservedTabCaptureStreamIsFresh({ tabId: 42, reservedAt: 1_000 }, 42, 1_001 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), false);
   assert.equal(reservedTabCaptureStreamIsFresh({ tabId: 7, reservedAt: 1_000 }, 42, 1_100), false);
+  assert.equal(reservedTabCaptureStreamMatchesTab({ tabId: 42, reservedAt: 1_000 }, 42, 1_001 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), true);
+  assert.equal(reservedTabCaptureStreamMatchesTab({ tabId: 7, reservedAt: 1_000 }, 42, 1_100), false);
+  assert.equal(TAB_CAPTURE_STREAM_ID_TIMEOUT_MS, 4_000);
+  assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('preparing', false), true);
+  assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('capturing', false), false);
+  assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('capturing', true), true);
+  assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('uploading', false), false);
   const mapped = mapTabCaptureStartFailure(new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR), request.captureId);
   assert.equal(mapped.status, 'error');
   assert.equal(mapped.code, 'tab-capture-denied');
@@ -317,6 +329,178 @@ test('chrome:// and other non-http pages never reserve a tab-capture stream ID',
   assert.equal(await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, 'chrome://extensions'), null);
   assert.equal(await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, 'about:blank'), null);
   assert.equal(tabCaptureCalls, 0);
+});
+
+test('stream-ID races time out as the Chrome invocation error', async () => {
+  await assert.rejects(
+    raceTabCaptureStreamId(new Promise(() => undefined), 20),
+    (error) => error instanceof Error && error.message === CHROME_TAB_CAPTURE_INVOKE_ERROR,
+  );
+});
+
+function applePodcastsRequest() {
+  const pageUrl = 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789';
+  return {
+    ...request,
+    source: {
+      kind: 'audio',
+      pageUrl,
+      sourceKey: pageUrl,
+      playerIdentity: 'audio:1:f8443fef',
+    },
+  };
+}
+
+function captureChromeForHang(overrides = {}) {
+  let onMessage;
+  const pageUrl = overrides.pageUrl ?? source.pageUrl;
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [],
+      sendMessage: async (message) => {
+        if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+          return { status: 'capturing', captureId: message.captureId };
+        }
+        return { ok: true };
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Media', url: pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {}, async remove() {},
+    } },
+    tabs: {
+      async get() { return { id: 42, url: pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript({ func }) {
+      if (func.name.includes('prepare')) return [{ frameId: 0, result: {
+        ok: true,
+        prepared: {
+          sourceKind: overrides.sourceKind ?? 'youtube',
+          requestedStartMs: 5_000, requestedEndMs: 20_000,
+          requestedDurationMs: 15_000, playerCurrentTimeBeforeRecordingMs: 5_000,
+          mediaDurationMs: 120_000, pageUrl,
+          geometry: {
+            viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+            boundingClientRect: overrides.sourceKind === 'audio' ? null : {
+              x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0,
+            },
+            videoWidth: overrides.sourceKind === 'audio' ? null : 1920,
+            videoHeight: overrides.sourceKind === 'audio' ? null : 1080,
+            objectFit: overrides.sourceKind === 'audio' ? null : 'contain',
+            objectPosition: overrides.sourceKind === 'audio' ? null : '50% 50%',
+            fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+            frameMapping: null,
+          },
+        },
+      } }];
+      return [{ frameId: 0, result: { ok: true, acknowledgedAtMs: 1, currentTimeMs: 5_000 } }];
+    } },
+    tabCapture: { async getMediaStreamId() { return 'stream'; } },
+    offscreen: { async createDocument() {} },
+    ...overrides.chrome,
+  };
+  return { fakeChrome, getOnMessage: () => onMessage };
+}
+
+test('begin reuses a same-tab reserved stream ID instead of requesting another', async () => {
+  const { fakeChrome, getOnMessage } = captureChromeForHang();
+  let laterStreamCalls = 0;
+  installMediaCapture(fakeChrome);
+  await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, source.pageUrl);
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    throw new Error('begin must reuse the same-tab reserved stream ID');
+  };
+  const response = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  assert.equal(response.ok, true);
+  assert.equal(laterStreamCalls, 0);
+});
+
+test('a hung getMediaStreamId surfaces the toolbar Recapture error instead of staying preparing', async () => {
+  const captureRequest = applePodcastsRequest();
+  const { fakeChrome, getOnMessage } = captureChromeForHang({
+    pageUrl: captureRequest.source.pageUrl,
+    sourceKind: 'audio',
+    chrome: {
+      tabCapture: { getMediaStreamId() { return new Promise(() => undefined); } },
+    },
+  });
+  installMediaCapture(fakeChrome, { streamIdTimeoutMs: 30 });
+  const startedAt = Date.now();
+  const response = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request: captureRequest,
+    }, {}, resolve), true);
+  });
+  assert.ok(Date.now() - startedAt < 1_000);
+  assert.equal(response.ok, false);
+  assert.equal(response.snapshot.status, 'error');
+  assert.equal(response.snapshot.code, 'tab-capture-denied');
+  assert.equal(response.snapshot.message, TAB_CAPTURE_INVOKE_MESSAGE);
+});
+
+test('cancel during preparing with no persisted capture clears reserved state and allows a later start', async () => {
+  const captureRequest = applePodcastsRequest();
+  let releaseReserve;
+  const reserveGate = new Promise((resolve) => { releaseReserve = resolve; });
+  let getMediaStreamIdCalls = 0;
+  const { fakeChrome, getOnMessage } = captureChromeForHang({
+    pageUrl: captureRequest.source.pageUrl,
+    sourceKind: 'audio',
+    chrome: {
+      tabCapture: {
+        async getMediaStreamId() {
+          getMediaStreamIdCalls += 1;
+          await reserveGate;
+          return 'later-stream';
+        },
+      },
+    },
+  });
+  installMediaCapture(fakeChrome, { streamIdTimeoutMs: 40 });
+  const reserved = reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, captureRequest.source.pageUrl);
+  const started = new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request: captureRequest,
+    }, {}, resolve), true);
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const cancelled = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: 'annotated.mediaCapture.cancel.v1',
+      captureId: captureRequest.captureId,
+      operation,
+    }, {}, resolve), true);
+  });
+  assert.equal(cancelled.ok, true);
+  releaseReserve();
+  const [startResponse] = await Promise.all([started, reserved]);
+  assert.equal(startResponse.ok, false);
+  assert.ok(startResponse.snapshot.status === 'cancelled' || startResponse.snapshot.status === 'error');
+  invalidateReservedTabCaptureStream();
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    getMediaStreamIdCalls += 1;
+    return 'fresh-after-cancel';
+  };
+  const retry = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_START,
+      request: { ...captureRequest, captureId: '55555555-5555-4555-8555-555555555555' },
+    }, {}, resolve), true);
+  });
+  assert.equal(retry.ok, true);
+  assert.equal(retry.snapshot.status, 'capturing');
 });
 
 test('concurrent status reconciliation cannot clear a newly preparing shared media capture', async () => {
@@ -972,6 +1156,12 @@ test('production manifest and capture source keep the required security shape', 
   const beginBody = background.slice(background.indexOf('async function begin'));
   assert.ok(beginBody.indexOf('takeReservedTabCaptureStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
   assert.ok(beginBody.indexOf('getMediaStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
+  assert.match(beginBody, /raceTabCaptureStreamId/);
+  assert.match(background, /reservedTabCaptureStreamMatchesTab/);
+  assert.doesNotMatch(
+    background.slice(background.indexOf('async function takeReservedTabCaptureStreamId')),
+    /reservedTabCaptureStreamIsFresh/,
+  );
   assert.match(serviceWorker, /openPanelOnActionClick: false/);
   const clickBody = serviceWorker.slice(serviceWorker.indexOf('chrome.action.onClicked'));
   assert.ok(clickBody.indexOf('sidePanel.open') < clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke'));

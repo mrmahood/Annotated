@@ -207,6 +207,7 @@ import {
   MEDIA_CAPTURE_RETRY,
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
+  canClearPreparingCaptureWithoutBackgroundCancel,
   isAudioOnlyCaptureSourceKind,
   userFacingCaptureMessage,
   type CaptureSnapshot,
@@ -2113,7 +2114,13 @@ function App() {
       const requiresLiveCaptureCancellation =
         ['preparing', 'capturing', 'stopping', 'uploading', 'waiting-to-upload'].includes(mediaCaptureState.status) ||
         (mediaCaptureState.status === 'error' && mediaCaptureState.code === 'upload-failed');
-      if (requiresLiveCaptureCancellation && backgroundResponse?.cancelled !== true) {
+      if (
+        requiresLiveCaptureCancellation &&
+        !canClearPreparingCaptureWithoutBackgroundCancel(
+          mediaCaptureState.status,
+          backgroundResponse?.cancelled === true,
+        )
+      ) {
         throw new Error('The active capture identity changed before cancellation. Refresh the draft and try again.');
       }
       await cancelHostedSessionOnServer(session);
