@@ -227,6 +227,9 @@ reset role;
 insert into public.profile_follows (follower_id, followed_id) values
   ('61000000-0000-4000-8000-000000000002', '61000000-0000-4000-8000-000000000001');
 
+-- auth.uid() reads the JWT subject even after RESET ROLE, so clear it
+-- before anonymous timeline checks.
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 set local role anon;
 select is_empty(
   $$select item_id from public.list_public_timeline_items(20, 0, null) where item_kind = 'reshare'$$,
@@ -279,6 +282,7 @@ select ok(
 );
 reset role;
 
+select pg_catalog.set_config('request.jwt.claim.sub', '', true);
 set local role anon;
 select is_empty(
   $$select item_id from public.list_public_timeline_items(20, 0, null)
