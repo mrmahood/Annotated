@@ -48,3 +48,15 @@ test("public and profile feeds load mixed timeline items through the trusted res
   assert.doesNotMatch(source, /from\("profile_follows"\)/);
   assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
 });
+
+test("web trending loads the trusted list RPC and never reads boost or follow tables", async () => {
+  const source = await readFile(new URL("./public-discovery.ts", import.meta.url), "utf8");
+  assert.match(source, /list_trending_annotations/);
+  assert.match(source, /TRENDING_MAX_CARDS/);
+  assert.match(source, /shouldShowTrendingSurface/);
+  assert.match(source, /getTrendingFeedItems/);
+  assert.doesNotMatch(source, /from\("annotation_trending_boosts"\)/);
+  assert.doesNotMatch(source, /from\("profile_follows"\)/);
+  assert.doesNotMatch(source, /view_count|pageview|telemetry/i);
+  assert.doesNotMatch(source, /createSignedUrl|processed_storage_path|service_role/);
+});

@@ -41,10 +41,11 @@ export default async function OperatorConsolePage() {
       <main className="ops-main">
         <header className="ops-intro">
           <p className="eyebrow">Operator</p>
-          <h1>Claim review and annotation tools</h1>
+          <h1>Claim review, annotation tools, and trending boosts</h1>
           <p className="lede">
-            Allowlisted operators only. Actions reuse the existing moderation
-            routes and require a typed confirmation phrase.
+            Allowlisted operators only. Destructive actions reuse the existing
+            moderation routes and require a typed confirmation phrase. Trending
+            boosts are a ranking nudge only.
           </p>
         </header>
         <OpsConsole />

@@ -319,6 +319,8 @@ export function operatorActionMessage(code: string): string {
       return "Media-only withdrawal is unavailable for that request.";
     case "ANNOTATION_MODERATION_UNAVAILABLE":
       return "Annotation moderation is unavailable for that request.";
+    case "TRENDING_BOOST_UNAVAILABLE":
+      return "Trending boost is unavailable for that request.";
     default:
       return "The operator action could not be completed.";
   }

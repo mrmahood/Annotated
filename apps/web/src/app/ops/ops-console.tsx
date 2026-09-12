@@ -38,9 +38,17 @@ import {
   parseOpsClaimList,
   type OpsClaim,
 } from "@/lib/ops-console";
+import {
+  TRENDING_BOOST_CONFIRMATION,
+  TRENDING_BOOSTS_PATH,
+  buildTrendingBoostBody,
+  isTrendingBoostReady,
+  parseTrendingBoostList,
+  type TrendingBoostRow,
+} from "@/lib/data/trending";
 import { createClient } from "@/lib/supabase/client";
 
-type ConsoleTab = "claims" | "annotations";
+type ConsoleTab = "claims" | "annotations" | "trending";
 
 type ActionState =
   | { status: "idle" }
@@ -126,6 +134,17 @@ export function OpsConsole() {
         >
           Annotation tools
         </button>
+        <button
+          className="ops-tab"
+          type="button"
+          role="tab"
+          id="ops-tab-trending"
+          aria-selected={tab === "trending"}
+          aria-controls="ops-panel-trending"
+          onClick={() => setTab("trending")}
+        >
+          Trending boosts
+        </button>
       </div>
 
       <div
@@ -156,6 +175,16 @@ export function OpsConsole() {
           onMediaIdChange={setMediaId}
           onClaimIdChange={setClaimId}
         />
+      </div>
+
+      <div
+        className="ops-panel"
+        id="ops-panel-trending"
+        role="tabpanel"
+        aria-labelledby="ops-tab-trending"
+        hidden={tab !== "trending"}
+      >
+        <TrendingBoostTools active={tab === "trending"} />
       </div>
     </div>
   );
@@ -779,6 +808,220 @@ function AnnotationTools({
           </button>
         </article>
       </div>
+    </section>
+  );
+}
+
+function TrendingBoostTools({ active }: { active: boolean }) {
+  const [annotationId, setAnnotationId] = useState("");
+  const [boost, setBoost] = useState("5");
+  const [confirm, setConfirm] = useState("");
+  const [boosts, setBoosts] = useState<TrendingBoostRow[]>([]);
+  const [loadState, setLoadState] = useState<ActionState>({ status: "idle" });
+  const [actionState, setActionState] = useState<ActionState>({ status: "idle" });
+  const loadedOnce = useRef(false);
+  const queueInFlight = useRef(false);
+  const actionInFlight = useRef(false);
+
+  const loadBoosts = useCallback(async () => {
+    if (queueInFlight.current) return;
+    queueInFlight.current = true;
+    setLoadState({ status: "working" });
+    try {
+      const response = await operatorFetch(TRENDING_BOOSTS_PATH);
+      const body = await readJson(response);
+      if (!response.ok) {
+        setBoosts([]);
+        setLoadState({
+          status: "error",
+          message: operatorActionMessage(parseBoundedModerationError(body)),
+        });
+        return;
+      }
+      const parsed = parseTrendingBoostList(body);
+      if (!parsed) {
+        setBoosts([]);
+        setLoadState({ status: "error", message: operatorActionMessage("TRENDING_BOOST_UNAVAILABLE") });
+        return;
+      }
+      setBoosts(parsed);
+      setLoadState({ status: "idle" });
+    } catch (error) {
+      setLoadState({
+        status: "error",
+        message: operatorActionMessage(error instanceof Error ? error.message : "UNAVAILABLE"),
+      });
+    } finally {
+      queueInFlight.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!active || loadedOnce.current) return;
+    loadedOnce.current = true;
+    void loadBoosts();
+  }, [active, loadBoosts]);
+
+  const runBoost = async (action: "set" | "clear") => {
+    if (actionInFlight.current) return;
+    if (!isTrendingBoostReady({ annotationId, typedConfirm: confirm, action, boost })) return;
+    actionInFlight.current = true;
+    setActionState({ status: "working" });
+    try {
+      const response = await operatorFetch(TRENDING_BOOSTS_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(buildTrendingBoostBody({ annotationId, action, boost })),
+      });
+      const payload = await readJson(response);
+      if (!response.ok) {
+        setActionState({
+          status: "error",
+          message: operatorActionMessage(parseBoundedModerationError(payload)),
+        });
+        return;
+      }
+      setConfirm("");
+      setActionState({
+        status: "success",
+        message: action === "set" ? "Trending boost set." : "Trending boost cleared.",
+      });
+      await loadBoosts();
+    } catch (error) {
+      setActionState({
+        status: "error",
+        message: operatorActionMessage(error instanceof Error ? error.message : "UNAVAILABLE"),
+      });
+    } finally {
+      actionInFlight.current = false;
+    }
+  };
+
+  return (
+    <section className="ops-section" aria-labelledby="ops-trending-heading">
+      <div className="ops-section-head">
+        <div>
+          <p className="section-label">What’s Trending</p>
+          <h2 id="ops-trending-heading">Manual ranking boost</h2>
+        </div>
+        <button
+          className="public-button public-button-secondary"
+          type="button"
+          onClick={() => void loadBoosts()}
+        >
+          Refresh
+        </button>
+      </div>
+      <p className="ops-help">
+        Adds a positive number to the 7-day trending score for one published
+        annotation. Clear removes the boost. Type {TRENDING_BOOST_CONFIRMATION}
+        before set or clear.
+      </p>
+
+      <div className="form-grid">
+        <div className="form-field">
+          <label htmlFor="ops-trending-annotation-id">Annotation UUID</label>
+          <input
+            id="ops-trending-annotation-id"
+            className="ops-mono"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            value={annotationId}
+            onChange={(event) => setAnnotationId(event.target.value.trim())}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="ops-trending-boost">Boost (0.01–100)</label>
+          <input
+            id="ops-trending-boost"
+            className="ops-mono"
+            type="number"
+            min="0.01"
+            max="100"
+            step="0.01"
+            value={boost}
+            onChange={(event) => setBoost(event.target.value)}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="ops-trending-confirm">Type {TRENDING_BOOST_CONFIRMATION}</label>
+          <input
+            id="ops-trending-confirm"
+            className="ops-confirm"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            value={confirm}
+            onChange={(event) => setConfirm(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <ActionBanner state={actionState} />
+      <div className="ops-actions">
+        <button
+          className="public-button public-button-primary"
+          type="button"
+          disabled={!isTrendingBoostReady({
+            annotationId,
+            typedConfirm: confirm,
+            action: "set",
+            boost,
+          }) || actionState.status === "working"}
+          onClick={() => void runBoost("set")}
+        >
+          Set boost
+        </button>
+        <button
+          className="public-button public-button-secondary"
+          type="button"
+          disabled={!isTrendingBoostReady({
+            annotationId,
+            typedConfirm: confirm,
+            action: "clear",
+            boost,
+          }) || actionState.status === "working"}
+          onClick={() => void runBoost("clear")}
+        >
+          Clear boost
+        </button>
+      </div>
+
+      <ActionBanner state={loadState} />
+      {boosts.length === 0 && loadState.status !== "working" && loadState.status !== "error" ? (
+        <p className="ops-empty">No active trending boosts.</p>
+      ) : (
+        <div className="ops-table-wrap">
+          <table className="ops-table">
+            <caption className="visually-hidden">Active trending boosts</caption>
+            <thead>
+              <tr>
+                <th scope="col">Annotation</th>
+                <th scope="col">Boost</th>
+                <th scope="col">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {boosts.map((row) => (
+                <tr key={row.annotationId}>
+                  <td>
+                    <button
+                      className="ops-row-button"
+                      type="button"
+                      onClick={() => setAnnotationId(row.annotationId)}
+                    >
+                      {row.annotationId}
+                    </button>
+                  </td>
+                  <td>{row.boost}</td>
+                  <td>{formatTimestamp(row.updatedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

@@ -843,8 +843,9 @@ mid-September bounty must-haves. This section locks the product
 contract; it does not authorize Staging apply or Production. Clip
 range UI is implemented in this increment (owner Chrome acceptance
 still required). **Share v1** (in-ecosystem reshare) is implemented on
-`main` via PR #117. **Bookmark v1** is implemented in this increment;
-What’s Trending / Who to Follow remain unimplemented. Staging
+`main` via PR #117. **Bookmark v1** is implemented on `main` via
+PR #118. **What’s Trending v1** is implemented in this increment;
+Who to Follow remains unimplemented. Staging
 acceptance is required before Phase G. Hosted
 range limits remain 1,000–90,000 ms. Article publication, draft-first
 hosted media, and the accepted capture/upload pipeline are unchanged.
@@ -898,11 +899,18 @@ save counts in v1. Published-only; hidden/removed targets drop off
 the owner list. What’s Trending / Who to Follow are separate later
 PRs.
 
-**What’s Trending.** **Web Feed homepage section**. **7-day** window.
-v1 score: `3×comments_7d + 2×unique_commenters_7d + 2×follows_on_author_7d + 1×reshares_7d + recency_boost (~48h half-life) + manual /ops boost`.
-
-**Max one card per author.** No new view-telemetry for v1. Production
-or demo may need seeded demo data.
+**What’s Trending.** Locked 2026-09-12. **Web only** — not extension
+Feed in v1. **7-day** window. v1 score:
+`3×comments_7d + 2×unique_commenters_7d + 2×follows_on_author_7d + 1×reshares_7d + recency_boost (~48h half-life) + manual /ops boost`.
+Recency is `0.5 ^ (age_hours / 48)` from `published_at`. **Max one
+card per author.** Show about **5–8** cards (hard cap 8). **Hide** the
+Trending UI when fewer than **2** scored items exist. No new
+view-telemetry for v1. Surfaces: dedicated **`/trending`** page with
+header/nav entry, plus a short strip at the **top of the web Feed
+homepage** (page 1). Users can browse Trending alone without the main
+Feed. Minimal Matt-only **`/ops` boost** set/clear on a published
+annotation. Who to Follow is a separate later PR. Production or demo
+may need seeded demo data.
 
 **Who to Follow.** **Curated** placeholders (X-lookalike) until the
 accounts exist; resolve when they sign in with that X identity.

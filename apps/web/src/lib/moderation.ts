@@ -164,7 +164,8 @@ export type ModerationErrorCode =
   | "SERVER_MISCONFIGURED"
   | "WITHDRAWAL_UNAVAILABLE"
   | "CLAIM_REVIEW_UNAVAILABLE"
-  | "ANNOTATION_MODERATION_UNAVAILABLE";
+  | "ANNOTATION_MODERATION_UNAVAILABLE"
+  | "TRENDING_BOOST_UNAVAILABLE";
 
 export class ModerationApiError extends Error {
   readonly code: ModerationErrorCode;
@@ -580,7 +581,8 @@ export function mapModerationRpcError(
   unavailable:
     | "WITHDRAWAL_UNAVAILABLE"
     | "CLAIM_REVIEW_UNAVAILABLE"
-    | "ANNOTATION_MODERATION_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
+    | "ANNOTATION_MODERATION_UNAVAILABLE"
+    | "TRENDING_BOOST_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
 ): ModerationApiError {
   if (!isRecord(error)) return new ModerationApiError(unavailable, 503);
   const code = typeof error.code === "string" ? error.code : "";
@@ -602,7 +604,8 @@ export function moderationErrorResponse(
   fallback:
     | "WITHDRAWAL_UNAVAILABLE"
     | "CLAIM_REVIEW_UNAVAILABLE"
-    | "ANNOTATION_MODERATION_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
+    | "ANNOTATION_MODERATION_UNAVAILABLE"
+    | "TRENDING_BOOST_UNAVAILABLE" = "WITHDRAWAL_UNAVAILABLE",
 ): Response {
   const bounded = error instanceof ModerationApiError
     ? error

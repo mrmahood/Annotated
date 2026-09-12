@@ -229,6 +229,8 @@ test("ops route is gated with notFound and is not linked from public navigation"
   assert.match(consoleSource, /ANNOTATION_HIDE_CONFIRMATION/);
   assert.match(consoleSource, /ANNOTATION_UNHIDE_CONFIRMATION/);
   assert.match(consoleSource, /ANNOTATION_REMOVE_CONFIRMATION/);
+  assert.match(consoleSource, /TRENDING_BOOST_CONFIRMATION/);
+  assert.match(consoleSource, /Set boost/);
   assert.match(consoleSource, /Authorization/);
   assert.doesNotMatch(consoleSource + page, /SUPABASE_SERVICE_ROLE_KEY|createServiceClient/);
   assert.match(routes, /"ops"/);
