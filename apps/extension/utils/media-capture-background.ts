@@ -28,6 +28,7 @@ import {
   raceTabCaptureStreamId,
   shouldReuseReservedTabCaptureStream,
   tabCaptureStreamIdTimeoutError,
+  isTabCaptureStreamId,
   sourceIdentityMatchesUrl,
   usesMainWorldCapture,
   type CaptureErrorSnapshot,
@@ -377,7 +378,10 @@ export function installMediaCapture(
     }
   }
 
-  async function begin(request: CaptureStartRequest): Promise<CaptureStartResponse> {
+  async function begin(
+    request: CaptureStartRequest,
+    callerStreamId?: string,
+  ): Promise<CaptureStartResponse> {
     await reconcileActiveCapture();
     if (active) return { ok: false, snapshot: failure('busy', 'Another media capture is already active.', active.captureId) };
     const captureId = request.captureId;
@@ -399,20 +403,23 @@ export function installMediaCapture(
         emit(snapshot, request.operation);
         return { ok: false, snapshot };
       }
-      // Chrome gates getMediaStreamId like activeTab. Take a fresh
-      // toolbar-reserved ID or obtain one before prepare/offscreen so the
-      // grant check is not buried after scripting. A reserved ID older than
-      // the freshness window is dropped: Chrome expires unused stream IDs,
-      // and Recapture already proves a later getMediaStreamId still works
-      // under the toolbar invoke. Re-acquire here so first Publish after
-      // commentary prep does not require a manual Recapture.
-      const streamId = await takeReservedTabCaptureStreamId(
-        request.tabId,
-        request.source.pageUrl,
-      ) ?? await raceTabCaptureStreamId(
-        chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
-        activeStreamIdTimeoutMs,
-      );
+      // Chrome gates getMediaStreamId like activeTab. Prefer a stream ID
+      // minted in the side-panel Publish/Recapture click turn — toolbar
+      // invoke does not survive same-tab navigation (YouTube → Apple
+      // Podcasts). Otherwise reuse a fresh same-page toolbar reserve, or
+      // re-acquire under a still-valid activeTab grant before prepare.
+      if (isTabCaptureStreamId(callerStreamId)) {
+        invalidateReservedTabCaptureStream();
+      }
+      const streamId = isTabCaptureStreamId(callerStreamId)
+        ? callerStreamId
+        : await takeReservedTabCaptureStreamId(
+          request.tabId,
+          request.source.pageUrl,
+        ) ?? await raceTabCaptureStreamId(
+          chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
+          activeStreamIdTimeoutMs,
+        );
       if (consumeCancelledCaptureId(captureId) || !isCurrentCaptureId(liveCaptureId(), captureId)) {
         await clearActiveIfCurrent(captureId);
         const snapshot = {
@@ -502,7 +509,7 @@ export function installMediaCapture(
 
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
     if (isMediaCaptureStartMessage(message)) {
-      void begin(message.request).then(sendResponse, (error: unknown) => {
+      void begin(message.request, message.streamId).then(sendResponse, (error: unknown) => {
         sendResponse({
           ok: false,
           snapshot: mapTabCaptureStartFailure(error, message.request.captureId),

@@ -226,6 +226,12 @@ export type ReservedTabCaptureStreamIdentity = {
   reservedAt: number;
   pageUrl?: string;
 };
+export type AcquiredTabCaptureStream = ReservedTabCaptureStreamIdentity & {
+  streamId: string;
+};
+export type TabCaptureApi = {
+  getMediaStreamId: (options: { targetTabId: number }) => Promise<string>;
+};
 
 export function isTabCaptureInvocationError(value: string): boolean {
   const text = value.toLowerCase();
@@ -272,6 +278,66 @@ export function shouldReuseReservedTabCaptureStream(
 ): boolean {
   return reservedTabCaptureStreamIsFresh(reserved, tabId, now, maxAgeMs) &&
     reservedTabCaptureStreamMatchesPage(reserved, tabId, pageUrl, now);
+}
+
+export function isTabCaptureStreamId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 2_048 &&
+    !/\s/.test(value);
+}
+
+export function beginTabCaptureStreamIdFromUserGesture(
+  tabCapture: TabCaptureApi | undefined,
+  tabId: number | undefined,
+  pageUrl?: string,
+): Promise<AcquiredTabCaptureStream | null> {
+  if (!tabCapture || !Number.isInteger(tabId) || (tabId as number) < 0) {
+    return Promise.resolve(null);
+  }
+  // Start getMediaStreamId in this turn. Side-panel Publish/Recapture is the
+  // user gesture after same-tab navigation; the service worker cannot mint an
+  // ID for a page that was never toolbar-invoked.
+  const pending = tabCapture.getMediaStreamId({ targetTabId: tabId as number });
+  return settleAcquiredTabCaptureStream(pending, tabId as number, pageUrl);
+}
+
+async function settleAcquiredTabCaptureStream(
+  pending: Promise<string>,
+  tabId: number,
+  pageUrl?: string,
+): Promise<AcquiredTabCaptureStream | null> {
+  try {
+    const streamId = await raceTabCaptureStreamId(pending);
+    if (!isTabCaptureStreamId(streamId)) return null;
+    return { tabId, streamId, reservedAt: Date.now(), pageUrl };
+  } catch {
+    return null;
+  }
+}
+
+export function usableCallerTabCaptureStreamId(
+  acquired: AcquiredTabCaptureStream | null | undefined,
+  tabId: number,
+  pageUrl: string | undefined,
+  now = Date.now(),
+  maxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+): string | null {
+  if (!acquired || !isTabCaptureStreamId(acquired.streamId)) return null;
+  return shouldReuseReservedTabCaptureStream(acquired, tabId, pageUrl, now, maxAgeMs)
+    ? acquired.streamId
+    : null;
+}
+
+export async function resolvePanelTabCaptureStreamId(
+  tabCapture: TabCaptureApi | undefined,
+  tabId: number,
+  pageUrl: string | undefined,
+  acquired?: AcquiredTabCaptureStream | null,
+  now = Date.now(),
+): Promise<string | null> {
+  const fresh = usableCallerTabCaptureStreamId(acquired, tabId, pageUrl, now);
+  if (fresh) return fresh;
+  const retry = await beginTabCaptureStreamIdFromUserGesture(tabCapture, tabId, pageUrl);
+  return usableCallerTabCaptureStreamId(retry, tabId, pageUrl);
 }
 
 export function tabCaptureStreamIdTimeoutError(): Error {
@@ -528,9 +594,11 @@ export function isCaptureStartRequest(value: unknown): value is CaptureStartRequ
 }
 export function isMediaCaptureStartMessage(value: unknown): value is {
   target: 'background'; type: typeof MEDIA_CAPTURE_START; request: CaptureStartRequest;
+  streamId?: string;
 } {
   return isRecord(value) && value.target === 'background' &&
-    value.type === MEDIA_CAPTURE_START && isCaptureStartRequest(value.request);
+    value.type === MEDIA_CAPTURE_START && isCaptureStartRequest(value.request) &&
+    (value.streamId === undefined || isTabCaptureStreamId(value.streamId));
 }
 export function isMediaCaptureCancelMessage(value: unknown): value is {
   target: 'background'; type: typeof MEDIA_CAPTURE_CANCEL;

@@ -38,6 +38,10 @@ import {
   shouldReplaceHostedCaptureSnapshot,
   shouldReuseReservedTabCaptureStream,
   sourceIdentityMatchesUrl,
+  beginTabCaptureStreamIdFromUserGesture,
+  isTabCaptureStreamId,
+  resolvePanelTabCaptureStreamId,
+  usableCallerTabCaptureStreamId,
   userFacingCaptureMessage,
 } from './media-capture.ts';
 import {
@@ -515,6 +519,88 @@ test('a stale toolbar-reserved stream ID is dropped so first Publish re-acquires
   assert.equal(laterStreamCalls, 1);
 });
 
+test('panel-acquired stream IDs stay usable only while fresh and bound to that page', () => {
+  const pageUrl = 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789';
+  const acquired = { tabId: 42, streamId: 'panel-stream', reservedAt: 1_000, pageUrl };
+  assert.equal(isTabCaptureStreamId('panel-stream'), true);
+  assert.equal(isTabCaptureStreamId(''), false);
+  assert.equal(isTabCaptureStreamId('has space'), false);
+  assert.equal(usableCallerTabCaptureStreamId(acquired, 42, pageUrl, 1_000 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), 'panel-stream');
+  assert.equal(usableCallerTabCaptureStreamId(acquired, 42, pageUrl, 1_001 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), null);
+  assert.equal(usableCallerTabCaptureStreamId(acquired, 42, source.pageUrl, 1_100), null);
+  assert.equal(usableCallerTabCaptureStreamId(acquired, 7, pageUrl, 1_100), null);
+});
+
+test('Publish click starts getMediaStreamId before any await settles', async () => {
+  const order = [];
+  const tabCapture = {
+    async getMediaStreamId() {
+      order.push('stream');
+      return 'panel-stream';
+    },
+  };
+  const pending = beginTabCaptureStreamIdFromUserGesture(tabCapture, 42, applePodcastsRequest().source.pageUrl);
+  order.push('started');
+  const acquired = await pending;
+  assert.deepEqual(order, ['stream', 'started']);
+  assert.equal(acquired?.streamId, 'panel-stream');
+  assert.equal(acquired?.tabId, 42);
+});
+
+test('a caller stream ID from Publish is used after YouTube-to-Apple-Podcasts navigation', async () => {
+  const captureRequest = applePodcastsRequest();
+  let laterStreamCalls = 0;
+  const startedStreamIds = [];
+  const { fakeChrome, getOnMessage } = captureChromeForHang({
+    pageUrl: captureRequest.source.pageUrl,
+    sourceKind: 'audio',
+  });
+  const sendMessage = fakeChrome.runtime.sendMessage;
+  fakeChrome.runtime.sendMessage = async (message) => {
+    if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+      startedStreamIds.push(message.streamId);
+    }
+    return sendMessage(message);
+  };
+  installMediaCapture(fakeChrome);
+  await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, source.pageUrl);
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR);
+  };
+  const response = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_START,
+      request: captureRequest,
+      streamId: 'panel-after-navigate',
+    }, {}, resolve), true);
+  });
+  assert.equal(response.ok, true);
+  assert.equal(response.snapshot.status, 'capturing');
+  assert.equal(laterStreamCalls, 0);
+  assert.deepEqual(startedStreamIds, ['panel-after-navigate']);
+});
+
+test('resolvePanelTabCaptureStreamId retries when the click-turn ID is stale', async () => {
+  const pageUrl = applePodcastsRequest().source.pageUrl;
+  let calls = 0;
+  const tabCapture = {
+    async getMediaStreamId() {
+      calls += 1;
+      return `retry-${calls}`;
+    },
+  };
+  const stale = {
+    tabId: 42,
+    streamId: 'expired',
+    reservedAt: Date.now() - RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS - 1,
+    pageUrl,
+  };
+  assert.equal(await resolvePanelTabCaptureStreamId(tabCapture, 42, pageUrl, stale), 'retry-1');
+  assert.equal(calls, 1);
+});
+
 test('a YouTube-reserved stream ID is not reused after the tab navigates to Apple Podcasts', async () => {
   const captureRequest = applePodcastsRequest();
   let laterStreamCalls = 0;
@@ -786,6 +872,12 @@ test('runtime request validation requires every explicit production field', () =
   assert.equal(isMediaCaptureStartMessage({
     target: 'background', type: MEDIA_CAPTURE_START, request,
   }), true);
+  assert.equal(isMediaCaptureStartMessage({
+    target: 'background', type: MEDIA_CAPTURE_START, request, streamId: 'panel-stream',
+  }), true);
+  assert.equal(isMediaCaptureStartMessage({
+    target: 'background', type: MEDIA_CAPTURE_START, request, streamId: '',
+  }), false);
   assert.equal(isMediaCaptureCancelMessage({
     target: 'background', type: 'annotated.mediaCapture.cancel.v1',
     captureId: request.captureId, operation,
@@ -1349,6 +1441,8 @@ test('production manifest and capture source keep the required security shape', 
     /shouldReuseReservedTabCaptureStream/,
   );
   assert.match(beginBody, /request\.source\.pageUrl/);
+  assert.match(beginBody, /isTabCaptureStreamId\(callerStreamId\)/);
+  assert.ok(beginBody.indexOf('isTabCaptureStreamId(callerStreamId)') < beginBody.indexOf('takeReservedTabCaptureStreamId'));
   assert.match(beginBody, /validateAndPrepare\(captureId, request\)/);
   assert.match(serviceWorker, /openPanelOnActionClick: false/);
   const clickBody = serviceWorker.slice(serviceWorker.indexOf('chrome.action.onClicked'));
@@ -1356,6 +1450,9 @@ test('production manifest and capture source keep the required security shape', 
   assert.ok(clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke') < clickBody.indexOf('followBrowsingTab'));
   const panel = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   assert.match(panel, /userFacingCaptureMessage\(mediaCaptureState\)/);
+  assert.match(panel, /beginTabCaptureStreamIdFromUserGesture/);
+  assert.match(panel, /resolvePanelTabCaptureStreamId/);
+  assert.match(panel, /beginPublishTabCaptureStreamId/);
   assert.match(panel, /raceHostedCaptureStart/);
   assert.match(panel, /raceHostedCaptureCancel/);
   assert.match(panel, /mapTabCaptureStartFailure/);

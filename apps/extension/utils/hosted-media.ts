@@ -1,10 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  createPostedConfirmation,
+  createPostedKindFromMediaType,
+  type CreatePostedConfirmation,
+} from './create-posted.ts';
+import {
   canClearHostedAttentionWithoutLiveCancel,
   isMediaUuid,
   type CaptureSnapshot,
   type HostedMediaOperation,
 } from './media-capture.ts';
+
+export const HOSTED_MEDIA_OWNER_STATUS_POLL_MS = 4_000;
 
 export const HOSTED_MEDIA_SESSION_KEY = 'annotated.hostedMedia.operation.v1';
 
@@ -136,7 +143,12 @@ export function presentHostedMediaSnapshot(snapshot: CaptureSnapshot): CaptureSn
 
 export type HostedMediaReconciliation =
   | { action: 'clear' }
+  | { action: 'posted'; confirmation: CreatePostedConfirmation }
   | { action: 'show'; snapshot: CaptureSnapshot };
+
+export function shouldPollHostedOwnerStatus(snapshot: CaptureSnapshot): boolean {
+  return snapshot.status === 'processing' || snapshot.status === 'verifying-upload';
+}
 
 function recoveryError(
   code: 'completion-failed' | 'recapture-required' | 'raw-capture-unavailable',
@@ -160,16 +172,21 @@ export function reconcileHostedMediaState(
       'The hosted-media server status does not match this saved operation. Cancel the draft before trying again.',
     );
   }
-  if (owned.processingStatus === 'removed' || owned.processingStatus === 'ready') {
+  if (owned.processingStatus === 'removed') {
     return { action: 'clear' };
   }
+  if (owned.processingStatus === 'ready') {
+    return {
+      action: 'posted',
+      confirmation: createPostedConfirmation({
+        annotationId: owned.annotationId,
+        kind: createPostedKindFromMediaType(owned.mediaType),
+        creatorHandle: owned.creatorHandle,
+        annotationSlug: owned.annotationSlug,
+      }),
+    };
+  }
   if (owned.processingStatus === 'processing') {
-    if (owned.processingStage !== 'queued') {
-      return recoveryError(
-        'completion-failed',
-        'The upload is not in the required queued processing state. Refresh the draft before trying again.',
-      );
-    }
     const captureId = live && 'captureId' in live && live.captureId ? live.captureId : 'restored';
     return {
       action: 'show',
@@ -189,6 +206,13 @@ export function reconcileHostedMediaState(
     return { action: 'show', snapshot: live };
   }
   if (owned.processingStatus === 'uploading') {
+    if (liveMatches && live && (
+      live.status === 'verifying-upload' ||
+      live.status === 'uploading' ||
+      live.status === 'waiting-to-upload'
+    )) {
+      return { action: 'show', snapshot: live };
+    }
     return recoveryError(
       'raw-capture-unavailable',
       'The raw clip is no longer available after Chrome restarted. Cancel this draft, then create the clip again.',

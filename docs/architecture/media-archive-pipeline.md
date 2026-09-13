@@ -560,18 +560,20 @@ panel:
 2. Extension calls a media-begin endpoint/RPC with its bearer token. The
    user-context RPC normalizes source identity and atomically creates source,
    draft annotation, target, slug, and `capture_pending` media row.
-3. Background obtains the tab-capture stream ID as early as possible after the
-   user-driven start. A same-tab ID reserved from the toolbar invoke is reused
-   only while it is still fresh and still bound to that page URL. After the
-   freshness window (or a navigation), Publish re-acquires `getMediaStreamId`
-   under the still-valid activeTab grant instead of handing Chrome an expired
-   ID—first Publish after commentary prep must not require Recapture. Stream-ID
-   acquisition, page prepare, and offscreen start are bounded; the side panel
-   also fail-closes within a few seconds. An activeTab / invocation failure
-   surfaces the toolbar Recapture copy and must not leave Create on
-   “Preparing capture…”. Then it revalidates the connected top-level tab and
-   range, samples start geometry, seeks/pauses the player, creates the
-   offscreen document, and starts the recorder.
+3. The side-panel Publish/Recapture click starts `getMediaStreamId` in that
+   user-gesture turn and passes a fresh ID to background. A toolbar invoke does
+   not survive same-tab navigation (YouTube → Apple Podcasts); the service
+   worker cannot mint an ID for a page that was never invoked. A same-tab ID
+   reserved from the toolbar invoke is reused only while it is still fresh and
+   still bound to that page URL. After the freshness window on the same page,
+   Publish re-acquires `getMediaStreamId` under the still-valid activeTab grant
+   instead of handing Chrome an expired ID—first Publish after commentary prep
+   must not require Recapture. Stream-ID acquisition, page prepare, and
+   offscreen start are bounded; the side panel also fail-closes within a few
+   seconds. An activeTab / invocation failure surfaces the toolbar Recapture
+   copy and must not leave Create on “Preparing capture…”. Then it revalidates
+   the connected top-level tab and range, samples start geometry, seeks/pauses
+   the player, creates the offscreen document, and starts the recorder.
 4. Background starts page playback and acknowledges it to offscreen. Offscreen
    measures the recorder lead-in on its own clock, runs the requested-duration
    timer from that acknowledgement, records with audible loopback, and owns the
@@ -580,7 +582,13 @@ panel:
    Blob directly to the private bucket with upload progress, and calls upload
    completion. The server validates the actual object before queuing work.
 6. Background/offscreen release tracks, AudioContext, timers, and Blob URLs.
-   Side panel watches sanitized status and opens the annotation when `ready`.
+   Side panel polls owner status while upload/worker run and keeps honest
+   processing copy. It does not infer Posted from local recorder completion.
+   When owner status is `ready`, Create flips to a shared Posted confirmation
+   with a green check, a link to the configured web detail page
+   (`/{handle}/{slug}`, no `@`), and Create another. Failure stays on the
+   existing Recapture / Capture-needs-attention paths. Article text publish
+   uses the same Posted chrome immediately after the RPC succeeds.
 
 Add only `tabCapture` and `offscreen` to current extension permissions and raise
 the Chrome minimum to the spike-tested requirement. Retain `activeTab` and

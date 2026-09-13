@@ -11,6 +11,7 @@ import {
   parseOwnedHostedMediaStatus,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
+  shouldPollHostedOwnerStatus,
   shouldShowCreatePublishError,
 } from './hosted-media.ts';
 
@@ -66,6 +67,11 @@ test('Recapture and capture start clear Create publish errors before the next at
   const recapture = app.slice(app.indexOf('const recaptureHostedMedia'));
   assert.ok(recapture.indexOf("setYoutubePublishState({ status: 'idle' })") < recapture.indexOf('runSelectedPlayerAction'));
   assert.ok(recapture.indexOf("setAudioPublishState({ status: 'idle' })") < recapture.indexOf('runSelectedPlayerAction'));
+  assert.ok(recapture.indexOf('beginPublishTabCaptureStreamId') < recapture.indexOf('runSelectedPlayerAction'));
+  const publishAudio = app.slice(app.indexOf('const publishAudioClip'));
+  assert.ok(publishAudio.indexOf('beginPublishTabCaptureStreamId') < publishAudio.indexOf('runSelectedPlayerAction'));
+  const publishYoutube = app.slice(app.indexOf('const publishYoutubeClip'));
+  assert.ok(publishYoutube.indexOf('beginPublishTabCaptureStreamId') < publishYoutube.indexOf('runSelectedPlayerAction'));
   const start = app.slice(app.indexOf('const startHostedCapture'));
   assert.ok(start.indexOf("setYoutubePublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
   assert.ok(start.indexOf("setAudioPublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
@@ -225,23 +231,67 @@ test('completion success is not Processing while owner status remains capture_pe
   assert.notEqual(result.snapshot.status, 'processing');
 });
 
-test('only exact authoritative processing/queued status produces Processing UI', () => {
+test('authoritative processing status keeps Processing UI for any worker stage', () => {
   for (const [status, stage] of [
-    ['capture_pending', null], ['uploading', null], ['processing', null],
-    ['processing', 'probing'], ['failed', null],
+    ['capture_pending', null], ['uploading', null], ['failed', null],
   ]) {
     const result = reconcileHostedMediaState(session, ownedStatus(status, stage), null, null);
     assert.equal(result.action, 'show');
     assert.notEqual(result.snapshot.status, 'processing', `${status}/${stage} must not show Processing`);
   }
-  const queued = reconcileHostedMediaState(session, ownedStatus('processing', 'queued'), null, null);
-  assert.equal(queued.action, 'show');
-  assert.deepEqual(queued.snapshot, {
+  for (const stage of ['queued', 'probing', null]) {
+    const processing = reconcileHostedMediaState(session, ownedStatus('processing', stage), null, null);
+    assert.equal(processing.action, 'show');
+    assert.deepEqual(processing.snapshot, {
+      status: 'processing',
+      captureId: 'restored',
+      annotationId: operation.annotationId,
+      mediaId: operation.mediaId,
+    });
+  }
+});
+
+test('ready owner status becomes Posted with a handle/slug detail path', () => {
+  const result = reconcileHostedMediaState(session, ownedStatus('ready', 'published'), null, null);
+  assert.equal(result.action, 'posted');
+  assert.deepEqual(result.confirmation, {
+    annotationId: operation.annotationId,
+    kind: 'video',
+    publicPath: '/creator/clip-11111111',
+  });
+  const removed = reconcileHostedMediaState(session, ownedStatus('removed'), null, null);
+  assert.equal(removed.action, 'clear');
+});
+
+test('live verifying-upload is kept while owner status is still uploading', () => {
+  const live = {
+    status: 'verifying-upload',
+    captureId: 'capture-current',
+    annotationId: operation.annotationId,
+    mediaId: operation.mediaId,
+  };
+  const result = reconcileHostedMediaState(session, ownedStatus('uploading'), live, operation);
+  assert.equal(result.action, 'show');
+  assert.deepEqual(result.snapshot, live);
+});
+
+test('Processing and verifying-upload snapshots keep polling owner status', () => {
+  assert.equal(shouldPollHostedOwnerStatus({
     status: 'processing',
     captureId: 'restored',
     annotationId: operation.annotationId,
     mediaId: operation.mediaId,
-  });
+  }), true);
+  assert.equal(shouldPollHostedOwnerStatus({
+    status: 'verifying-upload',
+    captureId: 'capture-current',
+    annotationId: operation.annotationId,
+    mediaId: operation.mediaId,
+  }), true);
+  assert.equal(shouldPollHostedOwnerStatus({ status: 'idle' }), false);
+  assert.equal(shouldPollHostedOwnerStatus({
+    status: 'error', captureId: null, code: 'recapture-required', message: 'Recapture',
+  }), false);
 });
 
 test('stale live snapshots cannot override the current authoritative operation', () => {
@@ -357,6 +407,12 @@ test('side-panel production wiring gates Processing and persists only recovery i
   assert.match(app, /adoptActiveTabContextFromLiveTab\(context, freshTab\)/);
   assert.match(app, /if \(!activeCaptureIdRef\.current\) activeCaptureIdRef\.current = captureId;/);
   assert.match(app, /The raw clip is no longer available\. Recapture or cancel this draft\./);
+  assert.match(app, /applyHostedReconciliation\(/);
+  assert.match(app, /shouldPollHostedOwnerStatus\(mediaCaptureState\)/);
+  assert.match(app, /HOSTED_MEDIA_OWNER_STATUS_POLL_MS/);
+  assert.match(app, /<CreatePostedPanel/);
+  assert.match(app, /createAnotherAnnotation/);
+  assert.doesNotMatch(app, /getPostPublishNavigation/);
   const restore = app.slice(app.indexOf('const result = reconcileHostedMediaState('));
   const restoreCatch = restore.slice(0, restore.indexOf('useEffect(() => {', restore.indexOf('.catch(() => {')));
   assert.ok(restoreCatch.includes("if (!current || cancellingHostedMediaRef.current) return;"));
