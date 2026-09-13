@@ -8,6 +8,7 @@ import {
   resolveAppearanceTheme,
 } from "@annotated/shared/appearance";
 import { AppearanceRuntime } from "./appearance-control";
+import { SiteFooter } from "./site-footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -51,7 +52,8 @@ export default async function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <AppearanceRuntime />
-        {children}
+        <div className="site-app">{children}</div>
+        <SiteFooter />
       </body>
     </html>
   );

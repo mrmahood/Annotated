@@ -18,7 +18,14 @@ export type PublicAnnotationRoute = {
 
 const CREATOR_HANDLE_PATTERN = /^[a-z0-9_-]{3,30}$/;
 const ANNOTATION_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESERVED_ROOT_HANDLES = new Set(['api', 'auth', '_next']);
+const RESERVED_ROOT_HANDLES = new Set([
+  'api',
+  'auth',
+  '_next',
+  'privacy',
+  'terms',
+  'legal',
+]);
 
 export type AnnotationQueryPlan = {
   normalizedUrl?: string;

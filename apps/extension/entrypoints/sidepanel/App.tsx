@@ -3763,6 +3763,8 @@ function App() {
   const getPublicUrl = (path: string) => {
     try { return new URL(path, getWebAppOrigin()).href; } catch { return null; }
   };
+  const privacyUrl = getPublicUrl('/privacy');
+  const termsUrl = getPublicUrl('/terms');
   const isRefreshing = sourceState.status === 'refreshing';
   const isCapturing = captureState.status === 'capturing';
   const captured = captureState.status === 'captured' ? captureState.data : null;
@@ -4052,6 +4054,12 @@ function App() {
           {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span></div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="text-button danger-text" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button>{supabase && <BookmarkCollection supabase={supabase} cache={socialCacheRef.current} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} />}</>}
           <AppearanceControl />
           <BrandLockup />
+          {privacyUrl && termsUrl ? (
+            <nav className="account-legal" aria-label="Legal">
+              <a href={privacyUrl} target="_blank" rel="noreferrer">Privacy</a>
+              <a href={termsUrl} target="_blank" rel="noreferrer">Terms</a>
+            </nav>
+          ) : null}
         </section></div>
       )}
 
