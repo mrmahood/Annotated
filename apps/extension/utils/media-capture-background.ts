@@ -514,6 +514,9 @@ export function installMediaCapture(
       void (async () => {
         await restoreActive;
         rememberCancelledCaptureId(message.captureId);
+        if (active && !await hasOffscreenDocument()) {
+          await clearActiveIfCurrent(active.captureId);
+        }
         const capture = active;
         const sameOperation = Boolean(
           capture && capture.request.operation.annotationId === message.operation.annotationId &&
@@ -522,14 +525,8 @@ export function installMediaCapture(
         const sameCapture = message.captureId === null || message.captureId === capture?.captureId;
         if (!capture) {
           invalidateReservedTabCaptureStream();
-          const preparingMatches = lastSnapshot.status === 'preparing' &&
-            (message.captureId === null || lastSnapshot.captureId === message.captureId);
-          if (preparingMatches) {
-            lastSnapshot = { status: 'idle' };
-            sendResponse({ ok: true, cancelled: true });
-            return;
-          }
-          sendResponse({ ok: true, cancelled: false });
+          lastSnapshot = { status: 'idle' };
+          sendResponse({ ok: true, cancelled: true });
           return;
         }
         if (!sameOperation || !sameCapture) {

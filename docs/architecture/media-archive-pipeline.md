@@ -597,7 +597,11 @@ Panel closure does not cancel committed work: background and offscreen continue
 capture/upload, and reopening restores status from session plus the server row.
 Explicit Cancel stops tracks, revokes the Blob URL, marks/removes the draft
 through a cleanup workflow, and preserves commentary until the user confirms
-discard. A source navigation or tab closure cancels capture safely.
+discard. After reopen or rebuild, a persisted Capture-needs-attention /
+Recapture recovery row with no live recorder must still be dismissable: Cancel
+clears local Create chrome even when owner status is already gone or background
+has only a ghost active capture. A source navigation or tab closure cancels
+capture safely.
 
 If connectivity drops after capture, keep the Blob in the offscreen document,
 show “Waiting to upload—keep Chrome open,” and retry with bounded backoff. The MVP
