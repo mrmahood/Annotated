@@ -582,7 +582,13 @@ panel:
    Blob directly to the private bucket with upload progress, and calls upload
    completion. The server validates the actual object before queuing work.
 6. Background/offscreen release tracks, AudioContext, timers, and Blob URLs.
-   Side panel watches sanitized status and opens the annotation when `ready`.
+   Side panel polls owner status while upload/worker run and keeps honest
+   processing copy. It does not infer Posted from local recorder completion.
+   When owner status is `ready`, Create flips to a shared Posted confirmation
+   with a green check, a link to the configured web detail page
+   (`/{handle}/{slug}`, no `@`), and Create another. Failure stays on the
+   existing Recapture / Capture-needs-attention paths. Article text publish
+   uses the same Posted chrome immediately after the RPC succeeds.
 
 Add only `tabCapture` and `offscreen` to current extension permissions and raise
 the Chrome minimum to the spike-tested requirement. Retain `activeTab` and

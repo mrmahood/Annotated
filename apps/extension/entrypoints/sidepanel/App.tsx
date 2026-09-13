@@ -93,8 +93,15 @@ import {
   type AnnotationDraftLifecycleEvent,
 } from '../../utils/annotation-draft';
 import {
+  CREATE_POSTED_CONFIRMATION_STORAGE_KEY,
+  createPostedConfirmation,
+  isCreatePostedConfirmation,
+  persistCreatePostedConfirmation,
+  queryPostedAnnotationRoute,
+  type CreatePostedConfirmation,
+} from '../../utils/create-posted';
+import {
   getCurrentScreen,
-  getPostPublishNavigation,
   INITIAL_NAVIGATION,
   reduceNavigation,
   type TopLevelView,
@@ -225,6 +232,7 @@ import {
   type HostedMediaOperation,
 } from '../../utils/media-capture';
 import {
+  HOSTED_MEDIA_OWNER_STATUS_POLL_MS,
   HOSTED_MEDIA_SESSION_KEY,
   cancelOwnedHostedMedia,
   createPublishStateAfterHostedFailure,
@@ -235,7 +243,9 @@ import {
   isHostedMediaSession,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
+  shouldPollHostedOwnerStatus,
   shouldShowCreatePublishError,
+  type HostedMediaReconciliation,
   type HostedMediaSession,
 } from '../../utils/hosted-media';
 import { followActiveBrowsingTab } from '../../utils/surf-follow';
@@ -267,6 +277,7 @@ import {
   isCommentaryRecordingBusy,
 } from '../../utils/audio-commentary';
 import type { RecordedAudioInput } from '../../utils/annotation-publishing';
+import { CreatePostedPanel } from './create-posted';
 import { AudioRecorder, useAudioRecorder, type AudioRecorderController } from './audio-recorder';
 
 const RECONNECT_MESSAGE = 'Click the Annotated toolbar icon on this page to reconnect, then try again.';
@@ -667,6 +678,8 @@ function App() {
   const [mediaCaptureOperation, setMediaCaptureOperation] = useState<HostedMediaOperation | null>(null);
   const [isCancellingHostedMedia, setIsCancellingHostedMedia] = useState(false);
   const [hostedBeginMode, setHostedBeginMode] = useState<MediaCreateMode | null>(null);
+  const [postedConfirmation, setPostedConfirmation] =
+    useState<CreatePostedConfirmation | null>(null);
   const [pendingModeSwitch, setPendingModeSwitch] = useState<ModeSwitchIntent | null>(null);
   const [videoPlayers, setVideoPlayers] = useState<PlayerDiscoveryState>(EMPTY_PLAYER_DISCOVERY);
   const [audioPlayers, setAudioPlayers] = useState<PlayerDiscoveryState>(EMPTY_PLAYER_DISCOVERY);
@@ -936,6 +949,16 @@ function App() {
       ]);
     } catch { console.warn('Unable to clear the audio clip draft.'); }
   }, [audioCommentaryRecorder.discard, sourceState]);
+
+  const showCreatePosted = useCallback((confirmation: CreatePostedConfirmation) => {
+    setPostedConfirmation(confirmation);
+    void persistCreatePostedConfirmation(confirmation).catch(() => undefined);
+  }, []);
+
+  const dismissCreatePosted = useCallback(async () => {
+    setPostedConfirmation(null);
+    await persistCreatePostedConfirmation(null).catch(() => undefined);
+  }, []);
 
   const applyAuthenticatedUser = useCallback(async (user: User | null) => {
     const revision = ++authRevisionRef.current;
@@ -1240,11 +1263,17 @@ function App() {
         setPublishState({ status: 'idle' });
         return;
       }
+      const route = await queryPostedAnnotationRoute(supabase, annotationId).catch(() => null);
+      showCreatePosted(createPostedConfirmation({
+        annotationId,
+        kind: 'text',
+        creatorHandle: route?.creatorHandle ?? null,
+        annotationSlug: route?.annotationSlug ?? null,
+      }));
       await clearDraft('publish-succeeded');
       socialCacheRef.current.clear();
       dispatchNavigation({ type: 'select-root', view: 'context' });
-      const nextNavigation = getPostPublishNavigation(annotationId);
-      dispatchNavigation({ type: 'push', screen: nextNavigation.stack[1] as { kind: 'annotation'; annotationId: string } });
+      setPublishState({ status: 'idle' });
     } catch (error) {
       const currentPage = createPageRef.current;
       if (currentPage && isModeAsyncTokenCurrent(
@@ -1259,7 +1288,7 @@ function App() {
     } finally {
       publishInFlightRef.current = false;
     }
-  }, [authState.status, captureState, clearDraft, commentary, supabase, textCommentaryRecorder, title]);
+  }, [authState.status, captureState, clearDraft, commentary, showCreatePosted, supabase, textCommentaryRecorder, title]);
 
   const runSelectedPlayerAction = useCallback(async (
     token: PlayerActionToken,
@@ -1581,6 +1610,7 @@ function App() {
     hostedMediaSessionRef.current = session;
     setHostedMediaSession(session);
     setMediaCaptureOperation(operation);
+    void dismissCreatePosted();
     setYoutubePublishState({ status: 'idle' });
     setAudioPublishState({ status: 'idle' });
     const captureId = crypto.randomUUID();
@@ -1645,7 +1675,7 @@ function App() {
       }
       throw error;
     }
-  }, [supabase]);
+  }, [dismissCreatePosted, supabase]);
 
   const publishYoutubeClip = useCallback(async () => {
     if (
@@ -2203,6 +2233,46 @@ function App() {
       setIsCancellingHostedMedia(false);
     }
   }, [cancelHostedSessionOnServer, clearAudioDraft, clearVideoDraft, mediaCaptureState, supabase]);
+
+  const applyHostedReconciliation = useCallback((
+    result: HostedMediaReconciliation,
+    liveOperation?: HostedMediaOperation | null,
+  ) => {
+    if (result.action === 'posted') {
+      hostedMediaSessionRef.current = null;
+      activeCaptureIdRef.current = null;
+      setHostedMediaSession(null);
+      setMediaCaptureOperation(null);
+      setMediaCaptureState({ status: 'idle' });
+      void chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
+      showCreatePosted(result.confirmation);
+      return;
+    }
+    if (result.action === 'clear') {
+      hostedMediaSessionRef.current = null;
+      activeCaptureIdRef.current = null;
+      setHostedMediaSession(null);
+      setMediaCaptureOperation(null);
+      void chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
+      return;
+    }
+    setMediaCaptureOperation(
+      liveOperation ?? hostedMediaSessionRef.current?.operation ?? null,
+    );
+    if ('captureId' in result.snapshot && result.snapshot.captureId) {
+      activeCaptureIdRef.current = result.snapshot.captureId;
+    }
+    setMediaCaptureState((current) => (
+      shouldReplaceHostedCaptureSnapshot(current, result.snapshot) ? result.snapshot : current
+    ));
+  }, [showCreatePosted]);
+
+  const createAnotherAnnotation = useCallback(async () => {
+    const confirmation = postedConfirmation;
+    await dismissCreatePosted();
+    if (confirmation?.kind === 'video') await clearVideoDraft();
+    if (confirmation?.kind === 'audio') await clearAudioDraft();
+  }, [clearAudioDraft, clearVideoDraft, dismissCreatePosted, postedConfirmation]);
 
   const retryHostedUpload = useCallback(async () => {
     const session = hostedMediaSessionRef.current;
@@ -2802,6 +2872,7 @@ function App() {
         AUDIO_CLIP_DRAFT_STORAGE_KEY,
         SPOTIFY_CLIP_DRAFT_STORAGE_KEY,
         CREATE_MODE_SELECTION_STORAGE_KEY,
+        CREATE_POSTED_CONFIRMATION_STORAGE_KEY,
       ]),
       chrome.storage.local.get(HOSTED_MEDIA_SESSION_KEY),
     ])
@@ -2957,6 +3028,10 @@ function App() {
           activeCaptureIdRef.current = null;
           setHostedMediaSession(hostedSession);
           setMediaCaptureOperation(hostedSession.operation);
+        }
+        const storedPosted = stored[CREATE_POSTED_CONFIRMATION_STORAGE_KEY];
+        if (isCreatePostedConfirmation(storedPosted)) {
+          setPostedConfirmation(storedPosted);
         }
         setDraftRestorationStatus('ready');
       })
@@ -3167,21 +3242,7 @@ function App() {
         live?.snapshot ?? null,
         live?.operation ?? null,
       );
-      if (result.action === 'clear') {
-        hostedMediaSessionRef.current = null;
-        activeCaptureIdRef.current = null;
-        setHostedMediaSession(null);
-        setMediaCaptureOperation(null);
-        void chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
-      } else {
-        setMediaCaptureOperation(live?.operation ?? hostedMediaSession.operation);
-        if ('captureId' in result.snapshot && result.snapshot.captureId) {
-          activeCaptureIdRef.current = result.snapshot.captureId;
-        }
-        setMediaCaptureState((current) => (
-          shouldReplaceHostedCaptureSnapshot(current, result.snapshot) ? result.snapshot : current
-        ));
-      }
+      applyHostedReconciliation(result, live?.operation ?? hostedMediaSession.operation);
     }).catch(() => {
       if (!current || cancellingHostedMediaRef.current) return;
       setMediaCaptureState({
@@ -3192,47 +3253,42 @@ function App() {
       });
     });
     return () => { current = false; };
-  }, [authState.status, hostedMediaSession, supabase]);
+  }, [applyHostedReconciliation, authState.status, hostedMediaSession, supabase]);
 
   useEffect(() => {
     if (!supabase || authState.status !== 'signed-in' || !hostedMediaSession ||
-        mediaCaptureState.status !== 'verifying-upload') return;
+        !shouldPollHostedOwnerStatus(mediaCaptureState)) return;
     let current = true;
-    void getOwnedHostedMediaStatus(supabase, hostedMediaSession.operation.annotationId)
-      .then((owned) => {
-        if (!current || cancellingHostedMediaRef.current) return;
-        const result = reconcileHostedMediaState(
-          hostedMediaSession,
-          owned,
-          mediaCaptureState,
-          mediaCaptureOperation,
-        );
-        if (result.action === 'clear') {
-          hostedMediaSessionRef.current = null;
-          activeCaptureIdRef.current = null;
-          setHostedMediaSession(null);
-          setMediaCaptureOperation(null);
-          void chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
-        } else {
-          if ('captureId' in result.snapshot && result.snapshot.captureId) {
-            activeCaptureIdRef.current = result.snapshot.captureId;
+    const poll = () => {
+      void getOwnedHostedMediaStatus(supabase, hostedMediaSession.operation.annotationId)
+        .then((owned) => {
+          if (!current || cancellingHostedMediaRef.current) return;
+          applyHostedReconciliation(reconcileHostedMediaState(
+            hostedMediaSession,
+            owned,
+            mediaCaptureState,
+            mediaCaptureOperation,
+          ), mediaCaptureOperation);
+        })
+        .catch(() => {
+          if (!current || cancellingHostedMediaRef.current) return;
+          if (mediaCaptureState.status === 'verifying-upload') {
+            setMediaCaptureState({
+              status: 'error',
+              captureId: mediaCaptureState.captureId,
+              code: 'completion-failed',
+              message: 'The upload finished locally, but the owner-visible queued state could not be confirmed. Refresh or cancel this draft.',
+            });
           }
-          setMediaCaptureState((current) => (
-            shouldReplaceHostedCaptureSnapshot(current, result.snapshot) ? result.snapshot : current
-          ));
-        }
-      })
-      .catch(() => {
-        if (!current || cancellingHostedMediaRef.current) return;
-        setMediaCaptureState({
-          status: 'error',
-          captureId: mediaCaptureState.captureId,
-          code: 'completion-failed',
-          message: 'The upload finished locally, but the owner-visible queued state could not be confirmed. Refresh or cancel this draft.',
         });
-      });
-    return () => { current = false; };
-  }, [authState.status, hostedMediaSession, mediaCaptureOperation, mediaCaptureState, supabase]);
+    };
+    poll();
+    const timer = window.setInterval(poll, HOSTED_MEDIA_OWNER_STATUS_POLL_MS);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+    };
+  }, [applyHostedReconciliation, authState.status, hostedMediaSession, mediaCaptureOperation, mediaCaptureState, supabase]);
 
   useEffect(() => {
     const context = connectedContextRef.current;
@@ -3544,7 +3600,7 @@ function App() {
     audioCommentaryRecorder.state.status === 'recorded',
   );
   const canPublish = authState.status === 'signed-in' && captured && hasTextCommentary &&
-    publishState.status !== 'publishing' && !textCommentaryBusy;
+    publishState.status !== 'publishing' && !textCommentaryBusy && postedConfirmation === null;
   const contextUrl = sourceState.status === 'connected' ? sourceState.source.url : null;
   const youtubeSource = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
     ? sourceState.source
@@ -3711,23 +3767,27 @@ function App() {
     videoPlayerSelected && videoRangeEntry.allowsPublish &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
-    hostedMediaSession === null;
+    hostedMediaSession === null &&
+    postedConfirmation === null;
   const canPublishTikTok = authState.status === 'signed-in' && tiktokSource !== null &&
     videoPlayerSelected && videoRangeEntry.allowsPublish &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
-    hostedMediaSession === null;
+    hostedMediaSession === null &&
+    postedConfirmation === null;
   const canPublishWebpageVideo = authState.status === 'signed-in' && webVideoSource !== null &&
     videoPlayerSelected && videoRangeEntry.allowsPublish &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
-    hostedMediaSession === null;
+    hostedMediaSession === null &&
+    postedConfirmation === null;
   const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
     audioPlayerSelected && audioRangeEntry.allowsPublish &&
     (spotifySource !== null || audioDraftState.durationMs !== null) && audioClipRangeError === null &&
     hasAudioCommentary && !audioCommentaryBusy &&
     audioPublishState.status !== 'publishing' &&
     hostedMediaSession === null &&
+    postedConfirmation === null &&
     !(spotifySource && spotifySource.pageBlock === 'login');
   const hostedMediaPanel = hostedMediaSession ? (
     <div className="compact-state hosted-media-progress" role="status">
@@ -3766,6 +3826,12 @@ function App() {
       <button className="text-button" type="button" disabled={isCancellingHostedMedia}
         onClick={() => void cancelHostedMedia()}>Cancel draft</button>
     </div>
+  ) : postedConfirmation ? (
+    <CreatePostedPanel
+      confirmation={postedConfirmation}
+      publicUrl={getPublicUrl(postedConfirmation.publicPath)}
+      onCreateAnother={() => void createAnotherAnnotation()}
+    />
   ) : null;
   let contextCacheKey: string | null = null;
   if (contextUrl) {

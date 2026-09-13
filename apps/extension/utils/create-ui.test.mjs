@@ -83,6 +83,7 @@ test('processing copy describes queued work instead of a missing worker', async 
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /mediaCaptureState\.status === 'processing' && <span>Uploaded and queued\. Processing is in progress\.<\/span>/);
   assert.doesNotMatch(source, /until the media worker ships/);
+  assert.match(source, /<CreatePostedPanel/);
 });
 
 test('generic webpage video publishes through the article-backed hosted begin path', async () => {

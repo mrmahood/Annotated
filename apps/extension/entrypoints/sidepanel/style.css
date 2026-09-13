@@ -303,6 +303,9 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .audio-error .inline-error { margin: 0 0 8px; }
 .create-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .hosted-media-progress { margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-medium); background: var(--background-elevated); }
+.create-posted { justify-items: start; gap: 8px; }
+.create-posted-mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; color: var(--background); background: var(--success); font-size: 16px; font-weight: 700; line-height: 1; }
+.create-posted-link { color: var(--text-primary); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
 .mode-switch-dialog { width: min(360px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: auto; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-medium); color: var(--text-primary); background: var(--background-elevated); box-shadow: 0 16px 40px color-mix(in srgb, #000 45%, transparent); }
 .mode-switch-dialog::backdrop { background: rgba(0, 0, 0, .72); }
 .mode-switch-dialog h2 { margin: 7px 0 0; font-size: 16px; line-height: 1.3; }
