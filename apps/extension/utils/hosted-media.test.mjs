@@ -11,6 +11,7 @@ import {
   hostedForeignOrphanCreateReset,
   hostedMediaProcessingStageDetail,
   hostedMediaProgressCopy,
+  hostedPublishAbandonDecision,
   hostedSessionBlocksCreatePublish,
   hostedSessionMatchesConnectedUrl,
   HOSTED_FOREIGN_SOURCE_CANCEL_DETAIL,
@@ -18,8 +19,10 @@ import {
   parseOwnedHostedMediaStatus,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
+  shouldAbandonOrphanedHostedDraftForPublish,
   shouldAutoAbandonForeignHostedDraft,
   shouldOfferHostedRecapture,
+  shouldRollbackHostedDraftAfterStartFailure,
   shouldPollHostedOwnerStatus,
   shouldShowCreatePublishError,
 } from './hosted-media.ts';
@@ -420,7 +423,7 @@ test('YouTube→Apple Create auto-abandons an orphaned draft and never offers Re
   assert.equal(shouldAutoAbandonForeignHostedDraft(session, null, orphanedRecaptureSnapshot), false);
 
   assert.equal(hostedSessionBlocksCreatePublish(session, applePodcastsUrl, orphanedRecaptureSnapshot), false);
-  assert.equal(hostedSessionBlocksCreatePublish(session, session.sourceUrl, orphanedRecaptureSnapshot), true);
+  assert.equal(hostedSessionBlocksCreatePublish(session, session.sourceUrl, orphanedRecaptureSnapshot), false);
   assert.equal(hostedSessionBlocksCreatePublish(session, applePodcastsUrl, processingSnapshot), true);
   assert.equal(hostedSessionBlocksCreatePublish(null, applePodcastsUrl, orphanedRecaptureSnapshot), false);
 
@@ -448,9 +451,15 @@ test('Create rebinds YouTube→Apple without Recapture and publishes after auto-
   assert.match(app, /shouldOfferHostedRecapture\(hostedMediaSession, contextUrl, mediaCaptureState\)/);
   assert.match(app, /hostedSessionBlocksCreatePublish\(hostedMediaSession, contextUrl, mediaCaptureState\)/);
   assert.match(app, /hostedForeignOrphanCreateReset\(\)/);
-  assert.match(app, /abandonForeignOrphanedHostedDraft\(/);
+  assert.match(app, /abandonOrphanedHostedDraftForPublish\(/);
+  assert.match(app, /hostedPublishAbandonDecision\(/);
   assert.match(app, /void cancelHostedMedia\(undefined, hostedForeignOrphanCreateReset\(\)\)/);
   assert.match(app, /foreignAbandonAttemptKeyRef/);
+  assert.match(app, /foreignAbandonAttemptKeyRef\.current = null/);
+  assert.match(app, /rollbackFailedHostedCaptureStart\(/);
+  assert.match(app, /rollbackOnStartFailure: true/);
+  assert.match(app, /hostedSessionGenerationRef/);
+  assert.match(app, /shouldRollbackHostedDraftAfterStartFailure/);
   assert.doesNotMatch(app, /hostedMediaSession === null &&/);
 
   const recapture = app.slice(app.indexOf('const recaptureHostedMedia'));
@@ -458,6 +467,7 @@ test('Create rebinds YouTube→Apple without Recapture and publishes after auto-
     recapture.indexOf('shouldOfferHostedRecapture') <
       recapture.indexOf("setYoutubePublishState({ status: 'idle' })"),
   );
+  assert.doesNotMatch(recapture, /rollbackOnStartFailure: true/);
 
   for (const name of [
     'publishYoutubeClip',
@@ -467,14 +477,153 @@ test('Create rebinds YouTube→Apple without Recapture and publishes after auto-
     'publishAudioClip',
   ]) {
     const publish = app.slice(app.indexOf(`const ${name}`));
-    const streamId = publish.indexOf('beginPublishTabCaptureStreamId');
-    const abandon = publish.indexOf('abandonForeignOrphanedHostedDraft');
-    const begin = publish.search(/beginHosted(?:YouTube|TikTok|WebpageVideo|Spotify|Audio)/);
+    const nextFn = [
+      'publishTikTokClip',
+      'publishWebpageVideoClip',
+      'publishSpotifyClip',
+      'publishAudioClip',
+      'applyHostedReconciliation',
+    ][['publishYoutubeClip', 'publishTikTokClip', 'publishWebpageVideoClip', 'publishSpotifyClip', 'publishAudioClip'].indexOf(name)];
+    const body = nextFn ? publish.slice(0, publish.indexOf(`const ${nextFn}`)) : publish;
+    const streamId = body.indexOf('beginPublishTabCaptureStreamId');
+    const abandon = body.indexOf('abandonOrphanedHostedDraftForPublish');
+    const begin = body.search(/beginHosted(?:YouTube|TikTok|WebpageVideo|Spotify|Audio)/);
+    const rollback = body.indexOf('rollbackOnStartFailure: true');
     assert.ok(streamId >= 0, `${name} must mint a caller stream ID`);
-    assert.ok(abandon >= 0, `${name} must abandon a foreign orphan`);
+    assert.ok(abandon >= 0, `${name} must abandon an orphaned draft`);
     assert.ok(streamId < abandon, `${name} must mint the stream ID before abandon`);
     assert.ok(abandon < begin || begin < 0, `${name} must abandon before hosted begin`);
+    assert.ok(rollback >= 0, `${name} must roll back a failed begin/start`);
+    assert.ok(begin < rollback || begin < 0, `${name} must begin before start rollback option`);
   }
+});
+
+test('Publish abandons same-host capture_pending orphans and proceeds when nothing is left', () => {
+  assert.equal(
+    shouldAbandonOrphanedHostedDraftForPublish(session, applePodcastsUrl, orphanedRecaptureSnapshot),
+    true,
+  );
+  assert.equal(
+    shouldAbandonOrphanedHostedDraftForPublish(session, session.sourceUrl, orphanedRecaptureSnapshot),
+    true,
+  );
+  assert.equal(
+    shouldAbandonOrphanedHostedDraftForPublish(session, applePodcastsUrl, processingSnapshot),
+    false,
+  );
+  assert.equal(
+    shouldAbandonOrphanedHostedDraftForPublish(null, applePodcastsUrl, orphanedRecaptureSnapshot),
+    false,
+  );
+
+  assert.equal(
+    hostedPublishAbandonDecision(null, applePodcastsUrl, orphanedRecaptureSnapshot),
+    'proceed',
+  );
+  assert.equal(
+    hostedPublishAbandonDecision(session, applePodcastsUrl, orphanedRecaptureSnapshot),
+    'abandon',
+  );
+  assert.equal(
+    hostedPublishAbandonDecision(session, session.sourceUrl, orphanedRecaptureSnapshot),
+    'abandon',
+  );
+  assert.equal(
+    hostedPublishAbandonDecision(session, applePodcastsUrl, processingSnapshot),
+    'block',
+  );
+  assert.equal(
+    hostedPublishAbandonDecision(session, session.sourceUrl, {
+      status: 'capturing', captureId: 'capture-1',
+    }),
+    'block',
+  );
+  assert.equal(
+    hostedPublishAbandonDecision(session, applePodcastsUrl, {
+      status: 'uploading', captureId: 'capture-1', progress: 10,
+    }),
+    'block',
+  );
+});
+
+test('failed Apple begin/start rolls back capture_pending instead of offering Recapture', () => {
+  assert.equal(shouldRollbackHostedDraftAfterStartFailure({
+    status: 'error', captureId: 'cap-1', code: 'unexpected',
+    message: 'The connected media capture could not start.',
+  }), true);
+  assert.equal(shouldRollbackHostedDraftAfterStartFailure({
+    status: 'error', captureId: 'cap-1', code: 'tab-capture-denied',
+    message: 'Click the Annotated toolbar icon on this tab, then Recapture.',
+  }), true);
+  assert.equal(shouldRollbackHostedDraftAfterStartFailure({
+    status: 'error', captureId: null, code: 'recapture-required',
+    message: 'The saved draft has no live capture. Reconnect the original source and choose Recapture, or cancel the draft.',
+  }), true);
+  assert.equal(shouldRollbackHostedDraftAfterStartFailure({
+    status: 'cancelled', captureId: 'cap-1', code: 'unexpected',
+    message: 'Capture cancelled before start.',
+  }), true);
+  assert.equal(shouldRollbackHostedDraftAfterStartFailure({
+    status: 'error', captureId: 'cap-1', code: 'upload-failed', message: 'Upload failed.',
+  }), false);
+  assert.equal(shouldRollbackHostedDraftAfterStartFailure({
+    status: 'error', captureId: null, code: 'raw-capture-unavailable', message: 'Gone.',
+  }), false);
+  assert.equal(shouldRollbackHostedDraftAfterStartFailure({
+    status: 'capturing', captureId: 'cap-1',
+  }), false);
+
+  const appleSession = {
+    ...session,
+    sourceUrl: applePodcastsUrl,
+    mediaType: 'audio',
+  };
+  assert.equal(shouldOfferHostedRecapture(appleSession, applePodcastsUrl, orphanedRecaptureSnapshot), true);
+  assert.equal(shouldOfferHostedRecapture(session, applePodcastsUrl, orphanedRecaptureSnapshot), false);
+});
+
+test('YouTube in-flight tab-switch Cancel then Apple Publish stays a clean first capture', async () => {
+  const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
+  const cancel = app.slice(app.indexOf('const cancelHostedMedia'));
+  assert.match(cancel, /MEDIA_CAPTURE_CANCEL/);
+  assert.match(cancel, /hostedSessionGenerationRef\.current \+= 1/);
+  assert.match(cancel, /followActiveBrowsingTab\(chrome,/);
+  assert.match(cancel, /ignoreActiveCapture: createReset\.ignoreActiveCaptureHold/);
+  assert.ok(
+    cancel.indexOf('MEDIA_CAPTURE_CANCEL') < cancel.indexOf('cancelHostedSessionOnServer'),
+    'Cancel must release tabCapture/offscreen before the server draft',
+  );
+
+  const rollback = app.slice(app.indexOf('const rollbackFailedHostedCaptureStart'));
+  assert.match(rollback, /MEDIA_CAPTURE_CANCEL/);
+  assert.match(rollback, /cancelHostedSessionOnServer\(session\)/);
+  assert.match(rollback, /setMediaCaptureState\(\{ status: 'idle' \}\)/);
+  assert.doesNotMatch(rollback.slice(0, rollback.indexOf('const startHostedCapture')), /clearVideoDraft|clearAudioDraft/);
+
+  const start = app.slice(app.indexOf('const startHostedCapture'));
+  assert.match(start, /hostedSessionGenerationRef\.current !== sessionGeneration/);
+  assert.match(start, /rollbackOnStartFailure/);
+  assert.match(start, /rollbackFailedHostedCaptureStart\(session, captureId\)/);
+  assert.ok(
+    start.indexOf('chrome.storage.local.set') <
+      start.indexOf('hostedSessionGenerationRef.current !== sessionGeneration'),
+    'A cancelled start must not persist the draft after Cancel',
+  );
+
+  const audioPublish = app.slice(app.indexOf('const publishAudioClip'));
+  assert.match(audioPublish, /beginPublishTabCaptureStreamId/);
+  assert.match(audioPublish, /abandonOrphanedHostedDraftForPublish/);
+  assert.match(audioPublish, /rollbackOnStartFailure: true/);
+  assert.ok(
+    audioPublish.indexOf('beginPublishTabCaptureStreamId') <
+      audioPublish.indexOf('abandonOrphanedHostedDraftForPublish'),
+  );
+
+  const abandonEffect = app.slice(app.indexOf('if (foreignAbandonAttemptKeyRef.current === attemptKey)'));
+  assert.match(
+    abandonEffect,
+    /foreignAbandonAttemptKeyRef\.current = null/,
+  );
 });
 
 test('ready owner status becomes Posted with a handle/slug detail path', () => {

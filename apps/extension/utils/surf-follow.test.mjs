@@ -167,6 +167,45 @@ test('Refresh source can adopt a YouTube-to-Apple-Podcasts URL on the same tab',
   assert.equal(adoptActiveTabContextFromLiveTab(youtube, { title: 'Missing url' }), null);
 });
 
+test('YouTube in-flight tab switch to an already-open Apple tab stays held until Cancel', async () => {
+  const youtube = tab({
+    id: 17,
+    title: 'YouTube',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    active: false,
+  });
+  const apple = tab({
+    id: 44,
+    title: 'Classical Music Is in Crisis. Gustavo Dudamel Is Here to Save It.',
+    url: 'https://podcasts.apple.com/us/podcast/classical-music-is-in-crisis-gustavo-dudamel-is-here/id1200361736?i=1000720000',
+    active: true,
+    windowId: 2,
+  });
+  const chrome = fakeChrome({
+    context: context({
+      tabId: 17,
+      windowId: 1,
+      title: 'YouTube',
+      url: 'https://www.youtube.com/watch?v=abcdefghijk',
+    }),
+    capture: { captureId: 'cap-yt', request: { tabId: 17 } },
+    tabs: [youtube, apple],
+  });
+
+  assert.equal(await followBrowsingTab(chrome, apple, NOW), 'held');
+  assert.equal(chrome.store[ACTIVE_TAB_CONTEXT_KEY].tabId, 17);
+  assert.equal(await followActiveBrowsingTab(chrome, NOW + 5), 'held');
+  assert.equal(
+    await followActiveBrowsingTab(chrome, NOW + 10, { ignoreActiveCapture: true }),
+    'updated',
+  );
+  assert.equal(chrome.store[ACTIVE_TAB_CONTEXT_KEY].tabId, 44);
+  assert.match(
+    chrome.store[ACTIVE_TAB_CONTEXT_KEY].url,
+    /podcasts\.apple\.com/,
+  );
+});
+
 test('followActiveBrowsingTab rebinds after a cancelled capture hold', async () => {
   const podcast = tab({
     id: 44,

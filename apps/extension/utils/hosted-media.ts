@@ -176,13 +176,35 @@ export function shouldAutoAbandonForeignHostedDraft(
   return hostedDraftIsOrphanedAttention(snapshot);
 }
 
-export function hostedSessionBlocksCreatePublish(
+export function shouldAbandonOrphanedHostedDraftForPublish(
   session: HostedMediaSession | null,
   pageUrl: string | null | undefined,
   snapshot: CaptureSnapshot,
 ): boolean {
+  if (!session || !pageUrl) return false;
+  return hostedDraftIsOrphanedAttention(snapshot);
+}
+
+export type HostedPublishAbandonDecision = 'proceed' | 'abandon' | 'block';
+
+export function hostedPublishAbandonDecision(
+  session: HostedMediaSession | null,
+  pageUrl: string | null | undefined,
+  snapshot: CaptureSnapshot,
+): HostedPublishAbandonDecision {
+  if (!session) return 'proceed';
+  if (shouldAbandonOrphanedHostedDraftForPublish(session, pageUrl, snapshot)) return 'abandon';
+  if (hostedSessionBlocksCreatePublish(session, pageUrl, snapshot)) return 'block';
+  return 'proceed';
+}
+
+export function hostedSessionBlocksCreatePublish(
+  session: HostedMediaSession | null,
+  _pageUrl: string | null | undefined,
+  snapshot: CaptureSnapshot,
+): boolean {
   if (!session) return false;
-  return !shouldAutoAbandonForeignHostedDraft(session, pageUrl, snapshot);
+  return !hostedDraftIsOrphanedAttention(snapshot);
 }
 
 export function shouldOfferHostedRecapture(
@@ -195,6 +217,12 @@ export function shouldOfferHostedRecapture(
     return false;
   }
   return hostedSessionMatchesConnectedUrl(session, pageUrl);
+}
+
+export function shouldRollbackHostedDraftAfterStartFailure(snapshot: CaptureSnapshot): boolean {
+  if (snapshot.status === 'cancelled') return true;
+  if (snapshot.status !== 'error') return false;
+  return snapshot.code !== 'upload-failed' && snapshot.code !== 'raw-capture-unavailable';
 }
 
 export type HostedMediaProgressCopy = {
