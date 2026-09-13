@@ -614,8 +614,13 @@ state, and close the offscreen document so the next Publish on a new host
 Recapture. After reopen or rebuild, a persisted Capture-needs-attention /
 Recapture recovery row with no live recorder must still be dismissable: Cancel
 clears local Create chrome even when owner status is already gone or background
-has only a ghost active capture. A source navigation or tab closure cancels
-capture safely.
+has only a ghost active capture. A source navigation or tab closure must fully
+release the capture lease — reserved stream, live recorder, and leftover
+offscreen — not only mark the prior attempt cancelled. Same-tab host changes
+(YouTube → Apple Podcasts) otherwise leave Chrome tabCapture held, and the next
+Publish click cannot mint a fresh caller stream ID without a toolbar Recapture.
+If the user prepares a new clip on the current host while a prior draft is still
+queued, Create must say to cancel that in-progress clip first.
 
 If connectivity drops after capture, keep the Blob in the offscreen document,
 show “Waiting to upload—keep Chrome open,” and retry with bounded backoff. The MVP

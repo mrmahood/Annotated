@@ -9,6 +9,8 @@ import {
   hostedCancelCreateReset,
   hostedMediaProcessingStageDetail,
   hostedMediaProgressCopy,
+  hostedSessionMatchesConnectedUrl,
+  HOSTED_FOREIGN_SOURCE_CANCEL_DETAIL,
   isHostedMediaSession,
   parseOwnedHostedMediaStatus,
   presentHostedMediaSnapshot,
@@ -145,6 +147,8 @@ test('Cancel draft clears the prior source Create draft and rebinds the current 
 
   const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   const cancel = app.slice(app.indexOf('const cancelHostedMedia'));
+  assert.match(app, /hostedSessionMatchesConnectedUrl\(hostedMediaSession, contextUrl\)/);
+  assert.match(app, /foreignSource: !hostedSessionMatchesConnectedUrl/);
   assert.match(cancel, /hostedCancelCreateReset\(session\.mediaType\)/);
   assert.match(cancel, /if \(createReset\.clearVideoDraft\) await clearVideoDraft\(\)/);
   assert.match(cancel, /if \(createReset\.clearAudioDraft\) await clearAudioDraft\(\)/);
@@ -337,6 +341,26 @@ test('Create progress copy is stage-aware and keeps Posted for ready only', () =
   assert.equal(attention.title, 'Capture needs attention');
   assert.equal(attention.busy, false);
   assert.match(attention.detail, /Recapture/);
+  assert.equal(hostedSessionMatchesConnectedUrl(session, session.sourceUrl), true);
+  assert.equal(hostedSessionMatchesConnectedUrl(
+    session,
+    'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789',
+  ), false);
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: false,
+    foreignSource: true,
+    snapshot: {
+      status: 'processing',
+      captureId: 'restored',
+      annotationId: operation.annotationId,
+      mediaId: operation.mediaId,
+      processingStage: 'queued',
+    },
+  }), {
+    title: 'Uploaded and queued',
+    detail: HOSTED_FOREIGN_SOURCE_CANCEL_DETAIL,
+    busy: true,
+  });
   const ready = reconcileHostedMediaState(session, ownedStatus('ready', 'published'), null, null);
   assert.equal(ready.action, 'posted');
 });

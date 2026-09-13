@@ -29,6 +29,7 @@ import {
   shouldReuseReservedTabCaptureStream,
   tabCaptureStreamIdTimeoutError,
   isTabCaptureStreamId,
+  activeCaptureIsStaleForStart,
   sourceIdentityMatchesUrl,
   usesMainWorldCapture,
   type CaptureErrorSnapshot,
@@ -198,6 +199,7 @@ export function installMediaCapture(
   let lastSnapshot: CaptureSnapshot = { status: 'idle' };
   let creatingOffscreen: Promise<void> | null = null;
   let activePersistence: Promise<void> = Promise.resolve();
+  let leaseRelease: Promise<void> = Promise.resolve();
   const offscreenUrl = (chrome.runtime.getURL as (path: string) => string)(OFFSCREEN_URL);
   const restoreActive = chrome.storage.session.get(ACTIVE_CAPTURE_KEY).then((stored) => {
     const value = stored[ACTIVE_CAPTURE_KEY] as {
@@ -344,16 +346,38 @@ export function installMediaCapture(
     return true;
   }
 
-  async function releaseCaptureLease(options?: { cancelLive?: boolean }) {
-    invalidateReservedTabCaptureStream();
-    const capture = active;
-    if (capture && options?.cancelLive !== false) {
-      await cancelActive('unexpected', 'Capture cancelled by the user.');
-    } else if (!capture) {
-      await persistActive(null);
-    }
-    await closeOffscreenDocument(chrome);
-    lastSnapshot = { status: 'idle' };
+  async function releaseCaptureLease(options?: {
+    cancelLive?: boolean;
+    code?: CaptureFailureCode;
+    message?: string;
+  }) {
+    const run = async () => {
+      invalidateReservedTabCaptureStream();
+      const capture = active;
+      if (capture && options?.cancelLive !== false) {
+        await cancelActive(
+          options?.code ?? 'unexpected',
+          options?.message ?? 'Capture cancelled by the user.',
+        );
+      } else if (!capture) {
+        await persistActive(null);
+      }
+      await closeOffscreenDocument(chrome);
+      lastSnapshot = { status: 'idle' };
+    };
+    const next = leaseRelease.then(run, run);
+    leaseRelease = next.then(() => undefined, () => undefined);
+    await next;
+  }
+
+  async function releaseLeftoverOffscreenIfIdle() {
+    const run = async () => {
+      if (active) return;
+      if (await hasOffscreenDocument()) await closeOffscreenDocument(chrome);
+    };
+    const next = leaseRelease.then(run, run);
+    leaseRelease = next.then(() => undefined, () => undefined);
+    await next;
   }
 
   async function validateAndPrepare(captureId: string, request: CaptureStartRequest): Promise<PrepareCapturePageResult> {
@@ -403,8 +427,16 @@ export function installMediaCapture(
     request: CaptureStartRequest,
     callerStreamId?: string,
   ): Promise<CaptureStartResponse> {
+    await leaseRelease;
     await reconcileActiveCapture();
+    if (active && activeCaptureIsStaleForStart(active.request, request)) {
+      await releaseCaptureLease({
+        code: 'connected-source-changed',
+        message: 'The connected source changed during capture.',
+      });
+    }
     if (active) return { ok: false, snapshot: failure('busy', 'Another media capture is already active.', active.captureId) };
+    await releaseLeftoverOffscreenIfIdle();
     const captureId = request.captureId;
     const capture = { captureId, request };
     const preparing: CaptureSnapshot = { status: 'preparing', captureId };
@@ -557,6 +589,9 @@ export function installMediaCapture(
           return;
         }
         if (!sameOperation || !sameCapture) {
+          // Stale Cancel must not stop a newer live capture. Still drop a
+          // reserved ID that cannot belong to this newer start.
+          invalidateReservedTabCaptureStream();
           sendResponse({ ok: true, cancelled: false });
           return;
         }
@@ -659,13 +694,21 @@ export function installMediaCapture(
     if (active?.request.tabId === tabId) void cancelActive('connected-tab-closed', 'The connected tab closed during capture.');
   });
   chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-    if (reservedTabCaptureStream?.tabId === tabId && typeof changeInfo.url === 'string') {
+    if (typeof changeInfo.url !== 'string') return;
+    if (reservedTabCaptureStream?.tabId === tabId) {
       invalidateReservedTabCaptureStream();
     }
     const capture = active;
-    if (!capture || capture.request.tabId !== tabId || typeof changeInfo.url !== 'string') return;
-    if (!sourceIdentityMatchesUrl(capture.request.source, changeInfo.url)) {
-      void cancelActive('connected-source-changed', 'The connected source changed during capture.');
+    if (capture && capture.request.tabId === tabId &&
+        !sourceIdentityMatchesUrl(capture.request.source, changeInfo.url)) {
+      void releaseCaptureLease({
+        code: 'connected-source-changed',
+        message: 'The connected source changed during capture.',
+      });
+      return;
+    }
+    if (!capture || capture.request.tabId === tabId) {
+      void releaseLeftoverOffscreenIfIdle();
     }
   });
 }

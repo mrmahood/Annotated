@@ -127,6 +127,29 @@ export function hostedCancelClearsLocalAttention(snapshot: CaptureSnapshot): boo
   return canClearHostedAttentionWithoutLiveCancel(snapshot, false);
 }
 
+export const HOSTED_FOREIGN_SOURCE_CANCEL_DETAIL =
+  'Cancel the in-progress clip first to publish this page.';
+
+export function hostedSessionMatchesConnectedUrl(
+  session: HostedMediaSession,
+  pageUrl: string | null | undefined,
+): boolean {
+  if (!pageUrl) return false;
+  try {
+    const sessionUrl = new URL(session.sourceUrl);
+    const connected = new URL(pageUrl);
+    if (!['http:', 'https:'].includes(sessionUrl.protocol) ||
+        !['http:', 'https:'].includes(connected.protocol)) {
+      return false;
+    }
+    const sessionHost = sessionUrl.hostname.toLowerCase().replace(/^www\./, '');
+    const connectedHost = connected.hostname.toLowerCase().replace(/^www\./, '');
+    return sessionHost === connectedHost;
+  } catch {
+    return session.sourceUrl === pageUrl;
+  }
+}
+
 export type HostedMediaProgressCopy = {
   title: string;
   detail: string | null;
@@ -154,9 +177,16 @@ export function hostedMediaProcessingStageDetail(stage: string | null | undefine
 export function hostedMediaProgressCopy(input: {
   cancelling: boolean;
   snapshot: CaptureSnapshot;
+  foreignSource?: boolean;
 }): HostedMediaProgressCopy {
   if (input.cancelling) {
     return { title: 'Cancelling draft…', detail: null, busy: true };
+  }
+  if (input.foreignSource) {
+    return {
+      ...hostedMediaProgressCopy({ ...input, foreignSource: false }),
+      detail: HOSTED_FOREIGN_SOURCE_CANCEL_DETAIL,
+    };
   }
   const { snapshot } = input;
   if (snapshot.status === 'uploading') {
