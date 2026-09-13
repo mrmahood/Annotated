@@ -68,6 +68,8 @@ test('Recapture and capture start clear Create publish errors before the next at
   const start = app.slice(app.indexOf('const startHostedCapture'));
   assert.ok(start.indexOf("setYoutubePublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
   assert.ok(start.indexOf("setAudioPublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
+  assert.match(start, /raceHostedCaptureStart/);
+  assert.match(start, /mapTabCaptureStartFailure/);
   assert.match(app, /shouldShowCreatePublishError\(youtubePublishState\.status, hostedMediaSession\)/);
   assert.match(app, /shouldShowCreatePublishError\(audioPublishState\.status, hostedMediaSession\)/);
   assert.match(hosted, /shouldShowCreatePublishError/);
@@ -77,6 +79,7 @@ test('Cancel draft can leave Preparing capture without a live background capture
   const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   const cancel = app.slice(app.indexOf('const cancelHostedMedia'));
   assert.match(cancel, /canClearPreparingCaptureWithoutBackgroundCancel/);
+  assert.match(cancel, /raceHostedCaptureCancel/);
   assert.match(cancel, /setMediaCaptureState\(\{ status: 'idle' \}\)/);
   assert.match(cancel, /setYoutubePublishState\(\{ status: 'idle' \}\)/);
   assert.match(cancel, /setAudioPublishState\(\{ status: 'idle' \}\)/);

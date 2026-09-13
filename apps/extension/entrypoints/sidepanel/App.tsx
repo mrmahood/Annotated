@@ -209,6 +209,11 @@ import {
   MEDIA_CAPTURE_STATUS,
   canClearPreparingCaptureWithoutBackgroundCancel,
   isAudioOnlyCaptureSourceKind,
+  isPreparingCaptureStatus,
+  mapTabCaptureStartFailure,
+  raceHostedCaptureCancel,
+  raceHostedCaptureStart,
+  shouldReplaceHostedCaptureSnapshot,
   userFacingCaptureMessage,
   type CaptureSnapshot,
   type CaptureSourceIdentity,
@@ -1580,7 +1585,7 @@ function App() {
       const { data, error } = await sessionPromise;
       const accessToken = data.session?.access_token;
       if (error || !accessToken) throw new Error('The authenticated session is unavailable.');
-      const response = await chrome.runtime.sendMessage({
+      const response = await raceHostedCaptureStart(chrome.runtime.sendMessage({
         target: 'background',
         type: MEDIA_CAPTURE_START,
         request: {
@@ -1593,7 +1598,7 @@ function App() {
           accessToken,
           apiOrigin: getWebAppOrigin(),
         },
-      }) as { ok?: boolean; snapshot?: CaptureSnapshot };
+      }) as Promise<{ ok?: boolean; snapshot?: CaptureSnapshot }>);
       responseSnapshot = response?.snapshot ?? null;
       if (hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current) && response?.snapshot) {
         setMediaCaptureState(response.snapshot);
@@ -1606,11 +1611,19 @@ function App() {
         );
       }
     } catch (error) {
+      const failure = responseSnapshot?.status === 'error'
+        ? responseSnapshot
+        : mapTabCaptureStartFailure(error, captureId);
       if (hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current)) {
-        setMediaCaptureState(responseSnapshot ?? {
-          status: 'error', captureId, code: 'unexpected',
-          message: error instanceof Error ? error.message : 'The connected media capture could not start.',
-        });
+        setMediaCaptureState(failure);
+      }
+      if (failure.status === 'error' && failure.code === 'tab-capture-denied') {
+        void chrome.runtime.sendMessage({
+          target: 'background',
+          type: MEDIA_CAPTURE_CANCEL,
+          captureId,
+          operation,
+        }).catch(() => undefined);
       }
       throw error;
     }
@@ -2107,12 +2120,14 @@ function App() {
     cancellingHostedMediaRef.current = true;
     setIsCancellingHostedMedia(true);
     try {
-      const backgroundResponse = await chrome.runtime.sendMessage({
-        target: 'background',
-        type: MEDIA_CAPTURE_CANCEL,
-        captureId,
-        operation: session.operation,
-      }) as { ok?: boolean; cancelled?: boolean } | undefined;
+      const backgroundResponse = await raceHostedCaptureCancel(
+        chrome.runtime.sendMessage({
+          target: 'background',
+          type: MEDIA_CAPTURE_CANCEL,
+          captureId,
+          operation: session.operation,
+        }) as Promise<{ ok?: boolean; cancelled?: boolean }>,
+      ) ?? { ok: true, cancelled: false };
       if (backgroundResponse?.ok === false) throw new Error('The active capture could not be cancelled safely.');
       const requiresLiveCaptureCancellation =
         ['preparing', 'capturing', 'stopping', 'uploading', 'waiting-to-upload'].includes(mediaCaptureState.status) ||
@@ -2717,7 +2732,10 @@ function App() {
             (!activeCaptureIdRef.current || activeCaptureIdRef.current === eventCaptureId)) {
           activeCaptureIdRef.current = eventCaptureId;
           setMediaCaptureOperation(operation);
-          setMediaCaptureState(presentHostedMediaSnapshot(event.snapshot));
+          const incoming = presentHostedMediaSnapshot(event.snapshot);
+          setMediaCaptureState((current) => (
+            shouldReplaceHostedCaptureSnapshot(current, incoming) ? incoming : current
+          ));
         }
       }
     };
@@ -3110,7 +3128,9 @@ function App() {
         if ('captureId' in result.snapshot && result.snapshot.captureId) {
           activeCaptureIdRef.current = result.snapshot.captureId;
         }
-        setMediaCaptureState(result.snapshot);
+        setMediaCaptureState((current) => (
+          shouldReplaceHostedCaptureSnapshot(current, result.snapshot) ? result.snapshot : current
+        ));
       }
     }).catch(() => {
       if (current) setMediaCaptureState({
@@ -3146,7 +3166,9 @@ function App() {
           if ('captureId' in result.snapshot && result.snapshot.captureId) {
             activeCaptureIdRef.current = result.snapshot.captureId;
           }
-          setMediaCaptureState(result.snapshot);
+          setMediaCaptureState((current) => (
+            shouldReplaceHostedCaptureSnapshot(current, result.snapshot) ? result.snapshot : current
+          ));
         }
       })
       .catch(() => {
@@ -3674,7 +3696,9 @@ function App() {
                   ? 'Finishing capture…'
                   : mediaCaptureState.status === 'capturing'
                     ? 'Capturing clip…'
-                    : 'Preparing capture…'}
+                    : isPreparingCaptureStatus(mediaCaptureState.status)
+                      ? 'Preparing capture…'
+                      : 'Working…'}
       </strong>
       {mediaCaptureState.status === 'waiting-to-upload' && <span>{mediaCaptureState.message}</span>}
       {mediaCaptureState.status === 'verifying-upload' && <span>Checking the owner-visible server state before showing Processing.</span>}
