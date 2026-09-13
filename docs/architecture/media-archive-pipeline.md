@@ -620,7 +620,12 @@ offscreen — not only mark the prior attempt cancelled. Same-tab host changes
 (YouTube → Apple Podcasts) otherwise leave Chrome tabCapture held, and the next
 Publish click cannot mint a fresh caller stream ID without a toolbar Recapture.
 If the user prepares a new clip on the current host while a prior draft is still
-queued, Create must say to cancel that in-progress clip first.
+queued, Create must say to cancel that in-progress clip first. An orphaned
+`capture_pending` draft with no live capture must not keep Recapture or
+“reconnect the original source” after Create rebinds to a different host
+(YouTube → Apple Podcasts). Auto-abandon that draft and its media session so
+Publish on the new host is a clean first capture; Recapture is only for the
+same source after capture died.
 
 If connectivity drops after capture, keep the Blob in the offscreen document,
 show “Waiting to upload—keep Chrome open,” and retry with bounded backoff. The MVP
