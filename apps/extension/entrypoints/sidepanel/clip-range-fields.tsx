@@ -232,7 +232,7 @@ export function ClipRangeEditor({
   onEndChange: (text: string) => void;
   onStartBlur: () => void;
   onEndBlur: () => void;
-  onPreset: (durationMs: number) => void;
+  onPreset: (durationMs: number, window?: { startMs: number; durationMs: number }) => void;
   onPreview: () => void;
   onRefresh: () => void;
 }) {
@@ -461,7 +461,12 @@ export function ClipRangeEditor({
             className="button button-secondary"
             type="button"
             disabled={actionsDisabled}
-            onClick={() => onPreset(preset.durationMs)}
+            onClick={() => onPreset(
+              preset.durationMs,
+              windowDurationMs > 0
+                ? { startMs: windowStartMs, durationMs: windowDurationMs }
+                : undefined,
+            )}
           >
             {preset.label}
           </button>

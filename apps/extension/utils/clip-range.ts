@@ -74,17 +74,37 @@ export function formatClipBudgetLabel(budget: ClipBudget): string {
   return `${budget.usedSeconds}s used · ${budget.remainingSeconds}s left`;
 }
 
+export type ClipPresetWindow = {
+  startMs: number;
+  durationMs: number;
+};
+
+/** Playhead when it is on-screen; otherwise the visible slider window. */
+export function clipPresetOriginMs(
+  playheadMs: number,
+  window?: ClipPresetWindow | null,
+): number {
+  if (!window || !Number.isFinite(window.startMs) || window.durationMs <= 0) {
+    return playheadMs;
+  }
+  const windowStartMs = snapMsToWholeSeconds(window.startMs);
+  const windowEndMs = windowStartMs + window.durationMs;
+  if (playheadMs >= windowStartMs && playheadMs <= windowEndMs) return playheadMs;
+  return windowStartMs;
+}
+
 export function applyClipPresetFromPlayhead(
   playheadMs: number,
   durationMs: number | null,
   presetMs: number,
+  window?: ClipPresetWindow | null,
 ): { startMs: number; endMs: number } {
   const maxMs = mediaDurationSliderMaxMs(durationMs);
   const preset = Math.min(
     MAXIMUM_NEW_MEDIA_PUBLICATION_DURATION_MS,
     Math.max(MINIMUM_MEDIA_DURATION_MS, snapMsToWholeSeconds(presetMs)),
   );
-  const startMs = clampToMedia(floorMsToWholeSeconds(playheadMs), maxMs);
+  const startMs = clampToMedia(floorMsToWholeSeconds(clipPresetOriginMs(playheadMs, window)), maxMs);
   let endMs = startMs + preset;
   if (maxMs !== null) endMs = Math.min(maxMs, endMs);
   if (endMs - startMs < MINIMUM_MEDIA_DURATION_MS && maxMs !== null && maxMs >= MINIMUM_MEDIA_DURATION_MS) {

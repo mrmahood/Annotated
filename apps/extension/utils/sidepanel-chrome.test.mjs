@@ -50,7 +50,7 @@ test('Create commentary is a placeholder field plus recorder, not labeled chrome
   assert.match(app, /<CommentaryField id="annotation-commentary"/);
   assert.doesNotMatch(app, />Your commentary</);
   assert.doesNotMatch(app, /Add typed commentary, a voice clip, or both/);
-  assert.match(app, /Drag the clip range, or set 30s \/ 60s from the current playhead/);
+  assert.match(app, /Drag the clip range, or set 30s \/ 60s from the playhead or the timeline region you are viewing/);
   assert.match(app, /Type times if you prefer/);
   assert.match(app, /<h2 id="create-heading" className="visually-hidden">Create clip<\/h2>/);
   assert.match(app, /<h2 id="create-heading" className="visually-hidden">Create audio clip<\/h2>/);

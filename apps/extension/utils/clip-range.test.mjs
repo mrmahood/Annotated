@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   applyClipPresetFromPlayhead,
+  clipPresetOriginMs,
   clampClipSliderWindowStart,
   clipPreviewReachedEnd,
   clipPreviewUserReleased,
@@ -385,6 +386,62 @@ test('dragging a handle after panning relocates a ≤90s range into the visible 
     true,
   );
   assert.ok(relocated.endMs - relocated.startMs <= 90_000);
+});
+
+test('presets keep the playhead when it is inside the visible window', () => {
+  assert.equal(
+    clipPresetOriginMs(DEEP_WINDOW_MID_MS, {
+      startMs: DEEP_WINDOW_START_MS,
+      durationMs: CLIP_SLIDER_WINDOW_MS,
+    }),
+    DEEP_WINDOW_MID_MS,
+  );
+  assert.deepEqual(
+    applyClipPresetFromPlayhead(DEEP_WINDOW_MID_MS, LONG_MEDIA_MS, CLIP_PRESET_30_MS, {
+      startMs: DEEP_WINDOW_START_MS,
+      durationMs: CLIP_SLIDER_WINDOW_MS,
+    }),
+    { startMs: DEEP_WINDOW_MID_MS, endMs: DEEP_WINDOW_MID_MS + CLIP_PRESET_30_MS },
+  );
+});
+
+test('presets after a deep pan start in the visible window, not the original playhead', () => {
+  assert.equal(
+    clipPresetOriginMs(LONG_START_MS, {
+      startMs: DEEP_WINDOW_START_MS,
+      durationMs: CLIP_SLIDER_WINDOW_MS,
+    }),
+    DEEP_WINDOW_START_MS,
+  );
+  assert.deepEqual(
+    applyClipPresetFromPlayhead(LONG_START_MS, LONG_MEDIA_MS, CLIP_PRESET_30_MS, {
+      startMs: DEEP_WINDOW_START_MS,
+      durationMs: CLIP_SLIDER_WINDOW_MS,
+    }),
+    { startMs: DEEP_WINDOW_START_MS, endMs: DEEP_WINDOW_START_MS + CLIP_PRESET_30_MS },
+  );
+  assert.deepEqual(
+    applyClipPresetFromPlayhead(0, LONG_MEDIA_MS, CLIP_PRESET_60_MS, {
+      startMs: LATE_WINDOW_START_MS,
+      durationMs: CLIP_SLIDER_WINDOW_MS,
+    }),
+    { startMs: LATE_WINDOW_START_MS, endMs: LATE_WINDOW_START_MS + CLIP_PRESET_60_MS },
+  );
+  const nearEndWindowStart = LONG_MEDIA_MS - 20_000;
+  const nearEnd = applyClipPresetFromPlayhead(0, LONG_MEDIA_MS, CLIP_PRESET_30_MS, {
+    startMs: nearEndWindowStart,
+    durationMs: CLIP_SLIDER_WINDOW_MS,
+  });
+  assert.deepEqual(nearEnd, { startMs: nearEndWindowStart, endMs: LONG_MEDIA_MS });
+  assert.equal(
+    clipSliderWindowContainsRange(
+      nearEndWindowStart,
+      CLIP_SLIDER_WINDOW_MS,
+      nearEnd.startMs,
+      nearEnd.endMs,
+    ),
+    true,
+  );
 });
 
 test('in-window handle drags still clamp to 90s and keep short-media 0-origin empty end', () => {

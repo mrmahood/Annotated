@@ -150,6 +150,7 @@ test('Cancel draft clears the prior source Create draft and rebinds the current 
   assert.match(cancel, /if \(createReset\.clearAudioDraft\) await clearAudioDraft\(\)/);
   assert.match(cancel, /followActiveBrowsingTab\(chrome,/);
   assert.match(cancel, /ignoreActiveCapture: createReset\.ignoreActiveCaptureHold/);
+  assert.match(cancel, /MEDIA_CAPTURE_CANCEL/);
   assert.ok(cancel.indexOf("setMediaCaptureState({ status: 'idle' })") < cancel.indexOf('clearVideoDraft'));
   assert.ok(cancel.indexOf('clearVideoDraft') < cancel.indexOf('followActiveBrowsingTab'));
 });

@@ -115,6 +115,15 @@ export function invalidateReservedTabCaptureStream(): void {
   reserveTabCaptureInFlight = null;
 }
 
+async function closeOffscreenDocument(chrome: ExtensionChrome): Promise<void> {
+  if (typeof chrome.offscreen.closeDocument !== 'function') return;
+  try {
+    await chrome.offscreen.closeDocument();
+  } catch {
+    // Best-effort: the document may already have closed after recorder teardown.
+  }
+}
+
 function rememberCancelledCaptureId(captureId: string | null): void {
   if (!captureId) return;
   cancelledCaptureIds.add(captureId);
@@ -335,6 +344,18 @@ export function installMediaCapture(
     return true;
   }
 
+  async function releaseCaptureLease(options?: { cancelLive?: boolean }) {
+    invalidateReservedTabCaptureStream();
+    const capture = active;
+    if (capture && options?.cancelLive !== false) {
+      await cancelActive('unexpected', 'Capture cancelled by the user.');
+    } else if (!capture) {
+      await persistActive(null);
+    }
+    await closeOffscreenDocument(chrome);
+    lastSnapshot = { status: 'idle' };
+  }
+
   async function validateAndPrepare(captureId: string, request: CaptureStartRequest): Promise<PrepareCapturePageResult> {
     if (!isCurrentCaptureId(active?.captureId ?? null, captureId)) {
       return { ok: false, code: 'STALE_CAPTURE', message: 'This capture request is no longer active.' };
@@ -531,8 +552,7 @@ export function installMediaCapture(
         );
         const sameCapture = message.captureId === null || message.captureId === capture?.captureId;
         if (!capture) {
-          invalidateReservedTabCaptureStream();
-          lastSnapshot = { status: 'idle' };
+          await releaseCaptureLease({ cancelLive: false });
           sendResponse({ ok: true, cancelled: true });
           return;
         }
@@ -540,9 +560,8 @@ export function installMediaCapture(
           sendResponse({ ok: true, cancelled: false });
           return;
         }
-        invalidateReservedTabCaptureStream();
-        const cancelled = await cancelActive('unexpected', 'Capture cancelled by the user.');
-        sendResponse({ ok: true, cancelled });
+        await releaseCaptureLease();
+        sendResponse({ ok: true, cancelled: true });
       })();
       return true;
     }
