@@ -15,6 +15,7 @@ import {
   clipSliderWindowContainsRange,
   clipSliderWindowDurationMs,
   clipSliderWindowIsZoomed,
+  clipSliderWindowOverlapsRange,
   formatClipBudgetLabel,
   formatClipSliderWindowCue,
   formatClipSpanReadout,
@@ -294,6 +295,7 @@ export function ClipRangeEditor({
   const startOffsetSeconds = displayOffsets.startSeconds;
   const endOffsetSeconds = displayOffsets.endSeconds;
   const hasRange = startMs !== null && endMs !== null && endMs > startMs;
+  const rangeOnTrack = clipSliderWindowOverlapsRange(windowStartMs, windowDurationMs, startMs, endMs);
   const budget = getClipBudget(startMs, endMs);
   const startPercent = sliderSpanSeconds > 0 ? (startOffsetSeconds / sliderSpanSeconds) * 100 : 0;
   const endPercent = sliderSpanSeconds > 0 ? (endOffsetSeconds / sliderSpanSeconds) * 100 : 0;
@@ -388,7 +390,7 @@ export function ClipRangeEditor({
         onPointerCancel={endSliderPan}
       >
         <div className="clip-range-rail" aria-hidden="true">
-          {hasRange && sliderSpanSeconds > 0 && fillRight > fillLeft && (
+          {rangeOnTrack && sliderSpanSeconds > 0 && fillRight > fillLeft && (
             <span
               className="clip-range-fill"
               style={{ left: `${fillLeft}%`, width: `${fillRight - fillLeft}%` }}
