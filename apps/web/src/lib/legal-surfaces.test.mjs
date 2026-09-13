@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("web legal pages keep the published policy text and Vercel hosting disclosure", async () => {
-  const [privacy, terms, index, document, footer, layout, routes, styles] = await Promise.all([
+  const [privacy, terms, index, document, footer, layout, routes, styles, constants] = await Promise.all([
     readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8"),
@@ -12,21 +12,28 @@ test("web legal pages keep the published policy text and Vercel hosting disclosu
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("./public-routes.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("./legal.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(privacy, /Privacy Policy/);
-  assert.match(privacy, /August 30, 2026/);
-  assert.match(privacy, /The CB & Cooper Limited Liability Company/);
-  assert.match(privacy, /matt@cbandcoop.com/);
-  assert.match(privacy, /120 Academy Street, Suite 102-105/);
-  assert.match(privacy, /Fort Mill, SC 29715/);
-  assert.match(privacy, /including these legal pages, and the Annotated Chrome side-panel extension/);
+  assert.match(constants, /August 30, 2026/);
+  assert.match(constants, /The CB & Cooper Limited Liability Company/);
+  assert.match(constants, /matt@cbandcoop.com/);
+  assert.match(document, /120 Academy Street, Suite 102-105/);
+  assert.match(document, /Fort Mill, SC 29715/);
+  assert.match(
+    privacy,
+    /including these[\s\S]*legal pages, and the Annotated Chrome side-panel extension/,
+  );
   assert.match(privacy, /<strong>Vercel<\/strong>/);
   assert.match(privacy, /hosting for the Annotated web application, including these[\s\S]*legal pages/);
   assert.doesNotMatch(privacy, /Lovable/);
   assert.doesNotMatch(privacy, /separate legal-information website/);
-  assert.match(privacy, /the Annotated web application does not intentionally set nonessential cookies/);
-  assert.match(privacy, /Selected hosted media ranges are between 1 and 90 seconds/);
+  assert.match(
+    privacy,
+    /the Annotated web application does not intentionally set[\s\S]*nonessential cookies/,
+  );
+  assert.match(privacy, /Selected hosted media[\s\S]*ranges are between 1 and 90 seconds/);
   assert.match(privacy, /does not use user content to train models/);
 
   assert.match(terms, /Terms of Service/);
