@@ -187,6 +187,12 @@ a { color: inherit; }
 .form-success { border-color: var(--success-border); color: var(--success); background: var(--success-surface); }
 .form-error, .auth-error { margin: 0; padding: 9px 11px; }
 
+.site-app {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Product header */
 .site-header {
   position: relative;
@@ -353,6 +359,191 @@ a { color: inherit; }
   width: min(290px, 82vw);
   margin: 0;
   padding: 8px 10px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  z-index: 40;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  color: var(--control-primary-text);
+  background: var(--control-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-160%);
+}
+.skip-link:focus { transform: none; }
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  padding: 16px max(18px, calc((100vw - 1120px) / 2));
+  border-top: 1px solid var(--border);
+  background: var(--background-elevated);
+}
+.site-footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
+.site-footer-nav a {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.site-footer-nav a:hover { color: var(--text-primary); }
+.site-footer-copy {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.legal-main {
+  width: min(calc(100% - 36px), 760px);
+  margin: 0 auto;
+  padding: clamp(34px, 5vw, 56px) 0 72px;
+}
+.legal-intro { max-width: 640px; margin-bottom: 28px; }
+.legal-intro .eyebrow { margin-bottom: 10px; }
+.legal-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  margin: 22px 0 0;
+}
+.legal-dates div { display: grid; gap: 3px; }
+.legal-dates dt {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.legal-dates dd { margin: 0; color: var(--text-secondary); font-size: 0.84rem; }
+.legal-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 18px 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  letter-spacing: 0.04em;
+  list-style: none;
+}
+.legal-toc {
+  margin: 0 0 36px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--background-elevated);
+}
+.legal-toc h2 {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.legal-toc ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.legal-toc a {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  text-decoration: none;
+}
+.legal-toc a:hover { color: var(--text-primary); }
+.legal-toc-number, .legal-section-number {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.legal-body { display: grid; gap: 34px; }
+.legal-section { scroll-margin-top: 24px; }
+.legal-section h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.legal-section h3 {
+  margin: 18px 0 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.legal-section p, .legal-section li {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+.legal-section p { margin: 0 0 12px; }
+.legal-section p:last-child { margin-bottom: 0; }
+.legal-section ul {
+  margin: 0 0 12px;
+  padding-left: 1.2em;
+}
+.legal-section li + li { margin-top: 6px; }
+.legal-section a { color: var(--text-primary); }
+.legal-address {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 12px;
+  font-style: normal;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+.legal-index {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 36px;
+}
+.legal-index-card {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--surface);
+}
+.legal-index-card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.legal-index-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  line-height: 1.55;
 }
 
 /* Feed and cards */
@@ -1095,12 +1286,20 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .profile-annotations > h2 { margin: 0 0 14px; font-size: 1rem; font-weight: 600; }
 
 /* Authentication */
-.auth-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px 18px; }
+.auth-shell { flex: 1; display: grid; place-items: center; padding: 24px 18px; }
 .auth-card { width: min(100%, 440px); padding: clamp(22px, 6vw, 34px); border: 1px solid var(--border); border-radius: var(--radius-medium); background: var(--surface); }
 .auth-card .eyebrow { margin-bottom: 12px; }
 .auth-card h1 { font-size: clamp(1.5rem, 5vw, 2rem); }
 .auth-card .lede { margin: 12px 0 22px; }
 .auth-card .button { width: 100%; }
+.auth-legal-links {
+  margin: 16px 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+}
+.auth-legal-links a { color: var(--text-secondary); text-decoration: none; }
+.auth-legal-links a:hover { color: var(--text-primary); }
 .account-content { display: grid; gap: 14px; }
 .identity { display: flex; align-items: center; gap: 12px; padding: 13px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--background-elevated); }
 .avatar { width: 40px; height: 40px; }
@@ -1133,6 +1332,8 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
     padding: 6px 10px;
     font-size: 0.72rem;
   }
+  .site-footer { padding-inline: 14px; }
+  .legal-main { width: min(calc(100% - 28px), 760px); padding-top: 30px; }
   .discovery-main { width: min(calc(100% - 28px), 840px); padding-top: 30px; }
   .discovery-intro { margin-bottom: 22px; }
   .trending-strip { margin-bottom: 22px; padding: 14px; }

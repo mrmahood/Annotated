@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LEGAL_PATHS } from "@/lib/legal";
 
 export default function AuthenticationErrorPage() {
   return (
@@ -13,6 +14,11 @@ export default function AuthenticationErrorPage() {
         <Link className="button button-primary" href="/">
           Return to sign in
         </Link>
+        <p className="auth-legal-links">
+          <Link href={LEGAL_PATHS.privacy}>Privacy</Link>
+          {" · "}
+          <Link href={LEGAL_PATHS.terms}>Terms</Link>
+        </p>
       </section>
     </main>
   );

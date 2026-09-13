@@ -4,7 +4,18 @@ import type { PublicAnnotation } from "@/lib/data/public-annotation-model";
 
 const CREATOR_HANDLE_PATTERN = /^[a-z0-9_-]{3,30}$/;
 const ANNOTATION_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESERVED_ROOT_HANDLES = new Set(["api", "auth", "_next", "ops", "me", "trending", "who-to-follow"]);
+const RESERVED_ROOT_HANDLES = new Set([
+  "api",
+  "auth",
+  "_next",
+  "ops",
+  "me",
+  "trending",
+  "who-to-follow",
+  "privacy",
+  "terms",
+  "legal",
+]);
 
 export type PublicAnnotationRoute = {
   creatorHandle: string;
