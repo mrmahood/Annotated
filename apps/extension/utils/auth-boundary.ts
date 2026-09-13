@@ -19,20 +19,28 @@ export const ENABLED_EXTENSION_AUTH_PROVIDERS = ['google'] as const satisfies re
 export const LIVE_X_STAGING_PROJECT_REF = 'nkkunkwirvfwhmpwonqz';
 export const LIVE_X_STAGING_SUPABASE_URL =
   `https://${LIVE_X_STAGING_PROJECT_REF}.supabase.co`;
+export const LIVE_X_PRODUCTION_PROJECT_REF = 'vnxjktpdzmykmqrqwvks';
+export const LIVE_X_PRODUCTION_SUPABASE_URL =
+  `https://${LIVE_X_PRODUCTION_PROJECT_REF}.supabase.co`;
 export const LIVE_X_EXTENSION_OPT_IN_VALUE = '1';
 export const LIVE_X_EXTENSION_OPT_OUT_VALUE = '0';
+
+const LIVE_X_SUPABASE_URLS = new Set([
+  LIVE_X_STAGING_SUPABASE_URL,
+  LIVE_X_PRODUCTION_SUPABASE_URL,
+]);
 
 type ExtensionAuthCapabilityEnvironment = {
   xOptIn?: string;
   supabaseUrl?: string;
 };
 
-function isExactStagingSupabaseUrl(value: string | undefined) {
+function isExactLiveXSupabaseUrl(value: string | undefined) {
   if (!value) return false;
 
   try {
     const url = new URL(value);
-    return url.origin === LIVE_X_STAGING_SUPABASE_URL &&
+    return LIVE_X_SUPABASE_URLS.has(url.origin) &&
       url.protocol === 'https:' &&
       url.username === '' &&
       url.password === '' &&
@@ -50,9 +58,9 @@ export function resolveExtensionAuthCapabilities(
 ): ExtensionAuthCapabilities {
   return Object.freeze({
     google: DEFAULT_EXTENSION_AUTH_CAPABILITIES.google,
-    // Staging-only: exact Staging URL enables X. Exact "0" hides it.
-    // Production and Local URLs stay fail-closed even if an opt-in is set.
-    x: isExactStagingSupabaseUrl(environment.supabaseUrl) &&
+    // Exact Staging or Production URL enables X. Exact "0" hides it.
+    // Local and unknown URLs stay fail-closed even if an opt-in is set.
+    x: isExactLiveXSupabaseUrl(environment.supabaseUrl) &&
       environment.xOptIn !== LIVE_X_EXTENSION_OPT_OUT_VALUE,
   });
 }
