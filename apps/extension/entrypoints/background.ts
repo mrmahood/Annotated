@@ -52,7 +52,7 @@ export default defineBackground(() => {
 
     actionContextRevision += 1;
 
-    void followBrowsingTab(chrome, tab)
+    void followBrowsingTab(chrome, tab, Date.now(), { ignoreActiveCapture: true })
       .then(async () => {
         if (tab.url) {
           const pendingTab = {

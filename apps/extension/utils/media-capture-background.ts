@@ -547,7 +547,11 @@ export function installMediaCapture(
     }
     if (row.target === 'background' && row.type === MEDIA_CAPTURE_RETRY) {
       if (typeof row.captureId !== 'string' || typeof row.accessToken !== 'string' ||
-          row.accessToken.length < 20 || !active || row.captureId !== active.captureId) {
+          row.accessToken.length < 20) {
+        sendResponse({ ok: false, error: 'Malformed upload retry request.' });
+        return undefined;
+      }
+      if (active && row.captureId !== active.captureId) {
         sendResponse({ ok: false, error: 'Malformed upload retry request.' });
         return undefined;
       }

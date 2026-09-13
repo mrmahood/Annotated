@@ -24,9 +24,12 @@ import {
   RECAPTURE_CLEANUP_CODE,
   RECAPTURE_CLEANUP_STAGE,
   rawStoragePath,
+  storedObjectMimeMatches,
+  storedObjectVerificationInput,
   validateCaptureMetadata,
   validateSupabaseApiKey,
   verifyStoredObject,
+  verifyUploadedRawObject,
 } from './hosted-media-upload.ts';
 
 const USER = '11111111-1111-4111-8111-111111111111';
@@ -310,6 +313,35 @@ test('completion rejects missing identity, wrong MIME, zero/oversized size, buck
   assert.throws(() => verifyStoredObject({ ...valid, bucketId: 'annotation-media' }, path, 'video/webm', 1_000_000), /bucket or path/);
   assert.throws(() => verifyStoredObject({ ...valid, name: `${path}.other` }, path, 'video/webm', 1_000_000), /bucket or path/);
   assert.throws(() => verifyStoredObject({}, path, 'video/webm', 1_000_000), /bucket or path/);
+  assert.doesNotThrow(() => verifyStoredObject({
+    ...valid,
+    contentType: undefined,
+    ...storedObjectVerificationInput({
+      bucketId: RAW_BUCKET,
+      name: path,
+      metadata: { mimetype: 'audio/webm;codecs=opus', size: 80_000 },
+    }),
+  }, path, 'audio/webm', 80_000));
+  assert.equal(storedObjectMimeMatches('video/webm;codecs=opus', 'audio/webm'), true);
+  assert.equal(storedObjectMimeMatches('application/octet-stream', 'audio/webm'), true);
+  assert.equal(storedObjectMimeMatches('audio/webm', 'video/webm'), false);
+});
+
+test('completion retries Storage info until the raw object is visible', async () => {
+  const path = rawStoragePath(USER, ANNOTATION, MEDIA, UPLOAD);
+  const object = {
+    bucketId: RAW_BUCKET,
+    name: path,
+    metadata: { mimetype: 'audio/webm', size: 12_000 },
+  };
+  let calls = 0;
+  await verifyUploadedRawObject(async () => {
+    calls += 1;
+    return calls < 3
+      ? { data: null, error: { message: 'not found' } }
+      : { data: object, error: null };
+  }, path, 'audio/webm', 12_000, 3, async () => undefined);
+  assert.equal(calls, 3);
 });
 
 test('routes use short-lived no-upsert authorization and transition only to processing/queued', async () => {
@@ -322,6 +354,7 @@ test('routes use short-lived no-upsert authorization and transition only to proc
   assert.match(authorize, /expiresInSeconds: 7_200, upsert: false/);
   assert.match(complete, /processing_status: 'processing'/);
   assert.match(complete, /processing_stage: 'queued'/);
+  assert.match(complete, /verifyUploadedRawObject/);
   assert.match(authorize, /attempt_count: 0/);
   assert.match(authorize + complete, /RECAPTURE_REQUIRED/);
   assert.doesNotMatch(authorize + complete, /serviceRoleKey.*jsonResponse|SUPABASE_SERVICE_ROLE_KEY.*jsonResponse/);

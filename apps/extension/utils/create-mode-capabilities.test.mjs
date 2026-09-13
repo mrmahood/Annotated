@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { getSourceState } from './connected-source.ts';
 import {
   connectedAudioSource,
   createAudioIdentity,
@@ -11,6 +12,8 @@ const TIKTOK_URL = 'https://www.tiktok.com/@bbcnews/video/7550123456789012345';
 const ARTICLE_URL = 'https://example.test/story';
 const AUDIO_URL = 'https://example.test/episode/42';
 const SPOTIFY_URL = 'https://open.spotify.com/episode/6EMoFpxEsLelogfZz8eAC2';
+const APPLE_PODCASTS_URL =
+  'https://podcasts.apple.com/us/podcast/the-daily/id1200361736?i=1000728500116';
 
 function youtubeSource(overrides = {}) {
   return {
@@ -155,6 +158,17 @@ test('article pages keep Audio only when page audio exists, not because video ex
     source: articleSource({ audioDetectionResolved: false }),
   });
   assert.equal(checkingAudio.audio.status, 'checking');
+});
+
+test('Apple Podcasts tabs enable Audio immediately after YouTube without a panel remount', () => {
+  const state = getSourceState('The Daily', APPLE_PODCASTS_URL);
+  assert.equal(state.status, 'connected');
+  const capabilities = getModeCapabilities(state);
+  assert.equal(capabilities.text.status, 'available');
+  assert.equal(capabilities.audio.status, 'available');
+  assert.equal(capabilities.video.status, 'unavailable');
+  assert.equal(createAudioIdentity(state.source)?.classification, 'Podcast / web audio');
+  assert.equal(connectedAudioSource(state.source)?.normalizedUrl.includes('podcasts.apple.com'), true);
 });
 
 test('podcast pages keep Audio and only offer Video when a safe webpage video exists', () => {

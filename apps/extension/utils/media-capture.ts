@@ -423,6 +423,31 @@ export function getCaptureRangeError(startMs: unknown, endMs: unknown): string |
 export function selectCaptureMimeType(expectVideo: boolean, isSupported: (mime: string) => boolean) {
   return (expectVideo ? VIDEO_MIME_TYPES : AUDIO_MIME_TYPES).find(isSupported) ?? null;
 }
+export function hostedRawUploadMimeType(
+  sourceKind: CaptureSourceIdentity['kind'] | CapturePreparedPage['sourceKind'],
+): 'audio/webm' | 'video/webm' {
+  return isAudioOnlyCaptureSourceKind(sourceKind) ? 'audio/webm' : 'video/webm';
+}
+export async function completeHostedMediaUpload(
+  complete: () => Promise<void>,
+  attempts = 3,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  }),
+) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await complete();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      await wait(250 * attempt);
+    }
+  }
+  throw lastError;
+}
 export async function executeHostedMediaUpload(stages: {
   authorize: () => Promise<string>;
   upload: (signedUrl: string) => Promise<void>;

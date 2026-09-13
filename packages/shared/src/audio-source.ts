@@ -48,6 +48,16 @@ export function normalizeAudioSourceUrl(value: string): string {
   return url.href;
 }
 
+export function isApplePodcastsUrl(value: string): boolean {
+  try {
+    const url = parseHttpUrl(value);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    return hostname === 'podcasts.apple.com';
+  } catch {
+    return false;
+  }
+}
+
 export function getAudioSourceIdentity(
   pageUrl: string,
   canonicalCandidate?: string | null,

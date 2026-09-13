@@ -188,7 +188,16 @@ export function readTopFramePlayerDiscovery(mode: PlayerMode, genericVideo = fal
   type Located = { element: HTMLMediaElement; video: HTMLVideoElement | null; framePath: string; frameOrigin: string };
   const eligible: Located[] = [];
   const collect = (ownerDocument: Document, ownerWindow: Window, framePath: string, topOrigin: string) => {
-    for (const entry of ownerDocument.querySelectorAll('audio, video')) {
+    const mediaNodes: Element[] = [];
+    const visitMediaRoot = (root: Document | ShadowRoot, depth: number) => {
+      if (!root || depth > 8) return;
+      for (const node of root.querySelectorAll('audio, video')) mediaNodes.push(node);
+      for (const host of root.querySelectorAll('*')) {
+        if (host.shadowRoot) visitMediaRoot(host.shadowRoot, depth + 1);
+      }
+    };
+    visitMediaRoot(ownerDocument, 0);
+    for (const entry of mediaNodes) {
       const genericEntry = genericVideo && mode === 'video';
       if (!genericEntry && !(entry instanceof HTMLMediaElement)) continue;
       const media = entry as HTMLMediaElement;
@@ -387,7 +396,16 @@ export async function actOnTopFramePlayer(
   type Located = { element: HTMLMediaElement; video: HTMLVideoElement | null; framePath: string; frameOrigin: string };
   const eligible: Located[] = [];
   const collect = (ownerDocument: Document, ownerWindow: Window, framePath: string, topOrigin: string) => {
-    for (const entry of ownerDocument.querySelectorAll('audio, video')) {
+    const mediaNodes: Element[] = [];
+    const visitMediaRoot = (root: Document | ShadowRoot, depth: number) => {
+      if (!root || depth > 8) return;
+      for (const node of root.querySelectorAll('audio, video')) mediaNodes.push(node);
+      for (const host of root.querySelectorAll('*')) {
+        if (host.shadowRoot) visitMediaRoot(host.shadowRoot, depth + 1);
+      }
+    };
+    visitMediaRoot(ownerDocument, 0);
+    for (const entry of mediaNodes) {
       const genericEntry = genericVideo && mode === 'video';
       if (!genericEntry && !(entry instanceof HTMLMediaElement)) continue;
       const media = entry as HTMLMediaElement;
