@@ -5,9 +5,13 @@ import {
   clampClipSliderWindowStart,
   clipPreviewReachedEnd,
   clipPreviewUserReleased,
+  clipSliderDisplayOffsetSeconds,
+  clipSliderMediaMsFromOffset,
+  clipSliderOffsetSeconds,
   clipSliderWindowContainsRange,
   clipSliderWindowDurationMs,
   clipSliderWindowIsZoomed,
+  clipSliderWindowOverlapsRange,
   CLIP_PRESET_30_MS,
   CLIP_PRESET_60_MS,
   CLIP_SLIDER_PAN_MS,
@@ -22,6 +26,7 @@ import {
   moveClipHandle,
   panClipSliderWindow,
   recenterClipSliderWindow,
+  relocateClipRangeIntoWindow,
   snapMsToWholeSeconds,
 } from './clip-range.ts';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
@@ -290,4 +295,116 @@ test('30s and 60s presets land inside a recentered zoom window', () => {
   });
   assert.equal(clipSliderWindowContainsRange(window.startMs, window.durationMs, preset.startMs, preset.endMs), true);
   assert.equal(window.zoomed, true);
+});
+
+const DEEP_WINDOW_START_MS = 1_200_000; // 20:00
+const DEEP_WINDOW_MID_MS = 1_205_000; // 20:05
+const LATE_WINDOW_START_MS = 1_800_000; // 30:00
+
+test('window-relative slider offsets stay inside the visible track after a deep pan', () => {
+  assert.equal(clipSliderOffsetSeconds(0, DEEP_WINDOW_START_MS, CLIP_SLIDER_WINDOW_MS), 0);
+  assert.equal(clipSliderOffsetSeconds(30_000, DEEP_WINDOW_START_MS, CLIP_SLIDER_WINDOW_MS), 0);
+  assert.equal(clipSliderOffsetSeconds(DEEP_WINDOW_MID_MS, DEEP_WINDOW_START_MS, CLIP_SLIDER_WINDOW_MS), 5);
+  assert.equal(clipSliderOffsetSeconds(DEEP_WINDOW_START_MS + CLIP_SLIDER_WINDOW_MS + 10_000, DEEP_WINDOW_START_MS, CLIP_SLIDER_WINDOW_MS), 240);
+  assert.equal(clipSliderMediaMsFromOffset(5, DEEP_WINDOW_START_MS), DEEP_WINDOW_MID_MS);
+  assert.equal(
+    clipSliderWindowOverlapsRange(DEEP_WINDOW_START_MS, CLIP_SLIDER_WINDOW_MS, 0, 30_000),
+    false,
+  );
+  assert.equal(
+    clipSliderWindowOverlapsRange(DEEP_WINDOW_START_MS, CLIP_SLIDER_WINDOW_MS, DEEP_WINDOW_START_MS, DEEP_WINDOW_MID_MS),
+    true,
+  );
+  assert.deepEqual(clipSliderDisplayOffsetSeconds({
+    startMs: 0,
+    endMs: 30_000,
+    windowStartMs: DEEP_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  }), { startSeconds: 0, endSeconds: 30 });
+  assert.deepEqual(clipSliderDisplayOffsetSeconds({
+    startMs: LATE_WINDOW_START_MS + CLIP_SLIDER_WINDOW_MS + 5_000,
+    endMs: LATE_WINDOW_START_MS + CLIP_SLIDER_WINDOW_MS + 35_000,
+    windowStartMs: LATE_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  }), { startSeconds: 210, endSeconds: 240 });
+  assert.deepEqual(clipSliderDisplayOffsetSeconds({
+    startMs: DEEP_WINDOW_START_MS,
+    endMs: DEEP_WINDOW_START_MS + 30_000,
+    windowStartMs: DEEP_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  }), { startSeconds: 0, endSeconds: 30 });
+});
+
+test('dragging a handle after panning relocates a ≤90s range into the visible window', () => {
+  assert.deepEqual(moveClipHandle({
+    startMs: 0,
+    endMs: 30_000,
+    durationMs: LONG_MEDIA_MS,
+    handle: 'end',
+    nextMs: DEEP_WINDOW_MID_MS,
+    windowStartMs: DEEP_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  }), { startMs: DEEP_WINDOW_START_MS, endMs: DEEP_WINDOW_MID_MS });
+
+  assert.deepEqual(moveClipHandle({
+    startMs: 0,
+    endMs: 30_000,
+    durationMs: LONG_MEDIA_MS,
+    handle: 'start',
+    nextMs: DEEP_WINDOW_START_MS + 10_000,
+    windowStartMs: DEEP_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  }), { startMs: DEEP_WINDOW_START_MS + 10_000, endMs: DEEP_WINDOW_START_MS + 40_000 });
+
+  assert.deepEqual(moveClipHandle({
+    startMs: null,
+    endMs: null,
+    durationMs: LONG_MEDIA_MS,
+    handle: 'end',
+    nextMs: DEEP_WINDOW_MID_MS,
+    windowStartMs: DEEP_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  }), { startMs: DEEP_WINDOW_START_MS + 4_000, endMs: DEEP_WINDOW_MID_MS });
+
+  const relocated = relocateClipRangeIntoWindow({
+    handle: 'end',
+    nextMs: DEEP_WINDOW_START_MS,
+    spanMs: 30_000,
+    durationMs: LONG_MEDIA_MS,
+    windowStartMs: DEEP_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  });
+  assert.deepEqual(relocated, { startMs: DEEP_WINDOW_START_MS, endMs: DEEP_WINDOW_START_MS + 1_000 });
+  assert.equal(
+    clipSliderWindowContainsRange(
+      DEEP_WINDOW_START_MS,
+      CLIP_SLIDER_WINDOW_MS,
+      relocated.startMs,
+      relocated.endMs,
+    ),
+    true,
+  );
+  assert.ok(relocated.endMs - relocated.startMs <= 90_000);
+});
+
+test('in-window handle drags still clamp to 90s and keep short-media 0-origin empty end', () => {
+  assert.deepEqual(moveClipHandle({
+    startMs: DEEP_WINDOW_START_MS,
+    endMs: DEEP_WINDOW_START_MS + 30_000,
+    durationMs: LONG_MEDIA_MS,
+    handle: 'end',
+    nextMs: DEEP_WINDOW_START_MS + 150_000,
+    windowStartMs: DEEP_WINDOW_START_MS,
+    windowDurationMs: CLIP_SLIDER_WINDOW_MS,
+  }), { startMs: DEEP_WINDOW_START_MS, endMs: DEEP_WINDOW_START_MS + 90_000 });
+
+  assert.deepEqual(moveClipHandle({
+    startMs: null,
+    endMs: null,
+    durationMs: 180_000,
+    handle: 'end',
+    nextMs: 15_400,
+    windowStartMs: 0,
+    windowDurationMs: 180_000,
+  }), { startMs: 0, endMs: 15_000 });
 });
