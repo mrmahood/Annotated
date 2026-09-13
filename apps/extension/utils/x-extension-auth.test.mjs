@@ -6,6 +6,7 @@ import {
   ENABLED_EXTENSION_AUTH_PROVIDERS,
   LIVE_X_EXTENSION_OPT_IN_VALUE,
   LIVE_X_EXTENSION_OPT_OUT_VALUE,
+  LIVE_X_PRODUCTION_SUPABASE_URL,
   LIVE_X_STAGING_SUPABASE_URL,
   ExtensionAuthError,
   createExtensionAuthController,
@@ -36,14 +37,32 @@ test('extension X is enabled for the exact Staging Supabase project', () => {
   assert.deepEqual(resolveExtensionAuthCapabilities({
     supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/`,
   }), X_ENABLED_FOR_TEST);
+});
 
+test('extension X is enabled for the exact Production Supabase project', () => {
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    supabaseUrl: LIVE_X_PRODUCTION_SUPABASE_URL,
+  }), X_ENABLED_FOR_TEST);
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE,
+    supabaseUrl: LIVE_X_PRODUCTION_SUPABASE_URL,
+  }), X_ENABLED_FOR_TEST);
+  assert.deepEqual(resolveExtensionAuthCapabilities({
+    supabaseUrl: `${LIVE_X_PRODUCTION_SUPABASE_URL}/`,
+  }), X_ENABLED_FOR_TEST);
+});
+
+test('extension X remains disabled for Local/unknown URLs and explicit opt-out', () => {
   for (const environment of [
     {},
     { xOptIn: LIVE_X_EXTENSION_OPT_OUT_VALUE, supabaseUrl: LIVE_X_STAGING_SUPABASE_URL },
+    { xOptIn: LIVE_X_EXTENSION_OPT_OUT_VALUE, supabaseUrl: LIVE_X_PRODUCTION_SUPABASE_URL },
     { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'https://production-ref.supabase.co' },
     { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'http://nkkunkwirvfwhmpwonqz.supabase.co' },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'http://vnxjktpdzmykmqrqwvks.supabase.co' },
     { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: `${LIVE_X_STAGING_SUPABASE_URL}/auth/v1` },
-    { supabaseUrl: 'https://vnxjktpdzmykmqrqwvks.supabase.co' },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: `${LIVE_X_PRODUCTION_SUPABASE_URL}/auth/v1` },
+    { xOptIn: LIVE_X_EXTENSION_OPT_IN_VALUE, supabaseUrl: 'http://127.0.0.1:54321' },
   ]) {
     assert.deepEqual(resolveExtensionAuthCapabilities(environment), { google: true, x: false });
   }
