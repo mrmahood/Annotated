@@ -13,6 +13,7 @@ import {
   captureRequestMatchesConnectedTab,
   executeHostedMediaUpload,
   getCaptureRangeError,
+  HOSTED_CAPTURE_START_TIMEOUT_MS,
   isAudioOnlyCaptureSourceKind,
   isCapturePreparedPage,
   isCaptureStartRequest,
@@ -20,12 +21,18 @@ import {
   isMediaCaptureCancelMessage,
   isMediaCaptureStartMessage,
   isOffscreenStartMessage,
+  isPreparingCaptureStatus,
   isTabCaptureInvocationError,
   mapTabCaptureStartFailure,
+  raceHostedCaptureCancel,
+  raceHostedCaptureStart,
   raceTabCaptureStreamId,
   reservedTabCaptureStreamIsFresh,
+  reservedTabCaptureStreamMatchesPage,
   reservedTabCaptureStreamMatchesTab,
   selectCaptureMimeType,
+  shouldReplaceHostedCaptureSnapshot,
+  shouldReuseReservedTabCaptureStream,
   sourceIdentityMatchesUrl,
   userFacingCaptureMessage,
 } from './media-capture.ts';
@@ -81,7 +88,33 @@ test('Chrome tab-capture invocation errors map to toolbar Recapture copy', () =>
   assert.equal(reservedTabCaptureStreamIsFresh({ tabId: 7, reservedAt: 1_000 }, 42, 1_100), false);
   assert.equal(reservedTabCaptureStreamMatchesTab({ tabId: 42, reservedAt: 1_000 }, 42, 1_001 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS), true);
   assert.equal(reservedTabCaptureStreamMatchesTab({ tabId: 7, reservedAt: 1_000 }, 42, 1_100), false);
+  assert.equal(reservedTabCaptureStreamMatchesPage(
+    { tabId: 42, reservedAt: 1_000, pageUrl: source.pageUrl }, 42, source.pageUrl, 1_100,
+  ), true);
+  assert.equal(reservedTabCaptureStreamMatchesPage(
+    { tabId: 42, reservedAt: 1_000, pageUrl: source.pageUrl },
+    42,
+    'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789',
+    1_100,
+  ), false);
+  assert.equal(shouldReuseReservedTabCaptureStream(
+    { tabId: 42, reservedAt: 1_000, pageUrl: source.pageUrl }, 42, source.pageUrl, 1_000 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+  ), true);
+  assert.equal(shouldReuseReservedTabCaptureStream(
+    { tabId: 42, reservedAt: 1_000, pageUrl: source.pageUrl }, 42, source.pageUrl, 1_001 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+  ), false);
   assert.equal(TAB_CAPTURE_STREAM_ID_TIMEOUT_MS, 4_000);
+  assert.equal(HOSTED_CAPTURE_START_TIMEOUT_MS, 5_000);
+  assert.equal(isPreparingCaptureStatus('preparing'), true);
+  assert.equal(isPreparingCaptureStatus('idle'), false);
+  assert.equal(shouldReplaceHostedCaptureSnapshot(
+    { status: 'error', captureId: request.captureId, code: 'tab-capture-denied', message: TAB_CAPTURE_INVOKE_MESSAGE },
+    { status: 'preparing', captureId: request.captureId },
+  ), false);
+  assert.equal(shouldReplaceHostedCaptureSnapshot(
+    { status: 'error', captureId: request.captureId, code: 'tab-capture-denied', message: TAB_CAPTURE_INVOKE_MESSAGE },
+    { status: 'capturing', captureId: request.captureId },
+  ), true);
   assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('preparing', false), true);
   assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('capturing', false), false);
   assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('capturing', true), true);
@@ -336,6 +369,11 @@ test('stream-ID races time out as the Chrome invocation error', async () => {
     raceTabCaptureStreamId(new Promise(() => undefined), 20),
     (error) => error instanceof Error && error.message === CHROME_TAB_CAPTURE_INVOKE_ERROR,
   );
+  await assert.rejects(
+    raceHostedCaptureStart(new Promise(() => undefined), 20),
+    (error) => error instanceof Error && error.message === CHROME_TAB_CAPTURE_INVOKE_ERROR,
+  );
+  assert.equal(await raceHostedCaptureCancel(new Promise(() => undefined), 20), undefined);
 });
 
 function applePodcastsRequest() {
@@ -423,6 +461,55 @@ test('begin reuses a same-tab reserved stream ID instead of requesting another',
   });
   assert.equal(response.ok, true);
   assert.equal(laterStreamCalls, 0);
+});
+
+test('a stale toolbar-reserved stream ID is dropped so first Publish re-acquires under activeTab', async () => {
+  const captureRequest = applePodcastsRequest();
+  let laterStreamCalls = 0;
+  const { fakeChrome, getOnMessage } = captureChromeForHang({
+    pageUrl: captureRequest.source.pageUrl,
+    sourceKind: 'audio',
+  });
+  installMediaCapture(fakeChrome, { reservedStreamMaxAgeMs: 20, streamIdTimeoutMs: 200 });
+  await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, captureRequest.source.pageUrl);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    return 'fresh-at-publish';
+  };
+  const startedAt = Date.now();
+  const response = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request: captureRequest,
+    }, {}, resolve), true);
+  });
+  assert.ok(Date.now() - startedAt < 1_000);
+  assert.equal(response.ok, true);
+  assert.equal(response.snapshot.status, 'capturing');
+  assert.equal(laterStreamCalls, 1);
+});
+
+test('a YouTube-reserved stream ID is not reused after the tab navigates to Apple Podcasts', async () => {
+  const captureRequest = applePodcastsRequest();
+  let laterStreamCalls = 0;
+  const { fakeChrome, getOnMessage } = captureChromeForHang({
+    pageUrl: captureRequest.source.pageUrl,
+    sourceKind: 'audio',
+  });
+  installMediaCapture(fakeChrome, { streamIdTimeoutMs: 200 });
+  await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, source.pageUrl);
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    return 'podcast-stream';
+  };
+  const response = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request: captureRequest,
+    }, {}, resolve), true);
+  });
+  assert.equal(response.ok, true);
+  assert.equal(response.snapshot.status, 'capturing');
+  assert.equal(laterStreamCalls, 1);
 });
 
 test('a hung getMediaStreamId surfaces the toolbar Recapture error instead of staying preparing', async () => {
@@ -1157,17 +1244,25 @@ test('production manifest and capture source keep the required security shape', 
   assert.ok(beginBody.indexOf('takeReservedTabCaptureStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
   assert.ok(beginBody.indexOf('getMediaStreamId') < beginBody.indexOf('validateAndPrepare(captureId'));
   assert.match(beginBody, /raceTabCaptureStreamId/);
-  assert.match(background, /reservedTabCaptureStreamMatchesTab/);
-  assert.doesNotMatch(
+  assert.match(background, /shouldReuseReservedTabCaptureStream/);
+  assert.match(
     background.slice(background.indexOf('async function takeReservedTabCaptureStreamId')),
-    /reservedTabCaptureStreamIsFresh/,
+    /shouldReuseReservedTabCaptureStream/,
   );
+  assert.match(beginBody, /request\.source\.pageUrl/);
+  assert.match(beginBody, /validateAndPrepare\(captureId, request\)/);
   assert.match(serviceWorker, /openPanelOnActionClick: false/);
   const clickBody = serviceWorker.slice(serviceWorker.indexOf('chrome.action.onClicked'));
   assert.ok(clickBody.indexOf('sidePanel.open') < clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke'));
   assert.ok(clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke') < clickBody.indexOf('followBrowsingTab'));
   const panel = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   assert.match(panel, /userFacingCaptureMessage\(mediaCaptureState\)/);
+  assert.match(panel, /raceHostedCaptureStart/);
+  assert.match(panel, /raceHostedCaptureCancel/);
+  assert.match(panel, /mapTabCaptureStartFailure/);
+  assert.match(panel, /shouldReplaceHostedCaptureSnapshot/);
+  assert.match(panel, /isPreparingCaptureStatus\(mediaCaptureState\.status\)/);
+  assert.match(offscreen, /raceTabCaptureStreamId\(mediaPromise\)/);
   assert.equal(
     background.match(/world: usesMainWorldCapture\((?:capture\.request|request)\.source\.kind\) \? 'MAIN' : 'ISOLATED'/g)?.length,
     3,

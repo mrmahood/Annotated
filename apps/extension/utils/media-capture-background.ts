@@ -23,9 +23,10 @@ import {
   isMediaCaptureStartMessage,
   isCurrentCaptureId,
   mapTabCaptureStartFailure,
+  RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
   TAB_CAPTURE_STREAM_ID_TIMEOUT_MS,
   raceTabCaptureStreamId,
-  reservedTabCaptureStreamMatchesTab,
+  shouldReuseReservedTabCaptureStream,
   tabCaptureStreamIdTimeoutError,
   sourceIdentityMatchesUrl,
   usesMainWorldCapture,
@@ -39,7 +40,12 @@ import {
 
 type ExtensionChrome = typeof browser;
 type ActiveCapture = { captureId: string; request: CaptureStartRequest };
-type ReservedTabCaptureStream = { tabId: number; streamId: string; reservedAt: number };
+type ReservedTabCaptureStream = {
+  tabId: number;
+  streamId: string;
+  reservedAt: number;
+  pageUrl?: string;
+};
 const OFFSCREEN_URL = 'offscreen.html';
 export const ACTIVE_CAPTURE_KEY = 'annotated.mediaCapture.active.v1';
 
@@ -47,6 +53,7 @@ let reservedTabCaptureStream: ReservedTabCaptureStream | null = null;
 let reserveTabCaptureInFlight: Promise<ReservedTabCaptureStream | null> | null = null;
 let reserveTabCaptureGeneration = 0;
 let activeStreamIdTimeoutMs = TAB_CAPTURE_STREAM_ID_TIMEOUT_MS;
+let activeReservedStreamMaxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS;
 const cancelledCaptureIds = new Set<string>();
 const CANCELLED_CAPTURE_ID_LIMIT = 32;
 
@@ -64,9 +71,19 @@ export function reserveTabCaptureStreamIdFromInvoke(
     reserveTabCaptureInFlight = null;
     return Promise.resolve(null);
   }
-  if (reservedTabCaptureStream && reservedTabCaptureStream.tabId === tabId) {
+  if (
+    reservedTabCaptureStream &&
+    shouldReuseReservedTabCaptureStream(
+      reservedTabCaptureStream,
+      tabId,
+      pageUrl,
+      Date.now(),
+      activeReservedStreamMaxAgeMs,
+    )
+  ) {
     return Promise.resolve(reservedTabCaptureStream);
   }
+  if (reservedTabCaptureStream) invalidateReservedTabCaptureStream();
   const generation = reserveTabCaptureGeneration;
   const pending = raceTabCaptureStreamId(
     chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }),
@@ -77,7 +94,7 @@ export function reserveTabCaptureStreamIdFromInvoke(
       reservedTabCaptureStream = null;
       return null;
     }
-    const reserved = { tabId, streamId, reservedAt: Date.now() };
+    const reserved = { tabId, streamId, reservedAt: Date.now(), pageUrl };
     reservedTabCaptureStream = reserved;
     return reserved;
   }).catch(() => {
@@ -112,7 +129,10 @@ function consumeCancelledCaptureId(captureId: string): boolean {
   return cancelled;
 }
 
-async function takeReservedTabCaptureStreamId(tabId: number): Promise<string | null> {
+async function takeReservedTabCaptureStreamId(
+  tabId: number,
+  pageUrl?: string,
+): Promise<string | null> {
   if (reserveTabCaptureInFlight) {
     try {
       await raceTabCaptureStreamId(reserveTabCaptureInFlight, activeStreamIdTimeoutMs);
@@ -121,7 +141,19 @@ async function takeReservedTabCaptureStreamId(tabId: number): Promise<string | n
     }
   }
   const reserved = reservedTabCaptureStream;
-  if (!reserved || !reservedTabCaptureStreamMatchesTab(reserved, tabId, Date.now())) {
+  if (
+    !reserved ||
+    !shouldReuseReservedTabCaptureStream(
+      reserved,
+      tabId,
+      pageUrl,
+      Date.now(),
+      activeReservedStreamMaxAgeMs,
+    )
+  ) {
+    // Drop stale or navigated IDs so Publish can re-acquire under the
+    // still-valid activeTab grant instead of handing Chrome an expired ID.
+    if (reserved && reserved.tabId === tabId) reservedTabCaptureStream = null;
     return null;
   }
   reservedTabCaptureStream = null;
@@ -144,13 +176,14 @@ function captureFailureCode(code: PreparationDiagnosticCode): CaptureFailureCode
 
 export function installMediaCapture(
   chrome: ExtensionChrome,
-  options?: { streamIdTimeoutMs?: number },
+  options?: { streamIdTimeoutMs?: number; reservedStreamMaxAgeMs?: number },
 ) {
   reservedTabCaptureStream = null;
   reserveTabCaptureInFlight = null;
   reserveTabCaptureGeneration += 1;
   cancelledCaptureIds.clear();
   activeStreamIdTimeoutMs = options?.streamIdTimeoutMs ?? TAB_CAPTURE_STREAM_ID_TIMEOUT_MS;
+  activeReservedStreamMaxAgeMs = options?.reservedStreamMaxAgeMs ?? RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS;
   let active: ActiveCapture | null = null;
   let lastSnapshot: CaptureSnapshot = { status: 'idle' };
   let creatingOffscreen: Promise<void> | null = null;
@@ -366,16 +399,20 @@ export function installMediaCapture(
         emit(snapshot, request.operation);
         return { ok: false, snapshot };
       }
-      // Chrome gates getMediaStreamId like activeTab. Take a toolbar-reserved
-      // ID or obtain one before prepare/offscreen so the grant check is not
-      // buried after scripting and document setup. Reuse a same-tab reserved
-      // ID even after the freshness window so Chrome is not left with an
-      // unused pending capturer that hangs a later getMediaStreamId.
-      const streamId = await takeReservedTabCaptureStreamId(request.tabId) ??
-        await raceTabCaptureStreamId(
-          chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
-          activeStreamIdTimeoutMs,
-        );
+      // Chrome gates getMediaStreamId like activeTab. Take a fresh
+      // toolbar-reserved ID or obtain one before prepare/offscreen so the
+      // grant check is not buried after scripting. A reserved ID older than
+      // the freshness window is dropped: Chrome expires unused stream IDs,
+      // and Recapture already proves a later getMediaStreamId still works
+      // under the toolbar invoke. Re-acquire here so first Publish after
+      // commentary prep does not require a manual Recapture.
+      const streamId = await takeReservedTabCaptureStreamId(
+        request.tabId,
+        request.source.pageUrl,
+      ) ?? await raceTabCaptureStreamId(
+        chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
+        activeStreamIdTimeoutMs,
+      );
       if (consumeCancelledCaptureId(captureId) || !isCurrentCaptureId(liveCaptureId(), captureId)) {
         await clearActiveIfCurrent(captureId);
         const snapshot = {
@@ -393,7 +430,10 @@ export function installMediaCapture(
         emit(snapshot);
         return { ok: false, snapshot };
       }
-      const prepared = await validateAndPrepare(captureId, request);
+      const prepared = await raceTabCaptureStreamId(
+        validateAndPrepare(captureId, request),
+        activeStreamIdTimeoutMs,
+      );
       if (!prepared.ok) {
         await clearActiveIfCurrent(captureId);
         console.warn('[Annotated capture preparation]', {
@@ -405,15 +445,15 @@ export function installMediaCapture(
         emit(snapshot);
         return { ok: false, snapshot };
       }
-      await ensureOffscreenDocument();
-      const started = await chrome.runtime.sendMessage({
+      await raceTabCaptureStreamId(ensureOffscreenDocument(), activeStreamIdTimeoutMs);
+      const started = await raceTabCaptureStreamId(chrome.runtime.sendMessage({
         target: 'offscreen',
         type: MEDIA_CAPTURE_OFFSCREEN_START,
         captureId,
         streamId,
         request,
         prepared: prepared.prepared,
-      }) as CaptureSnapshot | undefined;
+      }), activeStreamIdTimeoutMs) as CaptureSnapshot | undefined;
       if (!started || typeof started !== 'object' || !('status' in started)) {
         throw new Error('The offscreen recorder did not accept the capture start.');
       }
@@ -481,6 +521,7 @@ export function installMediaCapture(
         );
         const sameCapture = message.captureId === null || message.captureId === capture?.captureId;
         if (!capture) {
+          invalidateReservedTabCaptureStream();
           const preparingMatches = lastSnapshot.status === 'preparing' &&
             (message.captureId === null || lastSnapshot.captureId === message.captureId);
           if (preparingMatches) {
@@ -591,6 +632,9 @@ export function installMediaCapture(
     if (active?.request.tabId === tabId) void cancelActive('connected-tab-closed', 'The connected tab closed during capture.');
   });
   chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (reservedTabCaptureStream?.tabId === tabId && typeof changeInfo.url === 'string') {
+      invalidateReservedTabCaptureStream();
+    }
     const capture = active;
     if (!capture || capture.request.tabId !== tabId || typeof changeInfo.url !== 'string') return;
     if (!sourceIdentityMatchesUrl(capture.request.source, changeInfo.url)) {

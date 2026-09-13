@@ -218,6 +218,14 @@ export const CHROME_TAB_CAPTURE_INVOKE_ERROR =
   'Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.';
 export const RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS = 8_000;
 export const TAB_CAPTURE_STREAM_ID_TIMEOUT_MS = 4_000;
+export const HOSTED_CAPTURE_START_TIMEOUT_MS = 5_000;
+export const HOSTED_CAPTURE_CANCEL_TIMEOUT_MS = 2_000;
+
+export type ReservedTabCaptureStreamIdentity = {
+  tabId: number;
+  reservedAt: number;
+  pageUrl?: string;
+};
 
 export function isTabCaptureInvocationError(value: string): boolean {
   const text = value.toLowerCase();
@@ -226,7 +234,7 @@ export function isTabCaptureInvocationError(value: string): boolean {
 }
 
 export function reservedTabCaptureStreamIsFresh(
-  reserved: { tabId: number; reservedAt: number },
+  reserved: ReservedTabCaptureStreamIdentity,
   tabId: number,
   now: number,
   maxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
@@ -236,13 +244,34 @@ export function reservedTabCaptureStreamIsFresh(
 }
 
 export function reservedTabCaptureStreamMatchesTab(
-  reserved: { tabId: number; reservedAt: number },
+  reserved: ReservedTabCaptureStreamIdentity,
   tabId: number,
   now: number,
 ): boolean {
   return reserved.tabId === tabId &&
     Number.isFinite(reserved.reservedAt) &&
     now - reserved.reservedAt >= 0;
+}
+
+export function reservedTabCaptureStreamMatchesPage(
+  reserved: ReservedTabCaptureStreamIdentity,
+  tabId: number,
+  pageUrl: string | undefined,
+  now: number,
+): boolean {
+  return reservedTabCaptureStreamMatchesTab(reserved, tabId, now) &&
+    (pageUrl === undefined || reserved.pageUrl === undefined || reserved.pageUrl === pageUrl);
+}
+
+export function shouldReuseReservedTabCaptureStream(
+  reserved: ReservedTabCaptureStreamIdentity,
+  tabId: number,
+  pageUrl: string | undefined,
+  now: number,
+  maxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+): boolean {
+  return reservedTabCaptureStreamIsFresh(reserved, tabId, now, maxAgeMs) &&
+    reservedTabCaptureStreamMatchesPage(reserved, tabId, pageUrl, now);
 }
 
 export function tabCaptureStreamIdTimeoutError(): Error {
@@ -266,11 +295,47 @@ export async function raceTabCaptureStreamId<T>(
   }
 }
 
+export async function raceHostedCaptureStart<T>(
+  pending: Promise<T>,
+  timeoutMs = HOSTED_CAPTURE_START_TIMEOUT_MS,
+): Promise<T> {
+  return raceTabCaptureStreamId(pending, timeoutMs);
+}
+
+export async function raceHostedCaptureCancel<T>(
+  pending: Promise<T>,
+  timeoutMs = HOSTED_CAPTURE_CANCEL_TIMEOUT_MS,
+): Promise<T | undefined> {
+  try {
+    return await raceTabCaptureStreamId(pending, timeoutMs);
+  } catch {
+    return undefined;
+  }
+}
+
 export function canClearPreparingCaptureWithoutBackgroundCancel(
   status: CaptureSnapshot['status'],
   backgroundCancelled: boolean,
 ): boolean {
   return backgroundCancelled || status === 'preparing' || status === 'idle';
+}
+
+export function shouldReplaceHostedCaptureSnapshot(
+  current: CaptureSnapshot,
+  incoming: CaptureSnapshot,
+): boolean {
+  if (
+    current.status === 'error' &&
+    (current.code === 'tab-capture-denied' || current.code === 'recapture-required') &&
+    (incoming.status === 'preparing' || incoming.status === 'cancelled' || incoming.status === 'idle')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function isPreparingCaptureStatus(status: CaptureSnapshot['status']): boolean {
+  return status === 'preparing';
 }
 
 export function mapTabCaptureStartFailure(

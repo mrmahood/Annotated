@@ -11,6 +11,7 @@ import {
   isAudioOnlyCaptureSourceKind,
   isOffscreenStartMessage,
   executeHostedMediaUpload,
+  raceTabCaptureStreamId,
   selectCaptureMimeType,
   type CaptureGeometry,
   type CaptureMetadata,
@@ -374,10 +375,16 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
   try {
     const tabConstraint = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: message.streamId } } as unknown as MediaTrackConstraints;
     const expectVideo = !isAudioOnlyCaptureSourceKind(message.prepared.sourceKind);
-    stream = await navigator.mediaDevices.getUserMedia({
+    const mediaPromise = navigator.mediaDevices.getUserMedia({
       audio: tabConstraint,
       video: expectVideo ? tabConstraint : false,
     });
+    try {
+      stream = await raceTabCaptureStreamId(mediaPromise);
+    } catch (error) {
+      void mediaPromise.then((late) => late.getTracks().forEach((track) => track.stop())).catch(() => undefined);
+      throw error;
+    }
     if (stream.getAudioTracks().length === 0) throw new Error('no-audio-track');
     if (expectVideo && stream.getVideoTracks().length === 0) throw new Error('no-video-track');
     const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
