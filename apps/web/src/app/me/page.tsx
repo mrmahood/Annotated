@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AnnotationCard } from "../annotation-card";
 import { PaginationNav } from "../pagination-nav";
+import { ProfileHandleForm } from "../profile-handle-form";
 import { ProviderSignInActions } from "../provider-sign-in-actions";
 import { SiteHeader } from "../site-header";
 import { feedItemKey, getCurrentUserBookmarksPage } from "@/lib/data/public-discovery";
-import { getCurrentUserId } from "@/lib/data/social";
+import { getCurrentUserId, getCurrentUserProfileHandle } from "@/lib/data/social";
 import {
   getPageHref,
   isCanonicalPageQuery,
@@ -30,6 +31,9 @@ export default async function MePage({ searchParams }: MePageProps) {
   if (!isCanonicalPageQuery(pageQuery)) redirect(getPageHref("/me", page));
 
   const currentUserId = await getCurrentUserId();
+  const currentHandle = currentUserId
+    ? await getCurrentUserProfileHandle(currentUserId)
+    : null;
   const returnTo = getPageHref("/me", page);
   const bookmarks = currentUserId
     ? await getCurrentUserBookmarksPage(page)
@@ -47,6 +51,8 @@ export default async function MePage({ searchParams }: MePageProps) {
             Only you can see these. There are no folders, notes, or public save counts.
           </p>
         </header>
+
+        {currentUserId ? <ProfileHandleForm currentHandle={currentHandle} /> : null}
 
         {!currentUserId ? (
           <section className="discovery-state" aria-labelledby="me-sign-in-heading">

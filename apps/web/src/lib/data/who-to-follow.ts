@@ -1,15 +1,8 @@
+import {
+  isReservedProfileHandle,
+  PROFILE_HANDLE_PATTERN,
+} from "@annotated/shared/profile-handle";
 import { getHttpUrl, getOptionalText, isUuid } from "../public-content.ts";
-
-const WHO_TO_FOLLOW_HANDLE_PATTERN = /^[a-z0-9_-]{3,30}$/;
-const WHO_TO_FOLLOW_RESERVED_HANDLES = new Set([
-  "api",
-  "auth",
-  "_next",
-  "ops",
-  "me",
-  "trending",
-  "who-to-follow",
-]);
 
 export const WHO_TO_FOLLOW_MAX = 5;
 export const WHO_TO_FOLLOW_MIN_VISIBLE = 1;
@@ -43,8 +36,8 @@ function isRecord(value: unknown): value is UnknownRecord {
 export function normalizeWhoToFollowHandle(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const handle = value.trim().replace(/^@+/u, "").toLowerCase();
-  return WHO_TO_FOLLOW_HANDLE_PATTERN.test(handle)
-      && !WHO_TO_FOLLOW_RESERVED_HANDLES.has(handle)
+  return PROFILE_HANDLE_PATTERN.test(handle)
+      && !isReservedProfileHandle(handle)
     ? handle
     : null;
 }

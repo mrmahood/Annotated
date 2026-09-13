@@ -1,4 +1,8 @@
 import { normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import {
+  isReservedProfileHandle,
+  PROFILE_HANDLE_PATTERN,
+} from '@annotated/shared/profile-handle';
 import { isSpotifyEpisodeUrl, normalizeSpotifyEpisodeUrl } from '@annotated/shared/spotify';
 import { isTikTokVideoUrl, normalizeTikTokUrl } from '@annotated/shared/tiktok';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
@@ -16,16 +20,7 @@ export type PublicAnnotationRoute = {
   annotationSlug: string;
 };
 
-const CREATOR_HANDLE_PATTERN = /^[a-z0-9_-]{3,30}$/;
 const ANNOTATION_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESERVED_ROOT_HANDLES = new Set([
-  'api',
-  'auth',
-  '_next',
-  'privacy',
-  'terms',
-  'legal',
-]);
 
 export type AnnotationQueryPlan = {
   normalizedUrl?: string;
@@ -48,8 +43,8 @@ export function isUuid(value: unknown): value is string {
 }
 
 export function isPublicCreatorHandle(value: unknown): value is string {
-  return typeof value === 'string' && CREATOR_HANDLE_PATTERN.test(value) &&
-    !RESERVED_ROOT_HANDLES.has(value);
+  return typeof value === 'string' && PROFILE_HANDLE_PATTERN.test(value) &&
+    !isReservedProfileHandle(value);
 }
 
 export function isPublicAnnotationSlug(value: unknown): value is string {

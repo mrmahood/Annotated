@@ -202,11 +202,12 @@ test("claim list JSON omits claimant PII unless the public payload includes it",
 });
 
 test("ops route is gated with notFound and is not linked from public navigation", async () => {
-  const [page, header, consoleSource, routes, styles] = await Promise.all([
+  const [page, header, consoleSource, routes, handles, styles] = await Promise.all([
     readFile(new URL("../app/ops/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/site-header.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/ops/ops-console.tsx", import.meta.url), "utf8"),
     readFile(new URL("./public-routes.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../../packages/shared/src/profile-handle.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
 
@@ -233,7 +234,8 @@ test("ops route is gated with notFound and is not linked from public navigation"
   assert.match(consoleSource, /Set boost/);
   assert.match(consoleSource, /Authorization/);
   assert.doesNotMatch(consoleSource + page, /SUPABASE_SERVICE_ROLE_KEY|createServiceClient/);
-  assert.match(routes, /"ops"/);
+  assert.match(routes, /isReservedProfileHandle/);
+  assert.match(handles, /'ops'/);
   assert.match(styles, /\.ops-main/);
   assert.match(styles, /\.ops-confirm/);
 });

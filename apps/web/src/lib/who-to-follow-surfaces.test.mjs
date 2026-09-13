@@ -3,13 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("web Feed side rail and Follow tab stay on the curated Who to Follow contract", async () => {
-  const [home, page, rail, card, header, routes, social, mutations, styles] = await Promise.all([
+  const [home, page, rail, card, header, routes, handles, social, mutations, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/who-to-follow/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/who-to-follow-rail.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/who-to-follow-card.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/site-header.tsx", import.meta.url), "utf8"),
     readFile(new URL("./public-routes.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../../packages/shared/src/profile-handle.ts", import.meta.url), "utf8"),
     readFile(new URL("./data/social.ts", import.meta.url), "utf8"),
     readFile(new URL("./data/social-mutations.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -44,7 +45,8 @@ test("web Feed side rail and Follow tab stay on the curated Who to Follow contra
   assert.match(header, /href="\/who-to-follow"/);
   assert.match(header, /site-who-to-follow-link/);
   assert.match(header, />\s*Follow\s*</);
-  assert.match(routes, /"who-to-follow"/);
+  assert.match(routes, /isReservedProfileHandle/);
+  assert.match(handles, /'who-to-follow'/);
 
   assert.match(social, /is_following_profile/);
   assert.match(social, /from\("profiles"\)/);
