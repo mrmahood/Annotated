@@ -99,9 +99,26 @@ export function moveClipHandle(input: {
   durationMs: number | null;
   handle: 'start' | 'end';
   nextMs: number;
+  windowStartMs?: number | null;
+  windowDurationMs?: number | null;
 }): { startMs: number; endMs: number } {
   const maxMs = mediaDurationSliderMaxMs(input.durationMs);
   const next = clampToMedia(input.nextMs, maxMs);
+  if (clipHandleShouldRelocate({ ...input, nextMs: next })) {
+    const existingStart = input.startMs;
+    const existingEnd = input.endMs;
+    const hasExisting = existingStart !== null && existingEnd !== null && existingEnd > existingStart;
+    return relocateClipRangeIntoWindow({
+      handle: input.handle,
+      nextMs: next,
+      spanMs: hasExisting
+        ? existingEnd - existingStart
+        : MINIMUM_MEDIA_DURATION_MS,
+      durationMs: input.durationMs,
+      windowStartMs: input.windowStartMs ?? 0,
+      windowDurationMs: input.windowDurationMs ?? 0,
+    });
+  }
   const fallbackEnd = maxMs === null
     ? next + MINIMUM_MEDIA_DURATION_MS
     : Math.min(maxMs, next + MINIMUM_MEDIA_DURATION_MS);
@@ -283,6 +300,159 @@ export function clipSliderWindowContainsRange(
 ): boolean {
   if (startMs === null || endMs === null || endMs <= startMs) return true;
   return startMs >= windowStartMs && endMs <= windowStartMs + windowDurationMs;
+}
+
+export function clipSliderWindowOverlapsRange(
+  windowStartMs: number,
+  windowDurationMs: number,
+  startMs: number | null,
+  endMs: number | null,
+): boolean {
+  if (startMs === null || endMs === null || endMs <= startMs || windowDurationMs <= 0) return false;
+  return startMs < windowStartMs + windowDurationMs && endMs > windowStartMs;
+}
+
+/** Map a media timestamp onto the visible slider (0 = window start). */
+export function clipSliderOffsetSeconds(
+  mediaMs: number,
+  windowStartMs: number,
+  windowDurationMs: number,
+): number {
+  if (windowDurationMs <= 0) return 0;
+  const spanSeconds = windowDurationMs / 1_000;
+  const offsetSeconds = (
+    snapMsToWholeSeconds(mediaMs) - snapMsToWholeSeconds(windowStartMs)
+  ) / 1_000;
+  return Math.min(spanSeconds, Math.max(0, offsetSeconds));
+}
+
+export function clipSliderMediaMsFromOffset(
+  offsetSeconds: number,
+  windowStartMs: number,
+): number {
+  return snapMsToWholeSeconds(windowStartMs + offsetSeconds * 1_000);
+}
+
+/** Visible handle positions. Off-window ranges sit at the near edge so they stay grabbable. */
+export function clipSliderDisplayOffsetSeconds(input: {
+  startMs: number | null;
+  endMs: number | null;
+  windowStartMs: number;
+  windowDurationMs: number;
+  playheadMs?: number | null;
+}): { startSeconds: number; endSeconds: number } {
+  const fallbackSeconds = input.playheadMs == null
+    ? 0
+    : clipSliderOffsetSeconds(input.playheadMs, input.windowStartMs, input.windowDurationMs);
+  if (input.startMs === null || input.endMs === null || input.endMs <= input.startMs) {
+    return { startSeconds: fallbackSeconds, endSeconds: fallbackSeconds };
+  }
+  if (clipSliderWindowOverlapsRange(
+    input.windowStartMs,
+    input.windowDurationMs,
+    input.startMs,
+    input.endMs,
+  )) {
+    return {
+      startSeconds: clipSliderOffsetSeconds(input.startMs, input.windowStartMs, input.windowDurationMs),
+      endSeconds: clipSliderOffsetSeconds(input.endMs, input.windowStartMs, input.windowDurationMs),
+    };
+  }
+  const spanSeconds = input.windowDurationMs > 0 ? input.windowDurationMs / 1_000 : 0;
+  const rangeSeconds = Math.min(
+    spanSeconds,
+    Math.max(1, Math.round((input.endMs - input.startMs) / 1_000)),
+  );
+  if (input.endMs <= input.windowStartMs) {
+    return { startSeconds: 0, endSeconds: rangeSeconds };
+  }
+  return {
+    startSeconds: Math.max(0, spanSeconds - rangeSeconds),
+    endSeconds: spanSeconds,
+  };
+}
+
+function clipHandleShouldRelocate(input: {
+  startMs: number | null;
+  endMs: number | null;
+  nextMs: number;
+  windowStartMs?: number | null;
+  windowDurationMs?: number | null;
+}): boolean {
+  const windowStartMs = input.windowStartMs;
+  const windowDurationMs = input.windowDurationMs;
+  if (windowStartMs == null || windowDurationMs == null || windowDurationMs <= 0) return false;
+  const windowEndMs = windowStartMs + windowDurationMs;
+  if (input.nextMs < windowStartMs || input.nextMs > windowEndMs) return false;
+  const hasExisting = input.startMs !== null && input.endMs !== null && input.endMs > input.startMs;
+  if (hasExisting) {
+    return !clipSliderWindowOverlapsRange(
+      windowStartMs,
+      windowDurationMs,
+      input.startMs,
+      input.endMs,
+    );
+  }
+  return windowStartMs > 0;
+}
+
+export function relocateClipRangeIntoWindow(input: {
+  handle: 'start' | 'end';
+  nextMs: number;
+  spanMs: number;
+  durationMs: number | null;
+  windowStartMs: number;
+  windowDurationMs: number;
+}): { startMs: number; endMs: number } {
+  const maxMs = mediaDurationSliderMaxMs(input.durationMs);
+  const windowStartMs = clampClipSliderWindowStart(
+    input.windowStartMs,
+    input.windowDurationMs,
+    input.durationMs,
+  );
+  const windowEndMs = maxMs === null
+    ? windowStartMs + input.windowDurationMs
+    : Math.min(maxMs, windowStartMs + input.windowDurationMs);
+  const placed = Math.min(windowEndMs, Math.max(windowStartMs, clampToMedia(input.nextMs, maxMs)));
+  const span = Math.min(
+    MAXIMUM_NEW_MEDIA_PUBLICATION_DURATION_MS,
+    Math.max(MINIMUM_MEDIA_DURATION_MS, snapMsToWholeSeconds(input.spanMs)),
+  );
+
+  let startMs: number;
+  let endMs: number;
+  if (input.handle === 'start') {
+    startMs = placed;
+    endMs = Math.min(windowEndMs, startMs + span);
+    if (endMs - startMs < MINIMUM_MEDIA_DURATION_MS) {
+      startMs = Math.max(windowStartMs, endMs - MINIMUM_MEDIA_DURATION_MS);
+      endMs = Math.min(windowEndMs, startMs + MINIMUM_MEDIA_DURATION_MS);
+    }
+  } else {
+    endMs = placed;
+    startMs = Math.max(windowStartMs, endMs - span);
+    if (endMs - startMs < MINIMUM_MEDIA_DURATION_MS) {
+      endMs = Math.min(windowEndMs, startMs + MINIMUM_MEDIA_DURATION_MS);
+      startMs = Math.max(windowStartMs, endMs - MINIMUM_MEDIA_DURATION_MS);
+    }
+  }
+
+  if (maxMs !== null) {
+    endMs = Math.min(endMs, maxMs);
+    startMs = Math.min(startMs, endMs);
+    if (endMs - startMs < MINIMUM_MEDIA_DURATION_MS && maxMs >= MINIMUM_MEDIA_DURATION_MS) {
+      endMs = Math.min(maxMs, startMs + MINIMUM_MEDIA_DURATION_MS);
+      startMs = Math.max(0, endMs - MINIMUM_MEDIA_DURATION_MS);
+    }
+    if (endMs - startMs > MAXIMUM_NEW_MEDIA_PUBLICATION_DURATION_MS) {
+      endMs = startMs + MAXIMUM_NEW_MEDIA_PUBLICATION_DURATION_MS;
+      if (endMs > maxMs) {
+        endMs = maxMs;
+        startMs = Math.max(0, endMs - MAXIMUM_NEW_MEDIA_PUBLICATION_DURATION_MS);
+      }
+    }
+  }
+  return { startMs, endMs };
 }
 
 export function formatClipSliderWindowCue(

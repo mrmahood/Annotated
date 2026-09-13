@@ -10,6 +10,8 @@ import {
   CLIP_PRESETS,
   CLIP_SLIDER_PAN_MS,
   clampClipSliderWindowStart,
+  clipSliderDisplayOffsetSeconds,
+  clipSliderMediaMsFromOffset,
   clipSliderWindowContainsRange,
   clipSliderWindowDurationMs,
   clipSliderWindowIsZoomed,
@@ -281,22 +283,20 @@ export function ClipRangeEditor({
   }, [durationMs, endMs, maxMs, playheadMs, startMs, windowDurationMs]);
 
   const windowEndMs = windowStartMs + windowDurationMs;
-  const sliderMinSeconds = windowDurationMs > 0 ? windowStartMs / 1_000 : 0;
-  const sliderMaxSeconds = windowDurationMs > 0 ? windowEndMs / 1_000 : 0;
-  const sliderSpanSeconds = sliderMaxSeconds - sliderMinSeconds;
-  const fallbackSeconds = playheadMs !== null
-    ? Math.min(sliderMaxSeconds, Math.max(sliderMinSeconds, Math.round(playheadMs / 1_000)))
-    : sliderMinSeconds;
-  const startSeconds = startMs === null ? fallbackSeconds : Math.round(startMs / 1_000);
-  const endSeconds = endMs === null ? fallbackSeconds : Math.round(endMs / 1_000);
+  const sliderSpanSeconds = windowDurationMs > 0 ? windowDurationMs / 1_000 : 0;
+  const displayOffsets = clipSliderDisplayOffsetSeconds({
+    startMs,
+    endMs,
+    windowStartMs,
+    windowDurationMs,
+    playheadMs,
+  });
+  const startOffsetSeconds = displayOffsets.startSeconds;
+  const endOffsetSeconds = displayOffsets.endSeconds;
   const hasRange = startMs !== null && endMs !== null && endMs > startMs;
   const budget = getClipBudget(startMs, endMs);
-  const startPercent = sliderSpanSeconds > 0
-    ? ((startSeconds - sliderMinSeconds) / sliderSpanSeconds) * 100
-    : 0;
-  const endPercent = sliderSpanSeconds > 0
-    ? ((endSeconds - sliderMinSeconds) / sliderSpanSeconds) * 100
-    : 0;
+  const startPercent = sliderSpanSeconds > 0 ? (startOffsetSeconds / sliderSpanSeconds) * 100 : 0;
+  const endPercent = sliderSpanSeconds > 0 ? (endOffsetSeconds / sliderSpanSeconds) * 100 : 0;
   const fillLeft = Math.max(0, Math.min(100, startPercent));
   const fillRight = Math.max(0, Math.min(100, endPercent));
   const sliderDisabled = disabled || sliderSpanSeconds < 1;
@@ -307,13 +307,15 @@ export function ClipRangeEditor({
     ? formatClipSliderWindowCue(windowStartMs, windowDurationMs, durationMs)
     : '';
 
-  const moveHandle = (handle: 'start' | 'end', nextSeconds: number) => {
+  const moveHandle = (handle: 'start' | 'end', offsetSeconds: number) => {
     const next = moveClipHandle({
       startMs,
       endMs,
       durationMs,
       handle,
-      nextMs: nextSeconds * 1_000,
+      nextMs: clipSliderMediaMsFromOffset(offsetSeconds, windowStartMs),
+      windowStartMs,
+      windowDurationMs,
     });
     onCommitRange(next.startMs, next.endMs);
   };
@@ -396,10 +398,10 @@ export function ClipRangeEditor({
         <input
           className="clip-range-thumb clip-range-thumb-start"
           type="range"
-          min={sliderMinSeconds}
-          max={sliderMaxSeconds}
+          min={0}
+          max={sliderSpanSeconds}
           step={1}
-          value={Math.min(sliderMaxSeconds, Math.max(sliderMinSeconds, startSeconds))}
+          value={startOffsetSeconds}
           disabled={sliderDisabled}
           aria-label="Clip start"
           onChange={(event) => moveHandle('start', Number(event.target.value))}
@@ -407,10 +409,10 @@ export function ClipRangeEditor({
         <input
           className="clip-range-thumb clip-range-thumb-end"
           type="range"
-          min={sliderMinSeconds}
-          max={sliderMaxSeconds}
+          min={0}
+          max={sliderSpanSeconds}
           step={1}
-          value={Math.min(sliderMaxSeconds, Math.max(sliderMinSeconds, endSeconds))}
+          value={endOffsetSeconds}
           disabled={sliderDisabled}
           aria-label="Clip end"
           onChange={(event) => moveHandle('end', Number(event.target.value))}
