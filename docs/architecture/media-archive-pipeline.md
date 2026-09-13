@@ -623,8 +623,14 @@ If the user prepares a new clip on the current host while a prior draft is still
 queued, Create must say to cancel that in-progress clip first. An orphaned
 `capture_pending` draft with no live capture must not keep Recapture or
 “reconnect the original source” after Create rebinds to a different host
-(YouTube → Apple Podcasts). Auto-abandon that draft and its media session so
-Publish on the new host is a clean first capture; Recapture is only for the
+(YouTube → Apple Podcasts), including after a tab switch to an already-open
+Apple tab and Cancel of a still-spinning YouTube publish. Auto-abandon that
+draft and its media session so Publish on the new host is a clean first
+capture. A same-host `capture_pending` orphan with no live capture must not
+trap Publish in Recapture either: Cancel of an in-flight capture must release
+the original tab's tabCapture/offscreen even after Create rebound, a failed
+begin/start rolls back that draft (preserving typed commentary/range), and
+Publish cancel-then-begins any leftover orphan. Recapture is only for the
 same source after capture died.
 
 If connectivity drops after capture, keep the Blob in the offscreen document,

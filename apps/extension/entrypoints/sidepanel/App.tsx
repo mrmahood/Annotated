@@ -240,11 +240,13 @@ import {
   hostedCancelCreateReset,
   hostedForeignOrphanCreateReset,
   hostedMediaProgressCopy,
+  hostedPublishAbandonDecision,
   hostedSessionBlocksCreatePublish,
   hostedSessionMatchesConnectedUrl,
   isHostedMediaSession,
   shouldAutoAbandonForeignHostedDraft,
   shouldOfferHostedRecapture,
+  shouldRollbackHostedDraftAfterStartFailure,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
   shouldPollHostedOwnerStatus,
@@ -694,6 +696,7 @@ function App() {
   const activeCaptureIdRef = useRef<string | null>(null);
   const cancellingHostedMediaRef = useRef(false);
   const hostedCancelInFlightRef = useRef<Promise<boolean> | null>(null);
+  const hostedSessionGenerationRef = useRef(0);
   const foreignAbandonAttemptKeyRef = useRef<string | null>(null);
   const modeSwitchDialogRef = useRef<HTMLDialogElement | null>(null);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
@@ -1578,6 +1581,7 @@ function App() {
         current.operation.mediaId === operation.mediaId && activeCaptureIdRef.current === null
       ) {
         await chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
+        hostedSessionGenerationRef.current += 1;
         hostedMediaSessionRef.current = null;
         setHostedMediaSession(null);
         setMediaCaptureOperation(null);
@@ -1598,12 +1602,45 @@ function App() {
     );
   }, []);
 
+  const rollbackFailedHostedCaptureStart = useCallback(async (
+    session: HostedMediaSession,
+    captureId: string,
+  ) => {
+    hostedSessionGenerationRef.current += 1;
+    try {
+      await raceHostedCaptureCancel(
+        chrome.runtime.sendMessage({
+          target: 'background',
+          type: MEDIA_CAPTURE_CANCEL,
+          captureId,
+          operation: session.operation,
+        }) as Promise<{ ok?: boolean; cancelled?: boolean }>,
+      );
+    } catch { /* Best-effort: the start failure is authoritative. */ }
+    try {
+      await cancelHostedSessionOnServer(session);
+    } catch { /* Still clear local Create so a failed start cannot trap Recapture. */ }
+    const current = hostedMediaSessionRef.current;
+    if (
+      current?.operation.annotationId === session.operation.annotationId &&
+      current.operation.mediaId === session.operation.mediaId
+    ) {
+      await chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
+      hostedMediaSessionRef.current = null;
+      activeCaptureIdRef.current = null;
+      setHostedMediaSession(null);
+      setMediaCaptureOperation(null);
+      setMediaCaptureState({ status: 'idle' });
+    }
+  }, [cancelHostedSessionOnServer]);
+
   const startHostedCapture = useCallback(async (
     operation: HostedMediaOperation,
     source: CaptureSourceIdentity,
     startMs: number,
     endMs: number,
     acquiredStream?: AcquiredTabCaptureStream | null,
+    options?: { rollbackOnStartFailure?: boolean },
   ) => {
     if (!supabase) throw new Error('The authenticated session is unavailable.');
     const session: HostedMediaSession = {
@@ -1614,6 +1651,7 @@ function App() {
       endMs,
       createdAt: Date.now(),
     };
+    const sessionGeneration = hostedSessionGenerationRef.current;
     hostedMediaSessionRef.current = session;
     setHostedMediaSession(session);
     setMediaCaptureOperation(operation);
@@ -1628,6 +1666,13 @@ function App() {
     try {
       const sessionPromise = supabase.auth.getSession();
       await chrome.storage.local.set({ [HOSTED_MEDIA_SESSION_KEY]: session });
+      if (
+        hostedSessionGenerationRef.current !== sessionGeneration ||
+        !hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current)
+      ) {
+        await chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
+        throw new Error('Capture cancelled before start.');
+      }
       const context = connectedContextRef.current;
       if (!context || context.url !== source.pageUrl) throw new Error(RECONNECT_MESSAGE);
       const { data, error } = await sessionPromise;
@@ -1669,7 +1714,18 @@ function App() {
       const failure = responseSnapshot?.status === 'error'
         ? responseSnapshot
         : mapTabCaptureStartFailure(error, captureId);
-      if (hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current)) {
+      const stillCurrent = hostedAttemptTokenIsCurrent(
+        attempt,
+        hostedMediaSessionRef.current,
+        activeCaptureIdRef.current,
+      );
+      if (
+        options?.rollbackOnStartFailure &&
+        stillCurrent &&
+        shouldRollbackHostedDraftAfterStartFailure(failure)
+      ) {
+        await rollbackFailedHostedCaptureStart(session, captureId);
+      } else if (stillCurrent) {
         setMediaCaptureState(failure);
       }
       if (failure.status === 'error' && failure.code === 'tab-capture-denied') {
@@ -1682,7 +1738,7 @@ function App() {
       }
       throw error;
     }
-  }, [dismissCreatePosted, supabase]);
+  }, [dismissCreatePosted, rollbackFailedHostedCaptureStart, supabase]);
 
   const cancelHostedMedia = useCallback(async (
     expectedAttempt?: HostedAttemptToken,
@@ -1730,6 +1786,7 @@ function App() {
           activeCaptureIdRef.current,
         )) return false;
         await chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
+        hostedSessionGenerationRef.current += 1;
         hostedMediaSessionRef.current = null;
         activeCaptureIdRef.current = null;
         setHostedMediaSession(null);
@@ -1767,12 +1824,13 @@ function App() {
     }
   }, [cancelHostedSessionOnServer, clearAudioDraft, clearVideoDraft, mediaCaptureState, supabase]);
 
-  const abandonForeignOrphanedHostedDraft = useCallback(async (
+  const abandonOrphanedHostedDraftForPublish = useCallback(async (
     pageUrl: string | null | undefined,
   ) => {
     const session = hostedMediaSessionRef.current;
-    if (!session) return true;
-    if (!shouldAutoAbandonForeignHostedDraft(session, pageUrl, mediaCaptureState)) return false;
+    const decision = hostedPublishAbandonDecision(session, pageUrl, mediaCaptureState);
+    if (decision === 'proceed') return true;
+    if (decision === 'block') return false;
     return cancelHostedMedia(undefined, hostedForeignOrphanCreateReset());
   }, [cancelHostedMedia, mediaCaptureState]);
 
@@ -1807,7 +1865,7 @@ function App() {
     setYoutubePublishState({ status: 'publishing' });
     const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
-      if (!(await abandonForeignOrphanedHostedDraft(sourceState.source.url))) {
+      if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
       }
       const player = await runSelectedPlayerAction(token, 'read', null);
@@ -1853,7 +1911,9 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
         playerIdentity: videoDraftState.playerIdentity,
-      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise);
+      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise, {
+        rollbackOnStartFailure: true,
+      });
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
       setYoutubePublishState(createPublishStateAfterHostedFailure(
@@ -1867,7 +1927,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [abandonForeignOrphanedHostedDraft, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
+  }, [abandonOrphanedHostedDraftForPublish, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
 
   const publishTikTokClip = useCallback(async () => {
     if (
@@ -1900,7 +1960,7 @@ function App() {
     setYoutubePublishState({ status: 'publishing' });
     const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
-      if (!(await abandonForeignOrphanedHostedDraft(sourceState.source.url))) {
+      if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
       }
       const player = await runSelectedPlayerAction(token, 'read', null);
@@ -1946,7 +2006,9 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
         playerIdentity: videoDraftState.playerIdentity,
-      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise);
+      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise, {
+        rollbackOnStartFailure: true,
+      });
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
       setYoutubePublishState(createPublishStateAfterHostedFailure(
@@ -1960,7 +2022,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [abandonForeignOrphanedHostedDraft, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
+  }, [abandonOrphanedHostedDraftForPublish, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
 
   const publishWebpageVideoClip = useCallback(async () => {
     if (
@@ -2004,7 +2066,7 @@ function App() {
     setYoutubePublishState({ status: 'publishing' });
     const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
-      if (!(await abandonForeignOrphanedHostedDraft(sourceState.source.url))) {
+      if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
       }
       const player = await runSelectedPlayerAction(token, 'read', null);
@@ -2052,7 +2114,9 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: normalizedUrl,
         playerIdentity: videoDraftState.playerIdentity,
-      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise);
+      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise, {
+        rollbackOnStartFailure: true,
+      });
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
       setYoutubePublishState(createPublishStateAfterHostedFailure(
@@ -2066,7 +2130,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [abandonForeignOrphanedHostedDraft, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
+  }, [abandonOrphanedHostedDraftForPublish, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
 
   const publishSpotifyClip = useCallback(async () => {
     const spotifyIdentity = sourceState.status === 'connected'
@@ -2106,7 +2170,7 @@ function App() {
     setAudioPublishState({ status: 'publishing' });
     const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
-      if (!(await abandonForeignOrphanedHostedDraft(sourceState.source.url))) {
+      if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
       }
       const player = await runSelectedPlayerAction(token, 'read', null);
@@ -2153,7 +2217,9 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: spotifyIdentity.episodeId,
         playerIdentity: audioDraftState.playerIdentity,
-      }, audioDraftState.startMs, audioDraftState.endMs, await acquiredStreamPromise);
+      }, audioDraftState.startMs, audioDraftState.endMs, await acquiredStreamPromise, {
+        rollbackOnStartFailure: true,
+      });
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
       setAudioPublishState(createPublishStateAfterHostedFailure(
@@ -2167,7 +2233,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [abandonForeignOrphanedHostedDraft, audioCommentaryRecorder, audioDraftState, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
+  }, [abandonOrphanedHostedDraftForPublish, audioCommentaryRecorder, audioDraftState, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
 
   const publishAudioClip = useCallback(async () => {
     const audioIdentity = sourceState.status === 'connected'
@@ -2205,7 +2271,7 @@ function App() {
     setAudioPublishState({ status: 'publishing' });
     const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
-      if (!(await abandonForeignOrphanedHostedDraft(sourceState.source.url))) {
+      if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
       }
       const player = await runSelectedPlayerAction(token, 'read', null);
@@ -2261,7 +2327,14 @@ function App() {
         recordedCommentary,
         cancelStaleHostedBegin,
       );
-      await startHostedCapture(operation, captureSource, audioDraftState.startMs, audioDraftState.endMs, await acquiredStreamPromise);
+      await startHostedCapture(
+        operation,
+        captureSource,
+        audioDraftState.startMs,
+        audioDraftState.endMs,
+        await acquiredStreamPromise,
+        { rollbackOnStartFailure: true },
+      );
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
       setAudioPublishState(createPublishStateAfterHostedFailure(
@@ -2275,7 +2348,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [abandonForeignOrphanedHostedDraft, audioCommentaryRecorder, audioDraftState, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
+  }, [abandonOrphanedHostedDraftForPublish, audioCommentaryRecorder, audioDraftState, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
 
   const applyHostedReconciliation = useCallback((
     result: HostedMediaReconciliation,
@@ -3317,7 +3390,11 @@ function App() {
     ].join(':');
     if (foreignAbandonAttemptKeyRef.current === attemptKey) return;
     foreignAbandonAttemptKeyRef.current = attemptKey;
-    void cancelHostedMedia(undefined, hostedForeignOrphanCreateReset());
+    void cancelHostedMedia(undefined, hostedForeignOrphanCreateReset()).then((ok) => {
+      if (!ok && foreignAbandonAttemptKeyRef.current === attemptKey) {
+        foreignAbandonAttemptKeyRef.current = null;
+      }
+    });
   }, [
     cancelHostedMedia,
     hostedMediaSession,
