@@ -19,6 +19,9 @@ import {
   hostedRawUploadMimeType,
   HOSTED_CAPTURE_START_TIMEOUT_MS,
   HOSTED_CAPTURE_CANCEL_TIMEOUT_MS,
+  MEDIA_CAPTURE_HOLD_STREAM,
+  MEDIA_CAPTURE_OFFSCREEN_HOLD,
+  PUBLISH_ATTEMPT_TAB_CAPTURE_STREAM_MAX_AGE_MS,
   activeCaptureIsStaleForStart,
   isAudioOnlyCaptureSourceKind,
   isCapturePreparedPage,
@@ -41,9 +44,13 @@ import {
   shouldReuseReservedTabCaptureStream,
   sourceIdentityMatchesUrl,
   beginTabCaptureStreamIdFromUserGesture,
+  isMediaCaptureHoldStreamMessage,
+  isOffscreenHoldMessage,
   isTabCaptureStreamId,
+  rebindSidePanelToTabFromUserGesture,
   resolvePanelTabCaptureStreamId,
   usableCallerTabCaptureStreamId,
+  usablePublishAttemptTabCaptureStreamId,
   userFacingCaptureMessage,
 } from './media-capture.ts';
 import {
@@ -551,6 +558,49 @@ test('panel-acquired stream IDs stay usable only while fresh and bound to that p
   assert.equal(usableCallerTabCaptureStreamId(acquired, 7, pageUrl, 1_100), null);
 });
 
+test('Publish-attempt stream IDs stay usable after the toolbar freshness window on the same tab', () => {
+  const pageUrl = 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789';
+  const acquired = { tabId: 42, streamId: 'panel-after-cancel', reservedAt: 1_000, pageUrl };
+  assert.equal(
+    usablePublishAttemptTabCaptureStreamId(
+      acquired, 42, 1_000 + RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS + 1,
+    ),
+    'panel-after-cancel',
+  );
+  assert.equal(
+    usablePublishAttemptTabCaptureStreamId(
+      acquired, 42, 1_000 + PUBLISH_ATTEMPT_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+    ),
+    'panel-after-cancel',
+  );
+  assert.equal(
+    usablePublishAttemptTabCaptureStreamId(
+      acquired, 42, 1_001 + PUBLISH_ATTEMPT_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+    ),
+    null,
+  );
+  assert.equal(usablePublishAttemptTabCaptureStreamId(acquired, 7, 1_100), null);
+  assert.equal(
+    isMediaCaptureHoldStreamMessage({
+      target: 'background',
+      type: MEDIA_CAPTURE_HOLD_STREAM,
+      tabId: 42,
+      streamId: 'panel-after-cancel',
+      expectVideo: false,
+    }),
+    true,
+  );
+  assert.equal(
+    isOffscreenHoldMessage({
+      target: 'offscreen',
+      type: MEDIA_CAPTURE_OFFSCREEN_HOLD,
+      streamId: 'panel-after-cancel',
+      expectVideo: false,
+    }),
+    true,
+  );
+});
+
 test('Publish click starts getMediaStreamId before any await settles', async () => {
   const order = [];
   const tabCapture = {
@@ -602,7 +652,29 @@ test('a caller stream ID from Publish is used after YouTube-to-Apple-Podcasts na
   assert.deepEqual(startedStreamIds, ['panel-after-navigate']);
 });
 
-test('resolvePanelTabCaptureStreamId retries when the click-turn ID is stale', async () => {
+test('resolvePanelTabCaptureStreamId keeps a Publish-click ID after the toolbar freshness window', async () => {
+  const pageUrl = applePodcastsRequest().source.pageUrl;
+  let calls = 0;
+  const tabCapture = {
+    async getMediaStreamId() {
+      calls += 1;
+      return `retry-${calls}`;
+    },
+  };
+  const afterToolbarWindow = {
+    tabId: 42,
+    streamId: 'panel-click',
+    reservedAt: Date.now() - RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS - 1,
+    pageUrl,
+  };
+  assert.equal(
+    await resolvePanelTabCaptureStreamId(tabCapture, 42, pageUrl, afterToolbarWindow),
+    'panel-click',
+  );
+  assert.equal(calls, 0);
+});
+
+test('resolvePanelTabCaptureStreamId retries when the click-turn ID is stale for the attempt', async () => {
   const pageUrl = applePodcastsRequest().source.pageUrl;
   let calls = 0;
   const tabCapture = {
@@ -614,11 +686,22 @@ test('resolvePanelTabCaptureStreamId retries when the click-turn ID is stale', a
   const stale = {
     tabId: 42,
     streamId: 'expired',
-    reservedAt: Date.now() - RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS - 1,
+    reservedAt: Date.now() - PUBLISH_ATTEMPT_TAB_CAPTURE_STREAM_MAX_AGE_MS - 1,
     pageUrl,
   };
   assert.equal(await resolvePanelTabCaptureStreamId(tabCapture, 42, pageUrl, stale), 'retry-1');
   assert.equal(calls, 1);
+});
+
+test('rebindSidePanelToTabFromUserGesture opens the current tab in the click turn', () => {
+  const opens = [];
+  rebindSidePanelToTabFromUserGesture({
+    open: async (options) => { opens.push(options); },
+  }, 17, 3);
+  assert.deepEqual(opens, [{ tabId: 17, windowId: 3 }]);
+  rebindSidePanelToTabFromUserGesture({
+    open: async () => { throw new Error('already open'); },
+  }, 17, 3);
 });
 
 test('a YouTube-reserved stream ID is not reused after the tab navigates to Apple Podcasts', async () => {
@@ -817,6 +900,194 @@ test('YouTube publish in flight, tab URL becomes Apple, Cancel, then Apple Publi
   assert.notEqual(appleStart.snapshot.code, 'tab-capture-denied');
   assert.equal(laterStreamCalls, 0);
   assert.deepEqual(startedStreamIds, ['stream', 'panel-after-cross-origin-cancel']);
+});
+
+test('same-tab YouTube→Apple during capture then panel hold starts Apple without background getMediaStreamId', async () => {
+  const captureRequest = applePodcastsRequest();
+  let closeDocumentCalls = 0;
+  let offscreenOpen = false;
+  let laterStreamCalls = 0;
+  let holdCalls = 0;
+  const startedStreamIds = [];
+  const { fakeChrome, getOnMessage, fireTabUpdated } = captureChromeForHang({
+    chrome: {
+      offscreen: {
+        async createDocument() { offscreenOpen = true; },
+        async closeDocument() { closeDocumentCalls += 1; offscreenOpen = false; },
+      },
+    },
+  });
+  const sendMessage = fakeChrome.runtime.sendMessage;
+  fakeChrome.runtime.sendMessage = async (message) => {
+    if (message?.type === MEDIA_CAPTURE_OFFSCREEN_HOLD) {
+      holdCalls += 1;
+      offscreenOpen = true;
+      return { ok: true };
+    }
+    if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+      startedStreamIds.push(message.streamId);
+    }
+    return sendMessage(message);
+  };
+  fakeChrome.runtime.getContexts = async () => (
+    offscreenOpen ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []
+  );
+  installMediaCapture(fakeChrome);
+  const youtubeStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request,
+    }, {}, resolve), true);
+  });
+  assert.equal(youtubeStart.ok, true);
+
+  fireTabUpdated(42, { url: captureRequest.source.pageUrl });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(closeDocumentCalls >= 1);
+  assert.equal(offscreenOpen, false);
+
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR);
+  };
+  const held = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_HOLD_STREAM,
+      tabId: 42,
+      streamId: 'panel-same-tab-apple',
+      expectVideo: false,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(held, { ok: true });
+  assert.equal(holdCalls, 1);
+  assert.equal(offscreenOpen, true);
+
+  const orphanCancel = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: 'annotated.mediaCapture.cancel.v1',
+      captureId: null,
+      operation,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(orphanCancel, { ok: true, cancelled: true });
+  assert.equal(offscreenOpen, true);
+
+  fakeChrome.storage.session.get = async (key) => (
+    key === 'annotatedActiveTabContext'
+      ? { [key]: { tabId: 42, windowId: 1, title: 'Podcast', url: captureRequest.source.pageUrl, capturedAt: 2 } }
+      : {}
+  );
+  fakeChrome.tabs.get = async () => ({ id: 42, url: captureRequest.source.pageUrl });
+  const appleStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_START,
+      request: {
+        ...captureRequest,
+        captureId: '55555555-5555-4555-8555-555555555555',
+      },
+      streamId: 'panel-same-tab-apple',
+    }, {}, resolve), true);
+  });
+  assert.equal(appleStart.ok, true);
+  assert.equal(appleStart.snapshot.status, 'capturing');
+  assert.notEqual(appleStart.snapshot.code, 'tab-capture-denied');
+  assert.equal(laterStreamCalls, 0);
+  assert.deepEqual(startedStreamIds, ['stream', 'panel-same-tab-apple']);
+});
+
+test('tab-switch Cancel then Apple Publish hold mints from the panel gesture without toolbar', async () => {
+  const captureRequest = applePodcastsRequest();
+  let closeDocumentCalls = 0;
+  let offscreenOpen = false;
+  let laterStreamCalls = 0;
+  let holdCalls = 0;
+  const startedStreamIds = [];
+  const { fakeChrome, getOnMessage } = captureChromeForHang({
+    chrome: {
+      offscreen: {
+        async createDocument() { offscreenOpen = true; },
+        async closeDocument() { closeDocumentCalls += 1; offscreenOpen = false; },
+      },
+    },
+  });
+  const sendMessage = fakeChrome.runtime.sendMessage;
+  fakeChrome.runtime.sendMessage = async (message) => {
+    if (message?.type === MEDIA_CAPTURE_OFFSCREEN_HOLD) {
+      holdCalls += 1;
+      offscreenOpen = true;
+      return { ok: true };
+    }
+    if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+      startedStreamIds.push(message.streamId);
+    }
+    return sendMessage(message);
+  };
+  fakeChrome.runtime.getContexts = async () => (
+    offscreenOpen ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []
+  );
+  installMediaCapture(fakeChrome);
+  const youtubeStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request,
+    }, {}, resolve), true);
+  });
+  assert.equal(youtubeStart.ok, true);
+  assert.equal(offscreenOpen, true);
+
+  const cancelled = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: 'annotated.mediaCapture.cancel.v1',
+      captureId: request.captureId,
+      operation,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(cancelled, { ok: true, cancelled: true });
+  assert.equal(offscreenOpen, false);
+  assert.ok(closeDocumentCalls >= 1);
+
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR);
+  };
+  const held = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_HOLD_STREAM,
+      tabId: 99,
+      streamId: 'panel-tab-switch-apple',
+      expectVideo: false,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(held, { ok: true });
+  assert.equal(holdCalls, 1);
+
+  fakeChrome.storage.session.get = async (key) => (
+    key === 'annotatedActiveTabContext'
+      ? { [key]: { tabId: 99, windowId: 1, title: 'Podcast', url: captureRequest.source.pageUrl, capturedAt: 2 } }
+      : {}
+  );
+  fakeChrome.tabs.get = async () => ({ id: 99, url: captureRequest.source.pageUrl });
+  const appleStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_START,
+      request: {
+        ...captureRequest,
+        tabId: 99,
+        captureId: '55555555-5555-4555-8555-555555555555',
+      },
+      streamId: 'panel-tab-switch-apple',
+    }, {}, resolve), true);
+  });
+  assert.equal(appleStart.ok, true);
+  assert.equal(appleStart.snapshot.status, 'capturing');
+  assert.notEqual(appleStart.snapshot.code, 'tab-capture-denied');
+  assert.equal(laterStreamCalls, 0);
+  assert.deepEqual(startedStreamIds, ['stream', 'panel-tab-switch-apple']);
 });
 
 test('processing leftover offscreen after YouTube→Apple navigation is closed so Cancel then Apple Publish needs no Recapture', async () => {
@@ -1796,6 +2067,9 @@ test('production manifest and capture source keep the required security shape', 
   );
   assert.match(beginBody, /request\.source\.pageUrl/);
   assert.match(beginBody, /isTabCaptureStreamId\(callerStreamId\)/);
+  assert.match(beginBody, /heldCallerTabCapture/);
+  assert.match(background, /MEDIA_CAPTURE_HOLD_STREAM|holdCallerTabCaptureStream/);
+  assert.match(background, /keepHeldStream/);
   assert.ok(beginBody.indexOf('isTabCaptureStreamId(callerStreamId)') < beginBody.indexOf('takeReservedTabCaptureStreamId'));
   assert.match(beginBody, /validateAndPrepare\(captureId, request\)/);
   assert.match(beginBody, /await leaseRelease/);
@@ -1811,8 +2085,15 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(hosted, /userFacingCaptureMessage\(snapshot\)/);
   assert.match(hosted, /isPreparingCaptureStatus\(snapshot\.status\)/);
   assert.match(panel, /beginTabCaptureStreamIdFromUserGesture/);
+  assert.match(panel, /rebindSidePanelToTabFromUserGesture/);
+  const beginPublish = panel.slice(panel.indexOf('const beginPublishTabCaptureStreamId'));
+  assert.ok(
+    beginPublish.indexOf('beginTabCaptureStreamIdFromUserGesture') <
+      beginPublish.indexOf('rebindSidePanelToTabFromUserGesture'),
+  );
   assert.match(panel, /resolvePanelTabCaptureStreamId/);
   assert.match(panel, /beginPublishTabCaptureStreamId/);
+  assert.match(panel, /MEDIA_CAPTURE_HOLD_STREAM/);
   assert.match(panel, /raceHostedCaptureStart/);
   assert.match(panel, /raceHostedCaptureCancel/);
   assert.match(panel, /mapTabCaptureStartFailure/);
@@ -1822,7 +2103,16 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(background, /if \(active && !await hasOffscreenDocument\(\)\)/);
   assert.match(background, /releaseCaptureLease/);
   assert.match(background, /closeDocument/);
-  assert.match(offscreen, /raceTabCaptureStreamId\(mediaPromise\)/);
+  assert.match(offscreen, /acquireTabCaptureStream/);
+  assert.match(offscreen, /heldTabCapture/);
+  assert.match(offscreen, /MEDIA_CAPTURE_OFFSCREEN_HOLD/);
+  const offscreenCancel = offscreen.slice(offscreen.indexOf('row.type === MEDIA_CAPTURE_OFFSCREEN_CANCEL'));
+  assert.match(offscreenCancel, /recording\.message\.captureId === row\.captureId/);
+  assert.match(offscreenCancel, /stopRecording\('cancel'\)/);
+  assert.doesNotMatch(
+    offscreenCancel.slice(0, offscreenCancel.indexOf('if (recording &&')),
+    /releaseHeldTabCapture/,
+  );
   assert.equal(
     background.match(/world: usesMainWorldCapture\((?:capture\.request|request)\.source\.kind\) \? 'MAIN' : 'ISOLATED'/g)?.length,
     3,

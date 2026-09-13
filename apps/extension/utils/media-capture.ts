@@ -17,6 +17,9 @@ export const MEDIA_CAPTURE_OFFSCREEN_RETRY = 'annotated.mediaCapture.offscreenRe
 export const MEDIA_CAPTURE_OFFSCREEN_STATUS = 'annotated.mediaCapture.offscreenStatus.v1';
 export const MEDIA_CAPTURE_OFFSCREEN_EVENT = 'annotated.mediaCapture.offscreenEvent.v1';
 export const MEDIA_CAPTURE_OFFSCREEN_NEEDS_END = 'annotated.mediaCapture.offscreenNeedsEnd.v1';
+export const MEDIA_CAPTURE_HOLD_STREAM = 'annotated.mediaCapture.holdStream.v1';
+export const MEDIA_CAPTURE_OFFSCREEN_HOLD = 'annotated.mediaCapture.offscreenHold.v1';
+export const MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD = 'annotated.mediaCapture.offscreenReleaseHold.v1';
 
 export type CaptureSourceKind =
   | 'youtube' | 'tiktok' | 'web-video' | 'audio' | 'spotify';
@@ -217,6 +220,7 @@ export const TAB_CAPTURE_INVOKE_MESSAGE =
 export const CHROME_TAB_CAPTURE_INVOKE_ERROR =
   'Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.';
 export const RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS = 8_000;
+export const PUBLISH_ATTEMPT_TAB_CAPTURE_STREAM_MAX_AGE_MS = 45_000;
 export const TAB_CAPTURE_STREAM_ID_TIMEOUT_MS = 4_000;
 export const HOSTED_CAPTURE_START_TIMEOUT_MS = 5_000;
 export const HOSTED_CAPTURE_CANCEL_TIMEOUT_MS = 5_000;
@@ -285,6 +289,22 @@ export function isTabCaptureStreamId(value: unknown): value is string {
     !/\s/.test(value);
 }
 
+export type SidePanelOpenApi = {
+  open: (options: { tabId: number; windowId?: number }) => Promise<unknown>;
+};
+
+export function rebindSidePanelToTabFromUserGesture(
+  sidePanel: SidePanelOpenApi | undefined,
+  tabId: number | undefined,
+  windowId?: number,
+): void {
+  if (!sidePanel || !Number.isInteger(tabId) || (tabId as number) < 0) return;
+  const options = Number.isInteger(windowId) && (windowId as number) >= 0
+    ? { tabId: tabId as number, windowId: windowId as number }
+    : { tabId: tabId as number };
+  void sidePanel.open(options).catch(() => undefined);
+}
+
 export function beginTabCaptureStreamIdFromUserGesture(
   tabCapture: TabCaptureApi | undefined,
   tabId: number | undefined,
@@ -327,6 +347,28 @@ export function usableCallerTabCaptureStreamId(
     : null;
 }
 
+export function publishAttemptTabCaptureStreamMatchesTab(
+  acquired: ReservedTabCaptureStreamIdentity,
+  tabId: number,
+  now: number,
+  maxAgeMs = PUBLISH_ATTEMPT_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+): boolean {
+  return reservedTabCaptureStreamMatchesTab(acquired, tabId, now) &&
+    now - acquired.reservedAt <= maxAgeMs;
+}
+
+export function usablePublishAttemptTabCaptureStreamId(
+  acquired: AcquiredTabCaptureStream | null | undefined,
+  tabId: number,
+  now = Date.now(),
+  maxAgeMs = PUBLISH_ATTEMPT_TAB_CAPTURE_STREAM_MAX_AGE_MS,
+): string | null {
+  if (!acquired || !isTabCaptureStreamId(acquired.streamId)) return null;
+  return publishAttemptTabCaptureStreamMatchesTab(acquired, tabId, now, maxAgeMs)
+    ? acquired.streamId
+    : null;
+}
+
 export async function resolvePanelTabCaptureStreamId(
   tabCapture: TabCaptureApi | undefined,
   tabId: number,
@@ -334,10 +376,10 @@ export async function resolvePanelTabCaptureStreamId(
   acquired?: AcquiredTabCaptureStream | null,
   now = Date.now(),
 ): Promise<string | null> {
-  const fresh = usableCallerTabCaptureStreamId(acquired, tabId, pageUrl, now);
-  if (fresh) return fresh;
+  const fromClick = usablePublishAttemptTabCaptureStreamId(acquired, tabId, now);
+  if (fromClick) return fromClick;
   const retry = await beginTabCaptureStreamIdFromUserGesture(tabCapture, tabId, pageUrl);
-  return usableCallerTabCaptureStreamId(retry, tabId, pageUrl);
+  return usablePublishAttemptTabCaptureStreamId(retry, tabId);
 }
 
 export function tabCaptureStreamIdTimeoutError(): Error {
@@ -610,6 +652,25 @@ export function isMediaCaptureStartMessage(value: unknown): value is {
   return isRecord(value) && value.target === 'background' &&
     value.type === MEDIA_CAPTURE_START && isCaptureStartRequest(value.request) &&
     (value.streamId === undefined || isTabCaptureStreamId(value.streamId));
+}
+export function isMediaCaptureHoldStreamMessage(value: unknown): value is {
+  target: 'background'; type: typeof MEDIA_CAPTURE_HOLD_STREAM;
+  tabId: number; streamId: string; expectVideo: boolean;
+} {
+  return isRecord(value) && value.target === 'background' &&
+    value.type === MEDIA_CAPTURE_HOLD_STREAM &&
+    isInteger(value.tabId) && value.tabId >= 0 &&
+    isTabCaptureStreamId(value.streamId) &&
+    typeof value.expectVideo === 'boolean';
+}
+export function isOffscreenHoldMessage(value: unknown): value is {
+  target: 'offscreen'; type: typeof MEDIA_CAPTURE_OFFSCREEN_HOLD;
+  streamId: string; expectVideo: boolean;
+} {
+  return isRecord(value) && value.target === 'offscreen' &&
+    value.type === MEDIA_CAPTURE_OFFSCREEN_HOLD &&
+    isTabCaptureStreamId(value.streamId) &&
+    typeof value.expectVideo === 'boolean';
 }
 export function isMediaCaptureCancelMessage(value: unknown): value is {
   target: 'background'; type: typeof MEDIA_CAPTURE_CANCEL;

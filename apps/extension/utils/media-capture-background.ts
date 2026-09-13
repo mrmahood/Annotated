@@ -9,10 +9,13 @@ import {
 import {
   MEDIA_CAPTURE_CANCEL,
   MEDIA_CAPTURE_EVENT,
+  MEDIA_CAPTURE_HOLD_STREAM,
   MEDIA_CAPTURE_OFFSCREEN_CANCEL,
   MEDIA_CAPTURE_OFFSCREEN_EVENT,
+  MEDIA_CAPTURE_OFFSCREEN_HOLD,
   MEDIA_CAPTURE_OFFSCREEN_NEEDS_END,
   MEDIA_CAPTURE_OFFSCREEN_PLAYBACK,
+  MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD,
   MEDIA_CAPTURE_OFFSCREEN_RETRY,
   MEDIA_CAPTURE_OFFSCREEN_START,
   MEDIA_CAPTURE_OFFSCREEN_STATUS,
@@ -20,6 +23,7 @@ import {
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
   isMediaCaptureCancelMessage,
+  isMediaCaptureHoldStreamMessage,
   isMediaCaptureStartMessage,
   isCurrentCaptureId,
   mapTabCaptureStartFailure,
@@ -54,6 +58,7 @@ export const ACTIVE_CAPTURE_KEY = 'annotated.mediaCapture.active.v1';
 let reservedTabCaptureStream: ReservedTabCaptureStream | null = null;
 let reserveTabCaptureInFlight: Promise<ReservedTabCaptureStream | null> | null = null;
 let reserveTabCaptureGeneration = 0;
+let heldCallerTabCapture: { tabId: number; streamId: string } | null = null;
 let activeStreamIdTimeoutMs = TAB_CAPTURE_STREAM_ID_TIMEOUT_MS;
 let activeReservedStreamMaxAgeMs = RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS;
 const cancelledCaptureIds = new Set<string>();
@@ -192,6 +197,7 @@ export function installMediaCapture(
   reservedTabCaptureStream = null;
   reserveTabCaptureInFlight = null;
   reserveTabCaptureGeneration += 1;
+  heldCallerTabCapture = null;
   cancelledCaptureIds.clear();
   activeStreamIdTimeoutMs = options?.streamIdTimeoutMs ?? TAB_CAPTURE_STREAM_ID_TIMEOUT_MS;
   activeReservedStreamMaxAgeMs = options?.reservedStreamMaxAgeMs ?? RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS;
@@ -346,13 +352,61 @@ export function installMediaCapture(
     return true;
   }
 
+  async function releaseHeldCallerTabCapture() {
+    const held = heldCallerTabCapture;
+    heldCallerTabCapture = null;
+    if (!held) return;
+    try {
+      await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        type: MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD,
+      });
+    } catch {
+      // Offscreen may already have closed after a prior teardown.
+    }
+  }
+
+  async function holdCallerTabCaptureStream(
+    tabId: number,
+    streamId: string,
+    expectVideo: boolean,
+  ): Promise<boolean> {
+    await leaseRelease;
+    if (active) {
+      // A leftover YouTube capture must not block the Apple Publish hold.
+      await releaseCaptureLease({
+        code: 'connected-source-changed',
+        message: 'The connected source changed during capture.',
+        keepHeldStream: true,
+      });
+    }
+    invalidateReservedTabCaptureStream();
+    await releaseHeldCallerTabCapture();
+    try {
+      await ensureOffscreenDocument();
+      const response = await raceTabCaptureStreamId(chrome.runtime.sendMessage({
+        target: 'offscreen',
+        type: MEDIA_CAPTURE_OFFSCREEN_HOLD,
+        streamId,
+        expectVideo,
+      })) as { ok?: boolean } | undefined;
+      if (!response?.ok) return false;
+      heldCallerTabCapture = { tabId, streamId };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function releaseCaptureLease(options?: {
     cancelLive?: boolean;
     code?: CaptureFailureCode;
     message?: string;
+    keepHeldStream?: boolean;
   }) {
     const run = async () => {
       invalidateReservedTabCaptureStream();
+      if (!options?.keepHeldStream) await releaseHeldCallerTabCapture();
       const capture = active;
       if (capture && options?.cancelLive !== false) {
         await cancelActive(
@@ -362,7 +416,7 @@ export function installMediaCapture(
       } else if (!capture) {
         await persistActive(null);
       }
-      await closeOffscreenDocument(chrome);
+      if (!heldCallerTabCapture) await closeOffscreenDocument(chrome);
       lastSnapshot = { status: 'idle' };
     };
     const next = leaseRelease.then(run, run);
@@ -372,7 +426,7 @@ export function installMediaCapture(
 
   async function releaseLeftoverOffscreenIfIdle() {
     const run = async () => {
-      if (active) return;
+      if (active || heldCallerTabCapture) return;
       if (await hasOffscreenDocument()) await closeOffscreenDocument(chrome);
     };
     const next = leaseRelease.then(run, run);
@@ -387,7 +441,6 @@ export function installMediaCapture(
     const stored = await chrome.storage.session.get(ACTIVE_TAB_CONTEXT_KEY);
     const context = stored[ACTIVE_TAB_CONTEXT_KEY];
     if (!isActiveTabContext(context) || context.tabId !== request.tabId ||
-        context.url !== request.source.pageUrl ||
         !sourceIdentityMatchesUrl(request.source, context.url)) {
       return { ok: false, code: 'SOURCE_CHANGED', message: 'The request no longer matches the explicitly connected tab.' };
     }
@@ -436,7 +489,7 @@ export function installMediaCapture(
       });
     }
     if (active) return { ok: false, snapshot: failure('busy', 'Another media capture is already active.', active.captureId) };
-    await releaseLeftoverOffscreenIfIdle();
+    if (!heldCallerTabCapture) await releaseLeftoverOffscreenIfIdle();
     const captureId = request.captureId;
     const capture = { captureId, request };
     const preparing: CaptureSnapshot = { status: 'preparing', captureId };
@@ -464,15 +517,23 @@ export function installMediaCapture(
       if (isTabCaptureStreamId(callerStreamId)) {
         invalidateReservedTabCaptureStream();
       }
+      const heldStreamId = heldCallerTabCapture?.tabId === request.tabId
+        ? heldCallerTabCapture.streamId
+        : null;
       const streamId = isTabCaptureStreamId(callerStreamId)
         ? callerStreamId
-        : await takeReservedTabCaptureStreamId(
+        : heldStreamId ?? await takeReservedTabCaptureStreamId(
           request.tabId,
           request.source.pageUrl,
         ) ?? await raceTabCaptureStreamId(
           chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
           activeStreamIdTimeoutMs,
         );
+      if (heldCallerTabCapture && heldCallerTabCapture.streamId === streamId) {
+        heldCallerTabCapture = null;
+      } else if (heldCallerTabCapture) {
+        await releaseHeldCallerTabCapture();
+      }
       if (consumeCancelledCaptureId(captureId) || !isCurrentCaptureId(liveCaptureId(), captureId)) {
         await clearActiveIfCurrent(captureId);
         const snapshot = {
@@ -561,6 +622,19 @@ export function installMediaCapture(
   }
 
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    if (isMediaCaptureHoldStreamMessage(message)) {
+      void holdCallerTabCaptureStream(message.tabId, message.streamId, message.expectVideo)
+        .then((ok) => sendResponse({ ok }), () => sendResponse({ ok: false }));
+      return true;
+    }
+    if (
+      typeof message === 'object' && message !== null &&
+      (message as { target?: unknown }).target === 'background' &&
+      (message as { type?: unknown }).type === MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD
+    ) {
+      void releaseHeldCallerTabCapture().then(() => sendResponse({ ok: true }), () => sendResponse({ ok: true }));
+      return true;
+    }
     if (isMediaCaptureStartMessage(message)) {
       void begin(message.request, message.streamId).then(sendResponse, (error: unknown) => {
         sendResponse({
@@ -584,7 +658,9 @@ export function installMediaCapture(
         );
         const sameCapture = message.captureId === null || message.captureId === capture?.captureId;
         if (!capture) {
-          await releaseCaptureLease({ cancelLive: false });
+          // A Publish-click hold may already be live for the next host. Orphan
+          // Cancel must not close that offscreen MediaStream.
+          await releaseCaptureLease({ cancelLive: false, keepHeldStream: true });
           sendResponse({ ok: true, cancelled: true });
           return;
         }
@@ -595,7 +671,8 @@ export function installMediaCapture(
           sendResponse({ ok: true, cancelled: false });
           return;
         }
-        await releaseCaptureLease();
+        // Keep a Publish-click hold minted while this Cancel finishes.
+        await releaseCaptureLease({ keepHeldStream: true });
         sendResponse({ ok: true, cancelled: true });
       })();
       return true;

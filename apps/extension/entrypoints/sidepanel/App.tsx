@@ -212,6 +212,8 @@ import {
 import {
   MEDIA_CAPTURE_CANCEL,
   MEDIA_CAPTURE_EVENT,
+  MEDIA_CAPTURE_HOLD_STREAM,
+  MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD,
   MEDIA_CAPTURE_RETRY,
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
@@ -222,8 +224,10 @@ import {
   mapTabCaptureStartFailure,
   raceHostedCaptureCancel,
   raceHostedCaptureStart,
+  rebindSidePanelToTabFromUserGesture,
   resolvePanelTabCaptureStreamId,
   shouldReplaceHostedCaptureSnapshot,
+  sourceIdentityMatchesUrl,
   type AcquiredTabCaptureStream,
   type CaptureSnapshot,
   type CaptureSourceIdentity,
@@ -1593,14 +1597,38 @@ function App() {
     }
   }, [cancelHostedSessionOnServer]);
 
-  const beginPublishTabCaptureStreamId = useCallback(() => {
+  const holdPublishTabCaptureStream = useCallback((
+    acquired: AcquiredTabCaptureStream,
+    expectVideo: boolean,
+  ) => {
+    void chrome.runtime.sendMessage({
+      target: 'background',
+      type: MEDIA_CAPTURE_HOLD_STREAM,
+      tabId: acquired.tabId,
+      streamId: acquired.streamId,
+      expectVideo,
+    }).catch(() => undefined);
+  }, []);
+
+  const beginPublishTabCaptureStreamId = useCallback((expectVideo: boolean) => {
     const context = connectedContextRef.current;
-    return beginTabCaptureStreamIdFromUserGesture(
+    // Mint first so chrome.sidePanel.open cannot consume the Publish gesture
+    // before getMediaStreamId. Toolbar invoke does not survive YT→Apple.
+    const pending = beginTabCaptureStreamIdFromUserGesture(
       chrome.tabCapture,
       context?.tabId,
       context?.url,
     );
-  }, []);
+    rebindSidePanelToTabFromUserGesture(
+      chrome.sidePanel,
+      context?.tabId,
+      context?.windowId,
+    );
+    void pending.then((acquired) => {
+      if (acquired) holdPublishTabCaptureStream(acquired, expectVideo);
+    });
+    return pending;
+  }, [holdPublishTabCaptureStream]);
 
   const rollbackFailedHostedCaptureStart = useCallback(async (
     session: HostedMediaSession,
@@ -1620,6 +1648,10 @@ function App() {
     try {
       await cancelHostedSessionOnServer(session);
     } catch { /* Still clear local Create so a failed start cannot trap Recapture. */ }
+    void chrome.runtime.sendMessage({
+      target: 'background',
+      type: MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD,
+    }).catch(() => undefined);
     const current = hostedMediaSessionRef.current;
     if (
       current?.operation.annotationId === session.operation.annotationId &&
@@ -1674,7 +1706,9 @@ function App() {
         throw new Error('Capture cancelled before start.');
       }
       const context = connectedContextRef.current;
-      if (!context || context.url !== source.pageUrl) throw new Error(RECONNECT_MESSAGE);
+      if (!context || (context.url !== source.pageUrl && !sourceIdentityMatchesUrl(source, context.url))) {
+        throw new Error(RECONNECT_MESSAGE);
+      }
       const { data, error } = await sessionPromise;
       const accessToken = data.session?.access_token;
       if (error || !accessToken) throw new Error('The authenticated session is unavailable.');
@@ -1863,7 +1897,7 @@ function App() {
     hostedBeginModeRef.current = 'video';
     setHostedBeginMode('video');
     setYoutubePublishState({ status: 'publishing' });
-    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId(true);
     try {
       if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
@@ -1958,7 +1992,7 @@ function App() {
     hostedBeginModeRef.current = 'video';
     setHostedBeginMode('video');
     setYoutubePublishState({ status: 'publishing' });
-    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId(true);
     try {
       if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
@@ -2064,7 +2098,7 @@ function App() {
     hostedBeginModeRef.current = 'video';
     setHostedBeginMode('video');
     setYoutubePublishState({ status: 'publishing' });
-    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId(true);
     try {
       if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
@@ -2168,7 +2202,7 @@ function App() {
     hostedBeginModeRef.current = 'audio';
     setHostedBeginMode('audio');
     setAudioPublishState({ status: 'publishing' });
-    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId(false);
     try {
       if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
@@ -2269,7 +2303,7 @@ function App() {
     hostedBeginModeRef.current = 'audio';
     setHostedBeginMode('audio');
     setAudioPublishState({ status: 'publishing' });
-    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId(false);
     try {
       if (!(await abandonOrphanedHostedDraftForPublish(sourceState.source.url))) {
         throw new Error('The previous clip could not be cancelled.');
@@ -2441,7 +2475,7 @@ function App() {
     if (!shouldOfferHostedRecapture(session, sourceState.source.url, mediaCaptureState)) return;
     setYoutubePublishState({ status: 'idle' });
     setAudioPublishState({ status: 'idle' });
-    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId(session.mediaType === 'video');
     if (session.mediaType === 'video' && sourceState.source.classification === 'YouTube') {
       let originalVideoId: string | null = null;
       try { originalVideoId = getYouTubeVideoIdentity(session.sourceUrl).videoId; } catch { /* Invalid persisted source. */ }
