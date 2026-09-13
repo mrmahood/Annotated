@@ -18,6 +18,8 @@ import {
   getCaptureRangeError,
   hostedRawUploadMimeType,
   HOSTED_CAPTURE_START_TIMEOUT_MS,
+  HOSTED_CAPTURE_CANCEL_TIMEOUT_MS,
+  activeCaptureIsStaleForStart,
   isAudioOnlyCaptureSourceKind,
   isCapturePreparedPage,
   isCaptureStartRequest,
@@ -74,6 +76,19 @@ const request = {
   apiOrigin: 'http://localhost:3000',
 };
 
+function applePodcastsRequest() {
+  const pageUrl = 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789';
+  return {
+    ...request,
+    source: {
+      kind: 'audio',
+      pageUrl,
+      sourceKey: pageUrl,
+      playerIdentity: 'audio:1:f8443fef',
+    },
+  };
+}
+
 test('selected range accepts exactly 90 seconds and rejects 90,001 ms', () => {
   assert.equal(getCaptureRangeError(0, 1_000), null);
   assert.equal(getCaptureRangeError(1_000, 91_000), null);
@@ -113,6 +128,16 @@ test('Chrome tab-capture invocation errors map to toolbar Recapture copy', () =>
   ), false);
   assert.equal(TAB_CAPTURE_STREAM_ID_TIMEOUT_MS, 4_000);
   assert.equal(HOSTED_CAPTURE_START_TIMEOUT_MS, 5_000);
+  assert.equal(HOSTED_CAPTURE_CANCEL_TIMEOUT_MS, 5_000);
+  assert.equal(activeCaptureIsStaleForStart(
+    { tabId: 42, source },
+    { tabId: 42, source: applePodcastsRequest().source },
+  ), true);
+  assert.equal(activeCaptureIsStaleForStart(
+    { tabId: 42, source },
+    { tabId: 42, source },
+  ), false);
+  assert.equal(activeCaptureIsStaleForStart(null, { tabId: 42, source }), false);
   assert.equal(isPreparingCaptureStatus('preparing'), true);
   assert.equal(isPreparingCaptureStatus('idle'), false);
   assert.equal(shouldReplaceHostedCaptureSnapshot(
@@ -406,21 +431,9 @@ test('stream-ID races time out as the Chrome invocation error', async () => {
   assert.equal(await raceHostedCaptureCancel(new Promise(() => undefined), 20), undefined);
 });
 
-function applePodcastsRequest() {
-  const pageUrl = 'https://podcasts.apple.com/us/podcast/example/id1234567890?i=1000123456789';
-  return {
-    ...request,
-    source: {
-      kind: 'audio',
-      pageUrl,
-      sourceKey: pageUrl,
-      playerIdentity: 'audio:1:f8443fef',
-    },
-  };
-}
-
 function captureChromeForHang(overrides = {}) {
   let onMessage;
+  const onUpdatedListeners = [];
   const pageUrl = overrides.pageUrl ?? source.pageUrl;
   const fakeChrome = {
     runtime: {
@@ -444,7 +457,8 @@ function captureChromeForHang(overrides = {}) {
     } },
     tabs: {
       async get() { return { id: 42, url: pageUrl }; },
-      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+      onRemoved: { addListener() {} },
+      onUpdated: { addListener(listener) { onUpdatedListeners.push(listener); } },
     },
     scripting: { async executeScript({ func }) {
       if (func.name.includes('prepare')) return [{ frameId: 0, result: {
@@ -474,7 +488,13 @@ function captureChromeForHang(overrides = {}) {
     offscreen: { async createDocument() {} },
     ...overrides.chrome,
   };
-  return { fakeChrome, getOnMessage: () => onMessage };
+  return {
+    fakeChrome,
+    getOnMessage: () => onMessage,
+    fireTabUpdated(tabId, changeInfo) {
+      for (const listener of onUpdatedListeners) listener(tabId, changeInfo);
+    },
+  };
 }
 
 test('begin reuses a same-tab reserved stream ID instead of requesting another', async () => {
@@ -650,13 +670,14 @@ test('a hung getMediaStreamId surfaces the toolbar Recapture error instead of st
 test('cancel of a live YouTube capture releases the stream lease so Apple Publish can use a fresh caller ID', async () => {
   const captureRequest = applePodcastsRequest();
   let closeDocumentCalls = 0;
+  let offscreenOpen = false;
   let laterStreamCalls = 0;
   const startedStreamIds = [];
   const { fakeChrome, getOnMessage } = captureChromeForHang({
     chrome: {
       offscreen: {
-        async createDocument() {},
-        async closeDocument() { closeDocumentCalls += 1; },
+        async createDocument() { offscreenOpen = true; },
+        async closeDocument() { closeDocumentCalls += 1; offscreenOpen = false; },
       },
     },
   });
@@ -668,7 +689,7 @@ test('cancel of a live YouTube capture releases the stream lease so Apple Publis
     return sendMessage(message);
   };
   fakeChrome.runtime.getContexts = async () => (
-    closeDocumentCalls > 0 ? [] : [{ contextType: 'OFFSCREEN_DOCUMENT' }]
+    offscreenOpen ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []
   );
   installMediaCapture(fakeChrome);
   await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, source.pageUrl);
@@ -716,6 +737,224 @@ test('cancel of a live YouTube capture releases the stream lease so Apple Publis
   assert.equal(appleStart.snapshot.status, 'capturing');
   assert.equal(laterStreamCalls, 0);
   assert.deepEqual(startedStreamIds, ['stream', 'panel-after-cancel']);
+});
+
+test('YouTube publish in flight, tab URL becomes Apple, Cancel, then Apple Publish uses a fresh caller stream ID', async () => {
+  const captureRequest = applePodcastsRequest();
+  let closeDocumentCalls = 0;
+  let offscreenOpen = false;
+  let laterStreamCalls = 0;
+  const startedStreamIds = [];
+  const { fakeChrome, getOnMessage, fireTabUpdated } = captureChromeForHang({
+    chrome: {
+      offscreen: {
+        async createDocument() { offscreenOpen = true; },
+        async closeDocument() { closeDocumentCalls += 1; offscreenOpen = false; },
+      },
+    },
+  });
+  const sendMessage = fakeChrome.runtime.sendMessage;
+  fakeChrome.runtime.sendMessage = async (message) => {
+    if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+      startedStreamIds.push(message.streamId);
+    }
+    return sendMessage(message);
+  };
+  fakeChrome.runtime.getContexts = async () => (
+    offscreenOpen ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []
+  );
+  installMediaCapture(fakeChrome);
+  await reserveTabCaptureStreamIdFromInvoke(fakeChrome, 42, source.pageUrl);
+  const youtubeStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request,
+    }, {}, resolve), true);
+  });
+  assert.equal(youtubeStart.ok, true);
+  assert.equal(youtubeStart.snapshot.status, 'capturing');
+  assert.equal(offscreenOpen, true);
+
+  fireTabUpdated(42, { url: captureRequest.source.pageUrl });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(closeDocumentCalls >= 1);
+  assert.equal(offscreenOpen, false);
+
+  const cancelled = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: 'annotated.mediaCapture.cancel.v1',
+      captureId: request.captureId,
+      operation,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(cancelled, { ok: true, cancelled: true });
+  assert.equal(offscreenOpen, false);
+
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR);
+  };
+  fakeChrome.storage.session.get = async (key) => (
+    key === 'annotatedActiveTabContext'
+      ? { [key]: { tabId: 42, windowId: 1, title: 'Podcast', url: captureRequest.source.pageUrl, capturedAt: 2 } }
+      : {}
+  );
+  fakeChrome.tabs.get = async () => ({ id: 42, url: captureRequest.source.pageUrl });
+  const appleStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_START,
+      request: {
+        ...captureRequest,
+        captureId: '55555555-5555-4555-8555-555555555555',
+      },
+      streamId: 'panel-after-cross-origin-cancel',
+    }, {}, resolve), true);
+  });
+  assert.equal(appleStart.ok, true);
+  assert.equal(appleStart.snapshot.status, 'capturing');
+  assert.notEqual(appleStart.snapshot.code, 'tab-capture-denied');
+  assert.equal(laterStreamCalls, 0);
+  assert.deepEqual(startedStreamIds, ['stream', 'panel-after-cross-origin-cancel']);
+});
+
+test('processing leftover offscreen after YouTube→Apple navigation is closed so Cancel then Apple Publish needs no Recapture', async () => {
+  const captureRequest = applePodcastsRequest();
+  let closeDocumentCalls = 0;
+  let offscreenOpen = false;
+  let laterStreamCalls = 0;
+  const startedStreamIds = [];
+  const { fakeChrome, getOnMessage, fireTabUpdated } = captureChromeForHang({
+    chrome: {
+      offscreen: {
+        async createDocument() { offscreenOpen = true; },
+        async closeDocument() { closeDocumentCalls += 1; offscreenOpen = false; },
+      },
+    },
+  });
+  const sendMessage = fakeChrome.runtime.sendMessage;
+  fakeChrome.runtime.sendMessage = async (message) => {
+    if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+      startedStreamIds.push(message.streamId);
+    }
+    return sendMessage(message);
+  };
+  fakeChrome.runtime.getContexts = async () => (
+    offscreenOpen ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []
+  );
+  installMediaCapture(fakeChrome);
+  const youtubeStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request,
+    }, {}, resolve), true);
+  });
+  assert.equal(youtubeStart.ok, true);
+
+  const terminal = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: 'annotated.mediaCapture.offscreenEvent.v1',
+      snapshot: {
+        status: 'processing',
+        captureId: request.captureId,
+        annotationId: operation.annotationId,
+        mediaId: operation.mediaId,
+        processingStage: 'queued',
+      },
+    }, {}, resolve), true);
+  });
+  assert.equal(terminal.ok, true);
+  assert.equal(offscreenOpen, true);
+
+  fireTabUpdated(42, { url: captureRequest.source.pageUrl });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(closeDocumentCalls >= 1);
+  assert.equal(offscreenOpen, false);
+
+  const cancelled = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: 'annotated.mediaCapture.cancel.v1',
+      captureId: null,
+      operation,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(cancelled, { ok: true, cancelled: true });
+
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR);
+  };
+  fakeChrome.storage.session.get = async (key) => (
+    key === 'annotatedActiveTabContext'
+      ? { [key]: { tabId: 42, windowId: 1, title: 'Podcast', url: captureRequest.source.pageUrl, capturedAt: 2 } }
+      : {}
+  );
+  fakeChrome.tabs.get = async () => ({ id: 42, url: captureRequest.source.pageUrl });
+  const appleStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_START,
+      request: {
+        ...captureRequest,
+        captureId: '55555555-5555-4555-8555-555555555555',
+      },
+      streamId: 'panel-after-processing-nav-cancel',
+    }, {}, resolve), true);
+  });
+  assert.equal(appleStart.ok, true);
+  assert.equal(appleStart.snapshot.status, 'capturing');
+  assert.equal(laterStreamCalls, 0);
+  assert.ok(startedStreamIds.includes('panel-after-processing-nav-cancel'));
+});
+
+test('Apple Publish after a leftover YouTube capture auto-releases the stale lease and uses the caller stream ID', async () => {
+  const captureRequest = applePodcastsRequest();
+  let laterStreamCalls = 0;
+  const startedStreamIds = [];
+  const { fakeChrome, getOnMessage } = captureChromeForHang();
+  const sendMessage = fakeChrome.runtime.sendMessage;
+  fakeChrome.runtime.sendMessage = async (message) => {
+    if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+      startedStreamIds.push(message.streamId);
+    }
+    return sendMessage(message);
+  };
+  installMediaCapture(fakeChrome);
+  const youtubeStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background', type: MEDIA_CAPTURE_START, request,
+    }, {}, resolve), true);
+  });
+  assert.equal(youtubeStart.ok, true);
+
+  fakeChrome.tabCapture.getMediaStreamId = async () => {
+    laterStreamCalls += 1;
+    throw new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR);
+  };
+  fakeChrome.storage.session.get = async (key) => (
+    key === 'annotatedActiveTabContext'
+      ? { [key]: { tabId: 42, windowId: 1, title: 'Podcast', url: captureRequest.source.pageUrl, capturedAt: 2 } }
+      : {}
+  );
+  fakeChrome.tabs.get = async () => ({ id: 42, url: captureRequest.source.pageUrl });
+  const appleStart = await new Promise((resolve) => {
+    assert.equal(getOnMessage()({
+      target: 'background',
+      type: MEDIA_CAPTURE_START,
+      request: {
+        ...captureRequest,
+        captureId: '55555555-5555-4555-8555-555555555555',
+      },
+      streamId: 'panel-after-stale-youtube',
+    }, {}, resolve), true);
+  });
+  assert.equal(appleStart.ok, true);
+  assert.equal(appleStart.snapshot.status, 'capturing');
+  assert.equal(laterStreamCalls, 0);
+  assert.ok(startedStreamIds.includes('panel-after-stale-youtube'));
 });
 
 test('cancel with no live capture still drops a reserved stream and leftover offscreen', async () => {
@@ -1559,6 +1798,9 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(beginBody, /isTabCaptureStreamId\(callerStreamId\)/);
   assert.ok(beginBody.indexOf('isTabCaptureStreamId(callerStreamId)') < beginBody.indexOf('takeReservedTabCaptureStreamId'));
   assert.match(beginBody, /validateAndPrepare\(captureId, request\)/);
+  assert.match(beginBody, /await leaseRelease/);
+  assert.match(beginBody, /activeCaptureIsStaleForStart/);
+  assert.match(beginBody, /releaseLeftoverOffscreenIfIdle/);
   assert.match(serviceWorker, /openPanelOnActionClick: false/);
   const clickBody = serviceWorker.slice(serviceWorker.indexOf('chrome.action.onClicked'));
   assert.ok(clickBody.indexOf('sidePanel.open') < clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke'));
@@ -1587,6 +1829,10 @@ test('production manifest and capture source keep the required security shape', 
   );
   assert.match(background, /tabs\.onRemoved/);
   assert.match(background, /tabs\.onUpdated/);
+  const onUpdatedBody = background.slice(background.indexOf('tabs.onUpdated.addListener'));
+  assert.match(onUpdatedBody, /releaseCaptureLease/);
+  assert.match(onUpdatedBody, /releaseLeftoverOffscreenIfIdle/);
+  assert.doesNotMatch(onUpdatedBody, /void cancelActive\('connected-source-changed'/);
   assert.match(offscreen, /new Blob\(/);
   assert.match(offscreen, /XMLHttpRequest/);
   assert.match(offscreen, /xhr\.open\('PUT', signedUrl\)/);

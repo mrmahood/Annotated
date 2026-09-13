@@ -219,7 +219,7 @@ export const CHROME_TAB_CAPTURE_INVOKE_ERROR =
 export const RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS = 8_000;
 export const TAB_CAPTURE_STREAM_ID_TIMEOUT_MS = 4_000;
 export const HOSTED_CAPTURE_START_TIMEOUT_MS = 5_000;
-export const HOSTED_CAPTURE_CANCEL_TIMEOUT_MS = 2_000;
+export const HOSTED_CAPTURE_CANCEL_TIMEOUT_MS = 5_000;
 
 export type ReservedTabCaptureStreamIdentity = {
   tabId: number;
@@ -565,6 +565,17 @@ export function captureRequestMatchesConnectedTab(
   return Boolean(connected && live && connected.tabId === request.tabId && live.id === request.tabId &&
     connected.url === request.source.pageUrl && sourceIdentityMatchesUrl(request.source, connected.url) &&
     typeof live.url === 'string' && sourceIdentityMatchesUrl(request.source, live.url));
+}
+
+export function activeCaptureIsStaleForStart(
+  active: { tabId: number; source: CaptureSourceIdentity } | null | undefined,
+  request: { tabId: number; source: CaptureSourceIdentity },
+): boolean {
+  if (!active) return false;
+  return active.tabId !== request.tabId ||
+    active.source.kind !== request.source.kind ||
+    active.source.sourceKey !== request.source.sourceKey ||
+    !sourceIdentityMatchesUrl(active.source, request.source.pageUrl);
 }
 export function isHostedMediaOperation(value: unknown): value is HostedMediaOperation {
   return isRecord(value) && isMediaUuid(value.annotationId) && isMediaUuid(value.mediaId) &&

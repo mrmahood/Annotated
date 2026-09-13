@@ -239,6 +239,7 @@ import {
   hostedCancelClearsLocalAttention,
   hostedCancelCreateReset,
   hostedMediaProgressCopy,
+  hostedSessionMatchesConnectedUrl,
   isHostedMediaSession,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
@@ -3792,6 +3793,7 @@ function App() {
     ? hostedMediaProgressCopy({
         cancelling: isCancellingHostedMedia,
         snapshot: mediaCaptureState,
+        foreignSource: !hostedSessionMatchesConnectedUrl(hostedMediaSession, contextUrl),
       })
     : null;
   const hostedMediaPanel = hostedMediaSession && hostedProgress ? (
