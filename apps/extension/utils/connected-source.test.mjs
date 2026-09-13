@@ -14,6 +14,8 @@ const BBC_WATCH = 'https://www.tiktok.com/@bbcnews/video/7550123456789012345';
 const YOUTUBE = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 const HTML5_PAGE = 'https://www.example.test/news/clip';
 const SPOTIFY = 'https://open.spotify.com/episode/7makk4oTQel546B0P8lOOJ';
+const APPLE_PODCASTS =
+  'https://podcasts.apple.com/us/podcast/the-live-that-9-11-keeps-taking/id1200361736?i=1000728500116';
 
 test('TikTok watch URLs classify as TikTok, not Web page', () => {
   const state = getSourceState(ABC_TITLE, ABC_NEWS);
@@ -88,6 +90,30 @@ test('Spotify home, search, and show-only URLs stay generic Web page', () => {
     assert.equal(state.status, 'connected', url);
     assert.equal(state.source.classification, 'Web page', url);
   }
+});
+
+test('Apple Podcasts URLs classify as hosted audio immediately, not a YouTube leftover Web page', () => {
+  const state = getSourceState(
+    'The Live That 9/11 Keeps Taking - The Daily - Apple Podcasts',
+    APPLE_PODCASTS,
+  );
+  assert.equal(state.status, 'connected');
+  assert.equal(state.source.classification, 'Podcast / web audio');
+  assert.equal(state.source.hostname, 'podcasts.apple.com');
+  assert.equal(state.source.url, APPLE_PODCASTS);
+  assert.equal(state.source.normalizedUrl, APPLE_PODCASTS);
+  assert.equal(state.source.publisher, 'Apple Podcasts');
+  assert.equal(state.source.videoDetectionResolved, true);
+  assert.equal(state.source.videoAvailable, false);
+  assert.equal(isWebpageVideoCapableSource(state.source), false);
+  assert.equal(isHostedWatchSource(state.source), false);
+});
+
+test('Apple Podcasts show pages still enable audio Create without an HTML player first', () => {
+  const state = getSourceState('The Daily', 'https://podcasts.apple.com/us/podcast/the-daily/id1200361736');
+  assert.equal(state.status, 'connected');
+  assert.equal(state.source.classification, 'Podcast / web audio');
+  assert.equal(state.source.videoAvailable, false);
 });
 
 test('non-TikTok HTML5 pages stay Web page for generic webpage-video publish', () => {

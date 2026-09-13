@@ -354,6 +354,9 @@ test('side-panel production wiring gates Processing and persists only recovery i
   assert.match(app, /chrome\.storage\.local\.remove\(HOSTED_MEDIA_SESSION_KEY\)/);
   assert.match(app, /cancellingHostedMediaRef\.current/);
   assert.match(app, /The hosted-media status could not be restored\. Recapture or cancel this draft\./);
+  assert.match(app, /adoptActiveTabContextFromLiveTab\(context, freshTab\)/);
+  assert.match(app, /if \(!activeCaptureIdRef\.current\) activeCaptureIdRef\.current = captureId;/);
+  assert.match(app, /The raw clip is no longer available\. Recapture or cancel this draft\./);
   const restore = app.slice(app.indexOf('const result = reconcileHostedMediaState('));
   const restoreCatch = restore.slice(0, restore.indexOf('useEffect(() => {', restore.indexOf('.catch(() => {')));
   assert.ok(restoreCatch.includes("if (!current || cancellingHostedMediaRef.current) return;"));

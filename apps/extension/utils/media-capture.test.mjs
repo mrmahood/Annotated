@@ -13,8 +13,10 @@ import {
   canClearPreparingCaptureWithoutBackgroundCancel,
   captureRequestMatchesConnectedTab,
   hostedCaptureRequiresLiveCancel,
+  completeHostedMediaUpload,
   executeHostedMediaUpload,
   getCaptureRangeError,
+  hostedRawUploadMimeType,
   HOSTED_CAPTURE_START_TIMEOUT_MS,
   isAudioOnlyCaptureSourceKind,
   isCapturePreparedPage,
@@ -1291,6 +1293,24 @@ test('direct Storage failure cannot advance to completion or a processing claim'
   assert.deepEqual(calls, ['authorize', 'upload']);
 });
 
+test('audio-only captures authorize and store audio/webm even if MediaRecorder labels codecs', () => {
+  assert.equal(hostedRawUploadMimeType('audio'), 'audio/webm');
+  assert.equal(hostedRawUploadMimeType('spotify'), 'audio/webm');
+  assert.equal(hostedRawUploadMimeType('youtube'), 'video/webm');
+});
+
+test('upload completion retries a lost first handshake before failing', async () => {
+  let attempts = 0;
+  await completeHostedMediaUpload(async () => {
+    attempts += 1;
+    if (attempts < 3) throw new Error('UPLOAD_COMPLETION_FAILED');
+  }, 3, async () => undefined);
+  assert.equal(attempts, 3);
+  await assert.rejects(completeHostedMediaUpload(async () => {
+    throw new Error('UPLOAD_COMPLETION_FAILED');
+  }, 2, async () => undefined), /UPLOAD_COMPLETION_FAILED/);
+});
+
 test('completion failure remains a failure and success advances only to verification', async () => {
   const failed = [];
   await assert.rejects(executeHostedMediaUpload({
@@ -1357,7 +1377,10 @@ test('production manifest and capture source keep the required security shape', 
   assert.doesNotMatch(offscreen, /xhr\.open\('POST', signedUrl\)/);
   assert.match(offscreen, /xhr\.upload\.addEventListener\('progress'/);
   assert.match(offscreen, /getTracks\(\)\.forEach\(\(track\) => track\.stop\(\)\)/);
-  assert.match(offscreen, /isAudioOnlyCaptureSourceKind\(upload\.prepared\.sourceKind\) \? 'audio\/webm' : 'video\/webm'/);
+  assert.match(offscreen, /hostedRawUploadMimeType\(upload\.prepared\.sourceKind\)/);
+  assert.match(offscreen, /hostedRawUploadMimeType\(active\.message\.prepared\.sourceKind\)/);
+  assert.match(offscreen, /completeHostedMediaUpload\(\(\) => complete\(upload\)\)/);
+  assert.match(offscreen, /sendResponse\(\{ ok: true, snapshot \}\)/);
   assert.match(offscreen, /expectVideo = !isAudioOnlyCaptureSourceKind\(message\.prepared\.sourceKind\)/);
   assert.match(offscreen, /!isAudioOnlyCaptureSourceKind\(upload\.prepared\.sourceKind\) &&/);
   assert.match(offscreen, /new AudioContext\(\)/);

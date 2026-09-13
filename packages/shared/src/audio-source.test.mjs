@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   AudioSourceUrlError,
   getAudioSourceIdentity,
+  isApplePodcastsUrl,
   normalizeAudioSourceUrl,
 } from './audio-source.ts';
 
@@ -36,6 +37,17 @@ test('uses only an appropriate same-origin HTTP canonical', () => {
     getAudioSourceIdentity('https://example.com/episode/42', 'https://other.test/').normalizedUrl,
     'https://example.com/episode/42',
   );
+});
+
+test('recognizes Apple Podcasts episode and show hosts without treating other sites as Apple', () => {
+  assert.equal(
+    isApplePodcastsUrl('https://podcasts.apple.com/us/podcast/the-daily/id1200361736?i=1000728500116'),
+    true,
+  );
+  assert.equal(isApplePodcastsUrl('https://www.podcasts.apple.com/us/podcast/id1200361736'), true);
+  assert.equal(isApplePodcastsUrl('https://open.spotify.com/episode/6EMoFpxEsLelogfZz8eAC2'), false);
+  assert.equal(isApplePodcastsUrl('https://example.com/podcasts.apple.com'), false);
+  assert.equal(isApplePodcastsUrl('javascript:alert(1)'), false);
 });
 
 test('rejects non-web schemes and credential-bearing URLs', () => {

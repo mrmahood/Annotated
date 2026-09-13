@@ -1,4 +1,8 @@
-import { getAudioSourceIdentity, normalizeAudioSourceUrl } from '@annotated/shared/audio-source';
+import {
+  getAudioSourceIdentity,
+  isApplePodcastsUrl,
+  normalizeAudioSourceUrl,
+} from '@annotated/shared/audio-source';
 import { isSpotifyEpisodeUrl } from '@annotated/shared/spotify';
 import { isTikTokVideoUrl } from '@annotated/shared/tiktok';
 import { isYouTubeVideoUrl } from '@annotated/shared/youtube';
@@ -57,6 +61,7 @@ export function classifyConnectedSource(
   if (isYouTubeVideoUrl(url)) return 'youtube';
   if (isTikTokVideoUrl(url)) return 'tiktok';
   if (isSpotifyEpisodeUrl(url)) return 'spotify';
+  if (isApplePodcastsUrl(url)) return 'audio';
   if (audioStatus === 'supported') return 'audio';
   if (audioStatus === 'no-audio') return 'audio-unsupported';
   return 'article';
@@ -136,7 +141,16 @@ export function readAudioPageSnapshot(includeMetadata: boolean) {
     }
     return '';
   };
-  const elements = [...document.querySelectorAll('audio, video')]
+  const mediaNodes: Element[] = [];
+  const visitMediaRoot = (root: Document | ShadowRoot, depth: number) => {
+    if (!root || depth > 8) return;
+    for (const node of root.querySelectorAll('audio, video')) mediaNodes.push(node);
+    for (const host of root.querySelectorAll('*')) {
+      if (host.shadowRoot) visitMediaRoot(host.shadowRoot, depth + 1);
+    }
+  };
+  visitMediaRoot(document, 0);
+  const elements = mediaNodes
     .filter((element): element is HTMLMediaElement => {
       if (element instanceof HTMLAudioElement) return true;
       return element instanceof HTMLVideoElement && element.readyState >= 1 &&
@@ -327,7 +341,16 @@ export function playAudioPageFrom(startSeconds: number, expectedNormalizedUrl: s
     } catch { /* Invalid canonical metadata is ignored. */ }
   }
   if (normalize(identityUrl) !== expectedNormalizedUrl) return { ok: false, reason: 'source-mismatch' };
-  const elements = [...document.querySelectorAll('audio, video')]
+  const mediaNodes: Element[] = [];
+  const visitMediaRoot = (root: Document | ShadowRoot, depth: number) => {
+    if (!root || depth > 8) return;
+    for (const node of root.querySelectorAll('audio, video')) mediaNodes.push(node);
+    for (const host of root.querySelectorAll('*')) {
+      if (host.shadowRoot) visitMediaRoot(host.shadowRoot, depth + 1);
+    }
+  };
+  visitMediaRoot(document, 0);
+  const elements = mediaNodes
     .filter((element): element is HTMLMediaElement => element instanceof HTMLAudioElement || (
       element instanceof HTMLVideoElement && element.readyState >= 1 &&
       element.videoWidth === 0 && element.videoHeight === 0

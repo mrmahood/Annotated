@@ -176,7 +176,16 @@ export async function prepareMediaCaptureOnPage(
       return matches.length === 1 ? matches[0]! : null;
     }
     const candidates: HTMLMediaElement[] = [];
-    for (const element of document.querySelectorAll('audio, video')) {
+    const mediaNodes: Element[] = [];
+    const visitMediaRoot = (root: Document | ShadowRoot, depth: number) => {
+      if (!root || depth > 8) return;
+      for (const node of root.querySelectorAll('audio, video')) mediaNodes.push(node);
+      for (const host of root.querySelectorAll('*')) {
+        if (host.shadowRoot) visitMediaRoot(host.shadowRoot, depth + 1);
+      }
+    };
+    visitMediaRoot(document, 0);
+    for (const element of mediaNodes) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
       const accepted = playerFamily === 'youtube' || playerFamily === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
@@ -634,7 +643,16 @@ export async function playMediaForCaptureOnPage(
       return matches.length === 1 ? matches[0]!.media : null;
     }
     const candidates: HTMLMediaElement[] = [];
-    for (const element of document.querySelectorAll('audio, video')) {
+    const mediaNodes: Element[] = [];
+    const visitMediaRoot = (root: Document | ShadowRoot, depth: number) => {
+      if (!root || depth > 8) return;
+      for (const node of root.querySelectorAll('audio, video')) mediaNodes.push(node);
+      for (const host of root.querySelectorAll('*')) {
+        if (host.shadowRoot) visitMediaRoot(host.shadowRoot, depth + 1);
+      }
+    };
+    visitMediaRoot(document, 0);
+    for (const element of mediaNodes) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
       const accepted = playerFamily === 'youtube' || playerFamily === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)
@@ -982,7 +1000,16 @@ export function finishMediaCaptureOnPage(
       return matches.length === 1 ? matches[0]! : null;
     }
     const candidates: HTMLMediaElement[] = [];
-    for (const element of document.querySelectorAll('audio, video')) {
+    const mediaNodes: Element[] = [];
+    const visitMediaRoot = (root: Document | ShadowRoot, depth: number) => {
+      if (!root || depth > 8) return;
+      for (const node of root.querySelectorAll('audio, video')) mediaNodes.push(node);
+      for (const host of root.querySelectorAll('*')) {
+        if (host.shadowRoot) visitMediaRoot(host.shadowRoot, depth + 1);
+      }
+    };
+    visitMediaRoot(document, 0);
+    for (const element of mediaNodes) {
       if (!(element instanceof HTMLMediaElement) || !sourceFor(element)) continue;
       const accepted = playerFamily === 'youtube' || playerFamily === 'tiktok'
         ? element instanceof HTMLVideoElement && videoExposed(element)

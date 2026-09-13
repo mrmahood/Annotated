@@ -272,4 +272,19 @@ test('discriminates article, YouTube, supported audio, and unsupported audio sta
   assert.equal(classifyConnectedSource('https://example.com/article', 'not-audio-page'), 'article');
   assert.equal(classifyConnectedSource('https://example.com/episode', 'supported'), 'audio');
   assert.equal(classifyConnectedSource('https://example.com/episode', 'no-audio'), 'audio-unsupported');
+  assert.equal(
+    classifyConnectedSource('https://podcasts.apple.com/us/podcast/the-daily/id1200361736?i=1000728500116', 'no-audio'),
+    'audio',
+  );
+});
+
+test('the serialized Apple Podcasts snapshot walks shadow-root audio players', async () => {
+  const source = await readFile(new URL('./audio-page.ts', import.meta.url), 'utf8');
+  const snapshot = source.slice(
+    source.indexOf('export function readAudioPageSnapshot'),
+    source.indexOf('export function validateAudioPageSnapshot'),
+  );
+  assert.match(source, /isApplePodcastsUrl\(url\)\) return 'audio'/);
+  assert.match(snapshot, /visitMediaRoot/);
+  assert.match(snapshot, /shadowRoot/);
 });

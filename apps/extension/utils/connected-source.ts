@@ -1,3 +1,4 @@
+import { getAudioSourceIdentity, isApplePodcastsUrl } from '@annotated/shared/audio-source';
 import { isTikTokVideoUrl, getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { getSpotifyEpisodeIdentity, isSpotifyEpisodeUrl } from '@annotated/shared/spotify';
 import { normalizeArticleUrl } from '@annotated/shared/url-normalization';
@@ -93,7 +94,8 @@ export function isHostedWatchSource(source: PageSource): source is YouTubePageSo
 export function isWebpageVideoCapableSource(
   source: PageSource,
 ): source is ArticlePageSource | AudioVideoPageSource {
-  return source.classification === 'Web page' || source.classification === 'Podcast / web audio';
+  return source.classification === 'Web page' ||
+    (source.classification === 'Podcast / web audio' && !isApplePodcastsUrl(source.url));
 }
 
 export function videoPlayerSourceKey(source: PageSource): string {
@@ -154,6 +156,30 @@ export function getSourceState(title: string, value: string): SourceState {
           showName: null,
           metadataResolved: false,
           pageBlock: null,
+        },
+      };
+    }
+    if (isApplePodcastsUrl(tabUrl)) {
+      const identity = getAudioSourceIdentity(tabUrl);
+      const episodeTitle = title.replace(/\s+/g, ' ').trim();
+      return {
+        status: 'connected',
+        source: {
+          title: episodeTitle && !/^apple podcasts$/i.test(episodeTitle)
+            ? episodeTitle
+            : 'Apple Podcasts episode',
+          hostname: identity.hostname,
+          url: tabUrl,
+          normalizedUrl: identity.normalizedUrl,
+          canonicalUrl: identity.canonicalUrl,
+          classification: 'Podcast / web audio',
+          author: null,
+          publisher: 'Apple Podcasts',
+          showName: null,
+          playerId: null,
+          playerStatus: 'current-time-unavailable',
+          videoDetectionResolved: true,
+          videoAvailable: false,
         },
       };
     }

@@ -10,7 +10,7 @@ import {
   isRecaptureCleanupPending,
   jsonResponse,
   parseCompletionInput,
-  verifyStoredObject,
+  verifyUploadedRawObject,
   type AnnotationRow,
   type MediaRow,
   HostedMediaApiError,
@@ -72,17 +72,12 @@ export async function POST(request: Request) {
     if (!target || target.start_ms !== input.startMs || target.end_ms !== input.endMs) {
       throw new Error('The selected range does not match the hosted annotation target.');
     }
-    const { data: object, error: objectError } = await service.storage
-      .from('annotation-media-raw')
-      .info(media.raw_storage_path);
-    assertServiceOperation(objectError, 'The uploaded raw object could not be verified.');
-    if (!object) throw new Error('The uploaded raw object does not exist.');
-    verifyStoredObject({
-      bucketId: object.bucketId,
-      name: object.name,
-      size: object.size,
-      contentType: object.contentType,
-    }, media.raw_storage_path, expectedMime, Number(media.raw_byte_size));
+    await verifyUploadedRawObject(
+      (path) => service.storage.from('annotation-media-raw').info(path),
+      media.raw_storage_path,
+      expectedMime,
+      Number(media.raw_byte_size),
+    );
 
     if (media.processing_status === 'processing') {
       if (media.processing_stage !== 'queued') throw new Error('The upload has already advanced beyond the Phase B completion state.');

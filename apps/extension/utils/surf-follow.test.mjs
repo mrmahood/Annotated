@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { ACTIVE_TAB_CONTEXT_KEY, ACTIVE_TAB_CONTEXT_MESSAGE } from './active-tab-context.ts';
+import {
+  ACTIVE_TAB_CONTEXT_KEY,
+  ACTIVE_TAB_CONTEXT_MESSAGE,
+  adoptActiveTabContextFromLiveTab,
+} from './active-tab-context.ts';
 import { ACTIVE_CAPTURE_KEY } from './media-capture-background.ts';
 import {
   activeCaptureHoldsContext,
@@ -149,6 +153,20 @@ test('followBrowsingTab holds context when a capture is active on another tab', 
   assert.deepEqual(chrome.messages, []);
 });
 
+test('Refresh source can adopt a YouTube-to-Apple-Podcasts URL on the same tab', () => {
+  const youtube = context({
+    title: 'YouTube',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+  });
+  const adopted = adoptActiveTabContextFromLiveTab(youtube, {
+    title: 'The Daily — Apple Podcasts',
+    url: 'https://podcasts.apple.com/us/podcast/example/id123?i=456',
+  });
+  assert.equal(adopted?.tabId, 17);
+  assert.equal(adopted?.url, 'https://podcasts.apple.com/us/podcast/example/id123?i=456');
+  assert.equal(adoptActiveTabContextFromLiveTab(youtube, { title: 'Missing url' }), null);
+});
+
 test('followActiveBrowsingTab rebinds after a cancelled capture hold', async () => {
   const podcast = tab({
     id: 44,
@@ -229,6 +247,7 @@ test('surf-follow wiring uses tabs listeners and does not add persistent content
   assert.match(background, /installSurfFollow/);
   assert.match(background, /chrome\.tabs\.onActivated|installSurfFollow/);
   assert.match(background, /chrome\.action\.onClicked/);
+  assert.match(background, /followBrowsingTab\(chrome, tab, Date\.now\(\), \{ ignoreActiveCapture: true \}\)/);
   assert.match(background, /applyPendingArticleHoverOnTab/);
   assert.match(background, /applyPendingAudioHoverOnTab/);
   assert.match(background, /applyPendingPageVideoHoverOnTab/);

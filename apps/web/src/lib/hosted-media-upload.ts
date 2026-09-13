@@ -342,6 +342,43 @@ export async function removePrivateArtifacts(
     if (error) throw new HostedMediaApiError('RAW_DELETE_FAILED', 502);
   }
 }
+export function storedObjectVerificationInput(object: {
+  bucketId?: string;
+  name?: string;
+  size?: number;
+  contentType?: string;
+  metadata?: unknown;
+}): StoredObject {
+  const metadata = isRecord(object.metadata) ? object.metadata : {};
+  const metadataSize = metadata.size;
+  const size = Number.isSafeInteger(object.size)
+    ? object.size
+    : Number.isSafeInteger(metadataSize)
+      ? Number(metadataSize)
+      : undefined;
+  const metadataMime = typeof metadata.mimetype === 'string'
+    ? metadata.mimetype
+    : typeof metadata.contentType === 'string'
+      ? metadata.contentType
+      : undefined;
+  return {
+    bucketId: object.bucketId,
+    name: object.name,
+    size,
+    contentType: typeof object.contentType === 'string' ? object.contentType : metadataMime,
+  };
+}
+
+export function storedObjectMimeMatches(
+  actual: string | undefined,
+  expectedMime: 'video/webm' | 'audio/webm',
+) {
+  const baseMime = actual?.split(';', 1)[0]?.trim().toLowerCase();
+  if (baseMime === expectedMime) return true;
+  return expectedMime === 'audio/webm' &&
+    (baseMime === 'video/webm' || baseMime === 'application/octet-stream');
+}
+
 export function verifyStoredObject(
   object: StoredObject,
   expectedPath: string,
@@ -349,12 +386,53 @@ export function verifyStoredObject(
   expectedSize: number,
 ) {
   if (object.bucketId !== RAW_BUCKET || object.name !== expectedPath) throw new Error('The uploaded object is in the wrong bucket or path.');
-  const baseMime = object.contentType?.split(';', 1)[0]?.trim().toLowerCase();
-  if (baseMime !== expectedMime) throw new Error('The uploaded object MIME type is invalid.');
+  if (!storedObjectMimeMatches(object.contentType, expectedMime)) {
+    throw new Error('The uploaded object MIME type is invalid.');
+  }
   const limit = expectedMime === 'video/webm' ? VIDEO_LIMIT : AUDIO_LIMIT;
   if (!Number.isSafeInteger(object.size) || object.size! < 1 || object.size! > limit || object.size !== expectedSize) {
     throw new Error('The uploaded object size is invalid.');
   }
+}
+
+export async function verifyUploadedRawObject(
+  info: (path: string) => Promise<{ data: unknown; error: unknown }>,
+  path: string,
+  expectedMime: 'video/webm' | 'audio/webm',
+  expectedSize: number,
+  attempts = 3,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  }),
+) {
+  let lastError: unknown = null;
+  let sawObject = false;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const { data: object, error: objectError } = await info(path);
+    if (!objectError && object) {
+      sawObject = true;
+      verifyStoredObject(
+        storedObjectVerificationInput(object as {
+          bucketId?: string;
+          name?: string;
+          size?: number;
+          contentType?: string;
+          metadata?: unknown;
+        }),
+        path,
+        expectedMime,
+        expectedSize,
+      );
+      return;
+    }
+    lastError = objectError ?? null;
+    if (attempt === attempts) break;
+    await wait(250 * attempt);
+  }
+  if (!sawObject && lastError) {
+    assertServiceOperation(lastError, 'The uploaded raw object could not be verified.');
+  }
+  throw new Error('The uploaded raw object does not exist.');
 }
 export function getBearerToken(request: Request) {
   const match = /^Bearer\s+(.+)$/i.exec(request.headers.get('authorization') ?? '');

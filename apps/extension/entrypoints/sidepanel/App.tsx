@@ -15,7 +15,7 @@ import { BrandLockup } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import { getSpotifyEpisodeIdentity } from '@annotated/shared/spotify';
-import { getAudioSourceIdentity } from '@annotated/shared/audio-source';
+import { getAudioSourceIdentity, isApplePodcastsUrl } from '@annotated/shared/audio-source';
 import {
   AUDIO_CLIP_DRAFT_STORAGE_KEY,
   audioClipDraftBelongsToSource,
@@ -46,6 +46,7 @@ import { beginHostedAudioClipAnnotation } from '../../utils/audio-publishing';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import {
   ACTIVE_TAB_CONTEXT_KEY,
+  adoptActiveTabContextFromLiveTab,
   isActiveTabContext,
   isActiveTabContextMessage,
   type ActiveTabContext,
@@ -299,10 +300,6 @@ const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).ch
 function isClosedTabError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /no tab with id|invalid tab id|tab (?:was|is) closed/i.test(message);
-}
-
-function isSameOrigin(firstUrl: string, secondUrl: string) {
-  try { return new URL(firstUrl).origin === new URL(secondUrl).origin; } catch { return false; }
 }
 
 function isRestrictedPageError(error: unknown) {
@@ -1131,15 +1128,14 @@ function App() {
         setSourceState({ status: 'not-connected' });
         return;
       }
-      if (typeof freshTab.url !== 'string' || typeof freshTab.title !== 'string') { enterReconnectRequired(); return; }
-      if (freshTab.url !== context.url && !isSameOrigin(context.url, freshTab.url)) { enterReconnectRequired(); return; }
-      if (freshTab.url !== context.url) {
-        const refreshedContext = { ...context, title: freshTab.title, url: freshTab.url };
+      const refreshedContext = adoptActiveTabContextFromLiveTab(context, freshTab);
+      if (!refreshedContext) { enterReconnectRequired(); return; }
+      if (refreshedContext !== context) {
         connectedContextRef.current = refreshedContext;
         await chrome.storage.session.set({ [ACTIVE_TAB_CONTEXT_KEY]: refreshedContext });
         socialCacheRef.current.clear();
       }
-      const next = getSourceState(freshTab.title, freshTab.url);
+      const next = getSourceState(refreshedContext.title, refreshedContext.url);
       setSourceState(next);
       if (next.status === 'connected') setRefreshSuccess(true);
     } catch {
@@ -2186,7 +2182,8 @@ function App() {
   const retryHostedUpload = useCallback(async () => {
     const session = hostedMediaSessionRef.current;
     const captureId = 'captureId' in mediaCaptureState ? mediaCaptureState.captureId : null;
-    if (!supabase || !session || !captureId || activeCaptureIdRef.current !== captureId) return;
+    if (!supabase || !session || !captureId) return;
+    if (!activeCaptureIdRef.current) activeCaptureIdRef.current = captureId;
     const attempt = createHostedAttemptToken(session.operation, captureId);
     const { data, error } = await supabase.auth.getSession();
     if (!hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current)) return;
@@ -2204,11 +2201,27 @@ function App() {
       type: MEDIA_CAPTURE_RETRY,
       captureId,
       accessToken: data.session.access_token,
-    }) as { snapshot?: CaptureSnapshot };
-    if (
-      hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current) &&
-      response?.snapshot && 'captureId' in response.snapshot && response.snapshot.captureId === captureId
-    ) setMediaCaptureState(response.snapshot);
+    }) as { ok?: boolean; error?: string; snapshot?: CaptureSnapshot };
+    if (!hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current)) return;
+    if (response?.snapshot && 'captureId' in response.snapshot && response.snapshot.captureId === captureId) {
+      setMediaCaptureState(response.snapshot);
+      return;
+    }
+    if (response?.ok === false) {
+      const missing = /retained|available/i.test(response.error ?? '');
+      setMediaCaptureState(missing
+        ? {
+          status: 'error',
+          captureId,
+          code: 'recapture-required',
+          message: 'The raw clip is no longer available. Recapture or cancel this draft.',
+        }
+        : {
+          status: 'waiting-to-upload',
+          captureId,
+          message: `${response.error ?? 'Upload retry failed.'} Keep Chrome open and retry.`,
+        });
+    }
   }, [mediaCaptureState, supabase]);
 
   const recaptureHostedMedia = useCallback(async () => {
@@ -2480,13 +2493,8 @@ function App() {
     const pageUrl = sourceState.source.url;
     if (!context) return;
     let current = true;
-    void chrome.scripting.executeScript({
-      target: { tabId: context.tabId, frameIds: [0] },
-      func: readAudioPageSnapshot,
-      args: [true],
-    }).then((execution) => {
-      if (!current) return;
-      const detection = validateAudioPageSnapshot(pageUrl, execution[0]?.result);
+    let retryTimer = 0;
+    const applyDetection = (detection: ReturnType<typeof validateAudioPageSnapshot>) => {
       setSourceState((state) => {
         if (
           state.status !== 'connected' || state.source.classification !== 'Web page' ||
@@ -2504,25 +2512,36 @@ function App() {
             },
           };
         }
-        if (detection.status === 'no-audio') {
-          return {
-            status: 'connected',
-            source: { ...state.source, audioDetectionResolved: true },
-          };
-        }
         return {
           status: 'connected',
           source: { ...state.source, audioDetectionResolved: true },
         };
       });
-    }).catch(() => {
-      if (!current) return;
-      setSourceState((state) => state.status === 'connected' &&
-        state.source.classification === 'Web page' && state.source.url === pageUrl
-        ? { status: 'connected', source: { ...state.source, audioDetectionResolved: true } }
-        : state);
-    });
-    return () => { current = false; };
+    };
+    const detect = (attempt: number) => {
+      void chrome.scripting.executeScript({
+        target: { tabId: context.tabId, frameIds: [0] },
+        func: readAudioPageSnapshot,
+        args: [true],
+      }).then((execution) => {
+        if (!current) return;
+        const detection = validateAudioPageSnapshot(pageUrl, execution[0]?.result);
+        if (detection.status !== 'supported' && attempt < 3) {
+          retryTimer = window.setTimeout(() => detect(attempt + 1), 750);
+          return;
+        }
+        applyDetection(detection);
+      }).catch(() => {
+        if (!current) return;
+        if (attempt < 3) {
+          retryTimer = window.setTimeout(() => detect(attempt + 1), 750);
+          return;
+        }
+        applyDetection({ status: 'not-audio-page' });
+      });
+    };
+    detect(1);
+    return () => { current = false; window.clearTimeout(retryTimer); };
   }, [sourceState]);
 
   useEffect(() => {
@@ -2987,7 +3006,7 @@ function App() {
       sourceKey: string;
       reader: 'top' | 'spotify';
     }> = [];
-    if (!spotifyIdentity) {
+    if (!spotifyIdentity && !isApplePodcastsUrl(pageUrl)) {
       probes.push({ mode: 'video', genericVideo, sourceKey: videoSourceKey, reader: 'top' });
     } else {
       setVideoPlayers(EMPTY_PLAYER_DISCOVERY);

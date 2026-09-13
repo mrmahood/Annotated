@@ -45,6 +45,19 @@ export function activeTabContextFromTab(
   };
 }
 
+export function adoptActiveTabContextFromLiveTab(
+  context: ActiveTabContext,
+  tab: { title?: string; url?: string },
+): ActiveTabContext | null {
+  if (typeof tab.url !== 'string' || typeof tab.title !== 'string') return null;
+  if (context.url === tab.url && context.title === tab.title) return context;
+  return {
+    ...context,
+    title: tab.title,
+    url: tab.url,
+  };
+}
+
 export function contextsDescribeSameTab(
   current: Pick<ActiveTabContext, 'tabId' | 'windowId' | 'title' | 'url'>,
   next: Pick<ActiveTabContext, 'tabId' | 'windowId' | 'title' | 'url'>,

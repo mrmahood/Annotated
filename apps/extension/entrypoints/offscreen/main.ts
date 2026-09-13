@@ -10,7 +10,9 @@ import {
   buildCaptureMetadataV2,
   isAudioOnlyCaptureSourceKind,
   isOffscreenStartMessage,
+  completeHostedMediaUpload,
   executeHostedMediaUpload,
+  hostedRawUploadMimeType,
   raceTabCaptureStreamId,
   selectCaptureMimeType,
   type CaptureGeometry,
@@ -134,7 +136,9 @@ async function finalize(active: ActiveRecording) {
   const tracks = trackFacts(active.stream);
   const audioTrackCount = active.stream.getAudioTracks().length;
   const videoTrackCount = active.stream.getVideoTracks().length;
-  const blob = new Blob(active.chunks, { type: active.recorder.mimeType || active.selectedMimeType });
+  const blob = new Blob(active.chunks, {
+    type: hostedRawUploadMimeType(active.message.prepared.sourceKind),
+  });
   await release(active);
   recording = null;
 
@@ -235,7 +239,7 @@ async function authorize(upload: RetainedUpload): Promise<string> {
     body: JSON.stringify({
       annotationId: upload.request.operation.annotationId,
       mediaId: upload.request.operation.mediaId,
-      mimeType: isAudioOnlyCaptureSourceKind(upload.prepared.sourceKind) ? 'audio/webm' : 'video/webm',
+      mimeType: hostedRawUploadMimeType(upload.prepared.sourceKind),
       byteSize: upload.blob.size,
       startMs: upload.prepared.requestedStartMs,
       endMs: upload.prepared.requestedEndMs,
@@ -337,7 +341,7 @@ async function uploadRetained(upload: RetainedUpload) {
     }
     if (upload.attempts > 1) {
       try {
-        await complete(upload);
+        await completeHostedMediaUpload(() => complete(upload));
         const { annotationId, mediaId } = upload.request.operation;
         retained = null;
         sendSnapshot({ status: 'verifying-upload', captureId: upload.captureId, annotationId, mediaId });
@@ -350,7 +354,7 @@ async function uploadRetained(upload: RetainedUpload) {
     await executeHostedMediaUpload({
       authorize: () => authorize(upload),
       upload: (signedUrl) => uploadWithProgress(upload, signedUrl),
-      complete: () => complete(upload),
+      complete: () => completeHostedMediaUpload(() => complete(upload)),
     });
     const { annotationId, mediaId } = upload.request.operation;
     retained = null;
@@ -522,7 +526,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       return undefined;
     }
     retained.request.accessToken = row.accessToken;
-    void uploadRetained(retained).then(() => sendResponse({ ok: true }));
+    void uploadRetained(retained).then(() => sendResponse({ ok: true, snapshot }));
     return true;
   }
   if (row.type === MEDIA_CAPTURE_OFFSCREEN_STATUS) {

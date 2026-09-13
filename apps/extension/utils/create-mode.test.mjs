@@ -246,6 +246,11 @@ test('incidental article audio stays a Web page capability instead of an exclusi
   assert.doesNotMatch(app, /kind: 'youtube-audio'/);
   assert.doesNotMatch(app, /kind: 'tiktok-audio'/);
   assert.doesNotMatch(app, /kind: 'web-video-audio'/);
+  const connected = await readFile(new URL('./connected-source.ts', import.meta.url), 'utf8');
+  assert.match(connected, /isApplePodcastsUrl\(tabUrl\)/);
+  assert.match(connected, /classification: 'Podcast \/ web audio'/);
+  assert.match(app, /adoptActiveTabContextFromLiveTab\(context, freshTab\)/);
+  assert.match(app, /!spotifyIdentity && !isApplePodcastsUrl\(pageUrl\)/);
 });
 
 test('the side panel is wired to independent Text, Video, and Audio draft slices', async () => {
