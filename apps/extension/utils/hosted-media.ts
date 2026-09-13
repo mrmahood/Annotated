@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
+  canClearHostedAttentionWithoutLiveCancel,
   isMediaUuid,
   type CaptureSnapshot,
   type HostedMediaOperation,
@@ -111,6 +112,10 @@ export function hostedCancelCreateReset(
     followActiveTab: true,
     ignoreActiveCaptureHold: true,
   };
+}
+
+export function hostedCancelClearsLocalAttention(snapshot: CaptureSnapshot): boolean {
+  return canClearHostedAttentionWithoutLiveCancel(snapshot, false);
 }
 
 export function presentHostedMediaSnapshot(snapshot: CaptureSnapshot): CaptureSnapshot {

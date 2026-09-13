@@ -5,6 +5,7 @@ import {
   cancelOwnedHostedMedia,
   createPublishStateAfterHostedFailure,
   getHostedMediaCancelError,
+  hostedCancelClearsLocalAttention,
   hostedCancelCreateReset,
   isHostedMediaSession,
   parseOwnedHostedMediaStatus,
@@ -78,15 +79,46 @@ test('Recapture and capture start clear Create publish errors before the next at
 test('Cancel draft can leave Preparing capture without a live background capture', async () => {
   const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
   const cancel = app.slice(app.indexOf('const cancelHostedMedia'));
-  assert.match(cancel, /canClearPreparingCaptureWithoutBackgroundCancel/);
+  assert.match(cancel, /canClearHostedAttentionWithoutLiveCancel/);
+  assert.match(cancel, /hostedCancelClearsLocalAttention/);
   assert.match(cancel, /raceHostedCaptureCancel/);
   assert.match(cancel, /setMediaCaptureState\(\{ status: 'idle' \}\)/);
   assert.match(cancel, /setYoutubePublishState\(\{ status: 'idle' \}\)/);
   assert.match(cancel, /setAudioPublishState\(\{ status: 'idle' \}\)/);
   assert.ok(
-    cancel.indexOf('canClearPreparingCaptureWithoutBackgroundCancel') <
+    cancel.indexOf('canClearHostedAttentionWithoutLiveCancel') <
       cancel.indexOf('cancelHostedSessionOnServer'),
   );
+  assert.ok(
+    cancel.indexOf('if (!attentionClear) throw error') <
+      cancel.indexOf("setMediaCaptureState({ status: 'idle' })"),
+  );
+  assert.ok(
+    cancel.indexOf('if (!attentionClear && !hostedAttemptTokenIsCurrent') <
+      cancel.indexOf("chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY)"),
+  );
+  assert.match(cancel, /isCaptureId\(liveCaptureId\) \? liveCaptureId : null/);
+});
+
+test('attention and restore-error snapshots clear locally even without a live recorder', () => {
+  assert.equal(hostedCancelClearsLocalAttention({
+    status: 'error', captureId: null, code: 'recapture-required',
+    message: 'The saved draft has no live capture. Reconnect the original source and choose Recapture, or cancel the draft.',
+  }), true);
+  assert.equal(hostedCancelClearsLocalAttention({
+    status: 'error', captureId: null, code: 'tab-capture-denied',
+    message: 'Click the Annotated toolbar icon on this tab, then Recapture.',
+  }), true);
+  assert.equal(hostedCancelClearsLocalAttention({
+    status: 'error', captureId: null, code: 'unexpected',
+    message: 'The hosted-media status could not be restored. Recapture or cancel this draft.',
+  }), true);
+  assert.equal(hostedCancelClearsLocalAttention({ status: 'idle' }), true);
+  assert.equal(hostedCancelClearsLocalAttention({ status: 'preparing', captureId: operation.annotationId }), true);
+  assert.equal(hostedCancelClearsLocalAttention({ status: 'capturing', captureId: operation.annotationId }), false);
+  assert.equal(hostedCancelClearsLocalAttention({
+    status: 'error', captureId: operation.annotationId, code: 'upload-failed', message: 'Upload failed.',
+  }), false);
 });
 
 test('Cancel draft clears the prior source Create draft and rebinds the current tab', async () => {
@@ -320,4 +352,10 @@ test('side-panel production wiring gates Processing and persists only recovery i
   assert.match(app, /chrome\.storage\.local\.set\(\{ \[HOSTED_MEDIA_SESSION_KEY\]: session \}\)/);
   assert.match(app, /cancelOwnedHostedMedia\(/);
   assert.match(app, /chrome\.storage\.local\.remove\(HOSTED_MEDIA_SESSION_KEY\)/);
+  assert.match(app, /cancellingHostedMediaRef\.current/);
+  assert.match(app, /The hosted-media status could not be restored\. Recapture or cancel this draft\./);
+  const restore = app.slice(app.indexOf('const result = reconcileHostedMediaState('));
+  const restoreCatch = restore.slice(0, restore.indexOf('useEffect(() => {', restore.indexOf('.catch(() => {')));
+  assert.ok(restoreCatch.includes("if (!current || cancellingHostedMediaRef.current) return;"));
+  assert.ok(restoreCatch.includes("code: 'recapture-required'"));
 });

@@ -9,8 +9,10 @@ import {
   TAB_CAPTURE_INVOKE_MESSAGE,
   TAB_CAPTURE_STREAM_ID_TIMEOUT_MS,
   buildCaptureMetadataV2,
+  canClearHostedAttentionWithoutLiveCancel,
   canClearPreparingCaptureWithoutBackgroundCancel,
   captureRequestMatchesConnectedTab,
+  hostedCaptureRequiresLiveCancel,
   executeHostedMediaUpload,
   getCaptureRangeError,
   HOSTED_CAPTURE_START_TIMEOUT_MS,
@@ -119,6 +121,28 @@ test('Chrome tab-capture invocation errors map to toolbar Recapture copy', () =>
   assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('capturing', false), false);
   assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('capturing', true), true);
   assert.equal(canClearPreparingCaptureWithoutBackgroundCancel('uploading', false), false);
+  assert.equal(hostedCaptureRequiresLiveCancel({ status: 'capturing', captureId: request.captureId }), true);
+  assert.equal(hostedCaptureRequiresLiveCancel({
+    status: 'error', captureId: request.captureId, code: 'upload-failed', message: 'Upload failed.',
+  }), true);
+  assert.equal(hostedCaptureRequiresLiveCancel({
+    status: 'error', captureId: null, code: 'recapture-required', message: 'Recapture or cancel.',
+  }), false);
+  assert.equal(canClearHostedAttentionWithoutLiveCancel({
+    status: 'error', captureId: null, code: 'recapture-required', message: 'Recapture or cancel.',
+  }, false), true);
+  assert.equal(canClearHostedAttentionWithoutLiveCancel({
+    status: 'error', captureId: request.captureId, code: 'tab-capture-denied', message: TAB_CAPTURE_INVOKE_MESSAGE,
+  }, false), true);
+  assert.equal(canClearHostedAttentionWithoutLiveCancel({
+    status: 'error', captureId: null, code: 'unexpected', message: 'The hosted-media status could not be restored.',
+  }, false), true);
+  assert.equal(canClearHostedAttentionWithoutLiveCancel({ status: 'preparing', captureId: request.captureId }, false), true);
+  assert.equal(canClearHostedAttentionWithoutLiveCancel({ status: 'capturing', captureId: request.captureId }, false), false);
+  assert.equal(canClearHostedAttentionWithoutLiveCancel({
+    status: 'error', captureId: request.captureId, code: 'upload-failed', message: 'Upload failed.',
+  }, false), false);
+  assert.equal(canClearHostedAttentionWithoutLiveCancel({ status: 'capturing', captureId: request.captureId }, true), true);
   const mapped = mapTabCaptureStartFailure(new Error(CHROME_TAB_CAPTURE_INVOKE_ERROR), request.captureId);
   assert.equal(mapped.status, 'error');
   assert.equal(mapped.code, 'tab-capture-denied');
@@ -588,6 +612,61 @@ test('cancel during preparing with no persisted capture clears reserved state an
   });
   assert.equal(retry.ok, true);
   assert.equal(retry.snapshot.status, 'capturing');
+});
+
+test('Cancel after reopen clears a leftover attention snapshot and ghost active capture', async () => {
+  const { accessToken: _accessToken, ...safeRequest } = request;
+  let sessionStore = {
+    'annotated.mediaCapture.active.v1': { captureId: request.captureId, request: safeRequest },
+  };
+  let onMessage;
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [],
+      sendMessage: async () => ({ ok: true }),
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        if (key === 'annotatedActiveTabContext') {
+          return { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } };
+        }
+        const name = typeof key === 'string' ? key : key[0];
+        return name && sessionStore[name] ? { [name]: sessionStore[name] } : {};
+      },
+      async set(value) { sessionStore = { ...sessionStore, ...value }; },
+      async remove(key) {
+        const names = Array.isArray(key) ? key : [key];
+        for (const name of names) delete sessionStore[name];
+      },
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript() { return [{ frameId: 0, result: null }]; } },
+    tabCapture: { async getMediaStreamId() { return 'stream'; } },
+    offscreen: { async createDocument() {} },
+  };
+  installMediaCapture(fakeChrome);
+
+  const leftoverAttention = await new Promise((resolve) => {
+    assert.equal(onMessage({
+      target: 'background', type: 'annotated.mediaCapture.cancel.v1',
+      captureId: null, operation,
+    }, {}, resolve), true);
+  });
+  assert.deepEqual(leftoverAttention, { ok: true, cancelled: true });
+  assert.equal(sessionStore['annotated.mediaCapture.active.v1'], undefined);
+
+  const status = await new Promise((resolve) => {
+    assert.equal(onMessage({
+      target: 'background', type: 'annotated.mediaCapture.status.v1',
+    }, {}, resolve), true);
+  });
+  assert.equal(status.snapshot.status, 'idle');
+  assert.equal(status.operation, null);
 });
 
 test('concurrent status reconciliation cannot clear a newly preparing shared media capture', async () => {
@@ -1261,7 +1340,10 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(panel, /raceHostedCaptureCancel/);
   assert.match(panel, /mapTabCaptureStartFailure/);
   assert.match(panel, /shouldReplaceHostedCaptureSnapshot/);
+  assert.match(panel, /canClearHostedAttentionWithoutLiveCancel/);
+  assert.match(panel, /hostedCancelClearsLocalAttention/);
   assert.match(panel, /isPreparingCaptureStatus\(mediaCaptureState\.status\)/);
+  assert.match(background, /if \(active && !await hasOffscreenDocument\(\)\)/);
   assert.match(offscreen, /raceTabCaptureStreamId\(mediaPromise\)/);
   assert.equal(
     background.match(/world: usesMainWorldCapture\((?:capture\.request|request)\.source\.kind\) \? 'MAIN' : 'ISOLATED'/g)?.length,

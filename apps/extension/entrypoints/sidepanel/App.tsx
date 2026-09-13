@@ -207,8 +207,9 @@ import {
   MEDIA_CAPTURE_RETRY,
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
-  canClearPreparingCaptureWithoutBackgroundCancel,
+  canClearHostedAttentionWithoutLiveCancel,
   isAudioOnlyCaptureSourceKind,
+  isCaptureId,
   isPreparingCaptureStatus,
   mapTabCaptureStartFailure,
   raceHostedCaptureCancel,
@@ -225,6 +226,7 @@ import {
   createPublishStateAfterHostedFailure,
   getHostedMediaCancelError,
   getOwnedHostedMediaStatus,
+  hostedCancelClearsLocalAttention,
   hostedCancelCreateReset,
   isHostedMediaSession,
   presentHostedMediaSnapshot,
@@ -2112,11 +2114,13 @@ function App() {
 
   const cancelHostedMedia = useCallback(async (expectedAttempt?: HostedAttemptToken) => {
     const session = hostedMediaSessionRef.current;
-    const captureId = activeCaptureIdRef.current;
+    const liveCaptureId = activeCaptureIdRef.current;
+    const captureId = isCaptureId(liveCaptureId) ? liveCaptureId : null;
     if (!session || !supabase || cancellingHostedMediaRef.current) return false;
-    const attempt = expectedAttempt ?? createHostedAttemptToken(session.operation, captureId);
-    if (!hostedAttemptTokenIsCurrent(attempt, session, captureId)) return false;
+    const attempt = expectedAttempt ?? createHostedAttemptToken(session.operation, liveCaptureId);
+    if (!hostedAttemptTokenIsCurrent(attempt, session, liveCaptureId)) return false;
     const createReset = hostedCancelCreateReset(session.mediaType);
+    const attentionClear = hostedCancelClearsLocalAttention(mediaCaptureState);
     cancellingHostedMediaRef.current = true;
     setIsCancellingHostedMedia(true);
     try {
@@ -2128,21 +2132,22 @@ function App() {
           operation: session.operation,
         }) as Promise<{ ok?: boolean; cancelled?: boolean }>,
       ) ?? { ok: true, cancelled: false };
-      if (backgroundResponse?.ok === false) throw new Error('The active capture could not be cancelled safely.');
-      const requiresLiveCaptureCancellation =
-        ['preparing', 'capturing', 'stopping', 'uploading', 'waiting-to-upload'].includes(mediaCaptureState.status) ||
-        (mediaCaptureState.status === 'error' && mediaCaptureState.code === 'upload-failed');
-      if (
-        requiresLiveCaptureCancellation &&
-        !canClearPreparingCaptureWithoutBackgroundCancel(
-          mediaCaptureState.status,
-          backgroundResponse?.cancelled === true,
-        )
-      ) {
+      const canClearWithoutLive = canClearHostedAttentionWithoutLiveCancel(
+        mediaCaptureState,
+        backgroundResponse?.cancelled === true,
+      );
+      if (backgroundResponse?.ok === false && !canClearWithoutLive) {
+        throw new Error('The active capture could not be cancelled safely.');
+      }
+      if (!canClearWithoutLive) {
         throw new Error('The active capture identity changed before cancellation. Refresh the draft and try again.');
       }
-      await cancelHostedSessionOnServer(session);
-      if (!hostedAttemptTokenIsCurrent(
+      try {
+        await cancelHostedSessionOnServer(session);
+      } catch (error) {
+        if (!attentionClear) throw error;
+      }
+      if (!attentionClear && !hostedAttemptTokenIsCurrent(
         attempt,
         hostedMediaSessionRef.current,
         activeCaptureIdRef.current,
@@ -3110,7 +3115,7 @@ function App() {
           operation?: HostedMediaOperation | null;
         } | null>,
     ]).then(([owned, live]) => {
-      if (!current) return;
+      if (!current || cancellingHostedMediaRef.current) return;
       const result = reconcileHostedMediaState(
         hostedMediaSession,
         owned,
@@ -3133,11 +3138,12 @@ function App() {
         ));
       }
     }).catch(() => {
-      if (current) setMediaCaptureState({
+      if (!current || cancellingHostedMediaRef.current) return;
+      setMediaCaptureState({
         status: 'error',
         captureId: null,
-        code: 'unexpected',
-        message: 'The hosted-media status could not be restored.',
+        code: 'recapture-required',
+        message: 'The hosted-media status could not be restored. Recapture or cancel this draft.',
       });
     });
     return () => { current = false; };
@@ -3149,7 +3155,7 @@ function App() {
     let current = true;
     void getOwnedHostedMediaStatus(supabase, hostedMediaSession.operation.annotationId)
       .then((owned) => {
-        if (!current) return;
+        if (!current || cancellingHostedMediaRef.current) return;
         const result = reconcileHostedMediaState(
           hostedMediaSession,
           owned,
@@ -3172,7 +3178,8 @@ function App() {
         }
       })
       .catch(() => {
-        if (current) setMediaCaptureState({
+        if (!current || cancellingHostedMediaRef.current) return;
+        setMediaCaptureState({
           status: 'error',
           captureId: mediaCaptureState.captureId,
           code: 'completion-failed',
