@@ -94,10 +94,13 @@ test('Create uses one Posted panel for text, video, and audio', async () => {
   assert.match(panel, /create-posted-mark/);
   assert.match(panel, /Open posted annotation/);
   assert.match(panel, /Create another/);
+  assert.doesNotMatch(panel, /hosted-media-spinner/);
   assert.match(style, /\.create-posted-mark[^}]*background: var\(--success\)/);
   assert.match(app, /kind: 'text'/);
   assert.match(app, /showCreatePosted\(result\.confirmation\)/);
   assert.match(app, /queryPostedAnnotationRoute\(supabase, annotationId\)/);
   assert.match(app, /postedConfirmation === null/);
+  assert.match(app, /hostedMediaProgressCopy/);
   assert.doesNotMatch(app, /getPostPublishNavigation/);
+  assert.doesNotMatch(app, /chrome\.notifications/);
 });

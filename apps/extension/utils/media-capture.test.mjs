@@ -1449,7 +1449,10 @@ test('production manifest and capture source keep the required security shape', 
   assert.ok(clickBody.indexOf('sidePanel.open') < clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke'));
   assert.ok(clickBody.indexOf('reserveTabCaptureStreamIdFromInvoke') < clickBody.indexOf('followBrowsingTab'));
   const panel = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
-  assert.match(panel, /userFacingCaptureMessage\(mediaCaptureState\)/);
+  const hosted = await readFile(new URL('./hosted-media.ts', import.meta.url), 'utf8');
+  assert.match(panel, /hostedMediaProgressCopy/);
+  assert.match(hosted, /userFacingCaptureMessage\(snapshot\)/);
+  assert.match(hosted, /isPreparingCaptureStatus\(snapshot\.status\)/);
   assert.match(panel, /beginTabCaptureStreamIdFromUserGesture/);
   assert.match(panel, /resolvePanelTabCaptureStreamId/);
   assert.match(panel, /beginPublishTabCaptureStreamId/);
@@ -1459,7 +1462,6 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(panel, /shouldReplaceHostedCaptureSnapshot/);
   assert.match(panel, /canClearHostedAttentionWithoutLiveCancel/);
   assert.match(panel, /hostedCancelClearsLocalAttention/);
-  assert.match(panel, /isPreparingCaptureStatus\(mediaCaptureState\.status\)/);
   assert.match(background, /if \(active && !await hasOffscreenDocument\(\)\)/);
   assert.match(offscreen, /raceTabCaptureStreamId\(mediaPromise\)/);
   assert.equal(

@@ -7,6 +7,8 @@ import {
   getHostedMediaCancelError,
   hostedCancelClearsLocalAttention,
   hostedCancelCreateReset,
+  hostedMediaProcessingStageDetail,
+  hostedMediaProgressCopy,
   isHostedMediaSession,
   parseOwnedHostedMediaStatus,
   presentHostedMediaSnapshot,
@@ -247,8 +249,95 @@ test('authoritative processing status keeps Processing UI for any worker stage',
       captureId: 'restored',
       annotationId: operation.annotationId,
       mediaId: operation.mediaId,
+      processingStage: stage,
     });
   }
+});
+
+test('Create progress copy is stage-aware and keeps Posted for ready only', () => {
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: true,
+    snapshot: { status: 'processing', captureId: 'restored', annotationId: operation.annotationId, mediaId: operation.mediaId, processingStage: 'queued' },
+  }), { title: 'Cancelling draft…', detail: null, busy: true });
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: false,
+    snapshot: { status: 'capturing', captureId: 'capture-current' },
+  }), { title: 'Capturing clip…', detail: null, busy: true });
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: false,
+    snapshot: { status: 'uploading', captureId: 'capture-current', progress: 42 },
+  }), { title: 'Uploading clip… 42%', detail: null, busy: true });
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: false,
+    snapshot: {
+      status: 'processing',
+      captureId: 'restored',
+      annotationId: operation.annotationId,
+      mediaId: operation.mediaId,
+      processingStage: 'queued',
+    },
+  }), {
+    title: 'Uploaded and queued',
+    detail: 'Waiting for processing to start.',
+    busy: true,
+  });
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: false,
+    snapshot: {
+      status: 'processing',
+      captureId: 'restored',
+      annotationId: operation.annotationId,
+      mediaId: operation.mediaId,
+    },
+  }), {
+    title: 'Uploaded and queued',
+    detail: 'Waiting for processing to start.',
+    busy: true,
+  });
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: false,
+    snapshot: {
+      status: 'processing',
+      captureId: 'restored',
+      annotationId: operation.annotationId,
+      mediaId: operation.mediaId,
+      processingStage: 'transcoding',
+    },
+  }), {
+    title: 'Processing clip',
+    detail: 'Creating the playable clip.',
+    busy: true,
+  });
+  assert.deepEqual(hostedMediaProgressCopy({
+    cancelling: false,
+    snapshot: {
+      status: 'processing',
+      captureId: 'restored',
+      annotationId: operation.annotationId,
+      mediaId: operation.mediaId,
+      processingStage: 'transcribing',
+    },
+  }), {
+    title: 'Processing clip',
+    detail: 'Transcribing the excerpt.',
+    busy: true,
+  });
+  assert.equal(hostedMediaProcessingStageDetail('probing'), 'Checking the captured clip.');
+  assert.equal(hostedMediaProcessingStageDetail('finalizing'), 'Finishing the clip.');
+  const attention = hostedMediaProgressCopy({
+    cancelling: false,
+    snapshot: {
+      status: 'error',
+      captureId: null,
+      code: 'recapture-required',
+      message: 'The saved draft has no live capture. Reconnect the original source and choose Recapture, or cancel the draft.',
+    },
+  });
+  assert.equal(attention.title, 'Capture needs attention');
+  assert.equal(attention.busy, false);
+  assert.match(attention.detail, /Recapture/);
+  const ready = reconcileHostedMediaState(session, ownedStatus('ready', 'published'), null, null);
+  assert.equal(ready.action, 'posted');
 });
 
 test('ready owner status becomes Posted with a handle/slug detail path', () => {

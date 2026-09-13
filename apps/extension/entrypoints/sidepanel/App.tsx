@@ -219,13 +219,11 @@ import {
   canClearHostedAttentionWithoutLiveCancel,
   isAudioOnlyCaptureSourceKind,
   isCaptureId,
-  isPreparingCaptureStatus,
   mapTabCaptureStartFailure,
   raceHostedCaptureCancel,
   raceHostedCaptureStart,
   resolvePanelTabCaptureStreamId,
   shouldReplaceHostedCaptureSnapshot,
-  userFacingCaptureMessage,
   type AcquiredTabCaptureStream,
   type CaptureSnapshot,
   type CaptureSourceIdentity,
@@ -240,6 +238,7 @@ import {
   getOwnedHostedMediaStatus,
   hostedCancelClearsLocalAttention,
   hostedCancelCreateReset,
+  hostedMediaProgressCopy,
   isHostedMediaSession,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
@@ -3789,33 +3788,29 @@ function App() {
     hostedMediaSession === null &&
     postedConfirmation === null &&
     !(spotifySource && spotifySource.pageBlock === 'login');
-  const hostedMediaPanel = hostedMediaSession ? (
-    <div className="compact-state hosted-media-progress" role="status">
-      <strong>
-        {isCancellingHostedMedia
-          ? 'Cancelling draft…'
-          : mediaCaptureState.status === 'uploading'
-          ? `Uploading clip… ${mediaCaptureState.progress}%`
-          : mediaCaptureState.status === 'waiting-to-upload'
-            ? 'Waiting to upload—keep Chrome open'
-            : mediaCaptureState.status === 'verifying-upload'
-              ? 'Confirming uploaded clip…'
-            : mediaCaptureState.status === 'processing'
-              ? 'Processing clip'
-              : mediaCaptureState.status === 'error'
-                ? 'Capture needs attention'
-                : mediaCaptureState.status === 'stopping'
-                  ? 'Finishing capture…'
-                  : mediaCaptureState.status === 'capturing'
-                    ? 'Capturing clip…'
-                    : isPreparingCaptureStatus(mediaCaptureState.status)
-                      ? 'Preparing capture…'
-                      : 'Working…'}
-      </strong>
-      {mediaCaptureState.status === 'waiting-to-upload' && <span>{mediaCaptureState.message}</span>}
-      {mediaCaptureState.status === 'verifying-upload' && <span>Checking the owner-visible server state before showing Processing.</span>}
-      {mediaCaptureState.status === 'processing' && <span>Uploaded and queued. Processing is in progress.</span>}
-      {mediaCaptureState.status === 'error' && <span>{userFacingCaptureMessage(mediaCaptureState)}</span>}
+  const hostedProgress = hostedMediaSession
+    ? hostedMediaProgressCopy({
+        cancelling: isCancellingHostedMedia,
+        snapshot: mediaCaptureState,
+      })
+    : null;
+  const hostedMediaPanel = hostedMediaSession && hostedProgress ? (
+    <div
+      className="compact-state hosted-media-progress"
+      role="status"
+      aria-busy={hostedProgress.busy}
+      data-progress-status={mediaCaptureState.status}
+      data-progress-stage={
+        mediaCaptureState.status === 'processing'
+          ? (mediaCaptureState.processingStage ?? 'queued')
+          : undefined
+      }
+    >
+      <div className="hosted-media-progress-heading">
+        {hostedProgress.busy && <span className="hosted-media-spinner" aria-hidden="true" />}
+        <strong>{hostedProgress.title}</strong>
+      </div>
+      {hostedProgress.detail ? <span>{hostedProgress.detail}</span> : null}
       {mediaCaptureState.status === 'waiting-to-upload' && !isCancellingHostedMedia && (
         <button className="button button-secondary" type="button" onClick={() => void retryHostedUpload()}>Retry upload</button>
       )}
