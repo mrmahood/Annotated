@@ -133,18 +133,22 @@ export type HostedMediaProgressCopy = {
   busy: boolean;
 };
 
-const PROCESSING_STAGE_DETAIL: Record<string, string> = {
-  queued: 'Waiting for processing to start.',
+const QUEUED_STAGE_DETAIL = 'Waiting for processing to start.';
+const PROCESSING_STAGE_DETAIL = {
+  queued: QUEUED_STAGE_DETAIL,
   probing: 'Checking the captured clip.',
   transcoding: 'Creating the playable clip.',
   transcribing: 'Transcribing the excerpt.',
   raw_cleanup: 'Finishing the clip.',
   finalizing: 'Finishing the clip.',
-};
+} as const;
 
 export function hostedMediaProcessingStageDetail(stage: string | null | undefined): string {
-  if (!stage) return PROCESSING_STAGE_DETAIL.queued;
-  return PROCESSING_STAGE_DETAIL[stage] ?? 'Working on the clip.';
+  if (!stage) return QUEUED_STAGE_DETAIL;
+  if (stage in PROCESSING_STAGE_DETAIL) {
+    return PROCESSING_STAGE_DETAIL[stage as keyof typeof PROCESSING_STAGE_DETAIL];
+  }
+  return 'Working on the clip.';
 }
 
 export function hostedMediaProgressCopy(input: {
