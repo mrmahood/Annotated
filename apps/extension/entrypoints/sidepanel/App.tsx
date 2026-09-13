@@ -7,7 +7,7 @@ import {
 } from '@annotated/shared/media-time';
 import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-time-display';
 import { getTypedClipFieldError } from '../../utils/clip-range-entry';
-import { applyClipPresetFromPlayhead } from '../../utils/clip-range';
+import { applyClipPresetFromPlayhead, type ClipPresetWindow } from '../../utils/clip-range';
 import { applyCreateClipRangeMark, clearCreateClipRangeMark } from '../../utils/clip-range-mark';
 import { ClipRangeEditor, useTypedClipRange } from './clip-range-fields';
 import { AppearanceControl } from './appearance-control';
@@ -1394,14 +1394,14 @@ function App() {
     }
   }, [audioDraftState, getPlayerActionToken, modeSelection?.selectedMode, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState]);
 
-  const applyMediaClipPreset = useCallback(async (presetMs: number) => {
+  const applyMediaClipPreset = useCallback(async (presetMs: number, window?: ClipPresetWindow) => {
     const player = await readConnectedPlayer();
     if (!player) return;
     const mode: PlayerMode | null = modeSelection?.selectedMode === 'video'
       ? 'video'
       : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
     if (!mode) return;
-    const range = applyClipPresetFromPlayhead(player.currentTimeMs, player.durationMs, presetMs);
+    const range = applyClipPresetFromPlayhead(player.currentTimeMs, player.durationMs, presetMs, window);
     const sourceKey = sourceState.status === 'connected'
       ? (mode === 'video'
         ? videoPlayerSourceKey(sourceState.source)
@@ -3909,7 +3909,7 @@ function App() {
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading" key="create-video">
               <h2 id="create-heading" className="visually-hidden">Create clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
-                <p className="create-help">Drag the clip range, or set 30s / 60s from the current playhead. Type times if you prefer. Clips can be at most 90 seconds.</p>
+                <p className="create-help">Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Type times if you prefer. Clips can be at most 90 seconds.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
                 {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTimeTenths(videoDraftState.durationMs)}</>}</p>}
                 <ClipRangeEditor
@@ -3938,7 +3938,7 @@ function App() {
                   onEndChange={videoRangeEntry.changeEnd}
                   onStartBlur={videoRangeEntry.commitStart}
                   onEndBlur={videoRangeEntry.commitEnd}
-                  onPreset={(presetMs) => void applyMediaClipPreset(presetMs)}
+                  onPreset={(presetMs, window) => void applyMediaClipPreset(presetMs, window)}
                   onPreview={() => void previewYoutubeDraft()}
                   onRefresh={() => { void readConnectedPlayer(); }}
                 />
@@ -3954,7 +3954,7 @@ function App() {
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
               <h2 id="create-heading" className="visually-hidden">Create audio clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
-                <p className="create-help">{spotifySource ? 'Drag the clip range, or set 30s / 60s from the current playhead. Preview plays only that range on the now-playing bar and stops at the end. Type times if you prefer. Clips can be at most 90 seconds.' : 'Drag the clip range, or set 30s / 60s from the current playhead. Type times if you prefer. Clips can be at most 90 seconds.'}</p>
+                <p className="create-help">{spotifySource ? 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Preview plays only that range on the now-playing bar and stops at the end. Type times if you prefer. Clips can be at most 90 seconds.' : 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Type times if you prefer. Clips can be at most 90 seconds.'}</p>
                 <PlayerSelector mode="audio" discovery={audioPlayerDiscovery} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
                 {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTimeTenths(audioDraftState.durationMs)}</>}</p>}
                 <ClipRangeEditor
@@ -3983,7 +3983,7 @@ function App() {
                   onEndChange={audioRangeEntry.changeEnd}
                   onStartBlur={audioRangeEntry.commitStart}
                   onEndBlur={audioRangeEntry.commitEnd}
-                  onPreset={(presetMs) => void applyMediaClipPreset(presetMs)}
+                  onPreset={(presetMs, window) => void applyMediaClipPreset(presetMs, window)}
                   onPreview={() => void previewAudioDraft()}
                   onRefresh={() => { void readConnectedPlayer(); }}
                 />

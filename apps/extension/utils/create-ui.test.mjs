@@ -140,13 +140,16 @@ test('Create Video and Audio use a dual-handle clip slider instead of Set start 
   assert.match(source, /videoRangeEntry\.allowsPublish/);
   assert.match(source, /audioRangeEntry\.allowsPublish/);
   assert.match(source, /applyMediaClipPreset/);
-  assert.match(source, /applyClipPresetFromPlayhead/);
+  assert.match(source, /applyClipPresetFromPlayhead\(player\.currentTimeMs, player\.durationMs, presetMs, window\)/);
+  assert.match(source, /onPreset=\{\(presetMs, window\) => void applyMediaClipPreset\(presetMs, window\)\}/);
+  assert.match(source, /from the playhead or the timeline region you are viewing/);
   assert.doesNotMatch(source, />Set start</);
   assert.doesNotMatch(source, />Set end</);
   assert.match(fields, /ClipRangeEditor/);
   assert.match(fields, /aria-label="Clip start"/);
   assert.match(fields, /aria-label="Clip end"/);
   assert.match(fields, /CLIP_PRESETS/);
+  assert.match(fields, /startMs: windowStartMs, durationMs: windowDurationMs/);
   assert.match(fields, /formatClipSliderWindowCue/);
   assert.match(fields, /Recenter/);
   assert.match(fields, /Pan earlier/);
