@@ -303,6 +303,17 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .audio-error .inline-error { margin: 0 0 8px; }
 .create-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .hosted-media-progress { margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-medium); background: var(--background-elevated); }
+.hosted-media-progress-heading { display: flex; align-items: center; gap: 8px; }
+.hosted-media-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: hosted-media-spin 700ms linear infinite;
+}
+@keyframes hosted-media-spin { to { transform: rotate(360deg); } }
 .create-posted { justify-items: start; gap: 8px; }
 .create-posted-mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; color: var(--background); background: var(--success); font-size: 16px; font-weight: 700; line-height: 1; }
 .create-posted-link { color: var(--text-primary); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }

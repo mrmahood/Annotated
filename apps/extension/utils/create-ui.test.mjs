@@ -80,10 +80,19 @@ test('player selection is a bounded native radio group and gates every clip acti
 });
 
 test('processing copy describes queued work instead of a missing worker', async () => {
-  const source = await readFile(APP_URL, 'utf8');
-  assert.match(source, /mediaCaptureState\.status === 'processing' && <span>Uploaded and queued\. Processing is in progress\.<\/span>/);
-  assert.doesNotMatch(source, /until the media worker ships/);
+  const [source, style] = await Promise.all([
+    readFile(APP_URL, 'utf8'),
+    readFile(STYLE_URL, 'utf8'),
+  ]);
+  assert.match(source, /hostedMediaProgressCopy/);
+  assert.match(source, /hosted-media-spinner/);
+  assert.match(source, /data-progress-stage/);
   assert.match(source, /<CreatePostedPanel/);
+  assert.doesNotMatch(source, /until the media worker ships/);
+  assert.doesNotMatch(source, /Uploaded and queued\. Processing is in progress\./);
+  assert.doesNotMatch(source, /chrome\.notifications/);
+  assert.match(style, /\.hosted-media-spinner/);
+  assert.match(style, /@keyframes hosted-media-spin/);
 });
 
 test('generic webpage video publishes through the article-backed hosted begin path', async () => {

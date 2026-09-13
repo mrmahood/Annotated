@@ -7,6 +7,8 @@ import {
 import {
   canClearHostedAttentionWithoutLiveCancel,
   isMediaUuid,
+  isPreparingCaptureStatus,
+  userFacingCaptureMessage,
   type CaptureSnapshot,
   type HostedMediaOperation,
 } from './media-capture.ts';
@@ -125,6 +127,84 @@ export function hostedCancelClearsLocalAttention(snapshot: CaptureSnapshot): boo
   return canClearHostedAttentionWithoutLiveCancel(snapshot, false);
 }
 
+export type HostedMediaProgressCopy = {
+  title: string;
+  detail: string | null;
+  busy: boolean;
+};
+
+const PROCESSING_STAGE_DETAIL: Record<string, string> = {
+  queued: 'Waiting for processing to start.',
+  probing: 'Checking the captured clip.',
+  transcoding: 'Creating the playable clip.',
+  transcribing: 'Transcribing the excerpt.',
+  raw_cleanup: 'Finishing the clip.',
+  finalizing: 'Finishing the clip.',
+};
+
+export function hostedMediaProcessingStageDetail(stage: string | null | undefined): string {
+  if (!stage) return PROCESSING_STAGE_DETAIL.queued;
+  return PROCESSING_STAGE_DETAIL[stage] ?? 'Working on the clip.';
+}
+
+export function hostedMediaProgressCopy(input: {
+  cancelling: boolean;
+  snapshot: CaptureSnapshot;
+}): HostedMediaProgressCopy {
+  if (input.cancelling) {
+    return { title: 'Cancelling draft…', detail: null, busy: true };
+  }
+  const { snapshot } = input;
+  if (snapshot.status === 'uploading') {
+    return { title: `Uploading clip… ${snapshot.progress}%`, detail: null, busy: true };
+  }
+  if (snapshot.status === 'waiting-to-upload') {
+    return { title: 'Waiting to upload—keep Chrome open', detail: snapshot.message, busy: true };
+  }
+  if (snapshot.status === 'verifying-upload') {
+    return {
+      title: 'Confirming uploaded clip…',
+      detail: 'Checking that the clip is queued for processing.',
+      busy: true,
+    };
+  }
+  if (snapshot.status === 'processing') {
+    const stage = snapshot.processingStage ?? 'queued';
+    if (stage === 'queued') {
+      return {
+        title: 'Uploaded and queued',
+        detail: hostedMediaProcessingStageDetail(stage),
+        busy: true,
+      };
+    }
+    return {
+      title: 'Processing clip',
+      detail: hostedMediaProcessingStageDetail(stage),
+      busy: true,
+    };
+  }
+  if (snapshot.status === 'error') {
+    return {
+      title: 'Capture needs attention',
+      detail: userFacingCaptureMessage(snapshot),
+      busy: false,
+    };
+  }
+  if (snapshot.status === 'stopping') {
+    return { title: 'Finishing capture…', detail: null, busy: true };
+  }
+  if (snapshot.status === 'capturing') {
+    return { title: 'Capturing clip…', detail: null, busy: true };
+  }
+  if (isPreparingCaptureStatus(snapshot.status)) {
+    return { title: 'Preparing capture…', detail: null, busy: true };
+  }
+  if (snapshot.status === 'cancelled') {
+    return { title: 'Capture needs attention', detail: userFacingCaptureMessage(snapshot), busy: false };
+  }
+  return { title: 'Working…', detail: null, busy: true };
+}
+
 export function presentHostedMediaSnapshot(snapshot: CaptureSnapshot): CaptureSnapshot {
   if (snapshot.status === 'processing') {
     return {
@@ -195,6 +275,7 @@ export function reconcileHostedMediaState(
         captureId,
         annotationId: owned.annotationId,
         mediaId: owned.mediaId,
+        processingStage: owned.processingStage,
       },
     };
   }

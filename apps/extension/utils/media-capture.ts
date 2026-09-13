@@ -202,7 +202,7 @@ export type CaptureSnapshot =
   | { status: 'uploading'; captureId: string; progress: number }
   | { status: 'waiting-to-upload'; captureId: string; message: string }
   | { status: 'verifying-upload'; captureId: string; annotationId: string; mediaId: string }
-  | { status: 'processing'; captureId: string; annotationId: string; mediaId: string }
+  | { status: 'processing'; captureId: string; annotationId: string; mediaId: string; processingStage?: string | null }
   | { status: 'error' | 'cancelled'; captureId: string | null; code: CaptureFailureCode; message: string; diagnosticCode?: PreparationDiagnosticCode };
 export type CaptureErrorSnapshot = {
   status: 'error';

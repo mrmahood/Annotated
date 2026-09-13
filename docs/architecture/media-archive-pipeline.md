@@ -270,8 +270,10 @@ and annotation `published`. Capture failure keeps the draft and commentary and
 offers Recapture. Upload failure keeps the local Blob while Chrome remains open
 and offers Retry upload; abandoned uploads become `failed` and any raw object is
 cleaned. Processing retries automatically with a lease and bounded backoff. The
-extension shows “Processing clip” plus the sanitized stage, restores state by
-annotation ID, and opens the shareable page only at `ready`.
+extension shows an in-progress spinner and stage-aware copy (capturing,
+uploading, uploaded and queued, then processing) plus the sanitized worker
+stage, restores state by annotation ID, and opens the shareable Posted
+confirmation only at `ready`.
 
 Use three automatic worker attempts over no more than 72 hours. After that,
 mark the job `failed`; retain an existing raw object for 24 additional hours for

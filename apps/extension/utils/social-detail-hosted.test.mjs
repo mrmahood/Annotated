@@ -104,7 +104,7 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.doesNotMatch(detail, /createObjectURL|createSignedUrl|processed_storage_path|console\.(?:log|info|debug|warn)/);
   assert.doesNotMatch(styles, /annotation-media-raw|signedUrl/);
 
-  assert.match(app, /Uploaded and queued\. Processing is in progress\./);
+  assert.match(app, /hostedMediaProgressCopy/);
   assert.match(app, /youtubeHover=\{youtubeHover\} articleHover=\{articleHover\} audioHover=\{audioHover\} pageVideoHover=\{pageVideoHover\} tiktokHover=\{tiktokHover\} spotifyHover=\{spotifyHover\}/);
   assert.match(app, /articleHoverConnectionForTab/);
   assert.match(app, /audioHoverConnectionForTab/);
