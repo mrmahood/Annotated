@@ -7,6 +7,7 @@ import {
   getHostedMediaCancelError,
   hostedCancelClearsLocalAttention,
   hostedCancelCreateReset,
+  hostedDraftIsForeignLiveWork,
   hostedDraftIsOrphanedAttention,
   hostedForeignOrphanCreateReset,
   hostedMediaProcessingStageDetail,
@@ -68,6 +69,13 @@ test('a hosted session hides the Create publish error so Recapture cannot leave 
   assert.deepEqual(
     createPublishStateAfterHostedFailure(null, 'Range is invalid.'),
     { status: 'error', message: 'Range is invalid.' },
+  );
+  assert.deepEqual(
+    createPublishStateAfterHostedFailure(
+      null,
+      'Click the Annotated toolbar icon on this tab, then Recapture.',
+    ),
+    { status: 'error', message: 'Capture could not start. Click Publish again.' },
   );
 });
 
@@ -416,7 +424,21 @@ test('YouTube→Apple Create auto-abandons an orphaned draft and never offers Re
     status: 'error', captureId: 'capture-1', code: 'upload-failed', message: 'Upload failed.',
   }), false);
 
+  assert.equal(hostedDraftIsForeignLiveWork({ status: 'capturing', captureId: 'capture-1' }), true);
+  assert.equal(hostedDraftIsForeignLiveWork({ status: 'preparing', captureId: 'capture-1' }), true);
+  assert.equal(hostedDraftIsForeignLiveWork(orphanedRecaptureSnapshot), true);
+  assert.equal(hostedDraftIsForeignLiveWork(processingSnapshot), false);
+  assert.equal(hostedDraftIsForeignLiveWork({
+    status: 'uploading', captureId: 'capture-1', progress: 10,
+  }), false);
+
   assert.equal(shouldAutoAbandonForeignHostedDraft(session, applePodcastsUrl, orphanedRecaptureSnapshot), true);
+  assert.equal(shouldAutoAbandonForeignHostedDraft(session, applePodcastsUrl, {
+    status: 'capturing', captureId: 'capture-1',
+  }), true);
+  assert.equal(shouldAutoAbandonForeignHostedDraft(session, applePodcastsUrl, {
+    status: 'preparing', captureId: 'capture-1',
+  }), true);
   assert.equal(shouldAutoAbandonForeignHostedDraft(session, session.sourceUrl, orphanedRecaptureSnapshot), false);
   assert.equal(shouldAutoAbandonForeignHostedDraft(session, applePodcastsUrl, processingSnapshot), false);
   assert.equal(shouldAutoAbandonForeignHostedDraft(null, applePodcastsUrl, orphanedRecaptureSnapshot), false);
@@ -540,6 +562,12 @@ test('Publish abandons same-host capture_pending orphans and proceeds when nothi
   );
   assert.equal(
     hostedPublishAbandonDecision(session, applePodcastsUrl, {
+      status: 'capturing', captureId: 'capture-1',
+    }),
+    'abandon',
+  );
+  assert.equal(
+    hostedPublishAbandonDecision(session, applePodcastsUrl, {
       status: 'uploading', captureId: 'capture-1', progress: 10,
     }),
     'block',
@@ -597,6 +625,7 @@ test('YouTube in-flight tab-switch Cancel then Apple Publish stays a clean first
   const rollback = app.slice(app.indexOf('const rollbackFailedHostedCaptureStart'));
   assert.match(rollback, /MEDIA_CAPTURE_CANCEL/);
   assert.match(rollback, /cancelHostedSessionOnServer\(session\)/);
+  assert.match(rollback, /MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD/);
   assert.match(rollback, /setMediaCaptureState\(\{ status: 'idle' \}\)/);
   assert.doesNotMatch(rollback.slice(0, rollback.indexOf('const startHostedCapture')), /clearVideoDraft|clearAudioDraft/);
 
@@ -611,12 +640,25 @@ test('YouTube in-flight tab-switch Cancel then Apple Publish stays a clean first
   );
 
   const audioPublish = app.slice(app.indexOf('const publishAudioClip'));
-  assert.match(audioPublish, /beginPublishTabCaptureStreamId/);
+  assert.match(audioPublish, /beginPublishTabCaptureStreamId\(false\)/);
   assert.match(audioPublish, /abandonOrphanedHostedDraftForPublish/);
   assert.match(audioPublish, /rollbackOnStartFailure: true/);
   assert.ok(
     audioPublish.indexOf('beginPublishTabCaptureStreamId') <
       audioPublish.indexOf('abandonOrphanedHostedDraftForPublish'),
+  );
+
+  const beginStream = app.slice(app.indexOf('const beginPublishTabCaptureStreamId'));
+  assert.match(beginStream, /rebindSidePanelToTabFromUserGesture/);
+  assert.match(beginStream, /holdPublishTabCaptureStream/);
+  assert.ok(
+    beginStream.indexOf('beginTabCaptureStreamIdFromUserGesture') <
+      beginStream.indexOf('rebindSidePanelToTabFromUserGesture'),
+    'Publish must start getMediaStreamId before sidePanel.open can consume the gesture',
+  );
+  assert.ok(
+    beginStream.indexOf('beginTabCaptureStreamIdFromUserGesture') <
+      beginStream.indexOf('holdPublishTabCaptureStream'),
   );
 
   const abandonEffect = app.slice(app.indexOf('if (foreignAbandonAttemptKeyRef.current === attemptKey)'));

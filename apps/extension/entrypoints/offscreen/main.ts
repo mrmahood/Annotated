@@ -2,13 +2,16 @@ import {
   MEDIA_CAPTURE_FAILSAFE_MS,
   MEDIA_CAPTURE_OFFSCREEN_CANCEL,
   MEDIA_CAPTURE_OFFSCREEN_EVENT,
+  MEDIA_CAPTURE_OFFSCREEN_HOLD,
   MEDIA_CAPTURE_OFFSCREEN_NEEDS_END,
   MEDIA_CAPTURE_OFFSCREEN_PLAYBACK,
+  MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD,
   MEDIA_CAPTURE_OFFSCREEN_RETRY,
   MEDIA_CAPTURE_OFFSCREEN_START,
   MEDIA_CAPTURE_OFFSCREEN_STATUS,
   buildCaptureMetadataV2,
   isAudioOnlyCaptureSourceKind,
+  isOffscreenHoldMessage,
   isOffscreenStartMessage,
   completeHostedMediaUpload,
   executeHostedMediaUpload,
@@ -82,6 +85,28 @@ const C6_DIAGNOSTIC = resolveC6CaptureDiagnostic({
 let recording: ActiveRecording | null = null;
 let retained: RetainedUpload | null = null;
 let snapshot: CaptureSnapshot = { status: 'idle' };
+let heldTabCapture: { streamId: string; expectVideo: boolean; stream: MediaStream } | null = null;
+let holdInFlight: Promise<void> | null = null;
+
+function releaseHeldTabCapture() {
+  const held = heldTabCapture;
+  heldTabCapture = null;
+  held?.stream.getTracks().forEach((track) => track.stop());
+}
+
+async function acquireTabCaptureStream(streamId: string, expectVideo: boolean): Promise<MediaStream> {
+  const tabConstraint = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } } as unknown as MediaTrackConstraints;
+  const mediaPromise = navigator.mediaDevices.getUserMedia({
+    audio: tabConstraint,
+    video: expectVideo ? tabConstraint : false,
+  });
+  try {
+    return await raceTabCaptureStreamId(mediaPromise);
+  } catch (error) {
+    void mediaPromise.then((late) => late.getTracks().forEach((track) => track.stop())).catch(() => undefined);
+    throw error;
+  }
+}
 
 function sendSnapshot(next: CaptureSnapshot) {
   snapshot = next;
@@ -377,17 +402,15 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
   }
   let stream: MediaStream | null = null;
   try {
-    const tabConstraint = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: message.streamId } } as unknown as MediaTrackConstraints;
+    if (holdInFlight) await holdInFlight;
     const expectVideo = !isAudioOnlyCaptureSourceKind(message.prepared.sourceKind);
-    const mediaPromise = navigator.mediaDevices.getUserMedia({
-      audio: tabConstraint,
-      video: expectVideo ? tabConstraint : false,
-    });
-    try {
-      stream = await raceTabCaptureStreamId(mediaPromise);
-    } catch (error) {
-      void mediaPromise.then((late) => late.getTracks().forEach((track) => track.stop())).catch(() => undefined);
-      throw error;
+    const held = heldTabCapture;
+    if (held && held.streamId === message.streamId && held.expectVideo === expectVideo) {
+      heldTabCapture = null;
+      stream = held.stream;
+    } else {
+      releaseHeldTabCapture();
+      stream = await acquireTabCaptureStream(message.streamId, expectVideo);
     }
     if (stream.getAudioTracks().length === 0) throw new Error('no-audio-track');
     if (expectVideo && stream.getVideoTracks().length === 0) throw new Error('no-video-track');
@@ -470,6 +493,49 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     void start(message).then(sendResponse);
     return true;
   }
+  if (isOffscreenHoldMessage(message)) {
+    void (async () => {
+      if (holdInFlight) await holdInFlight;
+      if (recording && !recording.cancelled) {
+        sendResponse({ ok: false, error: 'busy' });
+        return;
+      }
+      if (retained) {
+        sendResponse({ ok: false, error: 'busy' });
+        return;
+      }
+      const run = (async () => {
+        releaseHeldTabCapture();
+        const stream = await acquireTabCaptureStream(message.streamId, message.expectVideo);
+        if (stream.getAudioTracks().length === 0) {
+          stream.getTracks().forEach((track) => track.stop());
+          throw new Error('no-audio-track');
+        }
+        if (message.expectVideo && stream.getVideoTracks().length === 0) {
+          stream.getTracks().forEach((track) => track.stop());
+          throw new Error('no-video-track');
+        }
+        heldTabCapture = { streamId: message.streamId, expectVideo: message.expectVideo, stream };
+      })();
+      holdInFlight = run.then(() => undefined, () => undefined);
+      try {
+        await run;
+        sendResponse({ ok: true });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : 'stream-id-unavailable';
+        sendResponse({
+          ok: false,
+          error: code === 'no-audio-track' || code === 'no-video-track' ? code : 'stream-id-unavailable',
+        });
+      } finally {
+        if (holdInFlight) {
+          await holdInFlight;
+          holdInFlight = null;
+        }
+      }
+    })();
+    return true;
+  }
   if (typeof message !== 'object' || message === null || !('target' in message) || message.target !== 'offscreen') return undefined;
   const row = message as Record<string, unknown>;
   const active = recording;
@@ -504,7 +570,14 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     void uploadRetained(upload).then(() => sendResponse({ ok: true }));
     return true;
   }
+  if (row.type === MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD) {
+    releaseHeldTabCapture();
+    sendResponse({ ok: true });
+    return undefined;
+  }
   if (row.type === MEDIA_CAPTURE_OFFSCREEN_CANCEL) {
+    // Do not drop a Publish-click hold for a different capture. RELEASE_HOLD
+    // and document close are the explicit teardown paths for an unused hold.
     if (recording && recording.message.captureId === row.captureId) {
       recording.cancelled = {
         code: typeof row.code === 'string' ? row.code : 'unexpected',

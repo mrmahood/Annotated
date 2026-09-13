@@ -8,6 +8,8 @@ import {
   canClearHostedAttentionWithoutLiveCancel,
   isMediaUuid,
   isPreparingCaptureStatus,
+  isTabCaptureInvocationError,
+  TAB_CAPTURE_INVOKE_MESSAGE,
   userFacingCaptureMessage,
   type CaptureSnapshot,
   type HostedMediaOperation,
@@ -102,7 +104,11 @@ export function createPublishStateAfterHostedFailure(
   hostedSession: HostedMediaSession | null,
   message: string,
 ): { status: 'idle' } | { status: 'error'; message: string } {
-  return hostedSession ? { status: 'idle' } : { status: 'error', message };
+  if (hostedSession) return { status: 'idle' };
+  if (message === TAB_CAPTURE_INVOKE_MESSAGE || isTabCaptureInvocationError(message)) {
+    return { status: 'error', message: 'Capture could not start. Click Publish again.' };
+  }
+  return { status: 'error', message };
 }
 
 export type HostedCancelCreateReset = {
@@ -166,6 +172,21 @@ export function hostedDraftIsOrphanedAttention(snapshot: CaptureSnapshot): boole
   return canClearHostedAttentionWithoutLiveCancel(snapshot, false);
 }
 
+export function hostedDraftIsForeignLiveWork(snapshot: CaptureSnapshot): boolean {
+  if (
+    snapshot.status === 'processing' ||
+    snapshot.status === 'verifying-upload' ||
+    snapshot.status === 'uploading' ||
+    snapshot.status === 'waiting-to-upload'
+  ) {
+    return false;
+  }
+  if (snapshot.status === 'error' && snapshot.code === 'upload-failed') {
+    return false;
+  }
+  return true;
+}
+
 export function shouldAutoAbandonForeignHostedDraft(
   session: HostedMediaSession | null,
   pageUrl: string | null | undefined,
@@ -173,7 +194,7 @@ export function shouldAutoAbandonForeignHostedDraft(
 ): boolean {
   if (!session || !pageUrl) return false;
   if (hostedSessionMatchesConnectedUrl(session, pageUrl)) return false;
-  return hostedDraftIsOrphanedAttention(snapshot);
+  return hostedDraftIsForeignLiveWork(snapshot);
 }
 
 export function shouldAbandonOrphanedHostedDraftForPublish(
@@ -193,6 +214,7 @@ export function hostedPublishAbandonDecision(
   snapshot: CaptureSnapshot,
 ): HostedPublishAbandonDecision {
   if (!session) return 'proceed';
+  if (shouldAutoAbandonForeignHostedDraft(session, pageUrl, snapshot)) return 'abandon';
   if (shouldAbandonOrphanedHostedDraftForPublish(session, pageUrl, snapshot)) return 'abandon';
   if (hostedSessionBlocksCreatePublish(session, pageUrl, snapshot)) return 'block';
   return 'proceed';
