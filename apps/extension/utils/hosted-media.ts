@@ -123,6 +123,15 @@ export function hostedCancelCreateReset(
   };
 }
 
+export function hostedForeignOrphanCreateReset(): HostedCancelCreateReset {
+  return {
+    clearVideoDraft: false,
+    clearAudioDraft: false,
+    followActiveTab: false,
+    ignoreActiveCaptureHold: true,
+  };
+}
+
 export function hostedCancelClearsLocalAttention(snapshot: CaptureSnapshot): boolean {
   return canClearHostedAttentionWithoutLiveCancel(snapshot, false);
 }
@@ -148,6 +157,44 @@ export function hostedSessionMatchesConnectedUrl(
   } catch {
     return session.sourceUrl === pageUrl;
   }
+}
+
+export function hostedDraftIsOrphanedAttention(snapshot: CaptureSnapshot): boolean {
+  if (snapshot.status === 'processing' || snapshot.status === 'verifying-upload') {
+    return false;
+  }
+  return canClearHostedAttentionWithoutLiveCancel(snapshot, false);
+}
+
+export function shouldAutoAbandonForeignHostedDraft(
+  session: HostedMediaSession | null,
+  pageUrl: string | null | undefined,
+  snapshot: CaptureSnapshot,
+): boolean {
+  if (!session || !pageUrl) return false;
+  if (hostedSessionMatchesConnectedUrl(session, pageUrl)) return false;
+  return hostedDraftIsOrphanedAttention(snapshot);
+}
+
+export function hostedSessionBlocksCreatePublish(
+  session: HostedMediaSession | null,
+  pageUrl: string | null | undefined,
+  snapshot: CaptureSnapshot,
+): boolean {
+  if (!session) return false;
+  return !shouldAutoAbandonForeignHostedDraft(session, pageUrl, snapshot);
+}
+
+export function shouldOfferHostedRecapture(
+  session: HostedMediaSession | null,
+  pageUrl: string | null | undefined,
+  snapshot: CaptureSnapshot,
+): boolean {
+  if (!session || snapshot.status !== 'error') return false;
+  if (snapshot.code === 'upload-failed' || snapshot.code === 'raw-capture-unavailable') {
+    return false;
+  }
+  return hostedSessionMatchesConnectedUrl(session, pageUrl);
 }
 
 export type HostedMediaProgressCopy = {

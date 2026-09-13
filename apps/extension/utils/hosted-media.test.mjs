@@ -7,14 +7,19 @@ import {
   getHostedMediaCancelError,
   hostedCancelClearsLocalAttention,
   hostedCancelCreateReset,
+  hostedDraftIsOrphanedAttention,
+  hostedForeignOrphanCreateReset,
   hostedMediaProcessingStageDetail,
   hostedMediaProgressCopy,
+  hostedSessionBlocksCreatePublish,
   hostedSessionMatchesConnectedUrl,
   HOSTED_FOREIGN_SOURCE_CANCEL_DETAIL,
   isHostedMediaSession,
   parseOwnedHostedMediaStatus,
   presentHostedMediaSnapshot,
   reconcileHostedMediaState,
+  shouldAutoAbandonForeignHostedDraft,
+  shouldOfferHostedRecapture,
   shouldPollHostedOwnerStatus,
   shouldShowCreatePublishError,
 } from './hosted-media.ts';
@@ -142,6 +147,12 @@ test('Cancel draft clears the prior source Create draft and rebinds the current 
     clearVideoDraft: false,
     clearAudioDraft: true,
     followActiveTab: true,
+    ignoreActiveCaptureHold: true,
+  });
+  assert.deepEqual(hostedForeignOrphanCreateReset(), {
+    clearVideoDraft: false,
+    clearAudioDraft: false,
+    followActiveTab: false,
     ignoreActiveCaptureHold: true,
   });
 
@@ -363,6 +374,107 @@ test('Create progress copy is stage-aware and keeps Posted for ready only', () =
   });
   const ready = reconcileHostedMediaState(session, ownedStatus('ready', 'published'), null, null);
   assert.equal(ready.action, 'posted');
+});
+
+const applePodcastsUrl =
+  'https://podcasts.apple.com/us/podcast/classical-music-is-in-crisis-gustavo-dudamel-is-here/id1200361736?i=1000720000';
+const orphanedRecaptureSnapshot = {
+  status: 'error',
+  captureId: null,
+  code: 'recapture-required',
+  message: 'The saved draft has no live capture. Reconnect the original source and choose Recapture, or cancel the draft.',
+};
+const processingSnapshot = {
+  status: 'processing',
+  captureId: 'restored',
+  annotationId: operation.annotationId,
+  mediaId: operation.mediaId,
+  processingStage: 'queued',
+};
+
+test('YouTube→Apple Create auto-abandons an orphaned draft and never offers Recapture', () => {
+  assert.equal(hostedDraftIsOrphanedAttention(orphanedRecaptureSnapshot), true);
+  assert.equal(hostedDraftIsOrphanedAttention({ status: 'idle' }), true);
+  assert.equal(hostedDraftIsOrphanedAttention({
+    status: 'cancelled', captureId: 'capture-1', code: 'connected-source-changed',
+    message: 'The connected source changed during capture.',
+  }), true);
+  assert.equal(hostedDraftIsOrphanedAttention(processingSnapshot), false);
+  assert.equal(hostedDraftIsOrphanedAttention({
+    status: 'verifying-upload',
+    captureId: 'capture-1',
+    annotationId: operation.annotationId,
+    mediaId: operation.mediaId,
+  }), false);
+  assert.equal(hostedDraftIsOrphanedAttention({
+    status: 'capturing', captureId: 'capture-1',
+  }), false);
+  assert.equal(hostedDraftIsOrphanedAttention({
+    status: 'error', captureId: 'capture-1', code: 'upload-failed', message: 'Upload failed.',
+  }), false);
+
+  assert.equal(shouldAutoAbandonForeignHostedDraft(session, applePodcastsUrl, orphanedRecaptureSnapshot), true);
+  assert.equal(shouldAutoAbandonForeignHostedDraft(session, session.sourceUrl, orphanedRecaptureSnapshot), false);
+  assert.equal(shouldAutoAbandonForeignHostedDraft(session, applePodcastsUrl, processingSnapshot), false);
+  assert.equal(shouldAutoAbandonForeignHostedDraft(null, applePodcastsUrl, orphanedRecaptureSnapshot), false);
+  assert.equal(shouldAutoAbandonForeignHostedDraft(session, null, orphanedRecaptureSnapshot), false);
+
+  assert.equal(hostedSessionBlocksCreatePublish(session, applePodcastsUrl, orphanedRecaptureSnapshot), false);
+  assert.equal(hostedSessionBlocksCreatePublish(session, session.sourceUrl, orphanedRecaptureSnapshot), true);
+  assert.equal(hostedSessionBlocksCreatePublish(session, applePodcastsUrl, processingSnapshot), true);
+  assert.equal(hostedSessionBlocksCreatePublish(null, applePodcastsUrl, orphanedRecaptureSnapshot), false);
+
+  assert.equal(shouldOfferHostedRecapture(session, session.sourceUrl, orphanedRecaptureSnapshot), true);
+  assert.equal(shouldOfferHostedRecapture(session, applePodcastsUrl, orphanedRecaptureSnapshot), false);
+  assert.equal(shouldOfferHostedRecapture(session, session.sourceUrl, processingSnapshot), false);
+  assert.equal(shouldOfferHostedRecapture(session, applePodcastsUrl, processingSnapshot), false);
+  assert.equal(shouldOfferHostedRecapture(session, session.sourceUrl, {
+    status: 'error', captureId: null, code: 'raw-capture-unavailable', message: 'Gone.',
+  }), false);
+
+  const foreignAttention = hostedMediaProgressCopy({
+    cancelling: false,
+    foreignSource: true,
+    snapshot: orphanedRecaptureSnapshot,
+  });
+  assert.equal(foreignAttention.title, 'Capture needs attention');
+  assert.equal(foreignAttention.detail, HOSTED_FOREIGN_SOURCE_CANCEL_DETAIL);
+  assert.doesNotMatch(foreignAttention.detail, /Reconnect the original source/);
+});
+
+test('Create rebinds YouTube→Apple without Recapture and publishes after auto-abandon', async () => {
+  const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
+  assert.match(app, /shouldAutoAbandonForeignHostedDraft\(/);
+  assert.match(app, /shouldOfferHostedRecapture\(hostedMediaSession, contextUrl, mediaCaptureState\)/);
+  assert.match(app, /hostedSessionBlocksCreatePublish\(hostedMediaSession, contextUrl, mediaCaptureState\)/);
+  assert.match(app, /hostedForeignOrphanCreateReset\(\)/);
+  assert.match(app, /abandonForeignOrphanedHostedDraft\(/);
+  assert.match(app, /void cancelHostedMedia\(undefined, hostedForeignOrphanCreateReset\(\)\)/);
+  assert.match(app, /foreignAbandonAttemptKeyRef/);
+  assert.doesNotMatch(app, /hostedMediaSession === null &&/);
+
+  const recapture = app.slice(app.indexOf('const recaptureHostedMedia'));
+  assert.ok(
+    recapture.indexOf('shouldOfferHostedRecapture') <
+      recapture.indexOf("setYoutubePublishState({ status: 'idle' })"),
+  );
+
+  for (const name of [
+    'publishYoutubeClip',
+    'publishTikTokClip',
+    'publishWebpageVideoClip',
+    'publishSpotifyClip',
+    'publishAudioClip',
+  ]) {
+    const publish = app.slice(app.indexOf(`const ${name}`));
+    const streamId = publish.indexOf('beginPublishTabCaptureStreamId');
+    const abandon = publish.indexOf('abandonForeignOrphanedHostedDraft');
+    const begin = publish.search(/beginHosted(?:YouTube|TikTok|WebpageVideo|Spotify|Audio)/);
+    assert.ok(streamId >= 0, `${name} must mint a caller stream ID`);
+    assert.ok(abandon >= 0, `${name} must abandon a foreign orphan`);
+    assert.ok(streamId < abandon, `${name} must mint the stream ID before abandon`);
+    assert.ok(abandon < begin || begin < 0, `${name} must abandon before hosted begin`);
+  }
 });
 
 test('ready owner status becomes Posted with a handle/slug detail path', () => {
