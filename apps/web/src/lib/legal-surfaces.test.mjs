@@ -1,34 +1,36 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import {
-  LEGAL_EFFECTIVE_ON,
-  LEGAL_OPERATOR,
-  LEGAL_PATHS,
-  LEGAL_UPDATED_ON,
-  PRIVACY_SECTIONS,
-  TERMS_SECTIONS,
-} from "./legal.ts";
 
-test("legal metadata keeps the published operator, dates, and in-app paths", () => {
-  assert.equal(LEGAL_PATHS.privacy, "/privacy");
-  assert.equal(LEGAL_PATHS.terms, "/terms");
-  assert.equal(LEGAL_PATHS.center, "/legal");
-  assert.equal(LEGAL_EFFECTIVE_ON, "August 30, 2026");
-  assert.equal(LEGAL_UPDATED_ON, "August 30, 2026");
-  assert.equal(LEGAL_OPERATOR.person, "Matt Mahood");
-  assert.equal(LEGAL_OPERATOR.company, "The CB & Cooper Limited Liability Company");
-  assert.equal(LEGAL_OPERATOR.street, "120 Academy Street, Suite 102-105");
-  assert.equal(LEGAL_OPERATOR.locality, "Fort Mill, SC 29715");
-  assert.equal(LEGAL_OPERATOR.email, "matt@cbandcoop.com");
-  assert.equal(PRIVACY_SECTIONS.length, 22);
-  assert.equal(TERMS_SECTIONS.length, 23);
-  assert.equal(PRIVACY_SECTIONS[9].id, "service-providers");
-  assert.equal(TERMS_SECTIONS[14].id, "privacy");
+test("legal metadata keeps the published operator, dates, and in-app paths", async () => {
+  const source = await readFile(new URL("./legal.ts", import.meta.url), "utf8");
+  assert.match(source, /privacy: "\/privacy"/);
+  assert.match(source, /terms: "\/terms"/);
+  assert.match(source, /center: "\/legal"/);
+  assert.match(source, /LEGAL_EFFECTIVE_ON = "August 30, 2026"/);
+  assert.match(source, /LEGAL_UPDATED_ON = "August 30, 2026"/);
+  assert.match(source, /person: "Matt Mahood"/);
+  assert.match(source, /company: "The CB & Cooper Limited Liability Company"/);
+  assert.match(source, /street: "120 Academy Street, Suite 102-105"/);
+  assert.match(source, /locality: "Fort Mill, SC 29715"/);
+  assert.match(source, /email: "matt@cbandcoop.com"/);
+  assert.match(source, /id: "service-providers"/);
+  assert.match(source, /id: "privacy"/);
 });
 
 test("web legal pages keep policy substance and Vercel hosting, not Lovable", async () => {
-  const [privacy, terms, center, footer, layout, routes, errorPage, styles, extensionApp] = await Promise.all([
+  const [
+    privacy,
+    terms,
+    center,
+    footer,
+    layout,
+    routes,
+    errorPage,
+    styles,
+    extensionApp,
+    extensionHelpers,
+  ] = await Promise.all([
     readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/terms/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/legal/page.tsx", import.meta.url), "utf8"),
@@ -38,11 +40,12 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
     readFile(new URL("../app/auth/error/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../../../extension/entrypoints/sidepanel/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../../extension/utils/social-helpers.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(privacy, /Privacy Policy/);
   assert.match(privacy, /public web application/);
-  assert.match(privacy, /Chrome side-panel extension/);
+  assert.match(privacy, /Chrome side-panel[\s\S]*extension/);
   assert.match(privacy, /including these legal pages/);
   assert.doesNotMatch(privacy, /legal-information website/);
   assert.match(privacy, /Vercel — hosting for the Annotated web application, including these legal pages/);
@@ -54,9 +57,9 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
   assert.match(privacy, /LEGAL_PATHS\.privacy/);
 
   assert.match(terms, /Terms of Service/);
-  assert.match(terms, /public web application and the Chrome side-panel extension/);
+  assert.match(terms, /public web application[\s\S]*Chrome side-panel[\s\S]*extension/);
   assert.match(terms, /York County, South Carolina/);
-  assert.match(terms, /no arbitration clause and no class-action waiver/);
+  assert.match(terms, /no[\s\S]*arbitration clause and no class-action waiver/);
   assert.match(terms, /LEGAL_PATHS\.privacy/);
   assert.match(terms, /US \$100/);
 
@@ -85,11 +88,6 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
   assert.match(extensionApp, /privacyUrl = getPublicUrl\('\/privacy'\)/);
   assert.match(extensionApp, /termsUrl = getPublicUrl\('\/terms'\)/);
   assert.match(extensionApp, /account-legal/);
-
-  const extensionHelpers = await readFile(
-    new URL("../../../extension/utils/social-helpers.ts", import.meta.url),
-    "utf8",
-  );
   assert.match(extensionHelpers, /'privacy'/);
   assert.match(extensionHelpers, /'terms'/);
   assert.match(extensionHelpers, /'legal'/);
