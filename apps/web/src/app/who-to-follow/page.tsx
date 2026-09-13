@@ -19,7 +19,7 @@ export default async function WhoToFollowPage() {
   return (
     <>
       <SiteHeader active="who-to-follow" returnTo={returnTo} />
-      <main className="discovery-main">
+      <main id="main" className="discovery-main">
         <header className="discovery-intro">
           <p className="eyebrow">WHO TO FOLLOW</p>
           <h1>Accounts worth following.</h1>

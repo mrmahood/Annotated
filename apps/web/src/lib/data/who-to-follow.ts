@@ -9,6 +9,9 @@ const WHO_TO_FOLLOW_RESERVED_HANDLES = new Set([
   "me",
   "trending",
   "who-to-follow",
+  "legal",
+  "privacy",
+  "terms",
 ]);
 
 export const WHO_TO_FOLLOW_MAX = 5;

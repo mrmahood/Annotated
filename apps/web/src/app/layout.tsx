@@ -8,6 +8,7 @@ import {
   resolveAppearanceTheme,
 } from "@annotated/shared/appearance";
 import { AppearanceRuntime } from "./appearance-control";
+import { SiteFooter } from "./site-footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -50,8 +51,12 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col">
+        <a className="skip-to-main" href="#main">
+          Skip to main content
+        </a>
         <AppearanceRuntime />
         {children}
+        <SiteFooter />
       </body>
     </html>
   );

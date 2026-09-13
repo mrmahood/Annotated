@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AnnotationCard } from "../annotation-card";
 import { PaginationNav } from "../pagination-nav";
 import { ProviderSignInActions } from "../provider-sign-in-actions";
 import { SiteHeader } from "../site-header";
+import { LEGAL_PATHS } from "@/lib/legal";
 import { feedItemKey, getCurrentUserBookmarksPage } from "@/lib/data/public-discovery";
 import { getCurrentUserId } from "@/lib/data/social";
 import {
@@ -38,7 +40,7 @@ export default async function MePage({ searchParams }: MePageProps) {
   return (
     <>
       <SiteHeader active="me" returnTo={returnTo} />
-      <main className="discovery-main">
+      <main id="main" className="discovery-main">
         <header className="discovery-intro">
           <p className="eyebrow">ME</p>
           <h1>Bookmarks</h1>
@@ -58,6 +60,11 @@ export default async function MePage({ searchParams }: MePageProps) {
               xLabel="Continue with X"
               className="public-button public-button-primary"
             />
+            <p className="legal-sign-in-note">
+              By continuing you agree to the{" "}
+              <Link href={LEGAL_PATHS.terms}>Terms of Service</Link> and{" "}
+              <Link href={LEGAL_PATHS.privacy}>Privacy Policy</Link>.
+            </p>
           </section>
         ) : !bookmarks || bookmarks.status === "unavailable" ? (
           <section className="discovery-state discovery-error" role="alert">

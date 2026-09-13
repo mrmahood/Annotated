@@ -38,7 +38,7 @@ export default async function OperatorConsolePage() {
   return (
     <>
       <SiteHeader returnTo="/ops" />
-      <main className="ops-main">
+      <main id="main" className="ops-main">
         <header className="ops-intro">
           <p className="eyebrow">Operator</p>
           <h1>Claim review, annotation tools, and trending boosts</h1>

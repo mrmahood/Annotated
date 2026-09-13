@@ -51,7 +51,7 @@ export default async function Home({ searchParams }: HomePageProps) {
   return (
     <>
       <SiteHeader active="feed" returnTo={returnTo} />
-      <main className={showWhoToFollowRail ? "discovery-main discovery-main-with-rail" : "discovery-main"}>
+      <main id="main" className={showWhoToFollowRail ? "discovery-main discovery-main-with-rail" : "discovery-main"}>
         <header className="discovery-intro">
           <p className="eyebrow">PUBLIC ANNOTATIONS</p>
           <h1>Reading, connected to its sources.</h1>

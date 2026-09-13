@@ -64,7 +64,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
   return (
     <>
       <SiteHeader returnTo={publicPath} />
-      <main className="annotation-shell">
+      <main id="main" className="annotation-shell">
         <article className="annotation-page">
           <header className="annotation-header">
             <div className="annotator-line">

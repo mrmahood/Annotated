@@ -609,6 +609,40 @@ function SignInActions({
   );
 }
 
+function AccountLegalLinks({
+  getPublicUrl,
+}: {
+  getPublicUrl: (path: string) => string | null;
+}) {
+  const privacyUrl = getPublicUrl('/privacy');
+  const termsUrl = getPublicUrl('/terms');
+  if (!privacyUrl && !termsUrl) return null;
+  return (
+    <nav className="account-legal-links" aria-label="Legal">
+      {privacyUrl ? <a href={privacyUrl} target="_blank" rel="noopener noreferrer">Privacy</a> : null}
+      {termsUrl ? <a href={termsUrl} target="_blank" rel="noopener noreferrer">Terms</a> : null}
+    </nav>
+  );
+}
+
+function AccountLegalNote({
+  getPublicUrl,
+}: {
+  getPublicUrl: (path: string) => string | null;
+}) {
+  const privacyUrl = getPublicUrl('/privacy');
+  const termsUrl = getPublicUrl('/terms');
+  if (!privacyUrl || !termsUrl) return null;
+  return (
+    <p className="account-legal-note">
+      By continuing you agree to the{' '}
+      <a href={privacyUrl} target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+      {' '}and{' '}
+      <a href={termsUrl} target="_blank" rel="noopener noreferrer">Terms of Service</a>.
+    </p>
+  );
+}
+
 function TitleField({
   id,
   value,
@@ -4046,11 +4080,12 @@ function App() {
       {currentScreen.kind === 'root' && currentScreen.view === 'account' && (
         <div className="root-view"><h1 className="visually-hidden">Me</h1><section className="account-view">
           {authState.status === 'loading' && <div className="compact-state compact-state-quiet" role="status">Restoring session…</div>}
-          {authState.status === 'signed-out' && <div className="signed-out-account"><p>Sign in to publish, comment, follow, and bookmark.</p><SignInActions onSignIn={beginSignIn} /></div>}
+          {authState.status === 'signed-out' && <div className="signed-out-account"><p>Sign in to publish, comment, follow, and bookmark.</p><SignInActions onSignIn={beginSignIn} /><AccountLegalNote getPublicUrl={getPublicUrl} /></div>}
           {authState.status === 'signing-in' && <button className="button button-primary" type="button" disabled>Signing in…</button>}
           {authState.status === 'error' && <div className="compact-state compact-state-error" role="alert"><strong>Account unavailable</strong><span>{authState.message}</span><button className="button button-secondary" type="button" onClick={() => void retryAuthentication()}>Try again</button></div>}
           {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span></div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="text-button danger-text" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button>{supabase && <BookmarkCollection supabase={supabase} cache={socialCacheRef.current} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} />}</>}
           <AppearanceControl />
+          <AccountLegalLinks getPublicUrl={getPublicUrl} />
           <BrandLockup />
         </section></div>
       )}

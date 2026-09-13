@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { LegalLinks } from "../../legal-links";
 
 export default function AuthenticationErrorPage() {
   return (
-    <main className="auth-shell">
+    <main id="main" className="auth-shell">
       <section className="auth-card" aria-labelledby="auth-error-title">
         <p className="eyebrow">ANNOTATED</p>
         <h1 id="auth-error-title">Sign-in did not finish</h1>
@@ -13,6 +14,7 @@ export default function AuthenticationErrorPage() {
         <Link className="button button-primary" href="/">
           Return to sign in
         </Link>
+        <LegalLinks />
       </section>
     </main>
   );

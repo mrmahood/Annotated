@@ -59,6 +59,9 @@ test("handle normalization strips @ and skips reserved or invalid roots", () => 
   assert.equal(normalizeWhoToFollowHandle("  davidscornik  "), "davidscornik");
   assert.equal(normalizeWhoToFollowHandle("who-to-follow"), null);
   assert.equal(normalizeWhoToFollowHandle("trending"), null);
+  assert.equal(normalizeWhoToFollowHandle("privacy"), null);
+  assert.equal(normalizeWhoToFollowHandle("terms"), null);
+  assert.equal(normalizeWhoToFollowHandle("legal"), null);
   assert.equal(normalizeWhoToFollowHandle("ab"), null);
   assert.deepEqual(uniqueWhoToFollowHandles(["@Jason", "jason", "chamath"]), [
     "jason",

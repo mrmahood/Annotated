@@ -21,7 +21,7 @@ export default async function TrendingPage() {
   return (
     <>
       <SiteHeader active="trending" returnTo={returnTo} />
-      <main className="discovery-main">
+      <main id="main" className="discovery-main">
         <header className="discovery-intro">
           <p className="eyebrow">WHAT’S TRENDING</p>
           <h1>This week’s most active annotations.</h1>

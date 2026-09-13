@@ -403,6 +403,11 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .account-identity span { color: var(--text-muted); font-family: var(--font-mono); font-size: 9px; overflow-wrap: anywhere; }
 .signed-out-account { padding: 0; border: 0; background: transparent; }
 .signed-out-account p { margin: 0 0 12px; color: var(--text-secondary); line-height: 1.5; }
+.account-legal-note { margin: 10px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+.account-legal-note a { color: var(--text-secondary); }
+.account-legal-links { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.account-legal-links a { color: var(--text-muted); font-size: 11px; text-decoration: none; }
+.account-legal-links a:hover { color: var(--text-primary); text-decoration: underline; }
 .account-sign-in-actions { display: grid; gap: 8px; }
 .appearance-control { margin: 0; padding: 0; border: 0; min-width: 0; }
 .appearance-control > .section-label { margin-bottom: 8px; }

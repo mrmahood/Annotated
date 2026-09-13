@@ -79,7 +79,7 @@ export default async function ProfilePage({ params, searchParams }: ProfilePageP
   return (
     <>
       <SiteHeader returnTo={getPageHref(basePath, page)} />
-      <main className="discovery-main profile-main">
+      <main id="main" className="discovery-main profile-main">
         <Link className="back-link" href="/">← Back to public feed</Link>
         <header className="profile-header">
           {profile.avatarUrl ? (

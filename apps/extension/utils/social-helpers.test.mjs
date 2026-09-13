@@ -92,7 +92,7 @@ test('public annotation paths prefer validated canonical identity with UUID fall
     ),
     /route identity/i,
   );
-  for (const creatorHandle of ['api', 'auth', '_next']) {
+  for (const creatorHandle of ['api', 'auth', '_next', 'legal', 'privacy', 'terms']) {
     assert.equal(parsePublicAnnotationRoute(creatorHandle, 'source-title'), undefined);
     assert.throws(
       () => getPublicAnnotationPath({ creatorHandle, annotationSlug: 'source-title' }, PROFILE_ID),
