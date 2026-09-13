@@ -320,6 +320,18 @@ export function canClearPreparingCaptureWithoutBackgroundCancel(
   return backgroundCancelled || status === 'preparing' || status === 'idle';
 }
 
+export function hostedCaptureRequiresLiveCancel(snapshot: CaptureSnapshot): boolean {
+  return ['capturing', 'stopping', 'uploading', 'waiting-to-upload'].includes(snapshot.status) ||
+    (snapshot.status === 'error' && snapshot.code === 'upload-failed');
+}
+
+export function canClearHostedAttentionWithoutLiveCancel(
+  snapshot: CaptureSnapshot,
+  backgroundCancelled: boolean,
+): boolean {
+  return backgroundCancelled || !hostedCaptureRequiresLiveCancel(snapshot);
+}
+
 export function shouldReplaceHostedCaptureSnapshot(
   current: CaptureSnapshot,
   incoming: CaptureSnapshot,
