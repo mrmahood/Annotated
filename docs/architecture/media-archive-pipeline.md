@@ -560,18 +560,20 @@ panel:
 2. Extension calls a media-begin endpoint/RPC with its bearer token. The
    user-context RPC normalizes source identity and atomically creates source,
    draft annotation, target, slug, and `capture_pending` media row.
-3. Background obtains the tab-capture stream ID as early as possible after the
-   user-driven start. A same-tab ID reserved from the toolbar invoke is reused
-   only while it is still fresh and still bound to that page URL. After the
-   freshness window (or a navigation), Publish re-acquires `getMediaStreamId`
-   under the still-valid activeTab grant instead of handing Chrome an expired
-   ID—first Publish after commentary prep must not require Recapture. Stream-ID
-   acquisition, page prepare, and offscreen start are bounded; the side panel
-   also fail-closes within a few seconds. An activeTab / invocation failure
-   surfaces the toolbar Recapture copy and must not leave Create on
-   “Preparing capture…”. Then it revalidates the connected top-level tab and
-   range, samples start geometry, seeks/pauses the player, creates the
-   offscreen document, and starts the recorder.
+3. The side-panel Publish/Recapture click starts `getMediaStreamId` in that
+   user-gesture turn and passes a fresh ID to background. A toolbar invoke does
+   not survive same-tab navigation (YouTube → Apple Podcasts); the service
+   worker cannot mint an ID for a page that was never invoked. A same-tab ID
+   reserved from the toolbar invoke is reused only while it is still fresh and
+   still bound to that page URL. After the freshness window on the same page,
+   Publish re-acquires `getMediaStreamId` under the still-valid activeTab grant
+   instead of handing Chrome an expired ID—first Publish after commentary prep
+   must not require Recapture. Stream-ID acquisition, page prepare, and
+   offscreen start are bounded; the side panel also fail-closes within a few
+   seconds. An activeTab / invocation failure surfaces the toolbar Recapture
+   copy and must not leave Create on “Preparing capture…”. Then it revalidates
+   the connected top-level tab and range, samples start geometry, seeks/pauses
+   the player, creates the offscreen document, and starts the recorder.
 4. Background starts page playback and acknowledges it to offscreen. Offscreen
    measures the recorder lead-in on its own clock, runs the requested-duration
    timer from that acknowledgement, records with audible loopback, and owns the

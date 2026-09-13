@@ -208,6 +208,7 @@ import {
   MEDIA_CAPTURE_RETRY,
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
+  beginTabCaptureStreamIdFromUserGesture,
   canClearHostedAttentionWithoutLiveCancel,
   isAudioOnlyCaptureSourceKind,
   isCaptureId,
@@ -215,8 +216,10 @@ import {
   mapTabCaptureStartFailure,
   raceHostedCaptureCancel,
   raceHostedCaptureStart,
+  resolvePanelTabCaptureStreamId,
   shouldReplaceHostedCaptureSnapshot,
   userFacingCaptureMessage,
+  type AcquiredTabCaptureStream,
   type CaptureSnapshot,
   type CaptureSourceIdentity,
   type HostedMediaOperation,
@@ -1550,11 +1553,21 @@ function App() {
     }
   }, [cancelHostedSessionOnServer]);
 
+  const beginPublishTabCaptureStreamId = useCallback(() => {
+    const context = connectedContextRef.current;
+    return beginTabCaptureStreamIdFromUserGesture(
+      chrome.tabCapture,
+      context?.tabId,
+      context?.url,
+    );
+  }, []);
+
   const startHostedCapture = useCallback(async (
     operation: HostedMediaOperation,
     source: CaptureSourceIdentity,
     startMs: number,
     endMs: number,
+    acquiredStream?: AcquiredTabCaptureStream | null,
   ) => {
     if (!supabase) throw new Error('The authenticated session is unavailable.');
     const session: HostedMediaSession = {
@@ -1583,6 +1596,12 @@ function App() {
       const { data, error } = await sessionPromise;
       const accessToken = data.session?.access_token;
       if (error || !accessToken) throw new Error('The authenticated session is unavailable.');
+      const streamId = await resolvePanelTabCaptureStreamId(
+        chrome.tabCapture,
+        context.tabId,
+        source.pageUrl,
+        acquiredStream,
+      );
       const response = await raceHostedCaptureStart(chrome.runtime.sendMessage({
         target: 'background',
         type: MEDIA_CAPTURE_START,
@@ -1596,6 +1615,7 @@ function App() {
           accessToken,
           apiOrigin: getWebAppOrigin(),
         },
+        ...(streamId ? { streamId } : {}),
       }) as Promise<{ ok?: boolean; snapshot?: CaptureSnapshot }>);
       responseSnapshot = response?.snapshot ?? null;
       if (hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current) && response?.snapshot) {
@@ -1656,6 +1676,7 @@ function App() {
     hostedBeginModeRef.current = 'video';
     setHostedBeginMode('video');
     setYoutubePublishState({ status: 'publishing' });
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) throw new Error('The Video draft changed. Review it and try again.');
@@ -1700,7 +1721,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
         playerIdentity: videoDraftState.playerIdentity,
-      }, videoDraftState.startMs, videoDraftState.endMs);
+      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
       setYoutubePublishState(createPublishStateAfterHostedFailure(
@@ -1714,7 +1735,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
+  }, [authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
 
   const publishTikTokClip = useCallback(async () => {
     if (
@@ -1745,6 +1766,7 @@ function App() {
     hostedBeginModeRef.current = 'video';
     setHostedBeginMode('video');
     setYoutubePublishState({ status: 'publishing' });
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) throw new Error('The Video draft changed. Review it and try again.');
@@ -1789,7 +1811,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
         playerIdentity: videoDraftState.playerIdentity,
-      }, videoDraftState.startMs, videoDraftState.endMs);
+      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
       setYoutubePublishState(createPublishStateAfterHostedFailure(
@@ -1803,7 +1825,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
+  }, [authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
 
   const publishWebpageVideoClip = useCallback(async () => {
     if (
@@ -1845,6 +1867,7 @@ function App() {
     hostedBeginModeRef.current = 'video';
     setHostedBeginMode('video');
     setYoutubePublishState({ status: 'publishing' });
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) throw new Error('The Video draft changed. Review it and try again.');
@@ -1891,7 +1914,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: normalizedUrl,
         playerIdentity: videoDraftState.playerIdentity,
-      }, videoDraftState.startMs, videoDraftState.endMs);
+      }, videoDraftState.startMs, videoDraftState.endMs, await acquiredStreamPromise);
       setYoutubePublishState({ status: 'idle' });
     } catch (error) {
       setYoutubePublishState(createPublishStateAfterHostedFailure(
@@ -1905,7 +1928,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
+  }, [authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
 
   const publishSpotifyClip = useCallback(async () => {
     const spotifyIdentity = sourceState.status === 'connected'
@@ -1943,6 +1966,7 @@ function App() {
     hostedBeginModeRef.current = 'audio';
     setHostedBeginMode('audio');
     setAudioPublishState({ status: 'publishing' });
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) throw new Error('The Audio draft changed. Review it and try again.');
@@ -1988,7 +2012,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: spotifyIdentity.episodeId,
         playerIdentity: audioDraftState.playerIdentity,
-      }, audioDraftState.startMs, audioDraftState.endMs);
+      }, audioDraftState.startMs, audioDraftState.endMs, await acquiredStreamPromise);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
       setAudioPublishState(createPublishStateAfterHostedFailure(
@@ -2002,7 +2026,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [audioCommentaryRecorder, audioDraftState, authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
+  }, [audioCommentaryRecorder, audioDraftState, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
 
   const publishAudioClip = useCallback(async () => {
     const audioIdentity = sourceState.status === 'connected'
@@ -2038,6 +2062,7 @@ function App() {
     hostedBeginModeRef.current = 'audio';
     setHostedBeginMode('audio');
     setAudioPublishState({ status: 'publishing' });
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     try {
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) throw new Error('The Audio draft changed. Review it and try again.');
@@ -2092,7 +2117,7 @@ function App() {
         recordedCommentary,
         cancelStaleHostedBegin,
       );
-      await startHostedCapture(operation, captureSource, audioDraftState.startMs, audioDraftState.endMs);
+      await startHostedCapture(operation, captureSource, audioDraftState.startMs, audioDraftState.endMs, await acquiredStreamPromise);
       setAudioPublishState({ status: 'idle' });
     } catch (error) {
       setAudioPublishState(createPublishStateAfterHostedFailure(
@@ -2106,7 +2131,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [audioCommentaryRecorder, audioDraftState, authState.status, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
+  }, [audioCommentaryRecorder, audioDraftState, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase]);
 
   const cancelHostedMedia = useCallback(async (expectedAttempt?: HostedAttemptToken) => {
     const session = hostedMediaSessionRef.current;
@@ -2229,6 +2254,7 @@ function App() {
     if (!session || sourceState.status !== 'connected') return;
     setYoutubePublishState({ status: 'idle' });
     setAudioPublishState({ status: 'idle' });
+    const acquiredStreamPromise = beginPublishTabCaptureStreamId();
     if (session.mediaType === 'video' && sourceState.source.classification === 'YouTube') {
       let originalVideoId: string | null = null;
       try { originalVideoId = getYouTubeVideoIdentity(session.sourceUrl).videoId; } catch { /* Invalid persisted source. */ }
@@ -2253,7 +2279,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
         playerIdentity: videoDraftState.playerIdentity,
-      }, session.startMs, session.endMs);
+      }, session.startMs, session.endMs, await acquiredStreamPromise);
     } else if (session.mediaType === 'video' && sourceState.source.classification === 'TikTok') {
       let originalVideoId: string | null = null;
       try { originalVideoId = getTikTokVideoIdentity(session.sourceUrl).videoId; } catch { /* Invalid persisted source. */ }
@@ -2278,7 +2304,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: sourceState.source.videoId,
         playerIdentity: videoDraftState.playerIdentity,
-      }, session.startMs, session.endMs);
+      }, session.startMs, session.endMs, await acquiredStreamPromise);
     } else if (
       session.mediaType === 'video' &&
       isWebpageVideoCapableSource(sourceState.source) &&
@@ -2309,7 +2335,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: connectedPageIdentity,
         playerIdentity: videoDraftState.playerIdentity,
-      }, session.startMs, session.endMs);
+      }, session.startMs, session.endMs, await acquiredStreamPromise);
     } else if (
       session.mediaType === 'audio' &&
       connectedSpotifySource(sourceState.source)
@@ -2338,7 +2364,7 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: spotifyIdentity.episodeId,
         playerIdentity: audioDraftState.playerIdentity,
-      }, session.startMs, session.endMs);
+      }, session.startMs, session.endMs, await acquiredStreamPromise);
     } else if (
       session.mediaType === 'audio' &&
       connectedAudioSource(sourceState.source)
@@ -2367,9 +2393,9 @@ function App() {
         pageUrl: sourceState.source.url,
         sourceKey: audioIdentity.normalizedUrl,
         playerIdentity: audioDraftState.playerIdentity,
-      }, session.startMs, session.endMs);
+      }, session.startMs, session.endMs, await acquiredStreamPromise);
     }
-  }, [audioDraftState.playerIdentity, getPlayerActionToken, hostedMediaSession, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, videoDraftState.playerIdentity]);
+  }, [audioDraftState.playerIdentity, beginPublishTabCaptureStreamId, getPlayerActionToken, hostedMediaSession, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, videoDraftState.playerIdentity]);
 
   const playConnectedClip = useCallback(async (
     annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' }>,

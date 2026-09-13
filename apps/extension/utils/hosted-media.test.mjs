@@ -66,6 +66,11 @@ test('Recapture and capture start clear Create publish errors before the next at
   const recapture = app.slice(app.indexOf('const recaptureHostedMedia'));
   assert.ok(recapture.indexOf("setYoutubePublishState({ status: 'idle' })") < recapture.indexOf('runSelectedPlayerAction'));
   assert.ok(recapture.indexOf("setAudioPublishState({ status: 'idle' })") < recapture.indexOf('runSelectedPlayerAction'));
+  assert.ok(recapture.indexOf('beginPublishTabCaptureStreamId') < recapture.indexOf('runSelectedPlayerAction'));
+  const publishAudio = app.slice(app.indexOf('const publishAudioClip'));
+  assert.ok(publishAudio.indexOf('beginPublishTabCaptureStreamId') < publishAudio.indexOf('runSelectedPlayerAction'));
+  const publishYoutube = app.slice(app.indexOf('const publishYoutubeClip'));
+  assert.ok(publishYoutube.indexOf('beginPublishTabCaptureStreamId') < publishYoutube.indexOf('runSelectedPlayerAction'));
   const start = app.slice(app.indexOf('const startHostedCapture'));
   assert.ok(start.indexOf("setYoutubePublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
   assert.ok(start.indexOf("setAudioPublishState({ status: 'idle' })") < start.indexOf("setMediaCaptureState({ status: 'preparing'"));
