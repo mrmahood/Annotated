@@ -41,8 +41,11 @@ test("web shell shows one dismissible install callout that opens one download mo
   assert.match(packager, /nkkunkwirvfwhmpwonqz/);
   assert.match(packager, /apps\/web\/public\/extension\.zip/);
   assert.match(packager, /pnpm.*run.*zip/);
-  assert.match(packager, /FORBIDDEN_HOST_MARKERS/);
+  assert.match(packager, /assertProdExtensionBundleText/);
+  assert.match(packager, /collectConfiguredExtensionPins/);
+  assert.match(packager, /WXT_SUPABASE_URL must be a valid HTTPS Supabase project URL/);
   assert.match(packager, /annotated-staging\.cbandcoop\.com/);
+  assert.doesNotMatch(packager, /FORBIDDEN_HOST_MARKERS/);
 
   assert.match(versioning, /https:\/\/annotated\.cbandcoop\.com\/extension\.zip/);
   assert.match(versioning, /package-prod-extension-zip/);

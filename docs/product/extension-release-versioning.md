@@ -133,9 +133,10 @@ If those are missing, Local/CI/Staging builds skip the zip. A Production
 web build (`NEXT_PUBLIC_SITE_URL` or `NEXT_PUBLIC_SUPABASE_URL` pointing
 at Production) fails instead of shipping a 404 download.
 
-After packaging, the script refuses Staging hostnames
-(`nkkunkwirvfwhmpwonqz`, `annotated-staging.cbandcoop.com`) in the
-built output.
+After packaging, the script requires the inlined `WXT_SUPABASE_URL` and
+`WXT_WEB_APP_URL` values to be Production. The Staging project ref
+(`nkkunkwirvfwhmpwonqz`) may still appear as the X-auth capability
+comparison constant; that is not treated as the runtime target.
 
 The generated file is gitignored at `apps/web/public/extension.zip`.
 Vercel serves it as a static asset. Reload unpacked after a new deploy
