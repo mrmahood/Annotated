@@ -36,6 +36,24 @@ export async function getCurrentUserId(): Promise<string | null> {
   }
 }
 
+export async function getCurrentUserProfileHandle(
+  userId: string | null,
+): Promise<string | null> {
+  if (!userId || !isUuid(userId)) return null;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", userId)
+      .maybeSingle();
+    const username = typeof data?.username === "string" ? data.username.trim() : "";
+    return error || !username ? null : username;
+  } catch {
+    return null;
+  }
+}
+
 export async function getProfileSocialCounts(
   profileId: string,
 ): Promise<ProfileSocialCounts | null> {

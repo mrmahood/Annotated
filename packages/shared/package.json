@@ -13,7 +13,8 @@
     "./media-time": "./src/media-time.ts",
     "./hosted-video-layout": "./src/hosted-video-layout.ts",
     "./logo-mark": "./src/logo-mark.ts",
-    "./appearance": "./src/appearance.ts"
+    "./appearance": "./src/appearance.ts",
+    "./profile-handle": "./src/profile-handle.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.mjs"

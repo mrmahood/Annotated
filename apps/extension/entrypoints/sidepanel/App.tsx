@@ -290,6 +290,7 @@ import {
 import type { RecordedAudioInput } from '../../utils/annotation-publishing';
 import { CreatePostedPanel } from './create-posted';
 import { AudioRecorder, useAudioRecorder, type AudioRecorderController } from './audio-recorder';
+import { ProfileHandleForm } from './profile-handle-form';
 
 const RECONNECT_MESSAGE = 'Click the Annotated toolbar icon on this page to reconnect, then try again.';
 const RESTRICTED_PAGE_MESSAGE = 'Annotated cannot capture text from this page.';
@@ -300,6 +301,7 @@ type AccountDetails = {
   name: string;
   email: string;
   avatarUrl: string | null;
+  username: string | null;
 };
 
 type AuthState =
@@ -495,7 +497,7 @@ function getPublishErrorMessage(error: unknown) {
 async function verifyProfile(supabase: SupabaseClient, user: User): Promise<AuthState> {
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('display_name, avatar_url')
+    .select('display_name, avatar_url, username')
     .eq('id', user.id)
     .maybeSingle();
   const profileError = error
@@ -514,6 +516,7 @@ async function verifyProfile(supabase: SupabaseClient, user: User): Promise<Auth
       name: getMetadataText(profile?.display_name) || metadataName || email,
       email,
       avatarUrl: getSafeAvatarUrl(profile?.avatar_url) ?? getSafeAvatarUrl(user.user_metadata.avatar_url) ?? getSafeAvatarUrl(user.user_metadata.picture),
+      username: getMetadataText(profile?.username) || null,
     },
     profileError,
   };
@@ -4051,7 +4054,7 @@ function App() {
           {authState.status === 'signed-out' && <div className="signed-out-account"><p>Sign in to publish, comment, follow, and bookmark.</p><SignInActions onSignIn={beginSignIn} /></div>}
           {authState.status === 'signing-in' && <button className="button button-primary" type="button" disabled>Signing in…</button>}
           {authState.status === 'error' && <div className="compact-state compact-state-error" role="alert"><strong>Account unavailable</strong><span>{authState.message}</span><button className="button button-secondary" type="button" onClick={() => void retryAuthentication()}>Try again</button></div>}
-          {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span></div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="text-button danger-text" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button>{supabase && <BookmarkCollection supabase={supabase} cache={socialCacheRef.current} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} />}</>}
+          {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span>{authState.account.username && <span>@{authState.account.username}</span>}</div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}{supabase && !authState.profileError && <ProfileHandleForm supabase={supabase} currentHandle={authState.account.username} onHandleChange={(handle) => { setAuthState((current) => current.status === 'signed-in' ? { ...current, account: { ...current.account, username: handle } } : current); }} />}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="text-button danger-text" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button>{supabase && <BookmarkCollection supabase={supabase} cache={socialCacheRef.current} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} />}</>}
           <AppearanceControl />
           <BrandLockup />
           {privacyUrl && termsUrl ? (

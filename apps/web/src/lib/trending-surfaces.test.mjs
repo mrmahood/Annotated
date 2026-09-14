@@ -3,12 +3,13 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("web Feed strip and /trending page hide below two scored items", async () => {
-  const [home, page, strip, header, routes, discovery] = await Promise.all([
+  const [home, page, strip, header, routes, handles, discovery] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/trending/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/trending-strip.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/site-header.tsx", import.meta.url), "utf8"),
     readFile(new URL("./public-routes.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../../packages/shared/src/profile-handle.ts", import.meta.url), "utf8"),
     readFile(new URL("./data/public-discovery.ts", import.meta.url), "utf8"),
   ]);
 
@@ -25,7 +26,8 @@ test("web Feed strip and /trending page hide below two scored items", async () =
   assert.match(strip, /getPublicAnnotationPath/);
   assert.match(header, /href="\/trending"/);
   assert.match(header, />\s*Trending\s*</);
-  assert.match(routes, /"trending"/);
+  assert.match(routes, /isReservedProfileHandle/);
+  assert.match(handles, /'trending'/);
   assert.match(discovery, /list_trending_annotations/);
   assert.doesNotMatch(home + page + strip, /view_count|pageview|telemetry/i);
   assert.doesNotMatch(discovery, /from\("annotation_trending_boosts"\)/);

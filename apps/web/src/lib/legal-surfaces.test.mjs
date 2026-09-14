@@ -26,6 +26,7 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
     footer,
     layout,
     routes,
+    handles,
     errorPage,
     styles,
     extensionApp,
@@ -37,6 +38,7 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
     readFile(new URL("../app/site-footer.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("./public-routes.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../../../packages/shared/src/profile-handle.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/auth/error/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../../../extension/entrypoints/sidepanel/App.tsx", import.meta.url), "utf8"),
@@ -76,9 +78,10 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
   assert.match(errorPage, /LEGAL_PATHS\.privacy/);
   assert.match(errorPage, /LEGAL_PATHS\.terms/);
 
-  assert.match(routes, /"privacy"/);
-  assert.match(routes, /"terms"/);
-  assert.match(routes, /"legal"/);
+  assert.match(routes, /isReservedProfileHandle/);
+  assert.match(handles, /'privacy'/);
+  assert.match(handles, /'terms'/);
+  assert.match(handles, /'legal'/);
 
   assert.match(styles, /\.skip-link/);
   assert.match(styles, /\.site-footer/);
@@ -88,9 +91,8 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
   assert.match(extensionApp, /privacyUrl = getPublicUrl\('\/privacy'\)/);
   assert.match(extensionApp, /termsUrl = getPublicUrl\('\/terms'\)/);
   assert.match(extensionApp, /account-legal/);
-  assert.match(extensionHelpers, /'privacy'/);
-  assert.match(extensionHelpers, /'terms'/);
-  assert.match(extensionHelpers, /'legal'/);
+  assert.match(extensionHelpers, /isReservedProfileHandle/);
+  assert.match(extensionHelpers, /PROFILE_HANDLE_PATTERN/);
 
   const surfaced = privacy + terms + center + footer + layout + errorPage + extensionApp;
   assert.doesNotMatch(surfaced, /annotated\.cbandcoop\.com\/(privacy|terms|legal)/);

@@ -1,21 +1,12 @@
 import type { Metadata } from "next";
 import { formatMediaTime } from "@annotated/shared/media-time";
+import {
+  isReservedProfileHandle,
+  PROFILE_HANDLE_PATTERN,
+} from "@annotated/shared/profile-handle";
 import type { PublicAnnotation } from "@/lib/data/public-annotation-model";
 
-const CREATOR_HANDLE_PATTERN = /^[a-z0-9_-]{3,30}$/;
 const ANNOTATION_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESERVED_ROOT_HANDLES = new Set([
-  "api",
-  "auth",
-  "_next",
-  "ops",
-  "me",
-  "trending",
-  "who-to-follow",
-  "privacy",
-  "terms",
-  "legal",
-]);
 
 export type PublicAnnotationRoute = {
   creatorHandle: string;
@@ -23,8 +14,8 @@ export type PublicAnnotationRoute = {
 };
 
 export function isPublicCreatorHandle(value: unknown): value is string {
-  return typeof value === "string" && CREATOR_HANDLE_PATTERN.test(value) &&
-    !RESERVED_ROOT_HANDLES.has(value);
+  return typeof value === "string" && PROFILE_HANDLE_PATTERN.test(value) &&
+    !isReservedProfileHandle(value);
 }
 
 export function isPublicAnnotationSlug(value: unknown): value is string {
