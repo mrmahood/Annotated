@@ -110,6 +110,7 @@ jobs:
           assert.deepEqual(manifest.permissions, expectedPermissions);
           assert.deepEqual(manifest.host_permissions, ['http://*/*', 'https://*/*']);
           assert.equal(Object.hasOwn(manifest, 'content_scripts'), false);
+          assert.equal(Object.hasOwn(manifest, 'key'), false);
           NODE
 
       - name: Run web unit tests

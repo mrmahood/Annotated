@@ -45,10 +45,16 @@ test("web shell shows one dismissible install callout that opens one download mo
   assert.match(packager, /collectConfiguredExtensionPins/);
   assert.match(packager, /WXT_SUPABASE_URL must be a valid HTTPS Supabase project URL/);
   assert.match(packager, /annotated-staging\.cbandcoop\.com/);
+  assert.match(packager, /ANNOTATED_PROD_EXTENSION_PUBLIC_KEY/);
+  assert.match(packager, /assertProdExtensionManifestKey/);
   assert.doesNotMatch(packager, /FORBIDDEN_HOST_MARKERS/);
 
   assert.match(versioning, /https:\/\/annotated\.cbandcoop\.com\/extension\.zip/);
   assert.match(versioning, /package-prod-extension-zip/);
+  assert.match(versioning, /dgflcndninfbfgeachchbpjcdhnegcpp/);
+  assert.match(versioning, /prod-extension-public-key\.txt/);
+  assert.doesNotMatch(versioning, /chromewebstore\.google\.com/);
   assert.match(webPackage, /package-prod-extension-zip\.mjs && next build/);
   assert.match(webPackage, /extension-install-surfaces\.test\.mjs/);
+  assert.match(webPackage, /prod-extension-key\.test\.mjs/);
 });

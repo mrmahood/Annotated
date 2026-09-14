@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   CI_PLACEHOLDER_KEY,
@@ -7,9 +10,19 @@ import {
   STAGING_SUPABASE_HOST,
   STAGING_WEB_APP_HOST,
   assertProdExtensionBundleText,
+  assertProdExtensionOutput,
+  assertProdExtensionZip,
+  pinProdExtensionOutput,
+  prodExtensionChildEnv,
   productionWebBuildRequiresZip,
+  readZipEntry,
   resolveProdExtensionPublishableKey,
+  zipChromeMv3Directory,
 } from "./package-prod-extension-zip.mjs";
+import {
+  COMMITTED_PROD_EXTENSION_PUBLIC_KEY,
+  chromeExtensionIdFromPublicKey,
+} from "./prod-extension-key.mjs";
 
 const STAGING_SUPABASE_URL = `https://${STAGING_SUPABASE_HOST}`;
 const STAGING_WEB_APP_URL = `https://${STAGING_WEB_APP_HOST}`;
@@ -88,5 +101,84 @@ test("Prod zip assert rejects Staging as the configured Supabase or web origin",
   assert.throws(
     () => assertProdExtensionBundleText("no configured origins here"),
     /missing the inlined WXT_SUPABASE_URL/,
+  );
+});
+
+test("Prod zip child env pins Production endpoints and the public key", () => {
+  const childEnv = prodExtensionChildEnv({
+    env: {
+      WXT_WEB_APP_URL: STAGING_WEB_APP_URL,
+      WXT_SUPABASE_URL: STAGING_SUPABASE_URL,
+      WXT_ANNOTATED_STAGING_X_EXTENSION_AUTH: "1",
+    },
+    publishableKey: "prod-publishable-key",
+  });
+
+  assert.equal(childEnv.WXT_WEB_APP_URL, PROD_WEB_APP_URL);
+  assert.equal(childEnv.WXT_SUPABASE_URL, PROD_SUPABASE_URL);
+  assert.equal(childEnv.WXT_SUPABASE_PUBLISHABLE_KEY, "prod-publishable-key");
+  assert.equal(childEnv.ANNOTATED_PROD_EXTENSION_PUBLIC_KEY, COMMITTED_PROD_EXTENSION_PUBLIC_KEY);
+  assert.equal(childEnv.WXT_ANNOTATED_STAGING_X_EXTENSION_AUTH, undefined);
+});
+
+test("Prod zip output pins the public key and still rejects Staging runtime pins", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "annotated-prod-zip-"));
+  await writeFile(
+    join(directory, "background.js"),
+    prodBundleFixture(),
+  );
+  await writeFile(
+    join(directory, "manifest.json"),
+    `${JSON.stringify({ manifest_version: 3, name: "Annotated" }, null, 2)}\n`,
+  );
+
+  await assert.rejects(
+    () => assertProdExtensionOutput(directory),
+    /pin the Production public key/,
+  );
+
+  const pinned = await pinProdExtensionOutput(directory);
+  assert.equal(pinned.key, COMMITTED_PROD_EXTENSION_PUBLIC_KEY);
+  assert.equal(
+    chromeExtensionIdFromPublicKey(pinned.key),
+    chromeExtensionIdFromPublicKey(COMMITTED_PROD_EXTENSION_PUBLIC_KEY),
+  );
+  const written = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
+  assert.equal(written.key, COMMITTED_PROD_EXTENSION_PUBLIC_KEY);
+  await assert.doesNotReject(() => assertProdExtensionOutput(directory));
+
+  await writeFile(join(directory, "background.js"), prodBundleFixture({
+    supabaseUrl: STAGING_SUPABASE_URL,
+  }));
+  await assert.rejects(
+    () => assertProdExtensionOutput(directory),
+    /configured Supabase origin/,
+  );
+});
+
+test("two Prod zips of the pinned chrome-mv3 output keep the same extension ID", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "annotated-prod-zip-id-"));
+  const directory = join(parent, "chrome-mv3");
+  await mkdir(directory);
+  await writeFile(join(directory, "background.js"), prodBundleFixture());
+  await writeFile(
+    join(directory, "manifest.json"),
+    `${JSON.stringify({ manifest_version: 3, name: "Annotated" }, null, 2)}\n`,
+  );
+  await pinProdExtensionOutput(directory);
+
+  const firstZip = join(parent, "first.zip");
+  const secondZip = join(parent, "second.zip");
+  await zipChromeMv3Directory(directory, firstZip);
+  await zipChromeMv3Directory(directory, secondZip);
+  await assertProdExtensionZip(firstZip);
+  await assertProdExtensionZip(secondZip);
+
+  const firstKey = JSON.parse(await readZipEntry(firstZip, "manifest.json")).key;
+  const secondKey = JSON.parse(await readZipEntry(secondZip, "manifest.json")).key;
+  assert.equal(firstKey, secondKey);
+  assert.equal(
+    chromeExtensionIdFromPublicKey(firstKey),
+    chromeExtensionIdFromPublicKey(COMMITTED_PROD_EXTENSION_PUBLIC_KEY),
   );
 });
