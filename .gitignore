@@ -13,6 +13,9 @@ out/
 .wxt/
 **/.wxt/
 
+# Generated Production extension zip served by the web app
+apps/web/public/extension.zip
+
 # General build output
 dist/
 build/

@@ -378,6 +378,153 @@ a { color: inherit; }
 }
 .skip-link:focus { transform: none; }
 
+.install-extension-nudge {
+  width: min(calc(100% - 36px), 840px);
+  margin: 16px auto 0;
+}
+.install-extension-callout,
+.install-extension-modal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-medium);
+  background: var(--background-elevated);
+}
+.install-extension-callout {
+  position: relative;
+  max-width: 320px;
+  padding: 14px 14px 16px;
+}
+.install-extension-callout-head,
+.install-extension-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.install-extension-chrome-mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.install-extension-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.install-extension-icon-button svg {
+  width: 14px;
+  height: 14px;
+}
+.install-extension-icon-button:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+}
+.install-extension-callout h2,
+.install-extension-modal h2 {
+  margin: 10px 0 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.install-extension-callout p {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.install-extension-callout-cta,
+.install-extension-download {
+  width: 100%;
+  margin-top: 12px;
+}
+.install-extension-modal {
+  width: min(calc(100% - 28px), 440px);
+  max-height: min(100%, calc(100dvh - 32px));
+  margin: auto;
+  overflow: auto;
+  padding: 18px 18px 20px;
+  color: var(--text-primary);
+  box-shadow: 0 24px 80px color-mix(in srgb, #000 42%, transparent);
+}
+.install-extension-modal::backdrop {
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  backdrop-filter: blur(8px);
+}
+.install-extension-modal .eyebrow { margin: 12px 0 0; }
+.install-extension-modal-pitch {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+.install-extension-steps {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: install-step;
+}
+.install-extension-steps li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.install-extension-steps li::before {
+  counter-increment: install-step;
+  content: counter(install-step) ".";
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.install-extension-steps code {
+  display: inline;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  background: var(--control-background);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+}
+.install-extension-modal-footer {
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+@media (min-width: 1720px) {
+  .install-extension-nudge {
+    position: relative;
+    z-index: 8;
+    width: 0;
+    height: 0;
+    margin: 0;
+    overflow: visible;
+  }
+  .install-extension-callout {
+    position: fixed;
+    top: 68px;
+    left: 24px;
+    width: 260px;
+    max-width: none;
+  }
+}
+
 .site-footer {
   display: flex;
   flex-wrap: wrap;
@@ -1381,6 +1528,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 @media (max-width: 680px) {
   .site-header { gap: 10px; padding-inline: 14px; }
   .site-nav { gap: 14px; }
+  .install-extension-nudge { width: min(calc(100% - 28px), 840px); }
   .site-chrome { gap: 8px; }
   .appearance-segmented { min-width: 148px; }
   .appearance-segment { padding: 0 5px; font-size: 0.64rem; }
