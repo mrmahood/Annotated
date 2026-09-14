@@ -6,18 +6,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const PROD_WEB_APP_URL = "https://annotated.cbandcoop.com";
 export const PROD_SUPABASE_URL = "https://vnxjktpdzmykmqrqwvks.supabase.co";
 export const STAGING_SUPABASE_HOST = "nkkunkwirvfwhmpwonqz.supabase.co";
+export const STAGING_WEB_APP_HOST = "annotated-staging.cbandcoop.com";
 export const WEB_ZIP_RELATIVE_PATH = "apps/web/public/extension.zip";
 export const CI_PLACEHOLDER_KEY = "ci-local-publishable-placeholder";
 
-const FORBIDDEN_HOST_MARKERS = [
-  STAGING_SUPABASE_HOST,
-  "annotated-staging.cbandcoop.com",
-];
+const SUPABASE_CONFIG_MARKER = "WXT_SUPABASE_URL must be a valid HTTPS Supabase project URL.";
+const WEB_APP_CONFIG_MARKER = "WXT_WEB_APP_URL must be an HTTP or HTTPS origin.";
 
-const REQUIRED_HOST_MARKERS = [
-  "annotated.cbandcoop.com",
-  "vnxjktpdzmykmqrqwvks",
-];
+const QUOTED_HTTPS_ORIGIN = /[`'"](https:\/\/[a-z0-9.-]+)[`'"]/gi;
 
 export function isProdSupabaseUrl(value) {
   if (!value) return false;
@@ -104,6 +100,86 @@ async function readTextFilesUnder(directory, suffixes) {
   return chunks.join("\n");
 }
 
+export function quotedHttpsOriginsInWindow(text, marker, lookBehind, lookAhead) {
+  const index = text.indexOf(marker);
+  if (index < 0) return [];
+  const start = Math.max(0, index - lookBehind);
+  const end = Math.min(text.length, index + marker.length + lookAhead);
+  const window = text.slice(start, end);
+  const origins = [];
+  for (const match of window.matchAll(QUOTED_HTTPS_ORIGIN)) {
+    try {
+      origins.push(new URL(match[1]).origin);
+    } catch {
+      // Ignore malformed quoted URL-shaped strings.
+    }
+  }
+  return origins;
+}
+
+export function collectAssignedHttpsOrigins(text, propertyName) {
+  const origins = [];
+  const prefix = `${propertyName}:`;
+  let searchFrom = 0;
+
+  while (true) {
+    const index = text.indexOf(prefix, searchFrom);
+    if (index < 0) break;
+    const slice = text.slice(index + prefix.length, index + prefix.length + 96);
+    const match = /^[`'"](https:\/\/[a-z0-9.-]+)[`'"]/.exec(slice);
+    if (match) {
+      try {
+        origins.push(new URL(match[1]).origin);
+      } catch {
+        // Ignore malformed property assignments.
+      }
+    }
+    searchFrom = index + prefix.length;
+  }
+
+  return origins;
+}
+
+export function collectConfiguredExtensionPins(text) {
+  const supabaseFromClient = quotedHttpsOriginsInWindow(text, SUPABASE_CONFIG_MARKER, 280, 40)
+    .filter((origin) => origin.endsWith(".supabase.co"));
+  const webFromOriginHelper = quotedHttpsOriginsInWindow(text, WEB_APP_CONFIG_MARKER, 40, 240)
+    .filter((origin) => origin.includes("cbandcoop.com") || origin.includes("localhost") || origin.includes("127.0.0.1"));
+  const supabaseAssignments = collectAssignedHttpsOrigins(text, "supabaseUrl");
+  const webAssignments = collectAssignedHttpsOrigins(text, "webAppUrl");
+
+  return {
+    supabaseOrigins: [...new Set([...supabaseFromClient, ...supabaseAssignments])],
+    webAppOrigins: [...new Set([...webFromOriginHelper, ...webAssignments])],
+  };
+}
+
+export function assertProdExtensionBundleText(text) {
+  const { supabaseOrigins, webAppOrigins } = collectConfiguredExtensionPins(text);
+
+  if (supabaseOrigins.length === 0) {
+    throw new Error("Prod extension output is missing the inlined WXT_SUPABASE_URL client configuration.");
+  }
+  if (webAppOrigins.length === 0) {
+    throw new Error("Prod extension output is missing the inlined WXT_WEB_APP_URL origin configuration.");
+  }
+
+  for (const origin of supabaseOrigins) {
+    if (origin !== PROD_SUPABASE_URL) {
+      throw new Error(
+        `Prod extension configured Supabase origin is ${origin}, expected ${PROD_SUPABASE_URL}.`,
+      );
+    }
+  }
+  for (const origin of webAppOrigins) {
+    if (origin !== PROD_WEB_APP_URL) {
+      throw new Error(
+        `Prod extension configured web origin is ${origin}, expected ${PROD_WEB_APP_URL}.`,
+      );
+    }
+  }
+}
+
 export async function assertProdExtensionOutput(chromeMv3Directory) {
   const manifest = JSON.parse(
     await readFile(join(chromeMv3Directory, "manifest.json"), "utf8"),
@@ -113,16 +189,7 @@ export async function assertProdExtensionOutput(chromeMv3Directory) {
   }
 
   const text = await readTextFilesUnder(chromeMv3Directory, [".js", ".json", ".html"]);
-  for (const marker of FORBIDDEN_HOST_MARKERS) {
-    if (text.includes(marker)) {
-      throw new Error(`Prod extension output contains forbidden host ${marker}.`);
-    }
-  }
-  for (const marker of REQUIRED_HOST_MARKERS) {
-    if (!text.includes(marker)) {
-      throw new Error(`Prod extension output is missing required host marker ${marker}.`);
-    }
-  }
+  assertProdExtensionBundleText(text);
 }
 
 async function findBuiltZip(outputDirectory) {
