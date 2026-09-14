@@ -37,3 +37,22 @@ test("web Me is a private newest-first bookmark list with sign-in prompt", async
   assert.match(routes, /isReservedProfileHandle/);
   assert.match(handles, /'me'/);
 });
+
+test("web Me signed-in account area links Send feedback to the Tally form", async () => {
+  const [page, header, feed, styles] = await Promise.all([
+    readFile(new URL("../app/me/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/site-header.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /currentUserId \? \(/);
+  assert.match(page, /href="https:\/\/tally\.so\/r\/1ALx44"/);
+  assert.match(page, /target="_blank"/);
+  assert.match(page, /rel="noopener noreferrer"/);
+  assert.match(page, />\s*Send feedback\s*</);
+  assert.match(page, /className="me-feedback"/);
+  assert.match(styles, /\.me-feedback \{/);
+  assert.doesNotMatch(header, /Send feedback|tally\.so/);
+  assert.doesNotMatch(feed, /Send feedback|tally\.so/);
+});

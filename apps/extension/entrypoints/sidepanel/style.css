@@ -100,6 +100,14 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   text-decoration: none;
 }
 .account-legal a:hover { color: var(--text-primary); }
+.account-feedback {
+  width: max-content;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 550;
+  text-decoration: none;
+}
+.account-feedback:hover { color: var(--text-primary); }
 .view-title { grid-column: 2; text-align: center; font-size: 12px; font-weight: 650; }
 .back-button { grid-column: 1; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-small); color: var(--text-secondary); background: transparent; cursor: pointer; }
 .back-button:hover { color: var(--text-primary); background: var(--surface); }

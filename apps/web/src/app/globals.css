@@ -604,6 +604,21 @@ a { color: inherit; }
   outline-offset: 2px;
 }
 .profile-handle-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.me-feedback {
+  max-width: 660px;
+  margin: -12px 0 28px;
+}
+.me-feedback a {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  font-weight: 550;
+  text-decoration: none;
+}
+.me-feedback a:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .discovery-intro .eyebrow { margin-bottom: 10px; }
 h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-height: 1.12; letter-spacing: -0.035em; }
 .discovery-intro h1 { font-size: clamp(1.9rem, 4.5vw, 3rem); }
