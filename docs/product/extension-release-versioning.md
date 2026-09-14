@@ -6,12 +6,24 @@ to the Chrome Web Store remain explicit owner steps.
 
 ## Canonical distribution
 
-End users get auto-updates from the **Chrome Web Store**. That listing is
-the only supported update channel.
+The Chrome Web Store listing will be the auto-update channel once it
+exists. That submit remains an explicit owner step. Do not invent or
+link a store URL before it is live.
+
+Until then, the public install path is a Production-flavored zip served
+by the web app:
+
+```text
+https://annotated.cbandcoop.com/extension.zip
+```
+
+The Feed/shell install callout and modal download that path. Hosting a
+ZIP does not give auto-updates. Load-unpacked installs stay on the files
+the operator loaded.
 
 The submit landing at `https://www.cbandcoop.com/Annotated` should link
-the store listing once it is live. Do not treat a ZIP hosted on the
-marketing site as an auto-update path.
+the store listing once it is live. Until then it can point at the same
+stable zip path. Do not treat the zip as an auto-update channel.
 
 ## What does not auto-update
 
@@ -87,12 +99,44 @@ Use this for a store ship. Stop at the first failure.
 - [ ] Upload the ZIP to the Chrome Web Store and submit for review
 - [ ] After approval: store users auto-update. Update the landing CTA at
       `https://www.cbandcoop.com/Annotated` if the store URL changed
-- [ ] Optional: mirror a **dated** ZIP for reviewers or internal load-
-      unpacked only, clearly labeled secondary (not the end-user install
-      path)
+- [ ] Optional: keep `https://annotated.cbandcoop.com/extension.zip` as a
+      load-unpacked fallback, or retire it once the store listing is the
+      only supported public install path
 
-## Website ZIP mirror
+## Website ZIP (`/extension.zip`)
 
-An optional CI or site mirror of a dated ZIP is fine for reviewers and
-dev. It remains secondary. The primary CTA on the marketing landing stays
-the Chrome Web Store listing. Hosting a ZIP does not give auto-updates.
+Stable public path: `https://annotated.cbandcoop.com/extension.zip`.
+
+The zip is a Prod-flavored unpacked Chrome MV3 package (WXT `zip` of
+`.output/chrome-mv3`). It is **not** committed. `scripts/package-prod-extension-zip.mjs`
+builds it. The Production Vercel web build generates it:
+
+```powershell
+pnpm --dir apps/web run package:prod-extension-zip
+```
+
+`apps/web` `build` runs that script first, then `next build`. The
+script always pins:
+
+- `WXT_WEB_APP_URL=https://annotated.cbandcoop.com`
+- `WXT_SUPABASE_URL=https://vnxjktpdzmykmqrqwvks.supabase.co`
+
+It reads the Production publishable key from, in order:
+
+1. `ANNOTATED_PROD_EXTENSION_PUBLISHABLE_KEY`
+2. `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` when `NEXT_PUBLIC_SUPABASE_URL`
+   is the Production project
+3. `WXT_SUPABASE_PUBLISHABLE_KEY` when `WXT_SUPABASE_URL` is the
+   Production project
+
+If those are missing, Local/CI/Staging builds skip the zip. A Production
+web build (`NEXT_PUBLIC_SITE_URL` or `NEXT_PUBLIC_SUPABASE_URL` pointing
+at Production) fails instead of shipping a 404 download.
+
+After packaging, the script refuses Staging hostnames
+(`nkkunkwirvfwhmpwonqz`, `annotated-staging.cbandcoop.com`) in the
+built output.
+
+The generated file is gitignored at `apps/web/public/extension.zip`.
+Vercel serves it as a static asset. Reload unpacked after a new deploy
+if you are testing a freshly downloaded zip.
