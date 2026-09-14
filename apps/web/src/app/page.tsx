@@ -54,10 +54,8 @@ export default async function Home({ searchParams }: HomePageProps) {
       <main className={showWhoToFollowRail ? "discovery-main discovery-main-with-rail" : "discovery-main"}>
         <header className="discovery-intro">
           <p className="eyebrow">PUBLIC ANNOTATIONS</p>
-          <h1>Reading, connected to its sources.</h1>
           <p className="lede">
-            Explore passages readers found worth keeping, alongside their commentary
-            and the original work in context.
+            Your media notations across video, podcasts & text shared with the world.
           </p>
         </header>
 
