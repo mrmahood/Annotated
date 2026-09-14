@@ -879,7 +879,11 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .card-clip-range { display: block; margin: 0; color: var(--text-evidence); font-family: var(--font-mono); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 .card-clip-range.expanded { font-size: 1rem; }
 .card-hosted-media { display: grid; gap: 8px; }
-.card-hosted-media video { display: block; width: 100%; height: auto; max-height: 220px; background: #000; }
+.card-hosted-media video { display: block; width: 100%; height: auto; background: #000; }
+.card-hosted-media[data-orientation="landscape"] video {
+  aspect-ratio: var(--hosted-video-aspect, 16 / 9);
+  object-fit: contain;
+}
 .card-hosted-media[data-orientation="portrait"] { justify-items: center; }
 .card-hosted-media[data-orientation="portrait"] video {
   width: 100%;

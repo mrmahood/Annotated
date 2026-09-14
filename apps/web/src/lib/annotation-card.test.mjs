@@ -66,9 +66,13 @@ test("public cards are commentary-led with nested source and Open source", async
   assert.match(styles, /\.card-nested-source/);
   assert.match(styles, /\.card-hosted-media/);
   assert.match(styles, /\.card-hosted-media audio/);
+  assert.match(styles, /\.card-hosted-media\[data-orientation="landscape"\] video/);
   assert.match(styles, /\.card-hosted-media\[data-orientation="portrait"\] video/);
+  assert.match(styles, /aspect-ratio: var\(--hosted-video-aspect, 16 \/ 9\)/);
   assert.match(styles, /aspect-ratio: var\(--hosted-video-aspect, 9 \/ 16\)/);
   assert.match(styles, /max-height: none/);
+  assert.match(styles, /\.hosted-media-section video \{ display: block; width: min\(100%, 720px\); height: auto; max-height: 520px;/);
+  assert.doesNotMatch(styles, /\.card-hosted-media video[^}]*max-height: 220px/);
   assert.doesNotMatch(styles, /\.card-hosted-media\[data-orientation="portrait"\] video[^}]*max-height: 220px/);
   assert.match(styles, /\.open-source-link/);
   assert.match(styles, /\.reshare-attribution/);
