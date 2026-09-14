@@ -1,7 +1,14 @@
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, readFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  COMMITTED_PROD_EXTENSION_PUBLIC_KEY,
+  assertProdExtensionManifestKey,
+  formatProdExtensionKeyReport,
+  pinProdExtensionManifest,
+  resolveProdExtensionPublicKey,
+} from "./prod-extension-key.mjs";
 
 export const PROD_WEB_APP_URL = "https://annotated.cbandcoop.com";
 export const PROD_SUPABASE_URL = "https://vnxjktpdzmykmqrqwvks.supabase.co";
@@ -180,27 +187,90 @@ export function assertProdExtensionBundleText(text) {
   }
 }
 
-export async function assertProdExtensionOutput(chromeMv3Directory) {
+export function prodExtensionChildEnv({
+  env = process.env,
+  publishableKey,
+  publicKey = COMMITTED_PROD_EXTENSION_PUBLIC_KEY,
+} = {}) {
+  const childEnv = {
+    ...process.env,
+    ...env,
+    WXT_WEB_APP_URL: PROD_WEB_APP_URL,
+    WXT_SUPABASE_URL: PROD_SUPABASE_URL,
+    WXT_SUPABASE_PUBLISHABLE_KEY: publishableKey,
+    ANNOTATED_PROD_EXTENSION_PUBLIC_KEY: publicKey,
+  };
+  delete childEnv.WXT_ANNOTATED_STAGING_X_EXTENSION_AUTH;
+  return childEnv;
+}
+
+export async function pinProdExtensionOutput(
+  chromeMv3Directory,
+  publicKey = COMMITTED_PROD_EXTENSION_PUBLIC_KEY,
+) {
+  const manifestPath = join(chromeMv3Directory, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  if (manifest.manifest_version !== 3) {
+    throw new Error("Prod extension zip must be Manifest V3.");
+  }
+
+  const pinned = pinProdExtensionManifest(manifest, publicKey);
+  await writeFile(manifestPath, `${JSON.stringify(pinned, null, 2)}\n`);
+  return pinned;
+}
+
+export async function assertProdExtensionOutput(
+  chromeMv3Directory,
+  publicKey = COMMITTED_PROD_EXTENSION_PUBLIC_KEY,
+) {
   const manifest = JSON.parse(
     await readFile(join(chromeMv3Directory, "manifest.json"), "utf8"),
   );
   if (manifest.manifest_version !== 3) {
     throw new Error("Prod extension zip must be Manifest V3.");
   }
+  assertProdExtensionManifestKey(manifest, publicKey);
 
   const text = await readTextFilesUnder(chromeMv3Directory, [".js", ".json", ".html"]);
   assertProdExtensionBundleText(text);
 }
 
-async function findBuiltZip(outputDirectory) {
-  const names = await readdir(outputDirectory);
-  const zipNames = names.filter((name) => name.endsWith(".zip"));
-  if (zipNames.length !== 1) {
-    throw new Error(
-      `Expected exactly one zip in ${outputDirectory}, found ${zipNames.join(", ") || "none"}.`,
-    );
+export function readZipEntry(zipPath, entryName) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn("unzip", ["-p", zipPath, entryName], {
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    const chunks = [];
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) resolvePromise(Buffer.concat(chunks).toString("utf8"));
+      else reject(new Error(`unzip -p ${zipPath} ${entryName} failed with exit ${code}`));
+    });
+  });
+}
+
+export async function assertProdExtensionZip(
+  zipPath,
+  publicKey = COMMITTED_PROD_EXTENSION_PUBLIC_KEY,
+) {
+  const manifest = JSON.parse(await readZipEntry(zipPath, "manifest.json"));
+  if (manifest.manifest_version !== 3) {
+    throw new Error("Prod extension zip must be Manifest V3.");
   }
-  return join(outputDirectory, zipNames[0]);
+  assertProdExtensionManifestKey(manifest, publicKey);
+}
+
+export async function zipChromeMv3Directory(sourceDirectory, destinationZip) {
+  try {
+    await unlink(destinationZip);
+  } catch (error) {
+    if (error && error.code !== "ENOENT") throw error;
+  }
+
+  await run("zip", ["-r", "-X", "-q", destinationZip, "."], {
+    cwd: sourceDirectory,
+  });
 }
 
 export async function packageProdExtensionZip({
@@ -220,14 +290,12 @@ export async function packageProdExtensionZip({
     return { skipped: true };
   }
 
-  const childEnv = {
-    ...process.env,
-    ...env,
-    WXT_WEB_APP_URL: PROD_WEB_APP_URL,
-    WXT_SUPABASE_URL: PROD_SUPABASE_URL,
-    WXT_SUPABASE_PUBLISHABLE_KEY: publishableKey,
-  };
-  delete childEnv.WXT_ANNOTATED_STAGING_X_EXTENSION_AUTH;
+  const publicKey = resolveProdExtensionPublicKey(env);
+  const childEnv = prodExtensionChildEnv({
+    env,
+    publishableKey,
+    publicKey,
+  });
 
   await run("pnpm", ["--dir", "apps/extension", "run", "zip"], {
     cwd: repoRoot,
@@ -235,13 +303,16 @@ export async function packageProdExtensionZip({
   });
 
   const chromeMv3Directory = join(repoRoot, "apps/extension/.output/chrome-mv3");
-  await assertProdExtensionOutput(chromeMv3Directory);
+  await pinProdExtensionOutput(chromeMv3Directory, publicKey);
+  await assertProdExtensionOutput(chromeMv3Directory, publicKey);
 
-  const builtZip = await findBuiltZip(join(repoRoot, "apps/extension/.output"));
   const destination = join(repoRoot, WEB_ZIP_RELATIVE_PATH);
   await mkdir(dirname(destination), { recursive: true });
-  await copyFile(builtZip, destination);
+  await zipChromeMv3Directory(chromeMv3Directory, destination);
+  await assertProdExtensionZip(destination, publicKey);
+
   console.log(`Wrote ${WEB_ZIP_RELATIVE_PATH} from Prod chrome-mv3 output.`);
+  console.log(formatProdExtensionKeyReport(publicKey));
   return { skipped: false, destination };
 }
 

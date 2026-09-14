@@ -21,6 +21,11 @@ dist/
 build/
 coverage/
 
+# Chrome extension private signing keys. The Production public key is
+# committed at apps/extension/prod-extension-public-key.txt.
+**/*.pem
+secrets/
+
 # Environment variables and secrets
 .env
 .env.local

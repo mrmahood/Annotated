@@ -33,8 +33,10 @@ replace them from the store:
 - Load unpacked (Local / Staging / any `.output/chrome-mv3` folder)
 - A ZIP or CRX downloaded from the website or email
 
-Unpacked and store installs also have different extension IDs. Do not
-mix them when checking OAuth `chromiumapp.org` redirects.
+Unpacked installs without a manifest `key`, the public Prod zip, and a
+future Chrome Web Store listing have different extension IDs. Do not
+mix path-based IDs with the pinned public-zip ID when checking OAuth
+`chromiumapp.org` redirects.
 
 ## Versioning
 
@@ -141,3 +143,97 @@ comparison constant; that is not treated as the runtime target.
 The generated file is gitignored at `apps/web/public/extension.zip`.
 Vercel serves it as a static asset. Reload unpacked after a new deploy
 if you are testing a freshly downloaded zip.
+
+### Pinned extension ID (public zip only)
+
+Load-unpacked without a manifest `key` derives the Chrome extension ID
+from the unzip path. Each downloader then gets a new
+`https://<ID>.chromiumapp.org/auth/callback` and the Prod allowlist
+misses it.
+
+The Prod zip only bakes a stable public `key`. Ordinary Local / Staging
+`wxt build` / Load unpacked stays path-based unless you set
+`ANNOTATED_PROD_EXTENSION_PUBLIC_KEY` yourself.
+
+Every Load-unpacked install from
+`https://annotated.cbandcoop.com/extension.zip` must get this ID:
+
+```text
+dgflcndninfbfgeachchbpjcdhnegcpp
+```
+
+`chrome.identity.getRedirectURL('auth/callback')` is then always:
+
+```text
+https://dgflcndninfbfgeachchbpjcdhnegcpp.chromiumapp.org/auth/callback
+```
+
+Print that ID after `package:prod-extension-zip`, or run:
+
+```powershell
+node scripts/prod-extension-key.mjs
+```
+
+The public key (Chrome manifest `key` / base64 SPKI) is committed at
+`apps/extension/prod-extension-public-key.txt`. It is not a secret.
+Packaging injects it through `ANNOTATED_PROD_EXTENSION_PUBLIC_KEY` and
+also writes `key` onto the chrome-mv3 `manifest.json` before zipping, so
+two Prod zips compute the same ID. A Vercel/build env value of
+`ANNOTATED_PROD_EXTENSION_PUBLIC_KEY` overrides the committed file; do
+that only if you intend to change the public zip ID.
+
+The matching **private** key is not in git. Store it in the owner
+password manager as `Annotated Production Chrome extension PEM`. It is
+not required to keep shipping this zip ID. It is only required later if
+a Chrome Web Store upload must reuse this same ID. A store listing
+otherwise receives a store-assigned ID and supersedes the zip as the
+public install path. Do not invent or link a store URL before it is
+live.
+
+Do not mix these IDs when debugging OAuth:
+
+- Path-based IDs from Local / Staging Load unpacked (no `key`)
+- This pinned public-zip ID
+- A future Chrome Web Store ID
+
+### One-time Production allowlist
+
+Do this once after the first pinned zip is the public download. Stop if
+the Supabase project ref is `nkkunkwirvfwhmpwonqz`.
+
+**Supabase Production** (`vnxjktpdzmykmqrqwvks`) → Authentication → URL
+Configuration. Add:
+
+| Purpose | URL |
+| --- | --- |
+| Prod zip Chrome identity | `https://dgflcndninfbfgeachchbpjcdhnegcpp.chromiumapp.org/auth/callback` |
+| Optional wildcard | `https://dgflcndninfbfgeachchbpjcdhnegcpp.chromiumapp.org/**` |
+
+**Google Cloud OAuth** authorized redirect URIs for the Production
+Google provider used by Supabase stay the vendor callback. Google
+returns to Supabase; Supabase returns to chromiumapp:
+
+```text
+https://vnxjktpdzmykmqrqwvks.supabase.co/auth/v1/callback
+```
+
+Do not add per-downloader chromiumapp URIs to Google Cloud. If a
+Chrome-application OAuth client is later used directly with
+`chrome.identity`, add the same pinned callback.
+
+**X** uses the same `chrome.identity` callback. If Production X is
+enabled for the zip-installed extension, allowlist that same
+chromiumapp URL in Supabase Production. The X portal still uses the
+Supabase vendor callback, not chromiumapp.
+
+### Rotating the Prod zip keypair
+
+Do not regenerate the keypair to refresh an ordinary zip. A new
+keypair changes the public zip ID and needs a new allowlist.
+
+```powershell
+node scripts/generate-prod-extension-keypair.mjs --private-key-out $HOME/annotated-prod-extension.pem --public-key-out apps/extension/prod-extension-public-key.txt
+```
+
+Store the new PEM in the password manager. Commit only the public key
+file. Never commit `*.pem`.

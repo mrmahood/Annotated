@@ -76,9 +76,11 @@ present.
 
 In the same Production project: **Authentication → URL Configuration**.
 Keep Google working. Confirm the Production site and callback rows
-above exist (add only if missing). Extension Chrome identity redirects
-use `https://<EXTENSION_ID>.chromiumapp.org/auth/callback` for a
-Production-pointed extension ID.
+above exist (add only if missing). The public Prod zip pins extension
+ID `dgflcndninfbfgeachchbpjcdhnegcpp`. Add
+`https://dgflcndninfbfgeachchbpjcdhnegcpp.chromiumapp.org/auth/callback`
+for that zip. Do not mix path-based Local/Staging IDs with that zip ID.
+See `docs/product/extension-release-versioning.md`.
 
 ### Production environment variable names (no secret values)
 
