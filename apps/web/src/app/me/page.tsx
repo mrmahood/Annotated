@@ -52,7 +52,20 @@ export default async function MePage({ searchParams }: MePageProps) {
           </p>
         </header>
 
-        {currentUserId ? <ProfileHandleForm currentHandle={currentHandle} /> : null}
+        {currentUserId ? (
+          <>
+            <ProfileHandleForm currentHandle={currentHandle} />
+            <p className="me-feedback">
+              <a
+                href="https://tally.so/r/1ALx44"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Send feedback
+              </a>
+            </p>
+          </>
+        ) : null}
 
         {!currentUserId ? (
           <section className="discovery-state" aria-labelledby="me-sign-in-heading">

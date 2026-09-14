@@ -35,7 +35,8 @@ test("web Me keeps first-Create auto-handle and signed-out sign-in only", async 
     readFile(new URL("../app/profile-handle-form.tsx", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /currentUserId \? <ProfileHandleForm/);
+  assert.match(page, /currentUserId \? \(/);
+  assert.match(page, /<ProfileHandleForm currentHandle=\{currentHandle\} \/>/);
   assert.doesNotMatch(page, /ensure_profile_handle/);
   assert.doesNotMatch(form, /twitter|x\.com|provider handle/i);
   assert.doesNotMatch(form, /from\("profiles"\)\.update/);

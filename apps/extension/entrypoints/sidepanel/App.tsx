@@ -3768,6 +3768,7 @@ function App() {
   };
   const privacyUrl = getPublicUrl('/privacy');
   const termsUrl = getPublicUrl('/terms');
+  const feedbackFormUrl = 'https://tally.so/r/1ALx44';
   const isRefreshing = sourceState.status === 'refreshing';
   const isCapturing = captureState.status === 'capturing';
   const captured = captureState.status === 'captured' ? captureState.data : null;
@@ -4056,6 +4057,9 @@ function App() {
           {authState.status === 'error' && <div className="compact-state compact-state-error" role="alert"><strong>Account unavailable</strong><span>{authState.message}</span><button className="button button-secondary" type="button" onClick={() => void retryAuthentication()}>Try again</button></div>}
           {authState.status === 'signed-in' && <><div className="account-identity">{authState.account.avatarUrl ? <img className="account-avatar" src={authState.account.avatarUrl} alt="" width="44" height="44" referrerPolicy="no-referrer" /> : <span className="account-avatar" aria-hidden="true">{getInitial(authState.account.name)}</span>}<div><strong>{authState.account.name}</strong><span>{authState.account.email}</span>{authState.account.username && <span>@{authState.account.username}</span>}</div></div>{authState.profileError && <p className="inline-error" role="alert">{authState.profileError}</p>}{supabase && !authState.profileError && <ProfileHandleForm supabase={supabase} currentHandle={authState.account.username} onHandleChange={(handle) => { setAuthState((current) => current.status === 'signed-in' ? { ...current, account: { ...current.account, username: handle } } : current); }} />}<button className="button button-secondary" type="button" onClick={() => navigationCallbacks.openProfile(authState.account.id)}>View my profile</button><button className="text-button danger-text" type="button" onClick={() => void signOut()} disabled={isSigningOut}>{isSigningOut ? 'Signing out…' : 'Sign out'}</button>{supabase && <BookmarkCollection supabase={supabase} cache={socialCacheRef.current} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} />}</>}
           <AppearanceControl />
+          {authState.status === 'signed-in' && (
+            <a className="account-feedback" href={feedbackFormUrl} target="_blank" rel="noopener noreferrer">Send feedback</a>
+          )}
           <BrandLockup />
           {privacyUrl && termsUrl ? (
             <nav className="account-legal" aria-label="Legal">

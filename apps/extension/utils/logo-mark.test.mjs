@@ -18,7 +18,8 @@ test('extension root header omits the duplicate wordmark; Me and Create keep a f
   assert.match(mark, /function BrandLockup/);
   assert.match(mark, /className="brand-lockup"/);
   assert.match(mark, /<LogoMark \/>\s*Annotated/);
-  assert.match(app, /<AppearanceControl \/>\s*<BrandLockup \/>/);
+  assert.match(app, /<AppearanceControl \/>\s*\{authState\.status === 'signed-in' && \(/);
+  assert.match(app, /Send feedback[\s\S]*<BrandLockup \/>/);
   assert.equal(app.match(/<BrandLockup \/>/g)?.length, 2);
   const feedBlock = app.slice(
     app.indexOf("currentScreen.view === 'feed'"),

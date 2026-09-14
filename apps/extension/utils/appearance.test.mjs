@@ -93,6 +93,17 @@ test('Me tab and sidepanel styles wire the shared appearance control', async () 
   assert.match(app, /import \{ AppearanceControl \} from '\.\/appearance-control'/);
   assert.match(app, /<h1 className="visually-hidden">Me<\/h1>/);
   assert.match(app, /<AppearanceControl \/>/);
+  assert.match(app, /authState\.status === 'signed-in' && \(/);
+  assert.match(app, /href=\{feedbackFormUrl\} target="_blank" rel="noopener noreferrer">Send feedback/);
+  assert.match(app, /feedbackFormUrl = 'https:\/\/tally\.so\/r\/1ALx44'/);
+  const feedBlock = app.slice(
+    app.indexOf("currentScreen.view === 'feed'"),
+    app.indexOf("currentScreen.view === 'account'"),
+  );
+  const createBlock = app.slice(app.indexOf("currentScreen.view === 'context'"));
+  assert.doesNotMatch(feedBlock, /Send feedback/);
+  assert.doesNotMatch(createBlock, /Send feedback/);
+  assert.match(style, /\.account-feedback \{/);
   assert.match(control, /role="radiogroup"/);
   assert.match(control, /aria-label="Appearance"/);
   assert.match(control, /APPEARANCE_PREFERENCES\.map/);
