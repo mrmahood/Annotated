@@ -18,6 +18,11 @@ test('container contract pins every binary source and runs as a numeric non-root
   assert.doesNotMatch(dockerfile, /SERVICE_ROLE|DISPATCH_SECRET|DATABASE_URL/u);
   assert.equal(toolchain.runtime.one_media_per_worker_process, true);
   assert.equal(toolchain.runtime.uid, 10001);
+  assert.equal(toolchain.runtime.staging_supabase_ref, 'nkkunkwirvfwhmpwonqz');
+  assert.equal(toolchain.runtime.production_supabase_ref, 'vnxjktpdzmykmqrqwvks');
+  assert.equal(toolchain.runtime.production_project, 'annotated-504301');
+  assert.equal(toolchain.runtime.production_region, 'us-east4');
+  assert.equal(toolchain.runtime.production_worker_job, 'annotated-media-worker-production');
   assert.equal(toolchain.ffmpeg.version, 'n8.1.2-44-g7c533d0f86-20260816');
   assert.equal(typeof workerRoot, 'string');
 });
@@ -51,9 +56,14 @@ test('C6 Staging adapters are pinned to exact provider, project, region, and one
   const dispatch = await readFile(new URL('../src/runtime/cloud-run-dispatch.mjs', import.meta.url), 'utf8');
   const transcriber = await readFile(new URL('../src/transcription/openai-whisper-transcriber.mjs', import.meta.url), 'utf8');
   assert.match(config, /nkkunkwirvfwhmpwonqz/u);
+  assert.match(config, /vnxjktpdzmykmqrqwvks/u);
   assert.match(config, /aws-0-us-east-1\.pooler\.supabase\.com/u);
   assert.match(config, /annotated-504301/u);
   assert.match(config, /us-east4/u);
+  assert.match(config, /annotated-media-worker-staging/u);
+  assert.match(config, /annotated-media-worker-production/u);
+  assert.match(config, /local, staging, or production/u);
+  assert.doesNotMatch(config, /scheduler jobs resume|RESUME|PAUSED = false/u);
   assert.match(dispatch, /taskCount: 1/u);
   assert.match(dispatch, /timeout: '600s'/u);
   assert.match(transcriber, /https:\/\/api\.openai\.com\/v1\/audio\/transcriptions/u);

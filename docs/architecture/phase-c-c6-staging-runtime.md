@@ -171,7 +171,30 @@ by the Draft PR #18 corrective review described in the status above.
   that both services share a data center.
 - Transcriber: OpenAI `whisper-1`, with an owner-set USD 10 monthly project
   budget. Current terms were accepted by the owner.
-- No Production resources, deployment, traffic, or merge.
+- C6 Staging acceptance did not access Production. Runtime config later gained
+  a fail-closed `ANNOTATED_ENVIRONMENT=production` contract; creating
+  Production Cloud Run jobs, Secret Manager secrets, and paused schedulers
+  remains owner-operated and is not authorized from this record.
+
+## Production runtime contract
+
+`ANNOTATED_ENVIRONMENT=production` is a supported worker config value. It
+fails closed to Supabase project `vnxjktpdzmykmqrqwvks`, API host
+`vnxjktpdzmykmqrqwvks.supabase.co`, pooler
+`aws-0-us-east-1.pooler.supabase.com:6543`, user
+`annotated_media_worker.vnxjktpdzmykmqrqwvks`, Google project
+`annotated-504301`, region `us-east4`, and worker job
+`annotated-media-worker-production`. Production also requires
+`openai-whisper` and Cloud Run dispatch. Proposed companion names
+(`annotated-media-dispatcher-production`,
+`annotated-media-reconciler-production`,
+`annotated-media-dispatch-production`,
+`annotated-media-reconcile-production`) are documentation only.
+
+This contract does not create Cloud Run jobs, schedulers, or secrets, and it
+does not enable schedules. Owner-operated Production follow-up starts those
+resources paused and smokes with one-shot dispatch before any resume.
+Staging pins and paused-schedule practice are unchanged.
 
 ## Provider contract
 
