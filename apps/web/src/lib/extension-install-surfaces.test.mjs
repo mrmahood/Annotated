@@ -30,7 +30,7 @@ test("web shell shows one dismissible install callout that opens one download mo
 
   assert.match(styles, /\.install-extension-callout \{/);
   assert.match(styles, /\.install-extension-modal \{/);
-  assert.match(styles, /@media \(min-width: 1480px\)/);
+  assert.match(styles, /@media \(min-width: 1720px\)/);
   assert.match(nextConfig, /source: "\/extension\.zip"/);
   assert.match(nextConfig, /attachment; filename="extension\.zip"/);
   assert.match(gitignore, /apps\/web\/public\/extension\.zip/);

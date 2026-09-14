@@ -507,7 +507,7 @@ a { color: inherit; }
   font-size: 0.74rem;
   line-height: 1.5;
 }
-@media (min-width: 1480px) {
+@media (min-width: 1720px) {
   .install-extension-nudge {
     position: relative;
     z-index: 8;
