@@ -1109,9 +1109,12 @@ increment boundaries, and acceptance plan are in
    processing, language quality, latency, and ongoing cost remain separate
    operational decisions.
 5. **Worker host.** Staging selected immutable, non-root Cloud Run Jobs with
-   least-privilege roles and paused schedules. Production provisioning,
-   schedule enablement, region, billing, and secret-management policy remain
-   separately authorized.
+   least-privilege roles and paused schedules. Runtime config now accepts
+   `ANNOTATED_ENVIRONMENT=production` with fail-closed Production pins
+   (separate jobs, same GCP project `annotated-504301` and region `us-east4`).
+   Creating Production Cloud Run jobs, Secret Manager secrets, and paused
+   schedulers, plus any schedule enablement, remain owner-operated and are
+   not authorized from this increment.
 6. **Codec compatibility.** The pinned FFmpeg build produced accepted H.264/AAC
    derivatives from VP8/Opus, VP9/Opus, and audio-only Opus fixtures, including
    owner playback. Broader target-browser compatibility remains a later

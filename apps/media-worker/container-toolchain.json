@@ -32,6 +32,12 @@
     "staging_dispatch": "cloud-run-v2-one-media-override",
     "staging_project": "annotated-504301",
     "staging_region": "us-east4",
-    "staging_supabase_ref": "nkkunkwirvfwhmpwonqz"
+    "staging_supabase_ref": "nkkunkwirvfwhmpwonqz",
+    "production_transcriber": "openai-whisper",
+    "production_dispatch": "cloud-run-v2-one-media-override",
+    "production_project": "annotated-504301",
+    "production_region": "us-east4",
+    "production_supabase_ref": "vnxjktpdzmykmqrqwvks",
+    "production_worker_job": "annotated-media-worker-production"
   }
 }

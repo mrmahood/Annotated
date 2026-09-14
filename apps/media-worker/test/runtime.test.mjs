@@ -6,7 +6,7 @@ import { MediaCoreError } from '../src/domain/media-core-error.mjs';
 import { boundedPostgresFailureReason, preparePsqlConnection, PROCESSED_DURATION_INVALID_MESSAGE } from '../src/infrastructure/psql-database.mjs';
 import { PostgresWorkerStore } from '../src/infrastructure/postgres-worker-store.mjs';
 import { createCloudRunDispatch, cloudRunDispatchContract } from '../src/runtime/cloud-run-dispatch.mjs';
-import { loadRuntimeConfig, stagingRuntimeContract } from '../src/runtime/config.mjs';
+import { loadRuntimeConfig, productionRuntimeContract, stagingRuntimeContract } from '../src/runtime/config.mjs';
 import { createAuthenticatedLocalDispatch, createDispatchToken, verifyDispatchToken } from '../src/runtime/dispatch-auth.mjs';
 import { runDispatchCycle } from '../src/runtime/dispatcher.mjs';
 import { runReconciliationCycle } from '../src/runtime/reconciler.mjs';
@@ -167,10 +167,68 @@ test('runtime configuration accepts only the exact approved Staging boundary', (
   assert.equal(config.environment, 'staging');
   assert.equal(config.transcriber, 'openai-whisper');
   assert.equal(config.dispatchMode, 'cloud-run');
+  assert.equal(config.googleProjectId, stagingRuntimeContract.googleProjectId);
+  assert.equal(config.workerJob, 'annotated-media-worker-staging');
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_SUPABASE_URL: 'https://other.supabase.co' }), /approved Staging project/u);
+  assert.throws(
+    () => loadRuntimeConfig({ ...environment, ANNOTATED_SUPABASE_URL: `https://${productionRuntimeContract.apiHost}` }),
+    /approved Staging project/u,
+  );
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_DATABASE_URL: environment.ANNOTATED_DATABASE_URL.replace(':6543', ':5432') }), /least-privilege/u);
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_TRANSCRIBER: 'deterministic-fake' }), /requires the approved/u);
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_DISPATCH_MODE: 'local-process' }), /Staging requires Cloud Run dispatch/u);
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_GOOGLE_REGION: 'us-central1' }), /approved Staging value/u);
+  assert.throws(
+    () => loadRuntimeConfig({ ...environment, ANNOTATED_WORKER_JOB: productionRuntimeContract.workerJob }),
+    /approved Staging value/u,
+  );
+});
+
+test('runtime configuration accepts only the exact approved Production boundary', () => {
+  const environment = {
+    ANNOTATED_ENVIRONMENT: 'production',
+    ANNOTATED_SUPABASE_URL: `https://${productionRuntimeContract.apiHost}`,
+    ANNOTATED_DATABASE_URL: `postgresql://${productionRuntimeContract.databaseUser}:encoded-password@${productionRuntimeContract.databaseHost}:6543/postgres`,
+    ANNOTATED_SERVICE_ROLE_KEY: secret,
+    ANNOTATED_DISPATCH_SECRET: randomBytes(32).toString('base64url'),
+    ANNOTATED_OPENAI_API_KEY: `sk-proj-${randomBytes(32).toString('base64url')}`,
+    ANNOTATED_FFMPEG_PATH: '/usr/local/bin/ffmpeg',
+    ANNOTATED_FFPROBE_PATH: '/usr/local/bin/ffprobe',
+    ANNOTATED_PSQL_PATH: '/usr/lib/postgresql/17/bin/psql',
+    ANNOTATED_TRANSCRIBER: 'openai-whisper',
+    ANNOTATED_DISPATCH_MODE: 'cloud-run',
+    ANNOTATED_GOOGLE_PROJECT_ID: productionRuntimeContract.googleProjectId,
+    ANNOTATED_GOOGLE_REGION: productionRuntimeContract.googleRegion,
+    ANNOTATED_WORKER_JOB: productionRuntimeContract.workerJob,
+  };
+  const config = loadRuntimeConfig(environment, 'worker');
+  assert.equal(config.environment, 'production');
+  assert.equal(config.apiUrl, `https://${productionRuntimeContract.apiHost}`);
+  assert.equal(config.transcriber, 'openai-whisper');
+  assert.equal(config.dispatchMode, 'cloud-run');
+  assert.equal(config.googleProjectId, 'annotated-504301');
+  assert.equal(config.googleRegion, 'us-east4');
+  assert.equal(config.workerJob, 'annotated-media-worker-production');
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_ENVIRONMENT: 'prod' }), /local, staging, or production/u);
+  assert.throws(
+    () => loadRuntimeConfig({ ...environment, ANNOTATED_SUPABASE_URL: `https://${stagingRuntimeContract.apiHost}` }),
+    /approved Production project/u,
+  );
+  assert.throws(
+    () => loadRuntimeConfig({
+      ...environment,
+      ANNOTATED_DATABASE_URL: `postgresql://${stagingRuntimeContract.databaseUser}:encoded-password@${productionRuntimeContract.databaseHost}:6543/postgres`,
+    }),
+    /least-privilege Production pooler identity/u,
+  );
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_TRANSCRIBER: 'deterministic-fake' }), /Production requires the approved/u);
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_DISPATCH_MODE: 'local-process' }), /Production requires Cloud Run dispatch/u);
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_GOOGLE_PROJECT_ID: 'other-project' }), /approved Production value/u);
+  assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_GOOGLE_REGION: 'us-central1' }), /approved Production value/u);
+  assert.throws(
+    () => loadRuntimeConfig({ ...environment, ANNOTATED_WORKER_JOB: stagingRuntimeContract.workerJob }),
+    /approved Production value/u,
+  );
 });
 
 test('Cloud Run dispatch uses metadata identity and overrides exactly one media ID', async () => {

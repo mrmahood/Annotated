@@ -124,9 +124,18 @@ Staging configuration fails closed to Supabase project
 `nkkunkwirvfwhmpwonqz`, its `aws-0-us-east-1` transaction pooler on port 6543,
 database login `annotated_media_worker`, Google Cloud project
 `annotated-504301`, region `us-east4`, and job
-`annotated-media-worker-staging`. Local remains the default environment and
-continues to use the deterministic fake and loopback-only URLs. No provider or
-cloud credentials are accepted from client code or image layers.
+`annotated-media-worker-staging`. Production is now a supported
+`ANNOTATED_ENVIRONMENT` in runtime config and fails closed to Supabase project
+`vnxjktpdzmykmqrqwvks`, the same pooler host and port, database login
+`annotated_media_worker.vnxjktpdzmykmqrqwvks`, the same Google Cloud project
+and region, and job `annotated-media-worker-production`. Production also
+requires `openai-whisper` and Cloud Run dispatch. Deploying the image,
+creating separate Production Cloud Run jobs and Secret Manager secrets, and
+creating Cloud Scheduler jobs (which must start PAUSED) remain
+owner-operated; this repository does not enable schedules or ship
+credentials. Local remains the default environment and continues to use the
+deterministic fake and loopback-only URLs. No provider or cloud credentials
+are accepted from client code or image layers.
 
 Run the C6 focused source gate:
 
