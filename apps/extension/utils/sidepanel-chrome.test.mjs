@@ -6,6 +6,8 @@ const APP_URL = new URL('../entrypoints/sidepanel/App.tsx', import.meta.url);
 const STYLE_URL = new URL('../entrypoints/sidepanel/style.css', import.meta.url);
 const SOCIAL_URL = new URL('../entrypoints/sidepanel/social-components.tsx', import.meta.url);
 const RECORDER_URL = new URL('../entrypoints/sidepanel/audio-recorder.tsx', import.meta.url);
+const CONFIG_URL = new URL('../wxt.config.ts', import.meta.url);
+const COMMENTARY_URL = new URL('./audio-commentary.ts', import.meta.url);
 
 test('Create, Feed, and Me drop redundant view intros and let tabs name the surface', async () => {
   const [app, style] = await Promise.all([
@@ -61,6 +63,35 @@ test('Create commentary is a placeholder field plus recorder, not labeled chrome
   assert.doesNotMatch(recorder, /WebM · 5:00 max/);
   assert.match(app, /videoCommentaryRecorder/);
   assert.match(app, /hasPublishableCommentary/);
+});
+
+test('Create voice notes show Enable microphone before Record when permission is unknown or denied', async () => {
+  const [recorder, commentary, style, config] = await Promise.all([
+    readFile(RECORDER_URL, 'utf8'),
+    readFile(COMMENTARY_URL, 'utf8'),
+    readFile(STYLE_URL, 'utf8'),
+    readFile(CONFIG_URL, 'utf8'),
+  ]);
+
+  assert.match(commentary, /export const MICROPHONE_ENABLE_HEADING = 'Enable microphone'/);
+  assert.match(commentary, /chrome:\/\/settings\/content\/microphone/);
+  assert.match(commentary, /not the website in this tab/);
+  assert.match(commentary, /the extension, not the website you are browsing/);
+  assert.match(commentary, /navigator\.permissions\.query|name: 'microphone'/);
+  assert.match(recorder, /shouldShowMicrophoneEnableGuidance/);
+  assert.match(recorder, /shouldShowMicrophoneReconnectSteps/);
+  assert.match(recorder, /navigator\.permissions\.query\(\{ name: 'microphone' \}\)/);
+  assert.match(recorder, /getUserMedia\(\{ audio: true \}\)/);
+  assert.match(recorder, /MicrophoneEnableStatus/);
+  assert.match(recorder, /audio-mic-steps/);
+  assert.match(recorder, /MICROPHONE_ENABLE_HEADING/);
+  assert.match(recorder, /<code>\{MICROPHONE_CHROME_SETTINGS_URL\}<\/code>/);
+  assert.match(recorder, /Find <strong>\{name\}<\/strong>|Find <strong>Annotated<\/strong>|name = 'Annotated'/);
+  assert.doesNotMatch(recorder, /Microphone access was denied\. Allow microphone access and choose Record to try again/);
+  assert.match(style, /\.audio-mic-steps \{/);
+  assert.match(style, /\.audio-mic-guidance/);
+  assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
+  assert.doesNotMatch(config, /permissions:\s*\[[^\]]*'microphone'/);
 });
 
 test('extension detail keeps annotation-first order and hides leftover source kickers', async () => {
