@@ -2,7 +2,9 @@
 
 Operator note for shipping the Manifest V3 side panel. This does not
 authorize a Production store submit; bumping the version and uploading
-to the Chrome Web Store remain explicit owner steps.
+to the Chrome Web Store remain explicit owner steps. Public zip +
+pinned ID are live on Production as of 2026-09-14; announcement
+context: `docs/product/launch-one-pager.md`.
 
 ## Canonical distribution
 

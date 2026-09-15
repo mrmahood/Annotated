@@ -1,12 +1,36 @@
 # Product roadmap
 
-Status: Phase D complete and merged; Phase E increments E1a-E1e, E2a-E2c,
+Status: **Phase G Production is live** as of 2026-09-14. Public web is
+`https://annotated.cbandcoop.com` (Vercel project `annotated`, DNS live)
+on Supabase Production `vnxjktpdzmykmqrqwvks`. Staging web is
+`https://annotated-staging.cbandcoop.com` (Supabase
+`nkkunkwirvfwhmpwonqz`), locked behind Vercel Authentication (`all`).
+Google and X OAuth run on Production; `/ops` moderation is allowlisted
+for owner profiles. Claim/rename username is on web `/me` and extension
+Me. Production media-worker jobs and schedulers are enabled after Create
+smoke; Staging schedulers remain paused. Pre–Phase G clip range UI and
+the social slice (Share, Bookmark, What’s Trending, Who to Follow) are
+on Production. Public Feed lede: “Your media notations across video,
+podcasts & text shared with the world.” (eyebrow PUBLIC ANNOTATIONS; no
+h1). Install UX is a dismissible web callout + modal; marketing
+`cbandcoop.com/Annotated` Install CTA; zip at
+`https://annotated.cbandcoop.com/extension.zip` with pinned public-zip
+Chrome ID `dgflcndninfbfgeachchbpjcdhnegcpp` (Prod chromiumapp allowlist
+so OAuth from the zip works). Feedback is a Tally form on signed-in Me
+only (extension + web). Legal Privacy/Terms live in `apps/web`. Remaining
+Phase G work is hardening, Chrome Web Store submit, and polish — not a
+first Production cutover. No store listing exists yet; do not invent a
+URL. Launch announcement context: `docs/product/launch-one-pager.md`.
+Updated 2026-09-15.
+
+Historical delivery (Phases A–F and Pre–Phase G) is unchanged below.
+Phase D complete and merged; Phase E increments E1a-E1e, E2a-E2c,
 E3, and the bounded live-X Gate 3 are complete, merged, accepted, and rolled
 back in Staging. Phase F F0–F5 implementation is merged on protected `main`;
 F6 owner-authorized Staging acceptance is recorded 2026-09-04. Exact Storage
 cleanup-to-zero for the media-worker buckets is recorded 2026-09-07/08 after
 an owner one-shot of `annotated-media-reconciler-staging` (schedules stayed
-paused; Production was not accessed). Updated 2026-09-11. Sprint 1 UI polish
+paused; Production was not accessed at that checkpoint). Sprint 1 UI polish
 and Sprint 2 YouTube hover linking are merged and owner-accepted on `main`;
 Sprint 3 (article/text) hover is implemented on `main`. Sprint 4
 (audio/podcast) hover is implemented pending owner Chrome acceptance. Sprint
@@ -27,17 +51,18 @@ separate Create UX follow-on is **typed clip range entry** (keep Set start
 PR #91. Owner Q&A (2026-09-11) **locked** five **Pre–Phase G** product
 items before Production on `annotated.cbandcoop.com`: **clip range UI**
 first, then the social slice (**Share**, **Bookmark**, **What’s
-Trending**, **Who to Follow**). They are not bounty must-haves.
-This increment implements the locked **clip range UI**: dual-handle
+Trending**, **Who to Follow**). They were not bounty must-haves and are
+now live on Production.
+That increment implemented the locked **clip range UI**: dual-handle
 range, 30s/60s presets from the playhead, preview that stops at end,
 and typed start/end as secondary. On long media the slider shows a
 few minutes around the current range, with pan and recenter. Set
-start / Set end buttons are replaced. Staging acceptance is required before Phase G. Fox / Brightcove /
+start / Set end buttons are replaced. Fox / Brightcove /
 proprietary cross-origin news-site embeds are **tabled indefinitely**
-(Phase G / later-horizon) and are not a mid-September bounty blocker.
+and are not a mid-September bounty blocker.
 X OAuth is out of Sprint 6. Staging-only X
 OAuth re-enable for the bounty submit is implemented on `main`; Production
-remains separately authorized. D1 and D2 completed their
+X was separately authorized and is now live. D1 and D2 completed their
 Local automated gates, owner Chrome acceptance, required CI, bounded Staging
 application/regression, exact fixture cleanup, protected squash merges, and
 post-merge `main` CI. PR #20 merged D1 as
@@ -45,9 +70,9 @@ post-merge `main` CI. PR #20 merged D1 as
 `6f0f1c59acb52d5fb53dcc11dfd446b455ac5f2b`. Staging migration history is
 aligned through `20260825120300`, all three worker jobs retain accepted immutable
 digest `sha256:220c2a4e23fda65395d712ed2c81154e478ea6d0c271ce6d756ec36eb0c7fe92`,
-and both schedules remain paused. Every disposable D1/D2 Local and Staging
+and both Staging schedules remained paused at that D1/D2 checkpoint. Every disposable D1/D2 Local and Staging
 fixture was removed and verified at zero. Production was not accessed or
-deployed. Phase E planning is defined in
+deployed in those increments. Phase E planning is defined in
 `docs/architecture/phase-e-create-auth-plan.md`. E1a implementation and
 deterministic Local validation are complete. PR #23 passed required CI run
 `32922199032`, was squash-merged into protected `main` as
@@ -79,8 +104,9 @@ acceptance through PR #41 after required CI run `33578556343`, was squash-merged
 as `fd5b5ffd7b16220a8bfd5e2e656565146f54e5eb`, and passed post-merge `main` CI run
 `33579104948`. The disposable Staging identity and grant were removed, both
 user-facing capability opt-ins were disabled, and the Supabase Staging X provider
-was disabled with its masked credentials retained. Production was not accessed;
-later work remains separately authorized.
+was disabled with its masked credentials retained. Production was not accessed
+at that Gate 3 checkpoint; later Production work was separately authorized
+and has since landed (see Phase G).
 
 The hosted-media architecture is defined in
 `docs/architecture/media-archive-pipeline.md`. This roadmap summarizes delivery
@@ -513,8 +539,9 @@ Claims, takedown, and removal. The bounded plan is
 `docs/architecture/phase-f-claims-removal-plan.md`. F0–F5 implementation is
 merged on protected `main`. F6 owner-authorized Staging acceptance is recorded
 below, including 2026-09-07/08 exact Storage cleanup-to-zero for the
-media-worker buckets. Production was not accessed; GCP media dispatcher
-and reconciler schedules remain paused.
+media-worker buckets. Production was not accessed at that F6 checkpoint;
+Staging GCP media dispatcher and reconciler schedules stayed paused there.
+Production worker jobs and schedulers are now enabled (see Phase G).
 
 F0 was merged through PR #43. F1a published-target claim intake is on `main` as
 `7ccd615f51a5359d5ef002a175063854a94ca787` (PR #44). F4 media-only withdrawal is
@@ -605,18 +632,20 @@ Durable Phase F product rules remain:
 ## Near-term after Phase F
 
 Phase F implementation, owner-authorized Staging acceptance, and
-2026-09-07/08 exact Storage cleanup-to-zero are recorded above. The next
-product work is not Phase G. Default recommendation, unless the owner
-pulls an item forward: remaining **extension UI polish** (owner Chrome
-acceptance where still pending) and **X OAuth re-enable for the
-mid-September bounty submit**. Owner Q&A (2026-09-11) **locked** five
-**Pre–Phase G** items so they land before Production on
-`annotated.cbandcoop.com`: clip range UI first, then the social slice;
-see Pre–Phase G below. They are not bounty must-haves. Staging
-acceptance is required before Phase G. Fox / Brightcove / proprietary
-cross-origin news-site embeds are tabled indefinitely and are not in
-this near-term sequence. Phase G Production launch and hardening remain
-separately authorized.
+2026-09-07/08 exact Storage cleanup-to-zero are recorded above. That
+near-term sequence then completed: Pre–Phase G (clip range UI, then the
+social slice) shipped, and **Phase G Production is live** as of
+2026-09-14. Remaining work is hardening, Chrome Web Store submit, and
+polish — see Phase G. Fox / Brightcove / proprietary cross-origin
+news-site embeds stay tabled indefinitely.
+
+Historical near-term record (kept for the sprint trail): remaining
+**extension UI polish** (owner Chrome acceptance where still pending)
+and **X OAuth re-enable for the mid-September bounty submit**. Owner
+Q&A (2026-09-11) **locked** five **Pre–Phase G** items so they landed
+before Production on `annotated.cbandcoop.com`: clip range UI first,
+then the social slice; see Pre–Phase G below. They were not bounty
+must-haves.
 
 - **Extension UI polish / minimalist redesign.** Sequenced after Phase F per
   the locked September sequence in
@@ -826,27 +855,25 @@ separately authorized.
     enable.
   - Out of scope: multi-operator RBAC, public appeals, email, analytics
     dashboards, editing claims content, Production-only features.
-- **Phase G Production launch and hardening** remains a separate phase with
-  its own authorization; it is not the next increment after F. Owner Q&A
-  (2026-09-11) locked **clip range UI**, then the **social slice**,
-  before this phase. They are not bounty must-haves. Staging acceptance
-  is required before Phase G. Fox / Brightcove / proprietary
-  cross-origin news-site embeds live on that later-horizon, not in the
-  mid-September bounty sequence.
+- **Phase G Production launch** landed 2026-09-14. Remaining Phase G
+  work is hardening, Chrome Web Store submit, and polish — not a first
+  cutover. Owner Q&A (2026-09-11) locked **clip range UI**, then the
+  **social slice**, before this phase; those items are live on
+  Production. Fox / Brightcove / proprietary cross-origin news-site
+  embeds stay tabled indefinitely, not in the mid-September bounty
+  sequence.
 
-## Pre–Phase G — locked
+## Pre–Phase G — shipped before Production
 
-Owner Q&A completed 2026-09-11. These items land **before Phase G**
-(Production on `annotated.cbandcoop.com`). Sequence: **clip range UI
-first**, then the **social slice**, then Phase G. They are not
-mid-September bounty must-haves. This section locks the product
-contract; it does not authorize Staging apply or Production. Clip
-range UI is implemented in this increment (owner Chrome acceptance
-still required). **Share v1** (in-ecosystem reshare) is implemented on
-`main` via PR #117. **Bookmark v1** is implemented on `main` via
-PR #118. **What’s Trending v1** is implemented on `main` via PR #120.
-**Who to Follow v1** is implemented in this increment. Staging
-acceptance is required before Phase G. Hosted
+Owner Q&A completed 2026-09-11. These items landed **before Phase G
+Production** on `annotated.cbandcoop.com` and are live there. Sequence
+was: **clip range UI first**, then the **social slice**, then Phase G.
+They were not mid-September bounty must-haves. This section keeps the
+product contract. Clip range UI shipped (owner Chrome acceptance may
+still be recorded separately). **Share v1** (in-ecosystem reshare) is
+on `main` via PR #117. **Bookmark v1** is on `main` via PR #118.
+**What’s Trending v1** is on `main` via PR #120. **Who to Follow v1**
+shipped in that increment. Hosted
 range limits remain 1,000–90,000 ms. Article publication, draft-first
 hosted media, and the accepted capture/upload pipeline are unchanged.
 
@@ -930,35 +957,67 @@ avatar, display name, handle, Follow / Following. Reuse the existing
 follow graph. Profile links stay `/{handle}`-free (`/p/{id}`); handles
 are display-only with no `@` in paths.
 
-## Phase G — future
+## Phase G — Production live; hardening / Store / polish remaining
 
-Production launch and hardening. Locked Pre–Phase G items above (clip
-UI first, then the social slice) land first per owner Q&A (2026-09-11);
-this phase remains separately authorized. Staging before Phase G.
+Phase G Production cutover is live as of 2026-09-14. Pre–Phase G (clip
+UI first, then the social slice) shipped first per owner Q&A
+(2026-09-11). Remaining work is hardening, Chrome Web Store submit, and
+polish — not a first Production launch. Launch announcement context:
+`docs/product/launch-one-pager.md`. Updated 2026-09-15.
 
-- The Production hostname is `annotated.cbandcoop.com`. `cbandcoop.com` remains
-  the consultancy site managed through Lovable and Bluehost WordPress Plus;
-  Bluehost is currently the domain/DNS and WordPress hosting authority.
-- Chrome Web Store is the end-user update channel for the extension. Staging
-  stays load-unpacked. Operator checklist:
-  `docs/product/extension-release-versioning.md`.
-- Do not assume WordPress Plus can host Annotated's trusted Next.js runtime.
-  Evaluate that runtime independently, with Google Cloud Run as the first
-  candidate because the project already uses Google Cloud.
-- Cover DNS, TLS, Supabase web/extension/OAuth callback URLs, cookies, CSP,
-  monitoring, alerting, rollback, retention operations, and staged Production
-  enablement. Preserve the Chrome/browser/device, zoom/DPR/fullscreen/resize,
-  auth/session, retry, privacy, security, and end-to-end regression matrices.
-- **Fox / Brightcove / proprietary cross-origin news-site embeds** are
-  tabled indefinitely on this later-horizon. Owner directed (2026-09-07/08)
-  that they are not needed for the mid-September bounty submit and are not
-  the next platform after Spotify. Readable HTML5 webpage-video remains the
-  niche article-backed path; opaque news-site players continue to fail
-  closed until a separately authorized Phase G (or later) adapter contract.
-- Phase E has passed Local, required CI, bounded Staging acceptance, exact
-  cleanup, and reversible rollback. Production access, deployment, schedule
-  enablement, DNS/OAuth/vendor configuration, and traffic cutover each still
-  require their own explicit authorization.
+### Live on Production (2026-09-14)
+
+- Public web: `https://annotated.cbandcoop.com` (Vercel project
+  `annotated`, DNS live). Consultancy site remains `cbandcoop.com`
+  (Lovable / Bluehost WordPress Plus).
+- Staging web: `https://annotated-staging.cbandcoop.com`, locked behind
+  Vercel Authentication (`all`). Do not demo Staging publicly without
+  SSO.
+- Supabase Production `vnxjktpdzmykmqrqwvks`; Staging
+  `nkkunkwirvfwhmpwonqz`.
+- Google + X OAuth on Production. `/ops` moderation allowlist for owner
+  profiles.
+- Claim/rename username on web `/me` and extension Me.
+- Production media-worker jobs and schedulers enabled after Create
+  smoke; Staging schedulers remain paused.
+- Public Feed lede: “Your media notations across video, podcasts & text
+  shared with the world.” Eyebrow PUBLIC ANNOTATIONS; h1 removed.
+- Install UX: dismissible callout + modal on web; marketing
+  `cbandcoop.com/Annotated` Install CTA; zip at
+  `https://annotated.cbandcoop.com/extension.zip`.
+- Pinned public-zip Chrome extension ID
+  `dgflcndninfbfgeachchbpjcdhnegcpp` plus Supabase Prod chromiumapp
+  allowlist (OAuth from the zip works).
+- Feedback: Tally form linked from signed-in Me only (extension + web).
+- Pre–Phase G social slice (Share, Bookmark, What’s Trending, Who to
+  Follow) on Production.
+- Legal Privacy/Terms in `apps/web`.
+
+### Still open / next
+
+- Chrome Web Store submit (auto-update after review). Extension
+  `package.json` is still `0.0.0` — bump before the first store upload.
+  Operator checklist: `docs/product/extension-release-versioning.md`.
+  Staging stays load-unpacked. Do not invent a store URL.
+- Marketing install video still “coming soon.”
+- Chrome notification when a clip is ready (queued).
+- Parked Create quirks: multi-click Publish first-error; header-icon
+  capture quirk; `raw_delete_unconfirmed` race.
+- Staging demo rehearsal checklist.
+- Navigate-away / zero-toolbar Recapture parked.
+- **Fox / Brightcove / proprietary cross-origin news-site embeds**
+  tabled indefinitely. Owner directed (2026-09-07/08) that they are not
+  needed for the mid-September bounty submit and are not the next
+  platform after Spotify. Readable HTML5 webpage-video remains the
+  niche article-backed path; opaque news-site players fail closed.
+
+Historical launch-design notes (kept): do not assume WordPress Plus can
+host the trusted Next.js runtime; Google Cloud Run was the first
+candidate because the project already uses Google Cloud. DNS, TLS,
+Supabase/OAuth callbacks, cookies, CSP, monitoring, alerting, rollback,
+and retention remain operational concerns after cutover. Preserve the
+Chrome/browser/device, zoom/DPR/fullscreen/resize, auth/session, retry,
+privacy, security, and end-to-end regression matrices.
 
 Phase B's automated and owner-performed browser acceptance gates passed. C1-C6
 implementation and owner acceptance are complete, and Phase C is formally
@@ -966,8 +1025,8 @@ closed. Phase D's D1a-D1e canonical public experience and D2a-D2c voting work
 are implemented, owner-accepted, applied and regression-tested in bounded
 Staging, cleaned exactly, squash-merged through PRs #20 and #21, and verified by
 successful post-merge `main` CI runs `32807426242` and `32906492506`. Staging is
-aligned through `20260825120300`, both schedules remain paused, and Production
-was not accessed or deployed. Phase D is formally closed. Phase E planning is
+aligned through `20260825120300`; at that Phase D close both Staging schedules
+remained paused and Production was not accessed or deployed. Phase D is formally closed. Phase E planning is
 documented in `docs/architecture/phase-e-create-auth-plan.md`; E1a implementation
 and deterministic Local validation are complete. PR #23 passed required CI run
 `32922199032`, was squash-merged as
@@ -997,20 +1056,21 @@ provider rollback then passed. X user-facing Staging re-enable is implemented in
 the Supabase Staging provider and X Developer Portal remain owner
 manual steps in `docs/product/x-oauth-staging-reenable.md`. Fox /
 Brightcove / proprietary cross-origin news-site embeds are tabled
-indefinitely (Phase G / later-horizon) and are not a bounty blocker.
-Schedule enablement, Production access, and deployment remain separately
-authorized. Generic webpage-video publication remains the niche
-HTML5/article-backed path. Sprint 6 TikTok hosted capture/publish is
-the owner-authorized demo path for hosted watch pages after YouTube.
-Phase E has passed its Local, required CI, and bounded Staging gates. Production
-rollout still requires its own explicit authorization. Phase F F0–F5 are merged
-on `main`; F6 owner-authorized Staging acceptance is recorded in the Phase F
+indefinitely and are not a bounty blocker.
+At those earlier checkpoints, schedule enablement, Production access,
+and deployment were separately authorized. Generic webpage-video
+publication remains the niche HTML5/article-backed path. Sprint 6
+TikTok hosted capture/publish is the owner-authorized demo path for
+hosted watch pages after YouTube. Phase E has passed its Local,
+required CI, and bounded Staging gates. Phase F F0–F5 are merged on
+`main`; F6 owner-authorized Staging acceptance is recorded in the Phase F
 section. Exact Storage cleanup-to-zero for the media-worker buckets is
 recorded 2026-09-07/08 after a one-shot `annotated-media-reconciler-staging`
-run. Production was not accessed; worker schedules remain paused. Legacy
+run (Staging schedules stayed paused at that F6 checkpoint). Legacy
 `annotation-audio` objects remain an optional follow-up, not an F6
 cleanup-to-zero blocker. Owner Q&A (2026-09-11) locked five Pre–Phase G
 items (clip range UI first, then Share / Bookmark / What’s Trending /
-Who to Follow) so they land before Production on
-`annotated.cbandcoop.com`; they are not bounty must-haves. Staging
-before Phase G.
+Who to Follow); they shipped before Production on
+`annotated.cbandcoop.com` and are live there. Phase G Production is
+live as of 2026-09-14; remaining work is hardening, Store submit, and
+polish.
