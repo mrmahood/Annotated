@@ -59,7 +59,8 @@ This is a pnpm monorepo:
 
 Read `docs/architecture/media-archive-pipeline.md` before changing hosted-media
 state, capture, Storage, worker, transcript, routing, or publication behavior.
-Use `docs/product/roadmap.md` to keep work inside the active phase.
+Use `docs/product/roadmap.md` to keep work inside the active phase. Launch
+announcement context: `docs/product/launch-one-pager.md`.
 
 ## Validation
 
@@ -89,10 +90,11 @@ acceptance as passed unless the owner performed it and supplied the result.
 - Migrations are additive and immutable after application. Do not edit applied
   history, use migration repair casually, or reset a linked/remote database.
   Never run `supabase db reset --linked`.
-- Distinguish Local and Staging. Staging project ref is
-  `nkkunkwirvfwhmpwonqz`; verify it explicitly before remote work. Supabase API
-  keys are project-specific. Keep `.env.local`, passwords, and keys untracked
-  and never print their values.
+- Distinguish Local, Staging, and Production. Staging project ref is
+  `nkkunkwirvfwhmpwonqz`; Production is `vnxjktpdzmykmqrqwvks`. Verify the
+  target explicitly before remote work. Supabase API keys are project-specific.
+  Keep `.env.local`, passwords, and keys untracked and never print their values.
+  Phase G Production is live as of 2026-09-14; see `docs/product/roadmap.md`.
 - Preserve intentional dirty-worktree changes. Do not reset, clean, discard, or
   stash them without explicit authorization.
 - Normal delivery is feature branch -> implementation/tests -> owner manual
