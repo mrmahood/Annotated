@@ -7,7 +7,8 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: {
     name: 'Annotated',
-    description: 'Annotate and organize sources from the web.',
+    description:
+      'Source-linked margin notes on articles, plus short video and audio clips from the current tab.',
     minimum_chrome_version: '116',
     // Voice-note getUserMedia uses the extension origin's site permission.
     // Chrome has no MV3 manifest `microphone` key; a capture warning would not
