@@ -322,6 +322,11 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .audio-preview audio, .detail-audio audio { width: 100%; height: 32px; color-scheme: inherit; }
 .audio-preview-actions { display: flex; gap: 7px; }
 .audio-error .inline-error { margin: 0 0 8px; }
+.audio-mic-guidance { padding-top: 2px; }
+.audio-mic-guidance .button { margin-top: 8px; }
+.audio-mic-steps { margin: 4px 0 0; padding-left: 1.25em; display: grid; gap: 5px; color: inherit; font-size: 11px; line-height: 1.45; }
+.audio-mic-steps li { overflow-wrap: anywhere; }
+.audio-mic-steps strong { font-size: inherit; }
 .create-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
 .hosted-media-progress { margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-medium); background: var(--background-elevated); }
 .hosted-media-progress-heading { display: flex; align-items: center; gap: 8px; }

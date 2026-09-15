@@ -35,6 +35,81 @@ export type RecordingState =
     }
   | { status: 'error'; message: string };
 
+export type MicrophonePermissionState = 'unknown' | 'prompt' | 'granted' | 'denied';
+export type MicrophoneStartErrorKind = 'denied' | 'not-found' | 'unavailable' | 'generic';
+
+export const MICROPHONE_CHROME_SETTINGS_URL = 'chrome://settings/content/microphone';
+export const MICROPHONE_ENABLE_HEADING = 'Enable microphone';
+export const MICROPHONE_EXTENSION_PERMISSION_COPY =
+  'Voice notes use the Annotated extension’s microphone, not the website in this tab.';
+export const MICROPHONE_DENIED_COPY =
+  'Microphone access is blocked for the Annotated extension. A blocked-mic icon on the current website does not control the side panel.';
+export const MICROPHONE_DENIED_STEPS = [
+  `Paste ${MICROPHONE_CHROME_SETTINGS_URL} into the browser address bar. This panel cannot open Chrome settings.`,
+  'Find Annotated in the list (the extension, not the website you are browsing) and set it to Allow.',
+  'Return here and choose Enable microphone or Record again.',
+] as const;
+
+export function parseMicrophonePermissionState(value: unknown): MicrophonePermissionState {
+  if (value === 'granted' || value === 'denied' || value === 'prompt') return value;
+  return 'unknown';
+}
+
+export function shouldShowMicrophoneEnableGuidance(
+  permission: MicrophonePermissionState,
+  recordingStatus: RecordingState['status'],
+  startDenied = false,
+): boolean {
+  if (
+    recordingStatus === 'requesting_permission'
+    || recordingStatus === 'recording'
+    || recordingStatus === 'recorded'
+  ) {
+    return false;
+  }
+  if (recordingStatus === 'error' && !startDenied) return false;
+  return permission !== 'granted' || startDenied;
+}
+
+export function shouldShowMicrophoneReconnectSteps(
+  permission: MicrophonePermissionState,
+  startDenied = false,
+): boolean {
+  return permission === 'denied' || startDenied;
+}
+
+export async function queryMicrophonePermission(
+  query?: ((descriptor: PermissionDescriptor) => Promise<Pick<PermissionStatus, 'state'>>) | null,
+): Promise<MicrophonePermissionState> {
+  if (typeof query !== 'function') return 'unknown';
+  try {
+    const status = await query({ name: 'microphone' });
+    return parseMicrophonePermissionState(status.state);
+  } catch {
+    return 'unknown';
+  }
+}
+
+export function getMicrophoneStartErrorKind(error: unknown): MicrophoneStartErrorKind {
+  const name = error instanceof DOMException ? error.name : '';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied';
+  if (name === 'NotFoundError') return 'not-found';
+  if (name === 'NotReadableError' || name === 'AbortError') return 'unavailable';
+  return 'generic';
+}
+
+export function getMicrophoneErrorMessage(error: unknown): string {
+  const kind = getMicrophoneStartErrorKind(error);
+  if (kind === 'denied') return MICROPHONE_DENIED_COPY;
+  if (kind === 'not-found') {
+    return 'No microphone was found. Connect a microphone or publish without audio.';
+  }
+  if (kind === 'unavailable') {
+    return 'The microphone is unavailable or already in use. Close other recording apps and try again.';
+  }
+  return 'Audio recording could not start. You can retry or publish without audio.';
+}
+
 export type RecordingAction =
   | { type: 'request' }
   | { type: 'start' }

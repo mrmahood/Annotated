@@ -9,6 +9,9 @@ export default defineConfig({
     name: 'Annotated',
     description: 'Annotate and organize sources from the web.',
     minimum_chrome_version: '116',
+    // Voice-note getUserMedia uses the extension origin's site permission.
+    // Chrome has no MV3 manifest `microphone` key; a capture warning would not
+    // improve the in-panel prompt or chrome://settings reconnect path.
     permissions: ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'],
     host_permissions: ['http://*/*', 'https://*/*'],
     action: {
