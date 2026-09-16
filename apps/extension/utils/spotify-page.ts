@@ -137,21 +137,21 @@ export function validateSpotifyPlayerDiscovery(
   expectedPageUrl: string,
   value: unknown,
 ): PlayerDiscovery {
-  if (typeof value !== 'object' || value === null) return { status: 'none', candidates: [] };
+  if (typeof value !== 'object' || value === null) return { status: 'none', candidates: [], adShowing: false };
   const row = value as Record<string, unknown>;
   if (row.mode !== 'audio' || typeof row.pageUrl !== 'string') {
-    return { status: 'none', candidates: [] };
+    return { status: 'none', candidates: [], adShowing: false };
   }
   try {
     if (getSpotifyEpisodeIdentity(row.pageUrl).episodeId !==
       getSpotifyEpisodeIdentity(expectedPageUrl).episodeId) {
-      return { status: 'none', candidates: [] };
+      return { status: 'none', candidates: [], adShowing: false };
     }
   } catch {
-    return { status: 'none', candidates: [] };
+    return { status: 'none', candidates: [], adShowing: false };
   }
-  if (row.overflow === true) return { status: 'overflow', candidates: [] };
-  if (!Array.isArray(row.candidates)) return { status: 'none', candidates: [] };
+  if (row.overflow === true) return { status: 'overflow', candidates: [], adShowing: false };
+  if (!Array.isArray(row.candidates)) return { status: 'none', candidates: [], adShowing: false };
   const candidates: PlayerCandidate[] = [];
   for (const valueCandidate of row.candidates) {
     if (typeof valueCandidate !== 'object' || valueCandidate === null) continue;
@@ -177,8 +177,10 @@ export function validateSpotifyPlayerDiscovery(
       durationMs: candidate.durationMs as number | null,
     });
   }
-  if (candidates.length > 1) return { status: 'overflow', candidates: [] };
-  return candidates.length === 1 ? { status: 'ready', candidates } : { status: 'none', candidates: [] };
+  if (candidates.length > 1) return { status: 'overflow', candidates: [], adShowing: false };
+  return candidates.length === 1
+    ? { status: 'ready', candidates, adShowing: false }
+    : { status: 'none', candidates: [], adShowing: false };
 }
 
 // Serialized into the explicitly connected top-level tab.

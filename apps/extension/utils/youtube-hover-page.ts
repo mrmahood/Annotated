@@ -128,6 +128,35 @@ export function applyYouTubeHoverHighlightOnPage(
       return { ok: false, reason: 'player-unavailable' };
     }
 
+    const youtubeLinearAdOwnsPlayer = () => {
+      try {
+        const host = player.id === 'movie_player' ||
+          (typeof player.className === 'string' && /\bhtml5-video-player\b/.test(player.className))
+          ? player
+          : player.querySelector('#movie_player, .html5-video-player') ?? player;
+        const list = host.classList;
+        if (list && typeof list.contains === 'function' &&
+            (list.contains('ad-showing') || list.contains('ad-interrupting'))) {
+          return true;
+        }
+        const tokens = `${typeof host.className === 'string' ? host.className : ''} ${list && typeof list.value === 'string' ? list.value : ''}`;
+        if (/(?:^|\s)(?:ad-showing|ad-interrupting)(?:\s|$)/.test(tokens)) return true;
+        if (typeof host.querySelector !== 'function') return false;
+        const overlay = host.querySelector(
+          '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, .ytp-skip-ad-button, .ytp-ad-skip-button-container, .ytp-ad-preview-container',
+        );
+        if (!overlay) return false;
+        const view = overlay.ownerDocument?.defaultView;
+        const style = view && typeof view.getComputedStyle === 'function'
+          ? view.getComputedStyle(overlay)
+          : getComputedStyle(overlay);
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+      } catch {
+        return false;
+      }
+    };
+    const adShowing = youtubeLinearAdOwnsPlayer();
+
     const rangeStyle = (startMs: number, endMs: number, durationMs: number) => {
       if (
         !Number.isFinite(startMs) || !Number.isFinite(endMs) || !Number.isFinite(durationMs) ||
@@ -212,7 +241,7 @@ export function applyYouTubeHoverHighlightOnPage(
 
       const bar = player.querySelector('.ytp-progress-bar, .ytp-progress-bar-container, .ytp-chrome-bottom');
       const video = player.querySelector('video') ?? document.querySelector('video');
-      const durationMs = video instanceof HTMLVideoElement && Number.isFinite(video.duration) && video.duration > 0
+      const durationMs = !adShowing && video instanceof HTMLVideoElement && Number.isFinite(video.duration) && video.duration > 0
         ? video.duration * 1_000
         : null;
       const cue = durationMs !== null &&
@@ -268,6 +297,7 @@ export function applyYouTubeHoverHighlightOnPage(
     };
 
     if (
+      !adShowing &&
       request.strength !== 'soft' &&
       request.strength !== 'range' &&
       typeof request.seekMs === 'number' &&

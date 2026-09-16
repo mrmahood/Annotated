@@ -28,6 +28,11 @@ import {
 } from '../../utils/hosted-playback';
 import { resolveHostedPlaybackSrc } from '../../utils/hosted-playback-src';
 import {
+  isYouTubeAdBlockedCopy,
+  YOUTUBE_AD_BLOCKED_COPY,
+  YOUTUBE_AD_HEADING,
+} from '../../utils/youtube-ad';
+import {
   createAnnotationBookmark,
   createAnnotationReshare,
   createComment,
@@ -2005,6 +2010,7 @@ export function AnnotationDetailView({
   onSocialMutation,
   connectedVideoId = null,
   onPlayConnectedClip,
+  youtubeAdShowing = false,
   connectedAudioNormalizedUrl = null,
   onPlayConnectedAudioClip,
   youtubeHover = null,
@@ -2022,6 +2028,7 @@ export function AnnotationDetailView({
   onSocialMutation?: () => void;
   connectedVideoId?: string | null;
   onPlayConnectedClip?: (annotation: Extract<PublicAnnotation, { kind: 'youtube' | 'tiktok' }>) => Promise<void>;
+  youtubeAdShowing?: boolean;
   connectedAudioNormalizedUrl?: string | null;
   onPlayConnectedAudioClip?: (annotation: Extract<PublicAnnotation, { kind: 'audio' | 'spotify' }>) => Promise<void>;
   youtubeHover?: YouTubeHoverConnection | null;
@@ -2036,6 +2043,7 @@ export function AnnotationDetailView({
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [audioError, setAudioError] = useState<string | null>(null);
   const [playState, setPlayState] = useState<'idle' | 'playing' | 'error'>('idle');
+  const [playError, setPlayError] = useState<string | null>(null);
   const [hasReshared, setHasReshared] = useState(false);
   const [hasBookmarked, setHasBookmarked] = useState(false);
   const { passageMissed, onArticleHoverResult } = useArticlePassageMiss(annotationId, articleHover, annotation);
@@ -2127,11 +2135,13 @@ export function AnnotationDetailView({
     if ((annotation.kind === 'youtube' || annotation.kind === 'tiktok') && !onPlayConnectedClip) return;
     if ((annotation.kind === 'audio' || annotation.kind === 'spotify') && !onPlayConnectedAudioClip) return;
     setPlayState('playing');
+    setPlayError(null);
     try {
       if (annotation.kind === 'youtube' || annotation.kind === 'tiktok') await onPlayConnectedClip!(annotation);
       else await onPlayConnectedAudioClip!(annotation);
       setPlayState('idle');
-    } catch {
+    } catch (error) {
+      setPlayError(error instanceof Error ? error.message : null);
       setPlayState('error');
     }
   };
@@ -2147,7 +2157,7 @@ export function AnnotationDetailView({
         <section className="detail-source" {...sourceHover}><span className="visually-hidden">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection)}>View original source ↗</a><ArticlePendingConnectHint show={showHint} /></section>
         <section className="detail-passage" {...sourceHover}><span className="visually-hidden">Captured passage</span><blockquote>{annotation.selectedText}</blockquote><ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} /></section>
       </> : annotation.kind === 'youtube' ? <>
-        <section className="detail-source" {...sourceHover}><span className="visually-hidden">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{playState === 'error' && <p className="inline-error" role="alert">The connected YouTube player could not be started. Reconnect the video and try again.</p>}</section>
+        <section className="detail-source" {...sourceHover}><span className="visually-hidden">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing' || youtubeAdShowing}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{youtubeAdShowing && canPlayConnectedClip && <div className="compact-state" role="status"><strong>{YOUTUBE_AD_HEADING}</strong><span>{YOUTUBE_AD_BLOCKED_COPY}</span></div>}{playState === 'error' && !youtubeAdShowing && <p className="inline-error" role="alert">{isYouTubeAdBlockedCopy(playError) ? playError : 'The connected YouTube player could not be started. Reconnect the video and try again.'}</p>}</section>
         <section className="detail-clip-range" {...sourceHover}><span className="visually-hidden">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
       </> : annotation.kind === 'tiktok' ? <>
         <section className="detail-source" {...sourceHover}><span className="visually-hidden">TikTok source</span><h1>{annotation.source.title ?? 'TikTok video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">tiktok.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleTikTokSourceOpenClick(event, annotation, tiktokHover, sourceOpenUrl, onTikTokAwaitingConnection)}>Open on TikTok ↗</a></div><TikTokPendingConnectHint show={showTikTokHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected TikTok player could not be started. Reconnect the video and try again.</p>}</section>

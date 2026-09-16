@@ -396,6 +396,24 @@ test('soft hover never seeks even when seekMs is present', () => {
   });
 });
 
+test('strong hover does not seek or paint a range cue while a linear ad owns the player', () => {
+  withPage(({ player, video, documentElement }) => {
+    player.className = 'html5-video-player ad-showing';
+    video.currentTime = 2;
+    video.duration = 15;
+    assert.equal(applyYouTubeHoverHighlightOnPage({
+      expectedVideoId: 'dQw4w9WgXcQ',
+      strength: 'strong',
+      startMs: 10_000,
+      endMs: 40_000,
+      seekMs: 10_000,
+    }).ok, true);
+    assert.equal(video.currentTime, 2);
+    const range = documentElement.querySelector('[data-annotated-hover-range="1"]');
+    assert.equal(range.hidden, true);
+  });
+});
+
 test('page injector collapses a rapid same-seek re-apply and never calls play', () => {
   assert.doesNotMatch(applyYouTubeHoverHighlightOnPage.toString(), /\.play\s*\(/);
   withPage(({ video, documentElement }) => {

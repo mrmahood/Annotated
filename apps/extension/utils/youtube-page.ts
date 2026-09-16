@@ -1,4 +1,5 @@
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
+import { detectYouTubeLinearAdShowing } from './youtube-ad.ts';
 
 export type YouTubePageMetadata = {
   videoId: string;
@@ -13,6 +14,7 @@ export type YouTubePlayerState = {
   currentTime: number;
   duration: number | null;
   paused: boolean;
+  adShowing: boolean;
 };
 
 // Serialized into the explicitly connected top-level tab. Keep this function
@@ -107,6 +109,7 @@ export function readYouTubePlayerState() {
     currentTime: video.currentTime,
     duration: Number.isFinite(video.duration) ? video.duration : null,
     paused: video.paused,
+    adShowing: detectYouTubeLinearAdShowing(document),
   };
 }
 
@@ -125,12 +128,14 @@ export function validateYouTubePlayerState(value: unknown): YouTubePlayerState |
     currentTime: row.currentTime,
     duration: row.duration as number | null,
     paused: row.paused,
+    adShowing: row.adShowing === true,
   };
 }
 
 // Serialized into the connected tab for an explicit Play clip action.
 export function playYouTubeVideoFrom(startSeconds: number) {
   if (!Number.isFinite(startSeconds) || startSeconds < 0) return false;
+  if (detectYouTubeLinearAdShowing(document)) return false;
   const video = document.querySelector('video');
   if (!(video instanceof HTMLVideoElement)) return false;
   if (Number.isFinite(video.duration) && startSeconds > video.duration) return false;

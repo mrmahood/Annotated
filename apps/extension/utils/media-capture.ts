@@ -197,6 +197,7 @@ export type CaptureFailureCode =
   | 'raw-capture-unavailable' | 'unexpected';
 export type PreparationDiagnosticCode =
   | 'PLAYER_NOT_FOUND' | 'PLAYER_NOT_READY' | 'SOURCE_CHANGED' | 'RANGE_INVALID'
+  | 'AD_SHOWING'
   | 'SCRIPT_INJECTION_FAILED' | 'PREPARATION_RESULT_MISSING'
   | 'PREPARATION_RESULT_INVALID' | 'STALE_CAPTURE' | 'NAVIGATION_CHANGED';
 export type CaptureSnapshot =

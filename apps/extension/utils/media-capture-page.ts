@@ -444,6 +444,39 @@ export async function prepareMediaCaptureOnPage(
   if (!sourceMatches()) {
     return { ok: false, code: 'SOURCE_CHANGED', message: 'The connected source changed before capture started.' };
   }
+  const youtubeLinearAdOwnsPlayer = () => {
+    try {
+      const player = document.querySelector('#movie_player')
+        ?? document.querySelector('.html5-video-player');
+      if (!player) return false;
+      const list = player.classList;
+      if (list && typeof list.contains === 'function' &&
+          (list.contains('ad-showing') || list.contains('ad-interrupting'))) {
+        return true;
+      }
+      const tokens = `${typeof (player as HTMLElement).className === 'string' ? (player as HTMLElement).className : ''} ${list && typeof list.value === 'string' ? list.value : ''}`;
+      if (/(?:^|\s)(?:ad-showing|ad-interrupting)(?:\s|$)/.test(tokens)) return true;
+      if (typeof player.querySelector !== 'function') return false;
+      const overlay = player.querySelector(
+        '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, .ytp-skip-ad-button, .ytp-ad-skip-button-container, .ytp-ad-preview-container',
+      );
+      if (!overlay) return false;
+      const view = overlay.ownerDocument?.defaultView;
+      const style = view && typeof view.getComputedStyle === 'function'
+        ? view.getComputedStyle(overlay)
+        : getComputedStyle(overlay);
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+    } catch {
+      return false;
+    }
+  };
+  if (playerFamily === 'youtube' && youtubeLinearAdOwnsPlayer()) {
+    return {
+      ok: false,
+      code: 'AD_SHOWING',
+      message: 'Ad playing — wait until it ends, then try again.',
+    };
+  }
   const durationMs = request.endMs - request.startMs;
   if (!Number.isSafeInteger(request.startMs) || request.startMs < 0 ||
       !Number.isSafeInteger(request.endMs) || durationMs < 1_000 || durationMs > 90_000) {
@@ -836,6 +869,42 @@ export async function playMediaForCaptureOnPage(
     return { ok: true, acknowledgedAtMs: Date.now(), currentTimeMs: Math.round(now.position * 1_000) };
   }
   if (!sourceMatches()) return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'connected-source-changed' };
+  if (playerFamily === 'youtube') {
+    const youtubeLinearAdOwnsPlayer = () => {
+      try {
+        const player = document.querySelector('#movie_player')
+          ?? document.querySelector('.html5-video-player');
+        if (!player) return false;
+        const list = player.classList;
+        if (list && typeof list.contains === 'function' &&
+            (list.contains('ad-showing') || list.contains('ad-interrupting'))) {
+          return true;
+        }
+        const tokens = `${typeof (player as HTMLElement).className === 'string' ? (player as HTMLElement).className : ''} ${list && typeof list.value === 'string' ? list.value : ''}`;
+        if (/(?:^|\s)(?:ad-showing|ad-interrupting)(?:\s|$)/.test(tokens)) return true;
+        if (typeof player.querySelector !== 'function') return false;
+        const overlay = player.querySelector(
+          '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, .ytp-skip-ad-button, .ytp-ad-skip-button-container, .ytp-ad-preview-container',
+        );
+        if (!overlay) return false;
+        const view = overlay.ownerDocument?.defaultView;
+        const style = view && typeof view.getComputedStyle === 'function'
+          ? view.getComputedStyle(overlay)
+          : getComputedStyle(overlay);
+        return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+      } catch {
+        return false;
+      }
+    };
+    if (youtubeLinearAdOwnsPlayer()) {
+      return {
+        ok: false,
+        acknowledgedAtMs,
+        currentTimeMs: null,
+        message: 'Ad playing — wait until it ends, then try again.',
+      };
+    }
+  }
   const media = selectMedia();
   if (!media) return { ok: false, acknowledgedAtMs, currentTimeMs: null, message: 'player-unavailable' };
   if (Math.abs(media.currentTime * 1_000 - startMs) > 250) media.currentTime = startMs / 1_000;
@@ -1115,6 +1184,7 @@ export function finishMediaCaptureOnPage(
 
 const PREPARATION_CODES = new Set<PreparationDiagnosticCode>([
   'PLAYER_NOT_FOUND', 'PLAYER_NOT_READY', 'SOURCE_CHANGED', 'RANGE_INVALID',
+  'AD_SHOWING',
   'SCRIPT_INJECTION_FAILED', 'PREPARATION_RESULT_MISSING',
   'PREPARATION_RESULT_INVALID', 'STALE_CAPTURE', 'NAVIGATION_CHANGED',
 ]);

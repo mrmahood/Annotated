@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   extractYouTubePageMetadata,
   normalizeYouTubeVideoTitle,
+  playYouTubeVideoFrom,
+  readYouTubePlayerState,
   validateYouTubePageMetadata,
   validateYouTubePlayerState,
 } from './youtube-page.ts';
@@ -62,9 +64,70 @@ test('cleans document-title suffix and treats generic YouTube labels as final fa
 
 test('validates one-shot player state responses', () => {
   assert.deepEqual(validateYouTubePlayerState({ currentTime: 42.25, duration: 180, paused: false }), {
-    currentTime: 42.25, duration: 180, paused: false,
+    currentTime: 42.25, duration: 180, paused: false, adShowing: false,
+  });
+  assert.deepEqual(validateYouTubePlayerState({
+    currentTime: 42.25, duration: 180, paused: false, adShowing: true,
+  }), {
+    currentTime: 42.25, duration: 180, paused: false, adShowing: true,
   });
   assert.equal(validateYouTubePlayerState({ currentTime: -1, duration: 180, paused: true }), null);
   assert.equal(validateYouTubePlayerState({ currentTime: 200, duration: 180, paused: true }), null);
   assert.equal(validateYouTubePlayerState({ currentTime: 0, duration: Infinity, paused: true }), null);
+});
+
+function withYouTubePlayer(callback, { className = 'html5-video-player', duration = 180, currentTime = 12 } = {}) {
+  const names = ['document', 'HTMLVideoElement'];
+  const previous = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+  class Video {
+    constructor() {
+      this.currentTime = currentTime;
+      this.duration = duration;
+      this.paused = true;
+    }
+    async play() { this.paused = false; }
+  }
+  const video = new Video();
+  const player = {
+    className,
+    classList: {
+      contains: (token) => className.split(/\s+/).includes(token),
+      value: className,
+    },
+    querySelector: () => null,
+  };
+  Object.defineProperty(globalThis, 'HTMLVideoElement', { configurable: true, value: Video });
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      querySelector: (selector) => {
+        if (selector === 'video') return video;
+        if (selector === '#movie_player' || selector === '.html5-video-player') return player;
+        return null;
+      },
+    },
+  });
+  try {
+    return callback(video);
+  } finally {
+    for (const [name, descriptor] of previous) descriptor
+      ? Object.defineProperty(globalThis, name, descriptor) : delete globalThis[name];
+  }
+}
+
+test('player reads report adShowing and play-from refuses to seek during a linear ad', () => {
+  withYouTubePlayer((video) => {
+    assert.deepEqual(readYouTubePlayerState(), {
+      currentTime: 12, duration: 180, paused: true, adShowing: false,
+    });
+    assert.equal(playYouTubeVideoFrom(30), true);
+    assert.equal(video.currentTime, 30);
+    assert.equal(video.paused, false);
+  });
+  withYouTubePlayer((video) => {
+    assert.equal(readYouTubePlayerState().adShowing, true);
+    assert.equal(playYouTubeVideoFrom(30), false);
+    assert.equal(video.currentTime, 12);
+    assert.equal(video.paused, true);
+  }, { className: 'html5-video-player ad-showing' });
 });
