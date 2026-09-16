@@ -16,12 +16,14 @@ h1). Install UX is a dismissible web callout + modal; marketing
 `cbandcoop.com/Annotated` Install CTA; zip at
 `https://annotated.cbandcoop.com/extension.zip` with pinned public-zip
 Chrome ID `dgflcndninfbfgeachchbpjcdhnegcpp` (Prod chromiumapp allowlist
-so OAuth from the zip works). Feedback is a Tally form on signed-in Me
-only (extension + web). Legal Privacy/Terms live in `apps/web`. Remaining
-Phase G work is hardening, Chrome Web Store submit, and polish — not a
-first Production cutover. No store listing exists yet; do not invent a
-URL. Launch announcement context: `docs/product/launch-one-pager.md`.
-Updated 2026-09-15.
+so OAuth from the zip works). The install walkthrough
+([How to Install the Annotated Chrome Extension](https://www.loom.com/share/65279b7ca270450cbf585ff25d75ea49))
+is live on Loom and is the Walkthrough on that marketing page. Feedback
+is a Tally form on signed-in Me only (extension + web). Legal
+Privacy/Terms live in `apps/web`. Remaining Phase G work is hardening,
+Chrome Web Store submit, and polish — not a first Production cutover. No
+store listing exists yet; do not invent a URL. Launch announcement
+context: `docs/product/launch-one-pager.md`. Updated 2026-09-16.
 
 Historical delivery (Phases A–F and Pre–Phase G) is unchanged below.
 Phase D complete and merged; Phase E increments E1a-E1e, E2a-E2c,
@@ -963,7 +965,7 @@ Phase G Production cutover is live as of 2026-09-14. Pre–Phase G (clip
 UI first, then the social slice) shipped first per owner Q&A
 (2026-09-11). Remaining work is hardening, Chrome Web Store submit, and
 polish — not a first Production launch. Launch announcement context:
-`docs/product/launch-one-pager.md`. Updated 2026-09-15.
+`docs/product/launch-one-pager.md`. Updated 2026-09-16.
 
 ### Live on Production (2026-09-14)
 
@@ -984,7 +986,9 @@ polish — not a first Production launch. Launch announcement context:
   shared with the world.” Eyebrow PUBLIC ANNOTATIONS; h1 removed.
 - Install UX: dismissible callout + modal on web; marketing
   `cbandcoop.com/Annotated` Install CTA; zip at
-  `https://annotated.cbandcoop.com/extension.zip`.
+  `https://annotated.cbandcoop.com/extension.zip`. Walkthrough:
+  [How to Install the Annotated Chrome Extension](https://www.loom.com/share/65279b7ca270450cbf585ff25d75ea49)
+  (Loom; same Walkthrough on the marketing page).
 - Pinned public-zip Chrome extension ID
   `dgflcndninfbfgeachchbpjcdhnegcpp` plus Supabase Prod chromiumapp
   allowlist (OAuth from the zip works).
@@ -999,7 +1003,6 @@ polish — not a first Production launch. Launch announcement context:
   `package.json` is still `0.0.0` — bump before the first store upload.
   Operator checklist: `docs/product/extension-release-versioning.md`.
   Staging stays load-unpacked. Do not invent a store URL.
-- Marketing install video still “coming soon.”
 - Chrome notification when a clip is ready (queued).
 - Parked Create quirks: multi-click Publish first-error; header-icon
   capture quirk; `raw_delete_unconfirmed` race.
