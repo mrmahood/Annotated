@@ -7,7 +7,7 @@ import {
 
 const pageUrl = 'https://www.youtube.com/watch?v=abcdefghijk';
 
-async function withPlayers(players, callback, url = pageUrl) {
+async function withPlayers(players, callback, url = pageUrl, moviePlayer = null) {
   const names = [
     'location', 'document', 'window', 'HTMLMediaElement', 'HTMLAudioElement', 'HTMLVideoElement', 'getComputedStyle',
   ];
@@ -53,6 +53,12 @@ async function withPlayers(players, callback, url = pageUrl) {
   const values = {
     location: { href: url },
     document: {
+      querySelector: (selector) => {
+        if (selector === '#movie_player' || selector === '.html5-video-player') {
+          return moviePlayer;
+        }
+        return null;
+      },
       querySelectorAll: () => instances,
       elementsFromPoint: () => instances.filter((instance) => instance.exposed !== false),
     },
@@ -190,4 +196,38 @@ test('preview stop-at-end watcher releases if the user pauses earlier', async ()
     for (const listener of video.listeners.timeupdate ?? []) listener();
     assert.equal(video.paused, false);
   });
+});
+
+test('YouTube linear ads are reported and block play and preview seeks', async () => {
+  const discover = Function(`return (${readTopFramePlayerDiscovery.toString()})`)();
+  const act = Function(`return (${actOnTopFramePlayer.toString()})`)();
+  const moviePlayer = {
+    className: 'html5-video-player ad-showing',
+    classList: {
+      contains: (name) => name === 'ad-showing' || name === 'ad-interrupting',
+      value: 'html5-video-player ad-showing',
+    },
+    querySelector: () => null,
+  };
+  await withPlayers([
+    { kind: 'video', source: 'blob:main', label: 'YouTube Video Player' },
+  ], async (instances) => {
+    const discovery = discover('video');
+    assert.equal(discovery.adShowing, true);
+    const identity = discovery.candidates[0].identity;
+    assert.deepEqual(await act('video', identity, 'abcdefghijk', 'read', null), {
+      ok: true,
+      identity,
+      currentTimeMs: 5_000,
+      durationMs: 120_000,
+      adShowing: true,
+    });
+    assert.deepEqual(await act('video', identity, 'abcdefghijk', 'play', 5), {
+      ok: false, reason: 'ad-showing',
+    });
+    assert.deepEqual(await act('video', identity, 'abcdefghijk', 'preview', 5, false, 8), {
+      ok: false, reason: 'ad-showing',
+    });
+    assert.equal(instances[0].currentTime, 5);
+  }, pageUrl, moviePlayer);
 });

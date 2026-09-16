@@ -200,6 +200,7 @@ export function ClipRangeEditor({
   disabled,
   playerSelected,
   playerReading,
+  playheadActionsDisabled = false,
   previewEnabled,
   previewLabel,
   onCommitRange,
@@ -225,6 +226,7 @@ export function ClipRangeEditor({
   disabled: boolean;
   playerSelected: boolean;
   playerReading: boolean;
+  playheadActionsDisabled?: boolean;
   previewEnabled: boolean;
   previewLabel: string;
   onCommitRange: (startMs: number, endMs: number) => void;
@@ -302,7 +304,7 @@ export function ClipRangeEditor({
   const fillLeft = Math.max(0, Math.min(100, startPercent));
   const fillRight = Math.max(0, Math.min(100, endPercent));
   const sliderDisabled = disabled || sliderSpanSeconds < 1;
-  const actionsDisabled = disabled || !playerSelected || playerReading;
+  const actionsDisabled = disabled || !playerSelected || playerReading || playheadActionsDisabled;
   const canPanEarlier = zoomed && windowStartMs > 0;
   const canPanLater = zoomed && maxMs !== null && windowEndMs < maxMs;
   const windowCue = zoomed

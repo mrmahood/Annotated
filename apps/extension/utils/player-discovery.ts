@@ -16,13 +16,13 @@ export type PlayerCandidate = {
 };
 
 export type PlayerDiscovery =
-  | { status: 'ready'; candidates: PlayerCandidate[] }
-  | { status: 'none'; candidates: [] }
-  | { status: 'overflow'; candidates: [] };
+  | { status: 'ready'; candidates: PlayerCandidate[]; adShowing: boolean }
+  | { status: 'none'; candidates: []; adShowing: boolean }
+  | { status: 'overflow'; candidates: []; adShowing: boolean };
 
 export type PlayerActionResult =
-  | { ok: true; identity: string; currentTimeMs: number; durationMs: number | null }
-  | { ok: false; reason: 'invalid-request' | 'source-mismatch' | 'player-mismatch' | 'player-not-ready' | 'playback-failed' };
+  | { ok: true; identity: string; currentTimeMs: number; durationMs: number | null; adShowing?: boolean }
+  | { ok: false; reason: 'invalid-request' | 'source-mismatch' | 'player-mismatch' | 'player-not-ready' | 'playback-failed' | 'ad-showing' };
 
 function comparablePageIdentity(mode: PlayerMode, value: string, genericVideo = false): string | null {
   try {
@@ -59,15 +59,16 @@ export function validatePlayerDiscovery(
   value: unknown,
   genericVideo = false,
 ): PlayerDiscovery {
-  if (typeof value !== 'object' || value === null) return { status: 'none', candidates: [] };
+  if (typeof value !== 'object' || value === null) return { status: 'none', candidates: [], adShowing: false };
   const row = value as Record<string, unknown>;
+  const adShowing = row.adShowing === true;
   if (
     row.mode !== expectedMode || typeof row.pageUrl !== 'string' ||
     comparablePageIdentity(expectedMode, row.pageUrl, genericVideo) !==
       comparablePageIdentity(expectedMode, expectedPageUrl, genericVideo)
-  ) return { status: 'none', candidates: [] };
-  if (row.overflow === true) return { status: 'overflow', candidates: [] };
-  if (!Array.isArray(row.candidates)) return { status: 'none', candidates: [] };
+  ) return { status: 'none', candidates: [], adShowing: false };
+  if (row.overflow === true) return { status: 'overflow', candidates: [], adShowing };
+  if (!Array.isArray(row.candidates)) return { status: 'none', candidates: [], adShowing: false };
   const candidates: PlayerCandidate[] = [];
   const identities = new Set<string>();
   for (const valueCandidate of row.candidates) {
@@ -91,8 +92,10 @@ export function validatePlayerDiscovery(
     identities.add(candidate.identity);
     candidates.push(candidate as PlayerCandidate);
   }
-  if (candidates.length > MAX_PLAYER_CANDIDATES) return { status: 'overflow', candidates: [] };
-  return candidates.length > 0 ? { status: 'ready', candidates } : { status: 'none', candidates: [] };
+  if (candidates.length > MAX_PLAYER_CANDIDATES) return { status: 'overflow', candidates: [], adShowing };
+  return candidates.length > 0
+    ? { status: 'ready', candidates, adShowing }
+    : { status: 'none', candidates: [], adShowing };
 }
 
 export function reconcilePlayerSelection(
@@ -185,6 +188,33 @@ export function readTopFramePlayerDiscovery(mode: PlayerMode, genericVideo = fal
     } catch { return null; }
   };
   const pageKey = genericVideo && mode === 'video' ? normalizeArticle(location.href) : null;
+  const youtubeLinearAdOwnsPlayer = () => {
+    try {
+      const player = document.querySelector('#movie_player')
+        ?? document.querySelector('.html5-video-player');
+      if (!player) return false;
+      const list = player.classList;
+      if (list && typeof list.contains === 'function' &&
+          (list.contains('ad-showing') || list.contains('ad-interrupting'))) {
+        return true;
+      }
+      const tokens = `${typeof (player as HTMLElement).className === 'string' ? (player as HTMLElement).className : ''} ${list && typeof list.value === 'string' ? list.value : ''}`;
+      if (/(?:^|\s)(?:ad-showing|ad-interrupting)(?:\s|$)/.test(tokens)) return true;
+      if (typeof player.querySelector !== 'function') return false;
+      const overlay = player.querySelector(
+        '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, .ytp-skip-ad-button, .ytp-ad-skip-button-container, .ytp-ad-preview-container',
+      );
+      if (!overlay) return false;
+      const view = overlay.ownerDocument?.defaultView;
+      const style = view && typeof view.getComputedStyle === 'function'
+        ? view.getComputedStyle(overlay)
+        : getComputedStyle(overlay);
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+    } catch {
+      return false;
+    }
+  };
+  const adShowing = !genericVideo && mode === 'video' && youtubeLinearAdOwnsPlayer();
   type Located = { element: HTMLMediaElement; video: HTMLVideoElement | null; framePath: string; frameOrigin: string };
   const eligible: Located[] = [];
   const collect = (ownerDocument: Document, ownerWindow: Window, framePath: string, topOrigin: string) => {
@@ -254,7 +284,7 @@ export function readTopFramePlayerDiscovery(mode: PlayerMode, genericVideo = fal
   };
   collect(document, window, 'top', genericVideo ? new URL(location.href).origin : '');
   if (eligible.length > limit) {
-    return { pageUrl: location.href, mode, overflow: true, candidates: [] };
+    return { pageUrl: location.href, mode, overflow: true, candidates: [], adShowing };
   }
   const candidates = eligible.map(({ element, video, framePath, frameOrigin }, index) => {
     const kind = genericVideo && mode === 'video' ? 'video' as const : element instanceof HTMLAudioElement
@@ -278,7 +308,7 @@ export function readTopFramePlayerDiscovery(mode: PlayerMode, genericVideo = fal
       : element.readyState >= 1 ? 'ready' as const : 'loading' as const;
     return { identity, kind, label, status, currentTimeMs, durationMs };
   });
-  return { pageUrl: location.href, mode, overflow: false, candidates };
+  return { pageUrl: location.href, mode, overflow: false, candidates, adShowing };
 }
 
 // Serialized into the top frame for every player-dependent action.
@@ -334,6 +364,36 @@ export async function actOnTopFramePlayer(
   };
   if (pageSourceKey(location.href) !== expectedSourceKey) {
     return { ok: false, reason: 'source-mismatch' };
+  }
+  const youtubeLinearAdOwnsPlayer = () => {
+    try {
+      const player = document.querySelector('#movie_player')
+        ?? document.querySelector('.html5-video-player');
+      if (!player) return false;
+      const list = player.classList;
+      if (list && typeof list.contains === 'function' &&
+          (list.contains('ad-showing') || list.contains('ad-interrupting'))) {
+        return true;
+      }
+      const tokens = `${typeof (player as HTMLElement).className === 'string' ? (player as HTMLElement).className : ''} ${list && typeof list.value === 'string' ? list.value : ''}`;
+      if (/(?:^|\s)(?:ad-showing|ad-interrupting)(?:\s|$)/.test(tokens)) return true;
+      if (typeof player.querySelector !== 'function') return false;
+      const overlay = player.querySelector(
+        '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, .ytp-skip-ad-button, .ytp-ad-skip-button-container, .ytp-ad-preview-container',
+      );
+      if (!overlay) return false;
+      const view = overlay.ownerDocument?.defaultView;
+      const style = view && typeof view.getComputedStyle === 'function'
+        ? view.getComputedStyle(overlay)
+        : getComputedStyle(overlay);
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+    } catch {
+      return false;
+    }
+  };
+  const adShowing = !genericVideo && mode === 'video' && youtubeLinearAdOwnsPlayer();
+  if (adShowing && (action === 'play' || action === 'preview')) {
+    return { ok: false, reason: 'ad-showing' };
   }
   const digest = (value: string) => {
     let hash = 0x811c9dc5;
@@ -518,5 +578,6 @@ export async function actOnTopFramePlayer(
     currentTimeMs: Math.round(player.currentTime * 1_000),
     durationMs: Number.isFinite(player.duration) && player.duration > 0
       ? Math.round(player.duration * 1_000) : null,
+    adShowing,
   };
 }

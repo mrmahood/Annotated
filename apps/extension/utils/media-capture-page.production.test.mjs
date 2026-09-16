@@ -45,10 +45,21 @@ async function withFakeVideo(callback, overrides = {}) {
   const inlinePreview = overrides.inlinePreview ? new Video() : null;
   if (inlinePreview) inlinePreview.currentSrc = 'blob:inline-preview';
   const players = [video, inlinePreview].filter(Boolean);
+  const moviePlayer = {
+    className: overrides.playerClassName ?? 'html5-video-player',
+    classList: {
+      contains: (name) => String(overrides.playerClassName ?? 'html5-video-player').split(/\s+/).includes(name),
+      value: overrides.playerClassName ?? 'html5-video-player',
+    },
+    querySelector: () => null,
+  };
   const values = {
     location: { href: overrides.url ?? pageUrl },
     document: {
-      querySelector: () => video,
+      querySelector: (selector) => {
+        if (selector === '#movie_player' || selector === '.html5-video-player') return moviePlayer;
+        return video;
+      },
       querySelectorAll: () => players,
       elementsFromPoint: () => video ? [video] : [],
       fullscreenElement: null,
@@ -157,6 +168,21 @@ test('reports player readiness, navigation, and exact range boundaries', async (
   for (const [startMs, endMs] of [[0, 999], [0, 90_001]]) {
     assert.equal((await withFakeVideo(() => prepareMediaCaptureOnPage({ source, startMs, endMs }), { duration: 120 })).code, 'RANGE_INVALID');
   }
+});
+
+test('YouTube linear ads block capture prepare and play-from without seeking the ad clock', async () => {
+  const prepared = await withFakeVideo(() => prepareMediaCaptureOnPage({
+    source, startMs: 10_000, endMs: 25_000,
+  }), { playerClassName: 'html5-video-player ad-showing', duration: 15, currentTime: 2 });
+  assert.equal(prepared.ok, false);
+  assert.equal(prepared.code, 'AD_SHOWING');
+  assert.equal(prepared.message, 'Ad playing — wait until it ends, then try again.');
+  await withFakeVideo(async () => {
+    const playback = await playMediaForCaptureOnPage(source, 10_000);
+    assert.equal(playback.ok, false);
+    assert.equal(playback.message, 'Ad playing — wait until it ends, then try again.');
+    assert.equal(document.querySelector('video').currentTime, 2);
+  }, { playerClassName: 'html5-video-player ad-showing', currentTime: 2, duration: 15 });
 });
 
 const spotifyUrl = 'https://open.spotify.com/episode/6EMoFpxEsLelogfZz8eAC2';

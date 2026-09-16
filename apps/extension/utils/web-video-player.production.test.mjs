@@ -145,7 +145,7 @@ test('a visible advertising or preroll element never becomes generic Video by it
     };
   }, async () => {
     const discovery = validatePlayerDiscovery(pageUrl, 'video', readTopFramePlayerDiscovery('video', true), true);
-    assert.deepEqual(discovery, { status: 'none', candidates: [] });
+    assert.deepEqual(discovery, { status: 'none', candidates: [], adShowing: false });
   });
 });
 

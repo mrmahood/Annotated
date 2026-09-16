@@ -165,6 +165,12 @@ import {
   validateYouTubePageMetadata,
 } from '../../utils/youtube-page';
 import {
+  freezeYouTubeMediaTimesWhileAd,
+  youtubeClipRangeAfterAdCleared,
+  YOUTUBE_AD_BLOCKED_COPY,
+  YOUTUBE_AD_HEADING,
+} from '../../utils/youtube-ad';
+import {
   extractTikTokPageMetadata,
   validateTikTokPageMetadata,
 } from '../../utils/tiktok-page';
@@ -319,7 +325,7 @@ type PublishState =
 type PlayerDiscoveryState = PlayerDiscovery & { pageGeneration: number | null };
 
 const EMPTY_PLAYER_DISCOVERY: PlayerDiscoveryState = {
-  status: 'none', candidates: [], pageGeneration: null,
+  status: 'none', candidates: [], adShowing: false, pageGeneration: null,
 };
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
@@ -698,6 +704,7 @@ function App() {
   const [videoPlayers, setVideoPlayers] = useState<PlayerDiscoveryState>(EMPTY_PLAYER_DISCOVERY);
   const [audioPlayers, setAudioPlayers] = useState<PlayerDiscoveryState>(EMPTY_PLAYER_DISCOVERY);
   const [playerDiscoveryRevision, setPlayerDiscoveryRevision] = useState(0);
+  const [youtubeAdShowing, setYoutubeAdShowing] = useState(false);
   const hostedMediaSessionRef = useRef<HostedMediaSession | null>(null);
   const hostedBeginModeRef = useRef<MediaCreateMode | null>(null);
   const activeCaptureIdRef = useRef<string | null>(null);
@@ -1351,6 +1358,10 @@ function App() {
       ],
     });
     const result = execution[0]?.result;
+    if (result && 'reason' in result && result.reason === 'ad-showing') {
+      setYoutubeAdShowing(true);
+      throw new Error(YOUTUBE_AD_BLOCKED_COPY);
+    }
     if (!result?.ok || result.identity !== identity) {
       if (spotifyIdentity && mode === 'audio' && result && !result.ok) {
         throw new Error(
@@ -1371,6 +1382,10 @@ function App() {
       throw new Error('The selected player changed. Choose it again.');
     }
     if (!playerTokenIsCurrent(token)) throw new Error('This player action is no longer current.');
+    if (result.adShowing) setYoutubeAdShowing(true);
+    else if (sourceState.status === 'connected' && sourceState.source.classification === 'YouTube') {
+      setYoutubeAdShowing(false);
+    }
     return result;
   }, [playerTokenIsCurrent, sourceState]);
 
@@ -1391,15 +1406,33 @@ function App() {
     try {
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) return null;
+      const youtubeAd = mode === 'video'
+        && sourceState.status === 'connected'
+        && sourceState.source.classification === 'YouTube'
+        && player.adShowing === true;
+      if (youtubeAd) setYoutubeAdShowing(true);
+      const frozen = freezeYouTubeMediaTimesWhileAd({
+        adShowing: Boolean(youtubeAd),
+        previous: {
+          durationMs: draft.durationMs,
+          playerTimeMs: draft.playerTimeMs,
+          playerIdentity: draft.playerIdentity,
+        },
+        next: {
+          durationMs: player.durationMs,
+          playerTimeMs: player.currentTimeMs,
+          playerIdentity: draft.playerIdentity,
+        },
+      });
       dispatchCreateDraft({
         type: 'patch-media', mode,
         patch: {
           sourceKey: mode === 'video'
             ? videoPlayerSourceKey(sourceState.source)
             : spotifyIdentity?.normalizedUrl ?? audioIdentity?.normalizedUrl ?? '',
-          playerIdentity: draft.playerIdentity,
-          playerTimeMs: player.currentTimeMs,
-          durationMs: player.durationMs,
+          playerIdentity: frozen.playerIdentity,
+          playerTimeMs: frozen.playerTimeMs,
+          durationMs: frozen.durationMs,
           playerReadState: 'idle',
         },
       });
@@ -1415,6 +1448,7 @@ function App() {
   const applyMediaClipPreset = useCallback(async (presetMs: number, window?: ClipPresetWindow) => {
     const player = await readConnectedPlayer();
     if (!player) return;
+    if (player.adShowing) return;
     const mode: PlayerMode | null = modeSelection?.selectedMode === 'video'
       ? 'video'
       : modeSelection?.selectedMode === 'audio' ? 'audio' : null;
@@ -1880,6 +1914,10 @@ function App() {
       isCommentaryRecordingBusy(videoCommentaryRecorder.state.status) ||
       !videoDraftState.playerIdentity
     ) return;
+    if (youtubeAdShowing) {
+      setYoutubePublishState({ status: 'error', message: YOUTUBE_AD_BLOCKED_COPY });
+      return;
+    }
     const rangeError = getNewMediaPublicationRangeError(
       videoDraftState.startMs,
       videoDraftState.endMs,
@@ -1907,10 +1945,19 @@ function App() {
       }
       const player = await runSelectedPlayerAction(token, 'read', null);
       if (!playerTokenIsCurrent(token)) throw new Error('The Video draft changed. Review it and try again.');
-      const actionRangeError = getNewMediaPublicationRangeError(
+      if (player.adShowing) throw new Error(YOUTUBE_AD_BLOCKED_COPY);
+      const actionRangeError = youtubeClipRangeAfterAdCleared(
         videoDraftState.startMs, videoDraftState.endMs, player.durationMs,
       );
       if (actionRangeError) throw new Error(actionRangeError);
+      dispatchCreateDraft({
+        type: 'patch-media',
+        mode: 'video',
+        patch: {
+          durationMs: player.durationMs,
+          playerTimeMs: player.currentTimeMs,
+        },
+      });
       const recordedCommentary = recordedCommentaryFrom(videoCommentaryRecorder);
       const operation = await beginHostedYouTubeAnnotation(supabase, {
         sourceUrl: sourceState.source.url,
@@ -1964,7 +2011,7 @@ function App() {
         setHostedBeginMode(null);
       }
     }
-  }, [abandonOrphanedHostedDraftForPublish, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState]);
+  }, [abandonOrphanedHostedDraftForPublish, authState.status, beginPublishTabCaptureStreamId, cancelStaleHostedBegin, getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, startHostedCapture, supabase, videoCommentaryRecorder, videoDraftState, youtubeAdShowing]);
 
   const publishTikTokClip = useCallback(async () => {
     if (
@@ -2629,9 +2676,12 @@ function App() {
       !isHostedWatchSource(sourceState.source) ||
       sourceState.source.videoId !== annotation.source.videoId
     ) throw new Error('The connected video does not match this clip.');
+    if (annotation.kind === 'youtube' && youtubeAdShowing) {
+      throw new Error(YOUTUBE_AD_BLOCKED_COPY);
+    }
     const token = getPlayerActionToken('video', videoDraftState.playerIdentity);
     await runSelectedPlayerAction(token, 'play', annotation.startMs / 1_000);
-  }, [getPlayerActionToken, runSelectedPlayerAction, sourceState, videoDraftState.playerIdentity]);
+  }, [getPlayerActionToken, runSelectedPlayerAction, sourceState, videoDraftState.playerIdentity, youtubeAdShowing]);
 
   const playConnectedAudioClip = useCallback(async (
     annotation: Extract<PublicAnnotation, { kind: 'audio' | 'spotify' }>,
@@ -2661,6 +2711,7 @@ function App() {
     if (
       videoDraftState.startMs === null || videoDraftState.endMs === null || sourceState.status !== 'connected'
     ) return;
+    if (youtubeAdShowing) return;
     const context = connectedContextRef.current;
     if (!context) return;
     let token: PlayerActionToken;
@@ -2683,12 +2734,16 @@ function App() {
       if (playerTokenIsCurrent(token)) {
         dispatchCreateDraft({ type: 'set-player-read-state', mode: 'video', state: 'idle' });
       }
-    } catch {
+    } catch (error) {
       if (playerTokenIsCurrent(token)) {
-        dispatchCreateDraft({ type: 'set-player-read-state', mode: 'video', state: 'error' });
+        dispatchCreateDraft({
+          type: 'set-player-read-state',
+          mode: 'video',
+          state: error instanceof Error && error.message === YOUTUBE_AD_BLOCKED_COPY ? 'idle' : 'error',
+        });
       }
     }
-  }, [getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState.endMs, videoDraftState.playerIdentity, videoDraftState.startMs]);
+  }, [getPlayerActionToken, playerTokenIsCurrent, runSelectedPlayerAction, sourceState, videoDraftState.endMs, videoDraftState.playerIdentity, videoDraftState.startMs, youtubeAdShowing]);
 
   const previewAudioDraft = useCallback(async () => {
     if (
@@ -3248,6 +3303,7 @@ function App() {
     if (!context || !page || sourceState.status !== 'connected') {
       setVideoPlayers(EMPTY_PLAYER_DISCOVERY);
       setAudioPlayers(EMPTY_PLAYER_DISCOVERY);
+      setYoutubeAdShowing(false);
       return;
     }
     const pageUrl = sourceState.source.url;
@@ -3305,17 +3361,41 @@ function App() {
                 videoDetectionResolved: true, videoAvailable: playerDiscoveryMakesModeAvailable(discovery) } }
               : currentState);
         } else setAudioPlayers(state);
+        const youtubeAd = probe.mode === 'video'
+          && sourceState.status === 'connected'
+          && sourceState.source.classification === 'YouTube'
+          && discovery.adShowing === true;
+        if (probe.mode === 'video') setYoutubeAdShowing(youtubeAd);
         const previousIdentity = playerIdentityRef.current[probe.mode];
-        const playerIdentity = reconcilePlayerSelection(discovery, previousIdentity);
+        const playerIdentity = youtubeAd && previousIdentity
+          ? previousIdentity
+          : reconcilePlayerSelection(discovery, previousIdentity);
         const selected = discovery.status === 'ready'
           ? discovery.candidates.find((candidate) => candidate.identity === playerIdentity) ?? null
           : null;
+        const draft = createDraftStateRef.current[probe.mode];
+        const frozen = freezeYouTubeMediaTimesWhileAd({
+          adShowing: youtubeAd,
+          previous: {
+            durationMs: draft.durationMs,
+            playerTimeMs: draft.playerTimeMs,
+            playerIdentity: previousIdentity,
+          },
+          next: {
+            durationMs: selected?.durationMs ?? null,
+            playerTimeMs: selected?.currentTimeMs ?? null,
+            playerIdentity,
+          },
+        });
         dispatchCreateDraft({
           type: 'patch-media', mode: probe.mode,
-          patch: { sourceKey: probe.sourceKey, playerIdentity,
-            playerTimeMs: selected?.currentTimeMs ?? null,
-            durationMs: selected?.durationMs ?? null,
-            playerReadState: previousIdentity && !playerIdentity ? 'error' : 'idle' },
+          patch: {
+            sourceKey: probe.sourceKey,
+            playerIdentity: frozen.playerIdentity,
+            playerTimeMs: frozen.playerTimeMs,
+            durationMs: frozen.durationMs,
+            playerReadState: previousIdentity && !frozen.playerIdentity ? 'error' : 'idle',
+          },
         });
       }).catch(() => {
         if (!current || createPageRef.current?.generation !== pageGeneration) return;
@@ -3329,6 +3409,7 @@ function App() {
         } else setAudioPlayers(state);
         dispatchCreateDraft({ type: 'patch-media', mode: probe.mode,
           patch: { playerIdentity: null, playerTimeMs: null, durationMs: null, playerReadState: 'error' } });
+        if (probe.mode === 'video') setYoutubeAdShowing(false);
       });
     }
     return () => { current = false; };
@@ -3955,6 +4036,7 @@ function App() {
     videoPlayerSelected && videoRangeEntry.allowsPublish &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
+    !youtubeAdShowing &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
   const canPublishTikTok = authState.status === 'signed-in' && tiktokSource !== null &&
@@ -4041,8 +4123,8 @@ function App() {
 
       {!supabase && currentScreen.kind !== 'root' && <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotated is unavailable</strong><span>Check the extension configuration and try again.</span></div>}
 
-      {supabase && currentScreen.kind === 'annotation' && <AnnotationDetailView key={`annotation:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} onSocialMutation={() => socialCacheRef.current.clear()} />}
-      {supabase && currentScreen.kind === 'comments' && <AnnotationDetailView key={`comments:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} focusComments onSocialMutation={() => socialCacheRef.current.clear()} />}
+      {supabase && currentScreen.kind === 'annotation' && <AnnotationDetailView key={`annotation:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} youtubeAdShowing={youtubeAdShowing} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} onSocialMutation={() => socialCacheRef.current.clear()} />}
+      {supabase && currentScreen.kind === 'comments' && <AnnotationDetailView key={`comments:${currentScreen.annotationId}`} supabase={supabase} annotationId={currentScreen.annotationId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} connectedVideoId={youtubeSource?.videoId ?? tiktokSource?.videoId ?? null} onPlayConnectedClip={playConnectedClip} youtubeAdShowing={youtubeAdShowing} connectedAudioNormalizedUrl={audioSource?.normalizedUrl ?? null} onPlayConnectedAudioClip={playConnectedAudioClip} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} focusComments onSocialMutation={() => socialCacheRef.current.clear()} />}
       {supabase && currentScreen.kind === 'profile' && <ProfileView key={`profile:${currentScreen.profileId}`} supabase={supabase} profileId={currentScreen.profileId} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} navigation={navigationCallbacks} cache={socialCacheRef.current} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} />}
 
       {currentScreen.kind === 'root' && currentScreen.view === 'feed' && (
@@ -4110,6 +4192,12 @@ function App() {
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
                 <p className="create-help">Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Type times if you prefer. Clips can be at most 90 seconds.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
+                {youtubeSource && youtubeAdShowing && (
+                  <div className="compact-state" role="status">
+                    <strong>{YOUTUBE_AD_HEADING}</strong>
+                    <span>{YOUTUBE_AD_BLOCKED_COPY}</span>
+                  </div>
+                )}
                 {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTimeTenths(videoDraftState.durationMs)}</>}</p>}
                 <ClipRangeEditor
                   idPrefix="video"
@@ -4126,6 +4214,7 @@ function App() {
                   disabled={mediaEditorLocked}
                   playerSelected={videoPlayerSelected}
                   playerReading={videoDraftState.playerReadState === 'reading'}
+                  playheadActionsDisabled={Boolean(youtubeSource && youtubeAdShowing)}
                   previewEnabled={
                     videoDraftState.startMs !== null
                     && videoDraftState.endMs !== null

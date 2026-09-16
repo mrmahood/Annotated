@@ -54,6 +54,11 @@ import {
   userFacingCaptureMessage,
 } from './media-capture.ts';
 import {
+  YOUTUBE_AD_BLOCKED_COPY,
+  YOUTUBE_AD_CAPTURE_ABORT_COPY,
+  YOUTUBE_AD_CAPTURE_WATCH_MS,
+} from './youtube-ad.ts';
+import {
   installMediaCapture,
   invalidateReservedTabCaptureStream,
   reserveTabCaptureStreamIdFromInvoke,
@@ -239,6 +244,118 @@ test('offscreen start is never requested when top-frame preparation fails', asyn
   assert.ok(calls.indexOf('stream') < calls.indexOf('prepare'));
   assert.equal(calls.includes('offscreen'), false);
   assert.equal(calls.includes('annotated.mediaCapture.offscreenStart.v1'), false);
+});
+
+test('YouTube ad prepare failures do not start the offscreen recorder', async () => {
+  let onMessage;
+  const calls = [];
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [],
+      sendMessage: async (message) => {
+        calls.push(message?.type ?? 'message');
+        return undefined;
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {}, async remove() {},
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript() {
+      return [{ frameId: 0, result: { ok: false, code: 'AD_SHOWING', message: YOUTUBE_AD_BLOCKED_COPY } }];
+    } },
+    tabCapture: { async getMediaStreamId() { return 'stream'; } },
+    offscreen: { async createDocument() { calls.push('offscreen'); } },
+  };
+  installMediaCapture(fakeChrome);
+  const response = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  assert.equal(response.ok, false);
+  assert.equal(response.snapshot.diagnosticCode, 'AD_SHOWING');
+  assert.equal(response.snapshot.message, YOUTUBE_AD_BLOCKED_COPY);
+  assert.equal(calls.includes('offscreen'), false);
+  assert.equal(calls.includes('annotated.mediaCapture.offscreenStart.v1'), false);
+});
+
+test('a mid-capture YouTube ad aborts without uploading', async () => {
+  let onMessage;
+  const messages = [];
+  let adShowing = false;
+  const fakeChrome = {
+    runtime: {
+      getURL: (path) => `chrome-extension://test/${path}`,
+      getContexts: async () => [{ contextType: 'OFFSCREEN_DOCUMENT' }],
+      sendMessage: async (message) => {
+        messages.push(message?.type ?? 'message');
+        if (message?.type === 'annotated.mediaCapture.offscreenStart.v1') {
+          return { status: 'capturing', captureId: message.captureId };
+        }
+        return { ok: true };
+      },
+      onMessage: { addListener(listener) { onMessage = listener; } },
+    },
+    storage: { session: {
+      async get(key) {
+        return key === 'annotatedActiveTabContext'
+          ? { [key]: { tabId: 42, windowId: 1, title: 'Video', url: source.pageUrl, capturedAt: 1 } }
+          : {};
+      },
+      async set() {}, async remove() {},
+    } },
+    tabs: {
+      async get() { return { id: 42, url: source.pageUrl }; },
+      onRemoved: { addListener() {} }, onUpdated: { addListener() {} },
+    },
+    scripting: { async executeScript({ func }) {
+      const name = String(func?.name ?? '');
+      if (name.includes('AdShowing')) {
+        return [{ frameId: 0, result: { adShowing } }];
+      }
+      if (name.includes('prepare')) return [{ frameId: 0, result: {
+        ok: true,
+        prepared: {
+          sourceKind: 'youtube', requestedStartMs: 5_000, requestedEndMs: 20_000,
+          requestedDurationMs: 15_000, playerCurrentTimeBeforeRecordingMs: 5_000,
+          mediaDurationMs: 120_000, pageUrl: source.pageUrl,
+          geometry: {
+            viewportWidth: 1280, viewportHeight: 720, devicePixelRatio: 1,
+            boundingClientRect: { x: 0, y: 0, width: 1280, height: 720, top: 0, right: 1280, bottom: 720, left: 0 },
+            videoWidth: 1920, videoHeight: 1080, objectFit: 'contain', objectPosition: '50% 50%',
+            fullscreen: false, fullscreenElement: null, scrollX: 0, scrollY: 0,
+          },
+        },
+      } }];
+      return [{ frameId: 0, result: { ok: true, acknowledgedAtMs: 1, currentTimeMs: 5_000 } }];
+    } },
+    tabCapture: { async getMediaStreamId() { return 'stream'; } },
+    offscreen: { async createDocument() {} },
+  };
+  installMediaCapture(fakeChrome);
+  const response = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: MEDIA_CAPTURE_START, request }, {}, resolve), true);
+  });
+  assert.equal(response.ok, true);
+  adShowing = true;
+  await new Promise((resolve) => setTimeout(resolve, YOUTUBE_AD_CAPTURE_WATCH_MS + 150));
+  assert.ok(messages.includes('annotated.mediaCapture.offscreenCancel.v1'));
+  assert.equal(messages.includes('annotated.mediaCapture.offscreenRetry.v1'), false);
+  const status = await new Promise((resolve) => {
+    assert.equal(onMessage({ target: 'background', type: 'annotated.mediaCapture.status.v1' }, {}, resolve), true);
+  });
+  assert.equal(status.snapshot.status, 'error');
+  assert.equal(status.snapshot.code, 'recapture-required');
+  assert.equal(status.snapshot.message, YOUTUBE_AD_CAPTURE_ABORT_COPY);
 });
 
 test('tabCapture invocation failure is mapped before page preparation', async () => {

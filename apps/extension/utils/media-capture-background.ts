@@ -26,6 +26,7 @@ import {
   isMediaCaptureHoldStreamMessage,
   isMediaCaptureStartMessage,
   isCurrentCaptureId,
+  isYoutubeCaptureKind,
   mapTabCaptureStartFailure,
   RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS,
   TAB_CAPTURE_STREAM_ID_TIMEOUT_MS,
@@ -43,9 +44,19 @@ import {
   type CaptureStartResponse,
   type PreparationDiagnosticCode,
 } from './media-capture.ts';
+import {
+  readYouTubeAdShowingOnPage,
+  YOUTUBE_AD_BLOCKED_COPY,
+  YOUTUBE_AD_CAPTURE_ABORT_COPY,
+  YOUTUBE_AD_CAPTURE_WATCH_MS,
+} from './youtube-ad.ts';
 
 type ExtensionChrome = typeof browser;
-type ActiveCapture = { captureId: string; request: CaptureStartRequest };
+type ActiveCapture = {
+  captureId: string;
+  request: CaptureStartRequest;
+  youtubeAdWatchTimer?: ReturnType<typeof setTimeout>;
+};
 type ReservedTabCaptureStream = {
   tabId: number;
   streamId: string;
@@ -183,6 +194,7 @@ function errorText(error: unknown) { return error instanceof Error ? error.messa
 
 function captureFailureCode(code: PreparationDiagnosticCode): CaptureFailureCode {
   if (code === 'RANGE_INVALID') return 'invalid-request';
+  if (code === 'AD_SHOWING') return 'player-unavailable';
   if (code === 'SOURCE_CHANGED' || code === 'NAVIGATION_CHANGED' || code === 'STALE_CAPTURE') {
     return 'connected-source-changed';
   }
@@ -242,8 +254,15 @@ export function installMediaCapture(
 
   async function clearActiveIfCurrent(captureId: string) {
     if (active?.captureId !== captureId) return false;
+    clearYouTubeAdWatch(active);
     await persistActive(null);
     return true;
+  }
+
+  function clearYouTubeAdWatch(capture: ActiveCapture | null) {
+    if (!capture?.youtubeAdWatchTimer) return;
+    clearTimeout(capture.youtubeAdWatchTimer);
+    capture.youtubeAdWatchTimer = undefined;
   }
 
   function liveCaptureId(): string | null {
@@ -337,6 +356,7 @@ export function installMediaCapture(
   async function cancelActive(code: CaptureFailureCode, message: string) {
     const capture = active;
     if (!capture) return false;
+    clearYouTubeAdWatch(capture);
     try {
       await chrome.runtime.sendMessage({
         target: 'offscreen',
@@ -350,6 +370,53 @@ export function installMediaCapture(
     await clearActiveIfCurrent(capture.captureId);
     emit({ status: 'cancelled', captureId: capture.captureId, code, message }, capture.request.operation);
     return true;
+  }
+
+  async function abortActiveForYouTubeAd(captureId: string) {
+    const capture = active;
+    if (!capture || capture.captureId !== captureId) return false;
+    clearYouTubeAdWatch(capture);
+    try {
+      await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        type: MEDIA_CAPTURE_OFFSCREEN_CANCEL,
+        captureId: capture.captureId,
+        code: 'recapture-required',
+        message: YOUTUBE_AD_CAPTURE_ABORT_COPY,
+      });
+    } catch { /* The offscreen document may already have stopped. */ }
+    await finishPage(capture);
+    await clearActiveIfCurrent(capture.captureId);
+    emit({
+      status: 'error',
+      captureId: capture.captureId,
+      code: 'recapture-required',
+      message: YOUTUBE_AD_CAPTURE_ABORT_COPY,
+    }, capture.request.operation);
+    return true;
+  }
+
+  function startYouTubeAdWatch(capture: ActiveCapture) {
+    if (!isYoutubeCaptureKind(capture.request.source.kind)) return;
+    const tick = async () => {
+      if (active?.captureId !== capture.captureId) return;
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: capture.request.tabId, frameIds: [0] },
+          world: 'ISOLATED',
+          func: readYouTubeAdShowingOnPage,
+        });
+        if (active?.captureId !== capture.captureId) return;
+        if (results[0]?.result?.adShowing === true) {
+          await abortActiveForYouTubeAd(capture.captureId);
+          return;
+        }
+      } catch { /* Injection failures retry on the next tick. */ }
+      if (active?.captureId === capture.captureId) {
+        capture.youtubeAdWatchTimer = setTimeout(() => { void tick(); }, YOUTUBE_AD_CAPTURE_WATCH_MS);
+      }
+    };
+    capture.youtubeAdWatchTimer = setTimeout(() => { void tick(); }, YOUTUBE_AD_CAPTURE_WATCH_MS);
   }
 
   async function releaseHeldCallerTabCapture() {
@@ -592,8 +659,11 @@ export function installMediaCapture(
       });
       const acknowledgement = playback[0]?.result;
       if (!acknowledgement?.ok) {
-        await cancelActive('player-unavailable', 'The connected player did not begin playback for capture.');
-        const snapshot = failure('player-unavailable', 'The connected player did not begin playback for capture.', captureId);
+        const message = acknowledgement?.message === YOUTUBE_AD_BLOCKED_COPY
+          ? YOUTUBE_AD_BLOCKED_COPY
+          : 'The connected player did not begin playback for capture.';
+        await cancelActive('player-unavailable', message);
+        const snapshot = failure('player-unavailable', message, captureId);
         return { ok: false, snapshot };
       }
       await chrome.runtime.sendMessage({
@@ -603,6 +673,7 @@ export function installMediaCapture(
         acknowledgedAtMs: acknowledgement.acknowledgedAtMs,
         playerStartMs: acknowledgement.currentTimeMs,
       });
+      if (active && active.captureId === captureId) startYouTubeAdWatch(active);
       return { ok: true, snapshot: started };
     } catch (error) {
       const snapshot: CaptureErrorSnapshot = typeof error === 'object' && error && 'status' in error &&

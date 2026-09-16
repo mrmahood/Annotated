@@ -182,6 +182,33 @@ test('Create Video and Audio use a dual-handle clip slider instead of Set start 
   assert.doesNotMatch(source, /Sign in to Spotify in this tab to capture an episode/);
 });
 
+test('YouTube Create blocks playhead actions and Publish while a linear ad owns the player', async () => {
+  const [source, fields, youtubeAd] = await Promise.all([
+    readFile(APP_URL, 'utf8'),
+    readFile(new URL('../entrypoints/sidepanel/clip-range-fields.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./youtube-ad.ts', import.meta.url), 'utf8'),
+  ]);
+  assert.match(source, /freezeYouTubeMediaTimesWhileAd/);
+  assert.match(source, /youtubeClipRangeAfterAdCleared/);
+  assert.match(source, /YOUTUBE_AD_HEADING/);
+  assert.match(source, /YOUTUBE_AD_BLOCKED_COPY/);
+  assert.match(source, /youtubeAdShowing/);
+  assert.match(source, /playheadActionsDisabled=\{Boolean\(youtubeSource && youtubeAdShowing\)\}/);
+  assert.match(source, /if \(player\.adShowing\) return/);
+  assert.match(source, /if \(youtubeAdShowing\) \{/);
+  assert.match(source, /setYoutubePublishState\(\{ status: 'error', message: YOUTUBE_AD_BLOCKED_COPY \}\)/);
+  assert.match(source, /!youtubeAdShowing &&/);
+  assert.match(source, /<strong>\{YOUTUBE_AD_HEADING\}<\/strong>/);
+  assert.match(source, /<span>\{YOUTUBE_AD_BLOCKED_COPY\}<\/span>/);
+  assert.match(source, /youtubeAdShowing=\{youtubeAdShowing\}/);
+  assert.match(fields, /playheadActionsDisabled = false/);
+  assert.match(fields, /playerReading \|\| playheadActionsDisabled/);
+  assert.match(youtubeAd, /ad-showing/);
+  assert.match(youtubeAd, /ad-interrupting/);
+  assert.doesNotMatch(source, /skip ad/i);
+  assert.doesNotMatch(youtubeAd, /skipAd|skip_ad|clickSkip/i);
+});
+
 test('Create offers one quiet title field for Text, Video, and Audio', async () => {
   const source = await readFile(APP_URL, 'utf8');
   assert.match(source, /function TitleField\(/);

@@ -80,6 +80,12 @@ test('detail UI prefers the hosted player and transcript for ready media', async
   assert.match(detail, /hostedTranscript && <ExcerptTranscript/);
   assert.match(detail, /hasHostedExcerptTranscript/);
   assert.match(detail, /This archived excerpt is no longer available/);
+  assert.match(detail, /youtubeAdShowing = false/);
+  assert.match(detail, /youtubeAdShowing\?: boolean/);
+  assert.match(detail, /disabled=\{playState === 'playing' \|\| youtubeAdShowing\}/);
+  assert.match(detail, /YOUTUBE_AD_HEADING/);
+  assert.match(detail, /YOUTUBE_AD_BLOCKED_COPY/);
+  assert.match(detail, /isYouTubeAdBlockedCopy\(playError\)/);
   assert.match(detail, /canPlayConnectedClip = !hostedReady &&\s*\(annotation\.kind === 'youtube' \|\| annotation\.kind === 'tiktok'\)/);
   assert.match(detail, /canPlayConnectedAudioClip = !hostedReady && \(annotation\.kind === 'audio' \|\| annotation\.kind === 'spotify'\)/);
   assert.match(detail, /canPlayConnectedClip \|\| hostedReady \? 'button button-secondary'/);

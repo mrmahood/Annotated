@@ -25,6 +25,7 @@ test('accepts one to five ordered candidates and never auto-selects several', ()
     });
     assert.equal(discovery.status, 'ready');
     assert.equal(discovery.candidates.length, count);
+    assert.equal(discovery.adShowing, false);
     assert.equal(reconcilePlayerSelection(discovery, null), count === 1 ? candidate(1).identity : null);
   }
 });
@@ -35,7 +36,7 @@ test('sixth candidate produces bounded overflow with no candidate details', () =
     mode: 'video',
     overflow: true,
     candidates: Array.from({ length: 6 }, (_, index) => candidate(index + 1)),
-  }), { status: 'overflow', candidates: [] });
+  }), { status: 'overflow', candidates: [], adShowing: false });
 });
 
 test('preserves only an identity that remains in the current page generation', () => {
@@ -52,7 +53,7 @@ test('preserves only an identity that remains in the current page generation', (
 test('rejects stale pages, wrong-mode kinds, duplicate identities, and unbounded labels', () => {
   assert.deepEqual(validatePlayerDiscovery('https://example.test/new', 'audio', {
     pageUrl: 'https://example.test/old', mode: 'audio', candidates: [],
-  }), { status: 'none', candidates: [] });
+  }), { status: 'none', candidates: [], adShowing: false });
   const result = validatePlayerDiscovery('https://example.test/episode', 'audio', {
     pageUrl: 'https://example.test/episode',
     mode: 'audio',
@@ -75,4 +76,13 @@ test('candidate contract contains no media source URLs or raw DOM', () => {
   assert.deepEqual(Object.keys(discovery.candidates[0]).sort(), [
     'currentTimeMs', 'durationMs', 'identity', 'kind', 'label', 'status',
   ]);
+  assert.equal(discovery.adShowing, false);
+});
+
+test('preserves YouTube linear-ad ownership from the page discovery payload', () => {
+  const discovery = validatePlayerDiscovery(pageUrl, 'video', {
+    pageUrl, mode: 'video', overflow: false, adShowing: true, candidates: [candidate(1)],
+  });
+  assert.equal(discovery.status, 'ready');
+  assert.equal(discovery.adShowing, true);
 });
