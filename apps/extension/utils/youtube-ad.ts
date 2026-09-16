@@ -64,7 +64,8 @@ export function detectYouTubeLinearAdShowing(root: ParentNode = document): boole
     if (LINEAR_AD_CLASS.test(classTokens(player))) return true;
     if (typeof player.querySelector !== 'function') return false;
     const overlay = player.querySelector(LINEAR_AD_OVERLAY);
-    return overlay instanceof Element && overlayIsVisible(overlay);
+    if (!overlay) return false;
+    return overlayIsVisible(overlay);
   } catch {
     return false;
   }

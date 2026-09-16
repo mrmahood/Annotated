@@ -65,6 +65,27 @@ type ReservedTabCaptureStream = {
 };
 const OFFSCREEN_URL = 'offscreen.html';
 export const ACTIVE_CAPTURE_KEY = 'annotated.mediaCapture.active.v1';
+const youtubeAdWatchTimers = new Set<ReturnType<typeof setTimeout>>();
+
+function clearAllYouTubeAdWatchTimers() {
+  for (const timer of youtubeAdWatchTimers) clearTimeout(timer);
+  youtubeAdWatchTimers.clear();
+}
+
+function scheduleYouTubeAdWatchTick(onTick: () => void): ReturnType<typeof setTimeout> {
+  const timer = setTimeout(onTick, YOUTUBE_AD_CAPTURE_WATCH_MS);
+  youtubeAdWatchTimers.add(timer);
+  if (typeof (timer as { unref?: () => void }).unref === 'function') {
+    (timer as { unref: () => void }).unref();
+  }
+  return timer;
+}
+
+function clearScheduledYouTubeAdWatch(timer: ReturnType<typeof setTimeout> | undefined) {
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  youtubeAdWatchTimers.delete(timer);
+}
 
 let reservedTabCaptureStream: ReservedTabCaptureStream | null = null;
 let reserveTabCaptureInFlight: Promise<ReservedTabCaptureStream | null> | null = null;
@@ -211,6 +232,7 @@ export function installMediaCapture(
   reserveTabCaptureGeneration += 1;
   heldCallerTabCapture = null;
   cancelledCaptureIds.clear();
+  clearAllYouTubeAdWatchTimers();
   activeStreamIdTimeoutMs = options?.streamIdTimeoutMs ?? TAB_CAPTURE_STREAM_ID_TIMEOUT_MS;
   activeReservedStreamMaxAgeMs = options?.reservedStreamMaxAgeMs ?? RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS;
   let active: ActiveCapture | null = null;
@@ -261,7 +283,7 @@ export function installMediaCapture(
 
   function clearYouTubeAdWatch(capture: ActiveCapture | null) {
     if (!capture?.youtubeAdWatchTimer) return;
-    clearTimeout(capture.youtubeAdWatchTimer);
+    clearScheduledYouTubeAdWatch(capture.youtubeAdWatchTimer);
     capture.youtubeAdWatchTimer = undefined;
   }
 
@@ -398,6 +420,7 @@ export function installMediaCapture(
 
   function startYouTubeAdWatch(capture: ActiveCapture) {
     if (!isYoutubeCaptureKind(capture.request.source.kind)) return;
+    clearYouTubeAdWatch(capture);
     const tick = async () => {
       if (active?.captureId !== capture.captureId) return;
       try {
@@ -413,10 +436,10 @@ export function installMediaCapture(
         }
       } catch { /* Injection failures retry on the next tick. */ }
       if (active?.captureId === capture.captureId) {
-        capture.youtubeAdWatchTimer = setTimeout(() => { void tick(); }, YOUTUBE_AD_CAPTURE_WATCH_MS);
+        capture.youtubeAdWatchTimer = scheduleYouTubeAdWatchTick(() => { void tick(); });
       }
     };
-    capture.youtubeAdWatchTimer = setTimeout(() => { void tick(); }, YOUTUBE_AD_CAPTURE_WATCH_MS);
+    capture.youtubeAdWatchTimer = scheduleYouTubeAdWatchTick(() => { void tick(); });
   }
 
   async function releaseHeldCallerTabCapture() {
@@ -673,7 +696,7 @@ export function installMediaCapture(
         acknowledgedAtMs: acknowledgement.acknowledgedAtMs,
         playerStartMs: acknowledgement.currentTimeMs,
       });
-      if (active && active.captureId === captureId) startYouTubeAdWatch(active);
+      if (liveCaptureId() === captureId) startYouTubeAdWatch(capture);
       return { ok: true, snapshot: started };
     } catch (error) {
       const snapshot: CaptureErrorSnapshot = typeof error === 'object' && error && 'status' in error &&
