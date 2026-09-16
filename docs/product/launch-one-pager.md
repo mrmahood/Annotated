@@ -69,9 +69,10 @@ is live on Loom and is the Walkthrough on
 
 ## What’s next
 
-- Chrome Web Store submit (auto-update after review). Bump
-  `apps/extension/package.json` off `0.0.0` before the first upload.
-  See `docs/product/extension-release-versioning.md`.
+- Chrome Web Store submit (auto-update after review). First store
+  version is `0.1.0`. Owner walkthrough:
+  `docs/product/chrome-web-store-submit.md`. Until approval, install
+  stays the Production zip. Do not invent a store URL.
 - Chrome notification when a clip is ready (queued)
 - Staging demo rehearsal checklist
 - Parked Create polish: multi-click Publish first-error; header-icon

@@ -2161,12 +2161,25 @@ test('completion failure remains a failure and success advances only to verifica
 });
 
 test('production manifest and capture source keep the required security shape', async () => {
-  const [config, background, serviceWorker, offscreen] = await Promise.all([
+  const [config, pkgSource, background, serviceWorker, offscreen] = await Promise.all([
     readFile(new URL('../wxt.config.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../package.json', import.meta.url), 'utf8'),
     readFile(new URL('./media-capture-background.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/background.ts', import.meta.url), 'utf8'),
     readFile(new URL('../entrypoints/offscreen/main.ts', import.meta.url), 'utf8'),
   ]);
+  const pkg = JSON.parse(pkgSource);
+  assert.equal(pkg.name, 'annotated');
+  assert.equal(pkg.version, '0.1.0');
+  assert.equal(
+    pkg.description,
+    'Source-linked margin notes on articles, plus short video and audio clips from the current tab.',
+  );
+  assert.match(config, /name: 'Annotated'/);
+  assert.match(
+    config,
+    /description:\s*\n?\s*'Source-linked margin notes on articles, plus short video and audio clips from the current tab\.'/,
+  );
   assert.match(config, /permissions:\s*\['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'\]/);
   assert.match(config, /host_permissions:\s*\['http:\/\/\*\/\*', 'https:\/\/\*\/\*'\]/);
   assert.doesNotMatch(config, /content_scripts|defineContentScript/);

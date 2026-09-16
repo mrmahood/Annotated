@@ -4,7 +4,10 @@ Operator note for shipping the Manifest V3 side panel. This does not
 authorize a Production store submit; bumping the version and uploading
 to the Chrome Web Store remain explicit owner steps. Public zip +
 pinned ID are live on Production as of 2026-09-14; announcement
-context: `docs/product/launch-one-pager.md`.
+context: `docs/product/launch-one-pager.md`. First store version is
+`0.1.0`. Owner submit walkthrough (listing copy, permission
+justifications, Prod ZIP, after-approval allowlist):
+`docs/product/chrome-web-store-submit.md`.
 
 ## Canonical distribution
 
@@ -45,11 +48,12 @@ mix path-based IDs with the pinned public-zip ID when checking OAuth
 WXT copies `apps/extension/package.json` `version` into the generated
 `manifest.json`. Use semver there (`X.Y.Z`).
 
-**Tech debt before first store submit:** that field is still `0.0.0`
-(WXT starter). Chrome rejects a later upload that is not strictly greater
-than a version already on the store, so do not ship `0.0.0`. Pick a real
-first version (for example `0.1.0`) in a dedicated change; this note does
-not bump it.
+**First store version:** `0.1.0`. Chrome rejects a later upload that is
+not strictly greater than a version already on the store. The store
+upload ZIP must use the same Production pins as `/extension.zip`
+(`annotated.cbandcoop.com` / Prod Supabase `vnxjktpdzmykmqrqwvks`).
+Do not ship Staging endpoints. See
+`docs/product/chrome-web-store-submit.md`.
 
 Rules:
 
@@ -83,7 +87,10 @@ those files until a reviewed store release.
 
 ## Release checklist
 
-Use this for a store ship. Stop at the first failure.
+Use this for a later store ship after `0.1.0`. For the first listing,
+follow `docs/product/chrome-web-store-submit.md` instead — it has
+console click paths, listing copy, and permission paste-ins. Stop at
+the first failure.
 
 - [ ] Bump `apps/extension/package.json` `version` (semver; greater than
       every version already uploaded to the store)

@@ -999,10 +999,10 @@ polish — not a first Production launch. Launch announcement context:
 
 ### Still open / next
 
-- Chrome Web Store submit (auto-update after review). Extension
-  `package.json` is still `0.0.0` — bump before the first store upload.
-  Operator checklist: `docs/product/extension-release-versioning.md`.
-  Staging stays load-unpacked. Do not invent a store URL.
+- Chrome Web Store submit (auto-update after review). First store
+  version is `0.1.0`. Owner walkthrough:
+  `docs/product/chrome-web-store-submit.md`. Staging stays
+  load-unpacked. Do not invent a store URL.
 - Chrome notification when a clip is ready (queued).
 - Parked Create quirks: multi-click Publish first-error; header-icon
   capture quirk; `raw_delete_unconfirmed` race.
