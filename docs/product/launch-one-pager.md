@@ -1,7 +1,7 @@
 # Annotated — launch one-pager
 
 Owner + social announcement context. Facts as of 2026-09-14; refreshed
-2026-09-15. Do not invent a Chrome Web Store URL. Staging is not a
+2026-09-16. Do not invent a Chrome Web Store URL. Staging is not a
 public demo.
 
 ## What Annotated is
@@ -50,7 +50,9 @@ The public zip uses pinned Chrome ID
 install. Load-unpacked from a Local/Staging build is a different ID.
 
 The marketing page Install CTA still points at this zip path. The
-install video is still “coming soon.”
+install walkthrough, [How to Install the Annotated Chrome Extension](https://www.loom.com/share/65279b7ca270450cbf585ff25d75ea49),
+is live on Loom and is the Walkthrough on
+[https://www.cbandcoop.com/Annotated](https://www.cbandcoop.com/Annotated).
 
 ## Product highlights / story angles
 
@@ -70,7 +72,6 @@ install video is still “coming soon.”
 - Chrome Web Store submit (auto-update after review). Bump
   `apps/extension/package.json` off `0.0.0` before the first upload.
   See `docs/product/extension-release-versioning.md`.
-- Marketing install video (still “coming soon”)
 - Chrome notification when a clip is ready (queued)
 - Staging demo rehearsal checklist
 - Parked Create polish: multi-click Publish first-error; header-icon
@@ -89,6 +90,7 @@ install video is still “coming soon.”
 | --- | --- |
 | Production web | https://annotated.cbandcoop.com |
 | Marketing / Install | https://www.cbandcoop.com/Annotated |
+| Install walkthrough | https://www.loom.com/share/65279b7ca270450cbf585ff25d75ea49 |
 | Extension zip | https://annotated.cbandcoop.com/extension.zip |
 | Privacy | https://annotated.cbandcoop.com/privacy |
 | Terms | https://annotated.cbandcoop.com/terms |
