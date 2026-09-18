@@ -10,6 +10,7 @@ import {
   hostedDraftIsForeignLiveWork,
   hostedDraftIsOrphanedAttention,
   hostedForeignOrphanCreateReset,
+  hostedMediaFailedStatusDetail,
   hostedMediaProcessingStageDetail,
   hostedMediaProgressCopy,
   hostedPublishAbandonDecision,
@@ -43,15 +44,15 @@ const session = {
   endMs: 20_000,
   createdAt: 1,
 };
-function ownedStatus(processingStatus, processingStage = null) {
+function ownedStatus(processingStatus, processingStage = null, failureStage = null, failureCode = null) {
   return {
     annotationId: operation.annotationId,
     mediaId: operation.mediaId,
     mediaType: 'video',
     processingStatus,
     processingStage,
-    failureStage: null,
-    failureCode: null,
+    failureStage,
+    failureCode,
     creatorHandle: 'creator',
     annotationSlug: 'clip-11111111',
   };
@@ -231,6 +232,30 @@ test('parses sanitized processing/queued owner status', () => {
   });
 });
 
+test('parses failed owner status with failure stage and code', () => {
+  assert.deepEqual(parseOwnedHostedMediaStatus({
+    annotation_id: operation.annotationId,
+    media_id: operation.mediaId,
+    media_type: 'video',
+    processing_status: 'failed',
+    processing_stage: 'transcoding',
+    failure_stage: 'transcoding',
+    failure_code: 'unsafe_geometry',
+    creator_handle: 'creator',
+    annotation_slug: 'clip-11111111',
+  }), {
+    annotationId: operation.annotationId,
+    mediaId: operation.mediaId,
+    mediaType: 'video',
+    processingStatus: 'failed',
+    processingStage: 'transcoding',
+    failureStage: 'transcoding',
+    failureCode: 'unsafe_geometry',
+    creatorHandle: 'creator',
+    annotationSlug: 'clip-11111111',
+  });
+});
+
 test('owner status rejects raw paths and malformed lifecycle rows', () => {
   assert.throws(() => parseOwnedHostedMediaStatus({
     annotation_id: operation.annotationId,
@@ -385,6 +410,51 @@ test('Create progress copy is stage-aware and keeps Posted for ready only', () =
   });
   const ready = reconcileHostedMediaState(session, ownedStatus('ready', 'published'), null, null);
   assert.equal(ready.action, 'posted');
+});
+
+test('failed owner status surfaces failure stage and code in Capture needs attention', () => {
+  assert.equal(
+    hostedMediaFailedStatusDetail('transcoding', 'unsafe_geometry'),
+    'Processing failed during transcoding (unsafe_geometry). Do not resize or zoom the window during capture, then Recapture.',
+  );
+  assert.equal(
+    hostedMediaFailedStatusDetail('probing', 'mystery_code'),
+    'Processing failed during probing (mystery_code). Reconnect the original source and choose Recapture, or cancel the draft.',
+  );
+  assert.equal(
+    hostedMediaFailedStatusDetail(null, null),
+    'Capture failed. Reconnect the original source and choose Recapture, or cancel the draft.',
+  );
+
+  const failed = reconcileHostedMediaState(
+    session,
+    ownedStatus('failed', null, 'transcoding', 'unsafe_geometry'),
+    { status: 'processing', captureId: 'restored', annotationId: operation.annotationId, mediaId: operation.mediaId, processingStage: 'transcoding' },
+    operation,
+  );
+  assert.equal(failed.action, 'show');
+  assert.equal(failed.snapshot.status, 'error');
+  assert.equal(failed.snapshot.code, 'recapture-required');
+  assert.equal(
+    failed.snapshot.message,
+    'Processing failed during transcoding (unsafe_geometry). Do not resize or zoom the window during capture, then Recapture.',
+  );
+  const attention = hostedMediaProgressCopy({ cancelling: false, snapshot: failed.snapshot });
+  assert.equal(attention.title, 'Capture needs attention');
+  assert.equal(attention.busy, false);
+  assert.equal(attention.detail, failed.snapshot.message);
+  assert.equal(shouldOfferHostedRecapture(session, session.sourceUrl, failed.snapshot), true);
+
+  const unknown = reconcileHostedMediaState(
+    session,
+    ownedStatus('failed', null, 'transcribing', 'unexpected_provider_code'),
+    null,
+    null,
+  );
+  assert.equal(unknown.action, 'show');
+  assert.match(unknown.snapshot.message, /Processing failed during transcribing \(unexpected_provider_code\)\./);
+  assert.match(unknown.snapshot.message, /Recapture/);
+  assert.doesNotMatch(unknown.snapshot.message, /^Capture failed\. Reconnect/);
 });
 
 const applePodcastsUrl =

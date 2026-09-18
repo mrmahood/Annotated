@@ -273,7 +273,6 @@ for (const metadata of [
   'unsafe-aspect-mismatch.json',
   'unsafe-moved-end.json',
   'unsafe-resized-viewport.json',
-  'unsafe-changed-dpr.json',
   'unsafe-missing-end.json',
 ]) {
   integration(`${metadata} creates no derivative`, async () => withTempDirectory(async (directory) => {

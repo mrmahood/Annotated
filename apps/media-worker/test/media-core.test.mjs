@@ -190,7 +190,6 @@ for (const fixture of [
   'unsafe-aspect-mismatch.json',
   'unsafe-moved-end.json',
   'unsafe-resized-viewport.json',
-  'unsafe-changed-dpr.json',
   'unsafe-missing-end.json',
 ]) {
   test(`${fixture} fails closed`, async () => {
@@ -198,6 +197,42 @@ for (const fixture of [
     assert.throws(() => calculateVideoCrop(metadata, 640, 360), errorCode('unsafe_geometry'));
   });
 }
+
+test('geometry allows devicePixelRatio flicker when CSS layout stays stable', async () => {
+  const landscape = await loadMetadata('safe-landscape.json');
+  const expected = calculateVideoCrop(landscape, 640, 360);
+
+  const changedDpr = await loadMetadata('safe-changed-dpr.json');
+  assert.equal(changedDpr.viewport.start.device_pixel_ratio, 1);
+  assert.equal(changedDpr.viewport.end.device_pixel_ratio, 1.25);
+  assert.deepEqual(calculateVideoCrop(changedDpr, 640, 360), expected);
+
+  const hidpiFlicker = structuredClone(landscape);
+  hidpiFlicker.viewport.start.device_pixel_ratio = 1.75;
+  hidpiFlicker.viewport.end.device_pixel_ratio = 1;
+  assert.deepEqual(calculateVideoCrop(hidpiFlicker, 640, 360), expected);
+
+  const prodLike = structuredClone(landscape);
+  prodLike.viewport.start = { width: 862, height: 733, device_pixel_ratio: 1.75, scroll_x: 0, scroll_y: 0 };
+  prodLike.viewport.end = { width: 862, height: 733, device_pixel_ratio: 1, scroll_x: 0, scroll_y: 0 };
+  prodLike.video_element.start = {
+    x: 7.5, y: 60, width: 847, height: 476,
+    top: 60, right: 854.5, bottom: 536, left: 7.5,
+  };
+  prodLike.video_element.end = structuredClone(prodLike.video_element.start);
+  const track = prodLike.capture_track.tracks.find((item) => item.kind === 'video');
+  track.settings = { width: 1922, height: 1200, frameRate: 30, resizeMode: 'crop-and-scale' };
+  const flickered = calculateVideoCrop(prodLike, 1922, 1200);
+  const startDprOnly = structuredClone(prodLike);
+  startDprOnly.viewport.end.device_pixel_ratio = 1.75;
+  assert.deepEqual(flickered, calculateVideoCrop(startDprOnly, 1922, 1200));
+});
+
+test('geometry still fails when DPR flickers and the player actually moved', async () => {
+  const metadata = await loadMetadata('safe-changed-dpr.json');
+  for (const key of ['x', 'left', 'right']) metadata.video_element.end[key] += 2;
+  assert.throws(() => calculateVideoCrop(metadata, 640, 360), errorCode('unsafe_geometry'));
+});
 
 test('raw probe validation trusts container and streams rather than filename', () => {
   const landscape = probeByName.get('landscape-video.webm').probe;
