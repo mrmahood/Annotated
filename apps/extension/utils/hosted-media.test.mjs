@@ -520,6 +520,51 @@ test('Create rebinds YouTube→Apple without Recapture and publishes after auto-
   }
 });
 
+test('Publish clip re-arm of playhead/duration does not treat the draft as changed', async () => {
+  const app = await readFile(new URL('../entrypoints/sidepanel/App.tsx', import.meta.url), 'utf8');
+  const names = [
+    ['publishYoutubeClip', 'publishTikTokClip'],
+    ['publishTikTokClip', 'publishWebpageVideoClip'],
+    ['publishWebpageVideoClip', 'publishSpotifyClip'],
+    ['publishSpotifyClip', 'publishAudioClip'],
+    ['publishAudioClip', 'applyHostedReconciliation'],
+  ];
+  for (const [name, nextFn] of names) {
+    const body = app.slice(app.indexOf(`const ${name}`), app.indexOf(`const ${nextFn}`));
+    const tokenMint = body.indexOf('getPlayerActionToken');
+    const staleCopy = body.includes('The Video page, player, or draft changed')
+      ? 'The Video page, player, or draft changed'
+      : 'The Audio page, player, or draft changed';
+    const staleAfterBegin = body.indexOf(staleCopy);
+    assert.ok(tokenMint >= 0, `${name} mints a player token`);
+    assert.ok(staleAfterBegin >= 0, `${name} still cancels a truly stale hosted begin`);
+    const window = body.slice(tokenMint, staleAfterBegin);
+    const patches = [...window.matchAll(/type: 'patch-media'[\s\S]*?patch: \{([^}]+)\}/g)];
+    for (const match of patches) {
+      const keys = [...match[1].matchAll(/(\w+):/g)].map((row) => row[1]).sort();
+      assert.deepEqual(
+        keys,
+        ['durationMs', 'playerTimeMs'],
+        `${name} publish-path patch-media must be clock-only so revision does not invalidate the token`,
+      );
+    }
+    if (name === 'publishYoutubeClip') {
+      assert.equal(patches.length, 1, 'YouTube publish still re-arms duration/playhead before begin');
+      assert.match(body, /if \(player\.adShowing\) throw new Error\(YOUTUBE_AD_BLOCKED_COPY\)/);
+      assert.match(body, /youtubeClipRangeAfterAdCleared/);
+      assert.match(body, /if \(youtubeAdShowing\) \{/);
+      assert.match(body, /await cancelStaleHostedBegin\(/);
+    } else {
+      assert.equal(
+        patches.length,
+        0,
+        `${name} must not patch-media between token mint and stale begin check`,
+      );
+      assert.match(body, /await cancelStaleHostedBegin\(/);
+    }
+  }
+});
+
 test('Publish abandons same-host capture_pending orphans and proceeds when nothing is left', () => {
   assert.equal(
     shouldAbandonOrphanedHostedDraftForPublish(session, applePodcastsUrl, orphanedRecaptureSnapshot),

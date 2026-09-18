@@ -75,7 +75,22 @@ export type CreateDraftState = {
   audio: MediaCreateDraftState;
 };
 
-type MediaDraftPatch = Partial<Omit<MediaCreateDraftState, 'revision'>>;
+export type MediaDraftPatch = Partial<Omit<MediaCreateDraftState, 'revision'>>;
+
+const MEDIA_CLOCK_SYNC_KEYS = new Set<keyof MediaDraftPatch>(['durationMs', 'playerTimeMs']);
+
+/**
+ * Player-token revision tracks user draft/player identity changes, not the
+ * live content clock. Publish re-reads duration/playhead immediately before
+ * hosted begin; bumping revision for that sync would cancel every clip.
+ */
+export function mediaDraftPatchRevisesDraft(patch: MediaDraftPatch): boolean {
+  for (const key of Object.keys(patch) as Array<keyof MediaDraftPatch>) {
+    if (patch[key] === undefined) continue;
+    if (!MEDIA_CLOCK_SYNC_KEYS.has(key)) return true;
+  }
+  return false;
+}
 
 export type CreateDraftAction =
   | { type: 'set-text-commentary'; commentary: string }
@@ -415,7 +430,9 @@ export function reduceCreateDraftState(
       [action.mode]: {
         ...current,
         ...action.patch,
-        revision: current.revision + 1,
+        revision: mediaDraftPatchRevisesDraft(action.patch)
+          ? current.revision + 1
+          : current.revision,
       },
     };
   }
