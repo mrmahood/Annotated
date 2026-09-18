@@ -14,6 +14,7 @@ import {
   getRecommendedMode,
   hasCreateModeDraft,
   isModeAsyncTokenCurrent,
+  mediaDraftPatchRevisesDraft,
   moveSelectionToPage,
   reduceCreateDraftState,
   selectCreateMode,
@@ -22,6 +23,7 @@ import {
   updateModeCapabilities,
   updatePageGeneration,
 } from './create-mode.ts';
+import { createPlayerActionToken, playerActionTokenIsCurrent } from './operation-guards.ts';
 
 const IDENTITY = { tabId: 42, windowId: 7, sourceKey: 'https://example.test/article' };
 
@@ -135,6 +137,59 @@ test('mode revisions and page generations reject stale asynchronous results', ()
   assert.equal(isModeAsyncTokenCurrent(token, first, revisions), false);
   const next = updatePageGeneration(first, { ...IDENTITY, sourceKey: 'https://example.test/next' });
   assert.equal(isModeAsyncTokenCurrent(createModeAsyncToken(first, revisions, 'text'), next, revisions), false);
+});
+
+test('playhead and duration sync does not revise the draft or invalidate an in-flight player token', () => {
+  assert.equal(mediaDraftPatchRevisesDraft({ durationMs: 180_000, playerTimeMs: 12_500 }), false);
+  assert.equal(mediaDraftPatchRevisesDraft({ durationMs: 180_000 }), false);
+  assert.equal(mediaDraftPatchRevisesDraft({ playerTimeMs: 12_500 }), false);
+  assert.equal(mediaDraftPatchRevisesDraft({ title: 'Headline' }), true);
+  assert.equal(mediaDraftPatchRevisesDraft({
+    durationMs: 180_000,
+    playerTimeMs: 12_500,
+    playerIdentity: 'video:1:12345678',
+  }), true);
+
+  const page = { generation: 3, identity: { tabId: 1, windowId: 2, sourceKey: 'https://www.youtube.com/watch?v=abcdefghijk' } };
+  let state = reduceCreateDraftState(createInitialDraftState(), {
+    type: 'patch-media',
+    mode: 'video',
+    patch: {
+      playerIdentity: 'video:1:12345678',
+      startMs: 5_000,
+      endMs: 35_000,
+      durationMs: 180_000,
+      playerTimeMs: 10_000,
+      title: 'Clip',
+      commentary: 'Note',
+    },
+  });
+  const token = createPlayerActionToken(page, 'video', state.video.revision, 'video:1:12345678');
+  assert.equal(playerActionTokenIsCurrent(token, page, state.video), true);
+
+  const revisionBeforeClockSync = state.video.revision;
+  state = reduceCreateDraftState(state, {
+    type: 'patch-media',
+    mode: 'video',
+    patch: { durationMs: 181_000, playerTimeMs: 12_500 },
+  });
+  assert.equal(state.video.durationMs, 181_000);
+  assert.equal(state.video.playerTimeMs, 12_500);
+  assert.equal(state.video.revision, revisionBeforeClockSync);
+  assert.equal(playerActionTokenIsCurrent(token, page, state.video), true);
+  assert.equal(playerActionTokenIsCurrent(token, page, {
+    ...state.video,
+    playerIdentity: 'video:2:87654321',
+  }), false);
+  assert.equal(playerActionTokenIsCurrent(token, { ...page, generation: 4 }, state.video), false);
+
+  state = reduceCreateDraftState(state, {
+    type: 'patch-media',
+    mode: 'video',
+    patch: { title: 'Edited headline' },
+  });
+  assert.equal(state.video.revision, revisionBeforeClockSync + 1);
+  assert.equal(playerActionTokenIsCurrent(token, page, state.video), false);
 });
 
 test('transient player-read status does not revise an otherwise unchanged draft', () => {

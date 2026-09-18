@@ -1950,6 +1950,8 @@ function App() {
         videoDraftState.startMs, videoDraftState.endMs, player.durationMs,
       );
       if (actionRangeError) throw new Error(actionRangeError);
+      // Clock-only: duration/playhead re-arm must not bump revision or the
+      // in-flight player token goes stale and cancelStaleHostedBegin always fires.
       dispatchCreateDraft({
         type: 'patch-media',
         mode: 'video',
