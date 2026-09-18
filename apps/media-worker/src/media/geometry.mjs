@@ -66,11 +66,12 @@ export function calculateVideoCrop(metadata, encodedWidth, encodedHeight) {
   finite(metadata.intrinsic_video?.height, 'intrinsic_video.height', 1);
 
   assertStableObject(viewport.start, viewport.end, ['width', 'height', 'scroll_x', 'scroll_y'], 'viewport');
-  const startDpr = finite(viewport.start?.device_pixel_ratio, 'viewport.start.device_pixel_ratio', 0.1);
-  const endDpr = finite(viewport.end?.device_pixel_ratio, 'viewport.end.device_pixel_ratio', 0.1);
-  if (!close(startDpr, endDpr, 0.001)) {
-    mediaCoreFailure('transcoding', 'unsafe_geometry', 'Viewport device pixel ratio changed during capture.');
-  }
+  // DPR is diagnostic: crop uses encoded pixels / CSS viewport from the start
+  // sample. Require both samples to be valid, but do not fail solely because
+  // devicePixelRatio flickered while CSS viewport size and video_element rects
+  // stayed stable (HiDPI Windows / 1.75→1 capture-end reporting).
+  finite(viewport.start?.device_pixel_ratio, 'viewport.start.device_pixel_ratio', 0.1);
+  finite(viewport.end?.device_pixel_ratio, 'viewport.end.device_pixel_ratio', 0.1);
   assertStableObject(
     videoElement.start,
     videoElement.end,

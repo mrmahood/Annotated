@@ -84,7 +84,7 @@
     { "file": "metadata/unsafe-aspect-mismatch.json", "expected": "unsafe_geometry" },
     { "file": "metadata/unsafe-moved-end.json", "expected": "unsafe_geometry" },
     { "file": "metadata/unsafe-resized-viewport.json", "expected": "unsafe_geometry" },
-    { "file": "metadata/unsafe-changed-dpr.json", "expected": "unsafe_geometry" },
+    { "file": "metadata/safe-changed-dpr.json", "expected": "accept" },
     { "file": "metadata/unsafe-missing-end.json", "expected": "unsafe_geometry" },
     { "file": "metadata/version-1-recapture.json", "expected": "recapture_required" }
   ]

@@ -271,6 +271,50 @@ export function hostedMediaProcessingStageDetail(stage: string | null | undefine
   return 'Working on the clip.';
 }
 
+const GENERIC_FAILED_RECAPTURE_DETAIL =
+  'Reconnect the original source and choose Recapture, or cancel the draft.';
+
+const HOSTED_FAILURE_CODE_GUIDANCE: Record<string, string> = {
+  unsafe_geometry:
+    'Do not resize or zoom the window during capture, then Recapture.',
+  recapture_required: GENERIC_FAILED_RECAPTURE_DETAIL,
+  invalid_capture_metadata: GENERIC_FAILED_RECAPTURE_DETAIL,
+  duration_out_of_bounds: 'Recapture a 1–90 second excerpt, or cancel the draft.',
+  missing_audio: 'The capture had no audio. Recapture, or cancel the draft.',
+  missing_video: 'The capture had no video. Recapture, or cancel the draft.',
+  transcode_failed: 'Clip processing failed. Recapture, or cancel the draft.',
+  transcode_timeout: 'Clip processing timed out. Recapture, or cancel the draft.',
+  transcription_failed: 'Transcription failed. Recapture, or cancel the draft.',
+  transcript_invalid: 'Transcription failed. Recapture, or cancel the draft.',
+};
+
+function boundedFailureIdentifier(
+  value: string | null | undefined,
+  maxLength: number,
+): string | null {
+  if (typeof value !== 'string' || value.length < 1 || value.length > maxLength) return null;
+  if (!/^[a-z0-9_]+$/.test(value)) return null;
+  return value;
+}
+
+export function hostedMediaFailedStatusDetail(
+  failureStage: string | null | undefined,
+  failureCode: string | null | undefined,
+): string {
+  const stage = boundedFailureIdentifier(failureStage, 50);
+  const code = boundedFailureIdentifier(failureCode, 100);
+  if (!stage && !code) {
+    return `Capture failed. ${GENERIC_FAILED_RECAPTURE_DETAIL}`;
+  }
+  const where = stage && code
+    ? `Processing failed during ${stage} (${code}).`
+    : stage
+      ? `Processing failed during ${stage}.`
+      : `Processing failed (${code}).`;
+  const guidance = (code && HOSTED_FAILURE_CODE_GUIDANCE[code]) || GENERIC_FAILED_RECAPTURE_DETAIL;
+  return `${where} ${guidance}`;
+}
+
 export function hostedMediaProgressCopy(input: {
   cancelling: boolean;
   snapshot: CaptureSnapshot;
@@ -409,6 +453,12 @@ export function reconcileHostedMediaState(
         processingStage: owned.processingStage,
       },
     };
+  }
+  if (owned.processingStatus === 'failed') {
+    return recoveryError(
+      'recapture-required',
+      hostedMediaFailedStatusDetail(owned.failureStage, owned.failureCode),
+    );
   }
 
   const liveMatches = Boolean(live && liveOperation &&
