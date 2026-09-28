@@ -1,0 +1,68 @@
+- main:
+  - paragraph: PUBLIC ANNOTATIONS
+  - paragraph: Your media notations across video, podcasts & text shared with the world.
+  - article "Here's my Note on AI and Dario's Interview":
+    - link "Matt Mahood":
+      - /url: /p/85fdb29c-83e0-40b0-baf0-4795bcccaddb
+    - paragraph:
+      - time: Sep 16, 2026
+    - paragraph: Here's my Note on AI and Dario's Interview
+    - paragraph: He Said "XXXX" but the facts align with "YYYY".
+    - 'button "Video Extended Interview: Dario Amodei youtube.com 03:20–03:59"'
+    - link "Open source":
+      - /url: https://www.youtube.com/watch?v=hQR_VJF6ukk&t=200s
+    - link "View annotation":
+      - /url: /matt-mahood-85fdb29c/extended-interview-dario-amodei-4d722398
+    - link "0 comments":
+      - /url: /matt-mahood-85fdb29c/extended-interview-dario-amodei-4d722398#comments
+    - button "Share"
+    - button "Bookmark"
+  - article "AI Opinion | Set the Record Straight":
+    - link "Matt Mahood":
+      - /url: /p/85fdb29c-83e0-40b0-baf0-4795bcccaddb
+    - paragraph:
+      - time: Sep 16, 2026
+    - paragraph: AI Opinion | Set the Record Straight
+    - paragraph: Here's my notes on Dario's interview, on what was asked and what was said.
+    - 'button "Video Extended Interview: Dario Amodei youtube.com 03:32–04:29"'
+    - link "Open source":
+      - /url: https://www.youtube.com/watch?v=hQR_VJF6ukk&t=212s
+    - link "View annotation":
+      - /url: /matt-mahood-85fdb29c/extended-interview-dario-amodei-7e6fb77e
+    - link "0 comments":
+      - /url: /matt-mahood-85fdb29c/extended-interview-dario-amodei-7e6fb77e#comments
+    - button "Share"
+    - button "Bookmark"
+  - article "Annotated is here":
+    - link "operator // cb+coop":
+      - /url: /p/3187bbf9-c4bf-45e1-a1d8-26be584cd8d9
+    - paragraph:
+      - time: Sep 15, 2026
+    - paragraph: Annotated is here
+    - paragraph: Hello! I'm Matt Mahood and this is my Annotation on Jason's Annotated.com bounty. Annotated allows you to take, keep and share notes across media - text, video, audio. Make text and audio notes, and share with the world. Follow others and keep margin notes on new media.…
+    - button "Text annotated.com, $5K Bounty Contest by Jason Calacanis annotated.lovable.app Annotated is a sidebar Chrome extension that lets users highlight and quickly clip media, text, audio, or video, from any website, then add their own commentary and annotations. Annotations are saved on a landing page that links back to the original source, and shared on a public social media feed. Users can follow one another and engage with each others'…"
+    - link "Open source":
+      - /url: https://annotated.lovable.app/
+    - link "View annotation":
+      - /url: /themattmahood/annotated-com-5k-bounty-contest-by-jason-calacanis-887fd0a8
+    - link "0 comments":
+      - /url: /themattmahood/annotated-com-5k-bounty-contest-by-jason-calacanis-887fd0a8#comments
+    - button "Share"
+    - button "Bookmark"
+  - article "testing a video annotation on production":
+    - link "Matt Mahood":
+      - /url: /p/85fdb29c-83e0-40b0-baf0-4795bcccaddb
+    - paragraph:
+      - time: Sep 14, 2026
+    - paragraph: testing a video annotation on production
+    - paragraph: testing first video clip
+    - button "Video AI Kills Everybody or Doomer Psyop? OpenAI’s Math Breakthrough, Nike’s $200B Collapse youtube.com 1:25:52–1:26:22"
+    - link "Open source":
+      - /url: https://www.youtube.com/watch?v=cvxjqbfLVk0&t=5152s
+    - link "View annotation":
+      - /url: /matt-mahood-85fdb29c/ai-kills-everybody-or-doomer-psyop-openai-s-math-breakthrough-nike-s-200b-collapse-2447c159
+    - link "0 comments":
+      - /url: /matt-mahood-85fdb29c/ai-kills-everybody-or-doomer-psyop-openai-s-math-breakthrough-nike-s-200b-collapse-2447c159#comments
+    - button "Share"
+    - button "Bookmark"
+  - navigation "Annotation pages": Previous Page 1 Next

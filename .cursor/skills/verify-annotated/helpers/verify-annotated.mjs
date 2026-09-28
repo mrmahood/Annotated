@@ -365,6 +365,7 @@ function cleanup() {
 }
 
 function ensurePlaywright() {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = BROWSERS_DIR;
   mkdirSync(TOOLS_DIR, { recursive: true });
   const pkgJson = join(TOOLS_DIR, "package.json");
   if (!existsSync(pkgJson)) {
