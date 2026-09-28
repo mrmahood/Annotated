@@ -49,16 +49,17 @@ jobs:
 
       - name: Install checksum-verified FFmpeg 8.1 toolchain
         env:
-          FFMPEG_ASSET: ffmpeg-n8.1.2-52-g5a03dfa0f6-linux64-lgpl-8.1.tar.xz
-          FFMPEG_SHA256: aeb05ce45e64bdade17f5832a7761044bc1d275025e2e3f42f36f51cb8903cc7
-          FFMPEG_VERSION: n8.1.2-52-g5a03dfa0f6-20260911
+          FFMPEG_ASSET: ffmpeg-n8.1.2-50-g1a748fe2cd-linux64-lgpl-8.1.tar.xz
+          FFMPEG_SHA256: 7d6d93e9c39e0e461feb13c118e91e4eec2515e4da3a01d4ad6790996731bbee
+          FFMPEG_VERSION: n8.1.2-50-g1a748fe2cd-20260831
         run: |
           set -euo pipefail
           tool_root="$RUNNER_TEMP/annotated-ffmpeg"
           archive="$tool_root/$FFMPEG_ASSET"
           mkdir -p "$tool_root/extracted"
+          # Daily BtbN autobuild assets are deleted. Month-end releases stay published.
           curl --fail --location --retry 3 --output "$archive" \
-            "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-11-13-20/$FFMPEG_ASSET"
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/$FFMPEG_ASSET"
           echo "$FFMPEG_SHA256  $archive" | sha256sum --check --strict
           tar -xJf "$archive" -C "$tool_root/extracted" --strip-components=1
           test "$("$tool_root/extracted/bin/ffmpeg" -hide_banner -version | sed -n '1s/^ffmpeg version //p' | awk '{print $1}')" = "$FFMPEG_VERSION"
