@@ -47,8 +47,9 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Legal](./legal.md) covers the legal center, Privacy Policy, and Terms of Service.
 - [Trending](./trending.md) covers the signed-out What's Trending page.
 - [Who to Follow](./who-to-follow.md) covers the signed-out suggestion list. Following stays behind sign-in and is not completed.
+- [Me signed out](./me-signed-out.md) covers the signed-out wall at `/me`: title `Bookmarks | Annotated`, headings `Bookmarks` and `Sign in to see your bookmarks.`, and `Sign in with Google`.
 - [Chrome extension](./chrome-extension.md) is mapped and deferred. Create, Feed, and Me inside the side panel need an unpacked extension load.
-- [Authenticated Me and Create](./authenticated-me.md) is mapped and deferred. Signed-in bookmarks, the public handle, and Create need a real OAuth session or the extension. The signed-out `/me` wall is the only part this harness drives.
+- [Authenticated Me and Create](./authenticated-me.md) is mapped and deferred. Signed-in bookmarks, the public handle, and Create need a real OAuth session or the extension. The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
 
 ## Not a feature file yet
 

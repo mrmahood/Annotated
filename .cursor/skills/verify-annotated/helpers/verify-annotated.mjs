@@ -638,7 +638,7 @@ async function driveMeSignedOut({ page, state, dir }) {
   writeNotes(dir, [
     "# Proof: me-signed-out",
     "",
-    `- Feature ID: authenticated-me`,
+    `- Feature ID: me-signed-out`,
     `- Entry: GET /me`,
     `- Title: ${title}`,
     `- Bookmarks heading: ${bookmarks > 0 ? "yes" : "no"}`,
