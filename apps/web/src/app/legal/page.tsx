@@ -5,27 +5,32 @@ import {
   LEGAL_OPERATOR,
   LEGAL_PATHS,
 } from "@/lib/legal";
+import {
+  getPublicPageStructuredData,
+  LEGAL_HEADING,
+  LEGAL_LEDE,
+} from "@/lib/discoverability";
 import { LegalOperatorAddress, LegalOperatorLead } from "../legal-document";
+import { JsonLd } from "../json-ld";
 import { SiteHeader } from "../site-header";
 
 export const metadata: Metadata = {
   title: "Legal | Annotated",
   description: "Privacy Policy and Terms of Service for the Annotated public web app and Chrome extension.",
+  alternates: { canonical: LEGAL_PATHS.center },
 };
 
 export default function LegalCenterPage() {
   return (
     <>
+      <JsonLd data={getPublicPageStructuredData(LEGAL_PATHS.center)} />
       <a className="skip-link" href="#legal-content">Skip to main content</a>
       <SiteHeader returnTo={LEGAL_PATHS.center} />
       <main className="legal-main" id="legal-content">
         <header className="legal-intro">
           <p className="eyebrow">LEGAL</p>
-          <h1>Policies for Annotated</h1>
-          <p className="lede">
-            These policies apply to the Annotated public web application and the
-            Chrome side-panel extension.
-          </p>
+          <h1>{LEGAL_HEADING}</h1>
+          <p className="lede">{LEGAL_LEDE}</p>
           <ul className="legal-facts">
             <li>Free beta</li>
             <li>Ages 18+</li>

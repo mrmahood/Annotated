@@ -5,6 +5,7 @@ import {
   LEGAL_UPDATED_ON,
   type LegalSectionNav,
 } from "@/lib/legal";
+import { JsonLd } from "./json-ld";
 import { SiteHeader } from "./site-header";
 
 export function LegalDocument({
@@ -13,6 +14,7 @@ export function LegalDocument({
   lede,
   returnTo,
   sections,
+  structuredData = null,
   children,
 }: {
   eyebrow: string;
@@ -20,10 +22,12 @@ export function LegalDocument({
   lede: string;
   returnTo: string;
   sections: readonly LegalSectionNav[];
+  structuredData?: Record<string, unknown> | null;
   children: ReactNode;
 }) {
   return (
     <>
+      <JsonLd data={structuredData} />
       <a className="skip-link" href="#legal-content">Skip to main content</a>
       <SiteHeader returnTo={returnTo} />
       <main className="legal-main" id="legal-content">

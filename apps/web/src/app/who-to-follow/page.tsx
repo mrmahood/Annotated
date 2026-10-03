@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
 import { SiteHeader } from "../site-header";
 import { WhoToFollowList } from "../who-to-follow-rail";
+import { JsonLd } from "../json-ld";
 import { getCurrentUserId, getWhoToFollowSuggestions } from "@/lib/data/social";
 import { WHO_TO_FOLLOW_PATH } from "@/lib/data/who-to-follow";
+import {
+  getPublicPageStructuredData,
+  WHO_TO_FOLLOW_HEADING,
+  WHO_TO_FOLLOW_LEDE,
+} from "@/lib/discoverability";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Who to Follow | Annotated",
   description: "Curated Annotated accounts you may want to follow.",
+  alternates: { canonical: WHO_TO_FOLLOW_PATH },
 };
 
 export default async function WhoToFollowPage() {
@@ -18,16 +25,13 @@ export default async function WhoToFollowPage() {
 
   return (
     <>
+      <JsonLd data={getPublicPageStructuredData(WHO_TO_FOLLOW_PATH)} />
       <SiteHeader active="who-to-follow" returnTo={returnTo} />
       <main className="discovery-main">
         <header className="discovery-intro">
           <p className="eyebrow">WHO TO FOLLOW</p>
-          <h1>Accounts worth following.</h1>
-          <p className="lede">
-            A curated set of public Annotated profiles. Signed-out visitors
-            still see suggestions; Follow asks you to continue with Google or X.
-            Accounts you already follow are hidden.
-          </p>
+          <h1>{WHO_TO_FOLLOW_HEADING}</h1>
+          <p className="lede">{WHO_TO_FOLLOW_LEDE}</p>
         </header>
 
         {suggestions.status === "unavailable" ? (

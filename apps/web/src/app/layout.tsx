@@ -7,9 +7,12 @@ import {
   parseAppearancePreference,
   resolveAppearanceTheme,
 } from "@annotated/shared/appearance";
+import { getConfiguredSiteOrigin } from "@/lib/public-routes";
 import { AppearanceRuntime } from "./appearance-control";
 import { SiteFooter } from "./site-footer";
 import "./globals.css";
+
+const siteOrigin = getConfiguredSiteOrigin();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,6 +25,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  ...(siteOrigin ? { metadataBase: new URL(siteOrigin) } : {}),
   title: "Annotated",
   description: "Connect ideas to their sources.",
 };

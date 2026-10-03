@@ -1,14 +1,22 @@
 import type { Metadata } from "next";
 import { AnnotationCard } from "../annotation-card";
+import { JsonLd } from "../json-ld";
 import { SiteHeader } from "../site-header";
 import { feedItemKey, getTrendingFeedItems } from "@/lib/data/public-discovery";
 import { getCurrentUserId } from "@/lib/data/social";
+import {
+  getPublicPageStructuredData,
+  TRENDING_HEADING,
+  TRENDING_LEDE,
+  TRENDING_PATH,
+} from "@/lib/discoverability";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "What’s Trending | Annotated",
   description: "A 7-day ranking of published annotations, one card per author.",
+  alternates: { canonical: TRENDING_PATH },
 };
 
 export default async function TrendingPage() {
@@ -20,16 +28,13 @@ export default async function TrendingPage() {
 
   return (
     <>
+      <JsonLd data={getPublicPageStructuredData(TRENDING_PATH)} />
       <SiteHeader active="trending" returnTo={returnTo} />
       <main className="discovery-main">
         <header className="discovery-intro">
           <p className="eyebrow">WHAT’S TRENDING</p>
-          <h1>This week’s most active annotations.</h1>
-          <p className="lede">
-            Ranked over the last 7 days from comments, unique commenters,
-            follows on the author, reshares, and recency. One card per author.
-            There is no view count in this ranking.
-          </p>
+          <h1>{TRENDING_HEADING}</h1>
+          <p className="lede">{TRENDING_LEDE}</p>
         </header>
 
         {trending.status === "unavailable" ? (

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   getCanonicalAnnotationPath,
   getConfiguredPublicPageUrl,
+  getConfiguredSiteOrigin,
   getNotFoundMetadata,
   getPublicAnnotationMetadata,
   getPublicAnnotationPath,
@@ -85,10 +86,13 @@ test("accepts HTTPS or loopback HTTP site origins and rejects ambiguous origins"
   const previous = process.env.NEXT_PUBLIC_SITE_URL;
   try {
     process.env.NEXT_PUBLIC_SITE_URL = "http://localhost:3000";
+    assert.equal(getConfiguredSiteOrigin(), "http://localhost:3000");
     assert.equal(
       getConfiguredPublicPageUrl("/reader-one/source-title"),
       "http://localhost:3000/reader-one/source-title",
     );
+    process.env.NEXT_PUBLIC_SITE_URL = "http://127.0.0.1:3000";
+    assert.equal(getConfiguredSiteOrigin(), "http://127.0.0.1:3000");
     process.env.NEXT_PUBLIC_SITE_URL = "https://annotated.example";
     assert.equal(
       getConfiguredPublicPageUrl("/reader-one/source-title"),

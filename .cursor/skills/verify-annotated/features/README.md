@@ -56,3 +56,4 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - Public profile `/p/[profileId]` opens from a creator name on a card or annotation. It is a public page and is not yet its own feature file.
 - `/ops` is an allowlisted operator console, not a public surface.
 - `/auth/error` is the sign-in failure page. Do not start OAuth to reach it.
+- `/robots.txt`, `/sitemap.xml`, and `/llms.txt` are public discoverability files on the same origin. They are not a signed-out browser drive.

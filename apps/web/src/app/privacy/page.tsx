@@ -8,21 +8,28 @@ import {
   LegalSection,
 } from "../legal-document";
 import { LEGAL_PATHS, PRIVACY_SECTIONS } from "@/lib/legal";
+import {
+  getPublicPageStructuredData,
+  PRIVACY_HEADING,
+  PRIVACY_LEDE,
+} from "@/lib/discoverability";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Annotated",
   description:
     "How Annotated collects, uses, stores, shares, and protects information for the public web app and Chrome extension.",
+  alternates: { canonical: LEGAL_PATHS.privacy },
 };
 
 export default function PrivacyPolicyPage() {
   return (
     <LegalDocument
       eyebrow="PRIVACY"
-      title="Privacy Policy"
-      lede="This policy explains what information Annotated collects, why we collect it, how it is used and shared, how long it is kept, and the choices and rights you have."
+      title={PRIVACY_HEADING}
+      lede={PRIVACY_LEDE}
       returnTo={LEGAL_PATHS.privacy}
       sections={PRIVACY_SECTIONS}
+      structuredData={getPublicPageStructuredData(LEGAL_PATHS.privacy)}
     >
       <LegalSection id="scope" number="01" title="Scope">
         <p>
