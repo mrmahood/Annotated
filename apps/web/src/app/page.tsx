@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AnnotationCard } from "./annotation-card";
+import { JsonLd } from "./json-ld";
 import { PaginationNav } from "./pagination-nav";
 import { SiteHeader } from "./site-header";
 import { TrendingStrip } from "./trending-strip";
 import { WhoToFollowRail } from "./who-to-follow-rail";
 import { feedItemKey, getPublicFeedPage, getTrendingFeedItems } from "@/lib/data/public-discovery";
 import { getCurrentUserId, getWhoToFollowSuggestions } from "@/lib/data/social";
+import { FEED_LEDE, FEED_PATH, getPublicPageStructuredData } from "@/lib/discoverability";
 import { shouldShowWhoToFollowRail } from "@/lib/data/who-to-follow";
 import {
   getPageHref,
@@ -16,14 +18,20 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Public annotation feed | Annotated",
-  description: "Discover source-linked annotations published by Annotated readers.",
-};
-
 type HomePageProps = {
   searchParams: Promise<{ page?: string | string[] }>;
 };
+
+export async function generateMetadata({ searchParams }: HomePageProps): Promise<Metadata> {
+  const { page: pageQuery } = await searchParams;
+  const page = parsePageQuery(pageQuery);
+
+  return {
+    title: "Public annotation feed | Annotated",
+    description: "Discover source-linked annotations published by Annotated readers.",
+    alternates: { canonical: getPageHref(FEED_PATH, page) },
+  };
+}
 
 export default async function Home({ searchParams }: HomePageProps) {
   const { page: pageQuery } = await searchParams;
@@ -50,13 +58,12 @@ export default async function Home({ searchParams }: HomePageProps) {
 
   return (
     <>
+      <JsonLd data={getPublicPageStructuredData(FEED_PATH)} />
       <SiteHeader active="feed" returnTo={returnTo} />
       <main className={showWhoToFollowRail ? "discovery-main discovery-main-with-rail" : "discovery-main"}>
         <header className="discovery-intro">
           <p className="eyebrow">PUBLIC ANNOTATIONS</p>
-          <p className="lede">
-            Your media notations across video, podcasts & text shared with the world.
-          </p>
+          <p className="lede">{FEED_LEDE}</p>
         </header>
 
         <div className="discovery-feed-column">

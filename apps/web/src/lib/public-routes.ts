@@ -44,15 +44,9 @@ export function getPublicAnnotationPath(
   return route ? getCanonicalAnnotationPath(route) : `/a/${annotationId}`;
 }
 
-export function getConfiguredPublicPageUrl(path: string): string | undefined {
+export function getConfiguredSiteOrigin(): string | undefined {
   const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  const routeMatch = /^\/([^/]+)\/([^/]+)$/.exec(path);
-  if (
-    !configuredSiteUrl ||
-    !routeMatch ||
-    !isPublicCreatorHandle(routeMatch[1]) ||
-    !isPublicAnnotationSlug(routeMatch[2])
-  ) return undefined;
+  if (!configuredSiteUrl) return undefined;
 
   try {
     const siteUrl = new URL(configuredSiteUrl);
@@ -71,10 +65,23 @@ export function getConfiguredPublicPageUrl(path: string): string | undefined {
       return undefined;
     }
 
-    return new URL(path, siteUrl.origin).href;
+    return siteUrl.origin;
   } catch {
     return undefined;
   }
+}
+
+export function getConfiguredPublicPageUrl(path: string): string | undefined {
+  const origin = getConfiguredSiteOrigin();
+  const routeMatch = /^\/([^/]+)\/([^/]+)$/.exec(path);
+  if (
+    !origin ||
+    !routeMatch ||
+    !isPublicCreatorHandle(routeMatch[1]) ||
+    !isPublicAnnotationSlug(routeMatch[2])
+  ) return undefined;
+
+  return new URL(path, origin).href;
 }
 
 export function getNotFoundMetadata(): Metadata {

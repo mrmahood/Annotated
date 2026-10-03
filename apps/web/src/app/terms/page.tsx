@@ -8,21 +8,28 @@ import {
   LegalSection,
 } from "../legal-document";
 import { LEGAL_PATHS, TERMS_SECTIONS } from "@/lib/legal";
+import {
+  getPublicPageStructuredData,
+  TERMS_HEADING,
+  TERMS_LEDE,
+} from "@/lib/discoverability";
 
 export const metadata: Metadata = {
   title: "Terms of Service | Annotated",
   description:
     "The rules and responsibilities governing use of the Annotated public web app and Chrome extension.",
+  alternates: { canonical: LEGAL_PATHS.terms },
 };
 
 export default function TermsOfServicePage() {
   return (
     <LegalDocument
       eyebrow="TERMS"
-      title="Terms of Service"
-      lede="These Terms are the agreement between you and the operator of Annotated. They explain what the service does, what you may and may not do with it, and how responsibility is allocated between us."
+      title={TERMS_HEADING}
+      lede={TERMS_LEDE}
       returnTo={LEGAL_PATHS.terms}
       sections={TERMS_SECTIONS}
+      structuredData={getPublicPageStructuredData(LEGAL_PATHS.terms)}
     >
       <LegalSection id="agreement" number="01" title="Agreement to the terms">
         <p>

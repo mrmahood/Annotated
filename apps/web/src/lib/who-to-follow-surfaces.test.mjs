@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("web Feed side rail and Follow tab stay on the curated Who to Follow contract", async () => {
-  const [home, page, rail, card, header, routes, handles, social, mutations, styles] = await Promise.all([
+  const [home, page, copy, rail, card, header, routes, handles, social, mutations, styles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/who-to-follow/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./discoverability.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/who-to-follow-rail.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/who-to-follow-card.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/site-header.tsx", import.meta.url), "utf8"),
@@ -27,7 +28,8 @@ test("web Feed side rail and Follow tab stay on the curated Who to Follow contra
   assert.match(page, /active="who-to-follow"/);
   assert.match(page, /WhoToFollowList/);
   assert.match(page, /No suggestions right now/);
-  assert.match(page, /continue with Google or X/i);
+  assert.match(page, /WHO_TO_FOLLOW_LEDE/);
+  assert.match(copy, /continue with Google or X/i);
 
   assert.match(rail, /who-to-follow-rail/);
   assert.match(rail, /Suggested accounts/);

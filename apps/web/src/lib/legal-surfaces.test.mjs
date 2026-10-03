@@ -65,7 +65,8 @@ test("web legal pages keep policy substance and Vercel hosting, not Lovable", as
   assert.match(terms, /LEGAL_PATHS\.privacy/);
   assert.match(terms, /US \$100/);
 
-  assert.match(center, /Policies for Annotated/);
+  assert.match(center, /LEGAL_HEADING/);
+  assert.match(center, /LEGAL_LEDE/);
   assert.match(center, /LEGAL_PATHS\.privacy/);
   assert.match(center, /LEGAL_PATHS\.terms/);
 
