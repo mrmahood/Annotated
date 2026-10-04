@@ -137,7 +137,7 @@ export const loadPublicAnnotation = cache(
         const transcriptResult = await supabase
           .rpc("get_public_annotation_transcript", { p_annotation_id: annotation.id })
           .maybeSingle();
-        if (transcriptResult.error || !transcriptResult.data) return null;
+        if (transcriptResult.error) return null;
         transcript = transcriptResult.data;
       }
 

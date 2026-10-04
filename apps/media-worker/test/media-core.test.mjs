@@ -231,7 +231,93 @@ test('geometry allows devicePixelRatio flicker when CSS layout stays stable', as
 test('geometry still fails when DPR flickers and the player actually moved', async () => {
   const metadata = await loadMetadata('safe-changed-dpr.json');
   for (const key of ['x', 'left', 'right']) metadata.video_element.end[key] += 2;
-  assert.throws(() => calculateVideoCrop(metadata, 640, 360), errorCode('unsafe_geometry'));
+  assert.throws(() => calculateVideoCrop(metadata, 640, 360), errorCode('unsafe_geometry', 'capture_changed'));
+});
+
+function productionYoutubeMetadata() {
+  return {
+    version: 2,
+    viewport: {
+      start: { width: 886, height: 846, device_pixel_ratio: 1.5, scroll_x: 0, scroll_y: 0 },
+      end: { width: 886, height: 846, device_pixel_ratio: 1, scroll_x: 0, scroll_y: 0 },
+    },
+    video_element: {
+      start: {
+        x: 7.5, y: 60, width: 871, height: 490,
+        top: 60, right: 878.5, bottom: 550, left: 7.5,
+      },
+      end: {
+        x: 7.5, y: 60, width: 871, height: 490,
+        top: 60, right: 878.5, bottom: 550, left: 7.5,
+      },
+    },
+    intrinsic_video: { width: 1920, height: 1080 },
+    computed_style: { object_fit: 'cover', object_position: '50% 50%' },
+    fullscreen: { start: false, end: false },
+    capture_track: {
+      mime_type: 'video/webm;codecs=vp9,opus',
+      audio_track_count: 1,
+      video_track_count: 1,
+      tracks: [
+        { kind: 'audio', settings: { sampleRate: 48000, channelCount: 2 } },
+        {
+          kind: 'video',
+          settings: {
+            width: 1922,
+            height: 1200,
+            frameRate: 30,
+            resizeMode: 'crop-and-scale',
+            screenPixelRatio: 1.5,
+          },
+        },
+      ],
+      loopback_enabled: true,
+    },
+    timing: {
+      requested_start_ms: 141000,
+      requested_end_ms: 171000,
+      requested_duration_ms: 30000,
+      lead_in_ms: 20,
+      recorder_elapsed_ms: 30020,
+      player_start_ms: 141000,
+      player_end_ms: 171000,
+      lead_in_clock: 'offscreen_monotonic',
+    },
+  };
+}
+
+test('stable in-viewport crop-and-scale accepts device pixels that match the CSS viewport', () => {
+  const metadata = productionYoutubeMetadata();
+  const devicePixels = calculateVideoCrop(metadata, 1330, 1270);
+  assert.equal(devicePixels.offsetX, 0);
+  assert.equal(devicePixels.offsetY, 0);
+  assert.ok(devicePixels.x >= 0 && devicePixels.y >= 0);
+  assert.ok(devicePixels.x + devicePixels.width <= 1330);
+  assert.ok(devicePixels.y + devicePixels.height <= 1270);
+  assert.ok(devicePixels.width >= 2 && devicePixels.height >= 2);
+  const stableDpr = structuredClone(metadata);
+  stableDpr.viewport.end.device_pixel_ratio = 1.5;
+  assert.deepEqual(devicePixels, calculateVideoCrop(stableDpr, 1330, 1270));
+
+  const letterboxed = calculateVideoCrop(metadata, 1922, 1200);
+  assert.ok(letterboxed.offsetX > 0);
+  assert.equal(letterboxed.offsetY, 0);
+  assert.equal(letterboxed.scaleX, letterboxed.scaleY);
+  assert.ok(letterboxed.x + letterboxed.width <= 1922);
+  assert.ok(letterboxed.y + letterboxed.height <= 1200);
+});
+
+test('crop-and-scale still fails when the frame matches neither the viewport nor the track', () => {
+  const metadata = productionYoutubeMetadata();
+  assert.throws(() => calculateVideoCrop(metadata, 1920, 1080), errorCode('unsafe_geometry'));
+  const outside = productionYoutubeMetadata();
+  outside.video_element.start.width = 890;
+  outside.video_element.start.right = 897.5;
+  outside.video_element.end = structuredClone(outside.video_element.start);
+  assert.throws(() => calculateVideoCrop(outside, 1330, 1270), errorCode('unsafe_geometry', 'player_not_visible'));
+  const resized = productionYoutubeMetadata();
+  resized.viewport.end.width = 800;
+  assert.throws(() => calculateVideoCrop(resized, 1330, 1270), errorCode('unsafe_geometry', 'capture_changed'));
 });
 
 test('raw probe validation trusts container and streams rather than filename', () => {

@@ -12,7 +12,7 @@ import { runDispatchCycle } from '../src/runtime/dispatcher.mjs';
 import { runReconciliationCycle } from '../src/runtime/reconciler.mjs';
 import { createSanitizedLogger } from '../src/runtime/sanitized-logger.mjs';
 import { persistDerivativeDurationMs, requireBoundedInteger } from '../src/runtime/validation.mjs';
-import { runOneMediaJob } from '../src/runtime/worker-job.mjs';
+import { persistedFailureCode, runOneMediaJob } from '../src/runtime/worker-job.mjs';
 
 const mediaId = '11111111-1111-4111-8111-111111111111';
 const secondMediaId = '22222222-2222-4222-8222-222222222222';
@@ -613,4 +613,154 @@ test('one-ID worker resumes finalization without media or transcription access',
   });
   assert.equal(finalized, true);
   assert.deepEqual(result, { outcome: 'ready' });
+});
+
+test('persisted failure codes keep a true geometry reason and leave other codes unchanged', () => {
+  assert.equal(persistedFailureCode({
+    stage: 'transcoding', code: 'unsafe_geometry', reason: 'capture_changed',
+  }), 'capture_changed');
+  assert.equal(persistedFailureCode({
+    stage: 'transcoding', code: 'unsafe_geometry', reason: 'player_not_visible',
+  }), 'player_not_visible');
+  assert.equal(persistedFailureCode({
+    stage: 'transcoding', code: 'unsafe_geometry', reason: 'duration_overshoot',
+  }), 'unsafe_geometry');
+  assert.equal(persistedFailureCode({ stage: 'transcoding', code: 'output_invalid', reason: 'duration_overshoot' }), 'output_invalid');
+});
+
+test('one-ID worker publishes the playable excerpt before transcription and still stages the transcript', async () => {
+  const { logger, lines } = captureLogger();
+  const order = [];
+  const stagedDerivative = {
+    checksumSha256: 'a'.repeat(64),
+    byteSize: 10,
+    durationMs: 3_000,
+    width: null,
+    height: null,
+    mimeType: 'audio/mp4',
+  };
+  const store = {
+    claim: async () => ({
+      ...claim('raw_cleanup'),
+      processed_storage_path: 'owner/annotation/media/excerpt.m4a',
+      transcript_present: false,
+    }),
+    confirmRawDeleted: async () => { order.push('confirm'); },
+    publishPlayable: async () => { order.push('publish'); },
+    stageTranscript: async () => { order.push('transcript'); },
+    finalize: async () => { order.push('finalize'); },
+    releaseAttempt: async () => { throw new Error('must not release'); },
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage: {
+      exists: async () => false,
+      download: async () => { throw new Error('must not download raw'); },
+    },
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger,
+    loadStagedDerivative: async () => {
+      order.push('load');
+      return stagedDerivative;
+    },
+    createDerivativeAudio: async () => {
+      order.push('audio');
+      return { kind: 'derivative-audio' };
+    },
+    transcribeExcerpt: async () => {
+      order.push('transcribe');
+      return {
+        transcriptText: 'hello excerpt',
+        language: 'en',
+        segments: null,
+        provider: 'fake',
+        model: 'v1',
+        providerMetadata: {},
+      };
+    },
+  });
+  assert.deepEqual(order, ['confirm', 'publish', 'load', 'audio', 'transcribe', 'transcript', 'finalize']);
+  assert.deepEqual(result, { outcome: 'ready' });
+  const events = lines.map((line) => JSON.parse(line).event);
+  assert.ok(events.indexOf('playable_published') < events.indexOf('transcript_staged'));
+});
+
+test('one-ID worker keeps a published clip when transcription fails after it is playable', async () => {
+  const order = [];
+  let released;
+  const store = {
+    claim: async () => ({
+      ...claim('raw_cleanup'),
+      processed_storage_path: 'owner/annotation/media/excerpt.m4a',
+      transcript_present: false,
+    }),
+    confirmRawDeleted: async () => { order.push('confirm'); },
+    publishPlayable: async () => { order.push('publish'); },
+    stageTranscript: async () => { order.push('transcript'); },
+    finalize: async () => { order.push('finalize'); },
+    releaseAttempt: async (_id, _lease, stage, code) => {
+      released = { stage, code };
+      order.push('release');
+      return { result_status: 'processing', retry_at: '2026-10-04T01:30:00Z' };
+    },
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage: { exists: async () => false, download: async () => Buffer.alloc(0) },
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger: captureLogger().logger,
+    loadStagedDerivative: async () => ({
+      checksumSha256: 'b'.repeat(64),
+      byteSize: 10,
+      durationMs: 3_000,
+      width: null,
+      height: null,
+      mimeType: 'audio/mp4',
+    }),
+    createDerivativeAudio: async () => ({ kind: 'derivative-audio' }),
+    transcribeExcerpt: async () => {
+      order.push('transcribe');
+      throw new MediaCoreError('transcribing', 'provider_timeout', 'The transcription provider timed out.');
+    },
+  });
+  assert.deepEqual(order, ['confirm', 'publish', 'transcribe', 'release']);
+  assert.deepEqual(released, { stage: 'transcribing', code: 'provider_timeout' });
+  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'transcribing', code: 'provider_timeout' });
+});
+
+test('one-ID worker persists a viewport change as capture_changed instead of a generic geometry retry', async () => {
+  let released;
+  const store = {
+    claim: async () => claim('probing'),
+    releaseAttempt: async (_id, _lease, stage, code) => {
+      released = { stage, code };
+      return { result_status: 'failed', retry_at: null };
+    },
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage: {
+      download: async () => {
+        throw new MediaCoreError(
+          'transcoding',
+          'unsafe_geometry',
+          'viewport.width changed during capture.',
+          'capture_changed',
+        );
+      },
+    },
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger: captureLogger().logger,
+  });
+  assert.deepEqual(released, { stage: 'transcoding', code: 'capture_changed' });
+  assert.deepEqual(result, { outcome: 'failed', stage: 'transcoding', code: 'capture_changed' });
 });

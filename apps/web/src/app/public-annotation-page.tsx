@@ -168,7 +168,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             </section>
           )}
 
-          {isHosted && (
+          {isHosted && annotation.transcript && (
             <section className="transcript-section" aria-labelledby="transcript-heading">
               <p className="section-label">Excerpt transcript</p>
               <h2 id="transcript-heading">Transcript</h2>

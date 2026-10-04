@@ -136,7 +136,10 @@ derives a bounded duration from at most 25,000 packet timestamps when a WebM
 duration is absent, rejecting truncated or malformed timing output. Geometry
 uses a uniform scale and centered offsets only when probed dimensions match the
 recorded track and `resizeMode` is `crop-and-scale`; other mismatches fail
-closed. Focused tests pass 46/46. All three real captures then produced bounded
+closed. A later correction also accepts a stable in-viewport `crop-and-scale`
+capture when the probed frame matches the CSS viewport aspect, even if that
+aspect differs from the reported track. A frame that matches neither still
+fails closed. Focused tests pass 46/46. All three real captures then produced bounded
 H.264/AAC derivatives and passed raw-versus-derivative signal checks. The blind
 pair is retained. No remote lifecycle was invoked.
 

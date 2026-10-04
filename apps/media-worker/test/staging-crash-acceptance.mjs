@@ -15,7 +15,7 @@ const EXPECTED_DATABASE_HOST = 'aws-0-us-east-1.pooler.supabase.com';
 const BOUNDARIES = Object.freeze({
   after_claim: { index: 1, expectedResume: 'probing' },
   after_derivative_upload: { index: 2, expectedResume: 'probing' },
-  after_derivative_stage: { index: 3, expectedResume: 'transcribing' },
+  after_derivative_stage: { index: 3, expectedResume: 'raw_cleanup' },
   after_transcript_stage: { index: 4, expectedResume: 'raw_cleanup' },
   after_raw_delete: { index: 5, expectedResume: 'raw_cleanup' },
   after_raw_confirm: { index: 6, expectedResume: 'finalizing' },

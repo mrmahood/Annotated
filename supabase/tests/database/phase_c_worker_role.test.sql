@@ -43,6 +43,7 @@ from (values
   ('private.stage_annotation_media_transcript(uuid,uuid,text,text,jsonb,text,text,jsonb)'),
   ('private.confirm_annotation_media_raw_deleted(uuid,uuid)'),
   ('private.finalize_annotation_media_ready(uuid,uuid)'),
+  ('private.publish_annotation_media_playable(uuid,uuid)'),
   ('private.release_annotation_media_processing_attempt(uuid,uuid,text,text)'),
   ('private.list_annotation_media_dispatch_candidates(integer)'),
   ('private.list_annotation_media_reconciliation_candidates(integer)'),

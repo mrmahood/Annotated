@@ -91,9 +91,9 @@ export default function PrivacyPolicyPage() {
         <p>
           Raw captured source media is private, is not offered as a download, and
           must be deleted before an annotation is successfully published. A
-          hosted-media annotation remains a private draft until processing is
-          complete, the excerpt transcript is ready, and raw-media deletion is
-          confirmed.
+          hosted-media annotation remains a private draft until the playable
+          excerpt is ready and raw-media deletion is confirmed. The excerpt
+          transcript is added when it is ready.
         </p>
 
         <h3>Optional recorded audio commentary</h3>

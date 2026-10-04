@@ -69,3 +69,19 @@ test("public detail page labels webpage video separately from YouTube", async ()
   assert.match(routes, /annotation\.source\.type === "article"/);
   assert.doesNotMatch(page + routes, /createSignedUrl|processed_storage_path|service_role/);
 });
+
+test("a ready hosted clip stays on the page when the excerpt transcript is not ready", async () => {
+  const [model, loader, page] = await Promise.all([
+    readFile(new URL("./public-annotation-model.ts", import.meta.url), "utf8"),
+    readFile(new URL("./public-annotation.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../app/public-annotation-page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(model, /transcript: PublicTranscript \| null/);
+  assert.match(model, /if \(transcriptValue === null\) return \{ \.\.\.detail, transcript: null \}/);
+  assert.match(model, /return transcript \? \{ \.\.\.detail, transcript \} : null/);
+  assert.match(loader, /get_public_annotation_transcript/);
+  assert.match(loader, /if \(transcriptResult\.error\) return null/);
+  assert.doesNotMatch(loader, /!transcriptResult\.data/);
+  assert.match(page, /isHosted && annotation\.transcript && \(/);
+  assert.doesNotMatch(model + loader + page, /createSignedUrl|processed_storage_path|service_role/);
+});

@@ -415,7 +415,15 @@ test('Create progress copy is stage-aware and keeps Posted for ready only', () =
 test('failed owner status surfaces failure stage and code in Capture needs attention', () => {
   assert.equal(
     hostedMediaFailedStatusDetail('transcoding', 'unsafe_geometry'),
-    'Processing failed during transcoding (unsafe_geometry). Do not resize or zoom the window during capture, then Recapture.',
+    'Processing failed during transcoding (unsafe_geometry). The clip could not be framed from this capture. Recapture with the player fully visible, or cancel the draft.',
+  );
+  assert.equal(
+    hostedMediaFailedStatusDetail('transcoding', 'capture_changed'),
+    'Processing failed during transcoding (capture_changed). The window or player changed during capture. Do not resize or zoom the window during capture, then Recapture.',
+  );
+  assert.equal(
+    hostedMediaFailedStatusDetail('transcoding', 'player_not_visible'),
+    'Processing failed during transcoding (player_not_visible). The player was not fully inside the window. Keep it fully visible, then Recapture.',
   );
   assert.equal(
     hostedMediaFailedStatusDetail('probing', 'mystery_code'),
@@ -437,7 +445,7 @@ test('failed owner status surfaces failure stage and code in Capture needs atten
   assert.equal(failed.snapshot.code, 'recapture-required');
   assert.equal(
     failed.snapshot.message,
-    'Processing failed during transcoding (unsafe_geometry). Do not resize or zoom the window during capture, then Recapture.',
+    'Processing failed during transcoding (unsafe_geometry). The clip could not be framed from this capture. Recapture with the player fully visible, or cancel the draft.',
   );
   const attention = hostedMediaProgressCopy({ cancelling: false, snapshot: failed.snapshot });
   assert.equal(attention.title, 'Capture needs attention');

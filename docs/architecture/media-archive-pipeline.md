@@ -74,8 +74,9 @@ The bounded Phase E planning contract is
 - Keep both raw and processed Storage buckets private. Upload raw media directly
   to a short-lived, server-authorized path; serve ready derivatives through
   short-lived signed URLs.
-- Publish a media annotation only after a worker has produced a <=90-second
-  derivative and excerpt-only transcript and has deleted the raw object.
+- Publish a media annotation once a worker has produced a <=90-second
+  derivative and confirmed raw deletion. The excerpt transcript is attached
+  when it is ready and does not gate publication.
 - Use the proven `tabCapture -> stream ID -> offscreen -> MediaRecorder` path.
   The offscreen document, not the side panel, owns the Blob and upload.
 - Crop the visible video-element rectangle, including any captions or controls
@@ -238,15 +239,18 @@ Keep `annotations.status` for product visibility/moderation. Add a separate
 | --- | --- | --- |
 | `capture_pending` | Publication intent exists; capture has not completed. | `draft` |
 | `uploading` | Capture metadata is accepted and a short-lived raw upload is active/retryable. | `draft` |
-| `processing` | Raw object is verified; transcode, transcription, or raw cleanup is queued/running. | `draft` |
-| `ready` | Final derivative and transcript are committed and raw is confirmed deleted. | atomically becomes `published` |
+| `processing` | Raw object is verified; transcode or raw cleanup is queued/running, and the excerpt is not playable yet. | `draft` |
+| `ready` | Playable derivative is committed and raw deletion is confirmed. The excerpt transcript may still be pending. | `published` |
 | `failed` | A terminal capture/upload/processing attempt failed; commentary and target remain. | `draft` |
 | `removed` | Hosted media was withdrawn or the draft was abandoned. | `published`, `hidden`, or `removed`, depending on moderation scope |
 
 `processing_stage` supplies owner-facing detail without multiplying durable
 states: `queued`, `probing`, `transcoding`, `transcribing`, `raw_cleanup`, and
 `finalizing`. Capturing and byte-level upload percentage are live extension
-states; `uploading` is the durable recovery boundary.
+states; `uploading` is the durable recovery boundary. A `ready` row may still
+hold a worker lease, with stage `transcribing`, `finalizing`, or `queued`,
+while the excerpt transcript is produced or retried. The playable derivative
+stays public. The lease and stage clear once the transcript is staged.
 
 Allowed transitions are:
 
@@ -428,18 +432,18 @@ Processing is idempotent:
 2. download and hash raw input;
 3. ffprobe streams, dimensions, duration, and container;
 4. calculate/validate crop;
-5. transcode to deterministic temporary/final output;
-6. derive transcription audio from that exact clipped output;
-7. transcribe and validate segment bounds;
-8. transactionally stage final metadata and transcript while annotation remains
-   private;
-9. delete and confirm the raw object;
-10. transactionally clear the raw path, set media `ready`, and set annotation
-    `published`/`published_at`.
+5. transcode to the deterministic derivative and stage it;
+6. delete and confirm the raw object;
+7. publish the annotation once that playable excerpt exists;
+8. transcribe the exact derivative and stage the transcript when it is valid;
+9. clear the worker lease after the transcript is staged.
 
-A crash after raw deletion is recoverable because final metadata and transcript
-were staged first; the next attempt confirms raw absence and performs the final
-transition.
+A crash after raw deletion is recoverable. The next attempt confirms raw
+absence, publishes if that has not happened, and continues transcription. A
+transcription failure after publication keeps the clip public and retries
+transcription. It does not hide the excerpt. `unsafe_geometry`,
+`capture_changed`, and `player_not_visible` fail on the first attempt, before
+the excerpt is playable, and are not retried.
 
 ## 6. Video cropping and transcoding
 
@@ -478,8 +482,16 @@ Clamp to the encoded frame and adjust to codec-compatible even coordinates.
 Allow only a small aspect-ratio/rounding tolerance (proposed 1%). A material
 viewport/frame aspect mismatch means the browser may have introduced padding or
 another transform for which no API supplies an authoritative content rectangle.
-Do not guess at offsets or pixel-scan site content: fail with `unsafe_geometry`
-and ask the user to retry after making the player fully visible or fullscreen.
+Do not guess at offsets or pixel-scan site content. Chrome tab capture can
+report a `crop-and-scale` track whose aspect differs from the CSS viewport
+while the encoded frames are the tab's device pixels and share the viewport
+aspect. That case uses the direct scale above. Centered uniform scaling is
+used only when `resizeMode` is `crop-and-scale` and the probed frame matches
+the reported track. A frame that matches neither, a player that is not fully
+inside the viewport, or a viewport, player rectangle, or fullscreen state that
+changed during capture fails `unsafe_geometry` on the first attempt. The
+worker does not retry that failure. Ask the user to recapture with the player
+fully visible.
 
 Likewise, detect partial visibility by intersecting the element rectangle with
 `[0, viewport_width] x [0, viewport_height]`. For the MVP, block capture when the
@@ -547,10 +559,10 @@ transcript, including when YouTube or a podcast exposes one.
 Store normalized plain text, detected language when available, and optional
 segment timestamps relative to the excerpt. Validate that segments are ordered,
 non-overlapping within a small provider rounding tolerance, nonempty, and do not
-exceed final media duration. A transcription failure is a processing failure:
-the annotation remains private, the transcode is reused on retry, and publication
-waits for a valid transcript. The landing page may show “Transcript unavailable”
-only after later media removal, not as a successful initial publication state.
+exceed final media duration. Publication does not wait for the transcript.
+A transcription failure after the playable excerpt is public retries
+transcription without hiding the clip. The public page omits the transcript
+until a valid excerpt transcript exists.
 
 ## 8. Extension capture and upload design
 
