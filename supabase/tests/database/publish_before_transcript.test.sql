@@ -208,6 +208,8 @@ select ok(
   'the annotation is public once the excerpt is playable and before a transcript exists'
 );
 
+grant select on pbt_playable to anon, service_role;
+
 set local role anon;
 select is(
   (select media_state.availability
