@@ -200,10 +200,11 @@ test('C5 Local authenticated dispatch, retry, reconciliation, and retention life
       }));
       assert.equal(first.dispatchedCount, 1);
       const waiting = state(scenario.mediaId);
-      assert.equal(waiting.processing_status, 'processing');
-      assert.equal(waiting.processing_stage, 'queued');
+      assert.equal(waiting.annotation_status, 'published');
+      assert.equal(waiting.processing_status, 'ready');
       assert.equal(waiting.attempt_count, 1);
       assert.equal(waiting.next_attempt_present, true);
+      assert.equal(waiting.raw_present, false);
       assert.equal(waiting.processed_present, true);
       assert.equal(waiting.transcript_present, false);
       assert.equal((await store.listDispatchCandidates(100)).some((row) => row.media_id === scenario.mediaId), false);
@@ -211,7 +212,11 @@ test('C5 Local authenticated dispatch, retry, reconciliation, and retention life
       fail = false;
       const second = await dispatchOnly([scenario], () => new DeterministicFakeTranscriber());
       assert.equal(second.dispatchedCount, 1);
-      assert.equal(state(scenario.mediaId).processing_status, 'ready');
+      const finished = state(scenario.mediaId);
+      assert.equal(finished.annotation_status, 'published');
+      assert.equal(finished.processing_status, 'ready');
+      assert.equal(finished.transcript_present, true);
+      assert.equal(finished.next_attempt_present, false);
     });
 
     await t.test('expired lease reconciliation returns the row to the due queue', async () => {
@@ -235,8 +240,13 @@ test('C5 Local authenticated dispatch, retry, reconciliation, and retention life
       const terminal = await seed('terminal retention', { attemptCount: 2 });
       const failed = await dispatchOnly([terminal], () => new DeterministicFakeTranscriber({ failureCode: 'provider_timeout' }));
       assert.equal(failed.dispatchedCount, 1);
-      assert.equal(state(terminal.mediaId).processing_status, 'failed');
-      assert.equal(await storage.exists('annotation-media-raw', terminal.rawPath), true);
+      const terminalState = state(terminal.mediaId);
+      assert.equal(terminalState.annotation_status, 'published');
+      assert.equal(terminalState.processing_status, 'ready');
+      assert.equal(terminalState.raw_present, false);
+      assert.equal(terminalState.processed_present, true);
+      assert.equal(terminalState.transcript_present, false);
+      assert.equal(await storage.exists('annotation-media-raw', terminal.rawPath), false);
       assert.equal(await storage.exists('annotation-media', terminal.processedPath), true);
 
       const abandoned = await seed('abandoned retention', { status: 'uploading' });
@@ -249,16 +259,19 @@ test('C5 Local authenticated dispatch, retry, reconciliation, and retention life
         commit;
       `);
       const summary = await reconcileOnly([terminal, abandoned]);
-      assert.equal(summary.cleanedCount, 2);
-      for (const scenario of [terminal, abandoned]) {
-        const current = state(scenario.mediaId);
-        assert.equal(current.annotation_status, 'draft');
-        assert.equal(current.processing_status, 'removed');
-        assert.equal(current.raw_present, false);
-        assert.equal(current.processed_present, false);
-        assert.equal(await storage.exists('annotation-media-raw', scenario.rawPath), false);
-        assert.equal(await storage.exists('annotation-media', scenario.processedPath), false);
-      }
+      assert.equal(summary.cleanedCount, 1);
+      const kept = state(terminal.mediaId);
+      assert.equal(kept.annotation_status, 'published');
+      assert.equal(kept.processing_status, 'ready');
+      assert.equal(kept.processed_present, true);
+      assert.equal(await storage.exists('annotation-media', terminal.processedPath), true);
+      const removed = state(abandoned.mediaId);
+      assert.equal(removed.annotation_status, 'draft');
+      assert.equal(removed.processing_status, 'removed');
+      assert.equal(removed.raw_present, false);
+      assert.equal(removed.processed_present, false);
+      assert.equal(await storage.exists('annotation-media-raw', abandoned.rawPath), false);
+      assert.equal(await storage.exists('annotation-media', abandoned.processedPath), false);
     });
 
     await t.test('attempt-three failure after raw confirmation cleans processed-only terminal state', async () => {

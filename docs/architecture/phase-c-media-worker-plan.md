@@ -18,10 +18,10 @@ authoritative if this plan is ambiguous.
 ## 1. Outcome and phase boundary
 
 Phase C delivers the path that turns one authoritative private
-`processing/queued` media row into one bounded processed derivative and one
-excerpt-only transcript. It then deletes and confirms deletion of the raw
-object before atomically marking the media `ready` and the annotation
-`published`.
+`processing/queued` media row into one bounded processed derivative, deletes
+and confirms deletion of the raw object, then marks the media `ready` and the
+annotation `published`. The excerpt transcript is produced from that derivative
+and attached when it is ready. It does not gate publication.
 
 Phase C includes:
 
@@ -77,8 +77,9 @@ The current service-only worker database contract is:
 | Stage transcript | `private.stage_annotation_media_transcript` | Store excerpt-only text and bounded relative segments under the same lease. |
 | Mark failure | `private.mark_annotation_media_processing_failed` | Persist only sanitized stage and error identifiers. |
 | Retry | `private.retry_annotation_media_processing` | Return an eligible failed row to `processing/queued`. |
-| Confirm raw deletion | `private.confirm_annotation_media_raw_deleted` | Clear the raw path only after the derivative and transcript exist. |
-| Finalize | `private.finalize_annotation_media_ready` | Atomically set media ready and publish the still-draft annotation. |
+| Confirm raw deletion | `private.confirm_annotation_media_raw_deleted` | Clear the raw path after the derivative exists. A transcript is not required. |
+| Publish playable excerpt | `private.publish_annotation_media_playable` | Set media ready and publish the annotation once raw deletion is confirmed. Keep the lease for transcription. |
+| Finalize | `private.finalize_annotation_media_ready` | Clear the lease after the excerpt transcript is staged. Publication has already happened. |
 
 The worker must not write domain tables directly when an existing RPC owns the
 transition. It may use trusted Storage operations and the narrowly scoped
@@ -227,20 +228,22 @@ For each media UUID:
    dimensions, codec, and byte limit before deterministic private upload.
 8. Reconfirm lease ownership and stage derivative metadata through the worker
    RPC. A lost lease prevents all later domain transitions.
-9. Extract ephemeral transcription audio from the exact trimmed derivative,
-   transcribe only that audio, normalize text, and validate ordered relative
-   segments against final duration.
-10. Stage the transcript under the same lease. Provider metadata is bounded and
-    private; transcript text is never logged.
-11. Delete the exact raw object and verify absence. Treat an already-absent raw
-    object as recoverable only when authoritative staged derivative/transcript
-    state proves a prior attempt crossed the safe persistence boundary.
-12. Confirm raw deletion, then finalize ready/publication atomically through the
-    existing database functions.
+9. Delete the exact raw object and verify absence. Treat an already-absent raw
+   object as recoverable when the staged derivative proves a prior attempt
+   crossed that boundary.
+10. Confirm raw deletion, then publish. Media becomes `ready` and the annotation
+    becomes `published` while the lease is kept for transcription.
+11. Extract ephemeral transcription audio from the exact trimmed derivative,
+    transcribe only that audio, normalize text, and validate ordered relative
+    segments against final duration.
+12. Stage the transcript under the same lease. Provider metadata is bounded and
+    private; transcript text is never logged. Clear the lease. A transcription
+    failure leaves the published excerpt in place and schedules a retry.
 13. Delete local temporary files and emit a sanitized completion record.
 
 The pipeline must be idempotent. A retry reuses valid staged work and never
-publishes before derivative, transcript, and confirmed raw deletion all exist.
+publishes before the derivative exists and raw deletion is confirmed. The
+excerpt transcript is attached after publication and does not gate it.
 
 ## 7. Media validation rules
 
@@ -251,10 +254,13 @@ publishes before derivative, transcript, and confirmed raw deletion all exist.
   lead-in and proposed maximum two-second overshoot.
 - The selected video element must be fully visible within the accepted 1-CSS-
   pixel tolerance at both samples.
-- Viewport/frame aspect mismatch beyond the proposed 1% tolerance is
-  `unsafe_geometry`.
-- Start/end viewport and rectangle movement beyond rounding tolerance is
-  `unsafe_geometry`.
+- A probed frame that matches neither the CSS viewport aspect nor, when
+  `resizeMode` is `crop-and-scale`, the reported capture-track aspect is
+  `unsafe_geometry`. A device-pixel frame that shares the CSS viewport aspect
+  is a direct scale even when the reported track aspect differs.
+- A player outside the viewport, or start/end viewport, rectangle, or
+  fullscreen movement beyond rounding tolerance, is `unsafe_geometry` and is
+  not retried.
 - Crop coordinates are clamped and converted to codec-compatible even values.
 - Final output is no more than 90,000 ms, no larger than the selected range, no
   more than 16 MiB, and approximately 240p without upscaling.
@@ -278,8 +284,8 @@ publishes before derivative, transcript, and confirmed raw deletion all exist.
 - Segments are optional, nonempty when present, ordered, nonoverlapping within a
   documented rounding tolerance, relative to excerpt zero, and bounded by the
   final media duration.
-- A missing or invalid transcript is a processing failure; it cannot produce an
-  initially published annotation.
+- A missing transcript does not block publication. An invalid transcript is
+  not stored. Transcription retries while the playable excerpt stays public.
 
 ## 8. Stable failure model
 

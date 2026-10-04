@@ -289,8 +289,8 @@ select is( -- 16
       'd1c20000-0000-4000-8000-000000000001'
     ) as media_state
   ),
-  'unavailable',
-  'a malformed hosted row is distinguishable from a true historical row without private details'
+  'ready',
+  'a ready excerpt stays available when its transcript row is absent'
 );
 reset role;
 
@@ -302,8 +302,8 @@ select is( -- 17
       'd1c20000-0000-4000-8000-000000000001'
     )
   ),
-  0::bigint,
-  'the same missing-transcript row cannot be signed by the trusted server'
+  1::bigint,
+  'the same missing-transcript row can still be signed by the trusted server'
 );
 reset role;
 

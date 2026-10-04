@@ -275,8 +275,12 @@ const GENERIC_FAILED_RECAPTURE_DETAIL =
   'Reconnect the original source and choose Recapture, or cancel the draft.';
 
 const HOSTED_FAILURE_CODE_GUIDANCE: Record<string, string> = {
+  capture_changed:
+    'The window or player changed during capture. Do not resize or zoom the window during capture, then Recapture.',
+  player_not_visible:
+    'The player was not fully inside the window. Keep it fully visible, then Recapture.',
   unsafe_geometry:
-    'Do not resize or zoom the window during capture, then Recapture.',
+    'The clip could not be framed from this capture. Recapture with the player fully visible, or cancel the draft.',
   recapture_required: GENERIC_FAILED_RECAPTURE_DETAIL,
   invalid_capture_metadata: GENERIC_FAILED_RECAPTURE_DETAIL,
   duration_out_of_bounds: 'Recapture a 1–90 second excerpt, or cancel the draft.',

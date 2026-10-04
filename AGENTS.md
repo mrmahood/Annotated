@@ -25,9 +25,10 @@ This is a pnpm monorepo:
 - New hosted video/audio ranges are 1,000-90,000 ms. The 90-second ceiling is a
   product constraint, not a fair-use determination. Preserve historical read
   compatibility where the database architecture explicitly allows it.
-- Hosted annotations remain `draft` until processed media is ready, the exact
-  excerpt transcript exists, and raw deletion is confirmed. Never infer a
-  public/processing state from local recorder completion.
+- Hosted annotations remain `draft` until the processed excerpt is ready and
+  raw deletion is confirmed. The excerpt transcript is attached when it is
+  ready and does not gate publication. Never infer a public/processing state
+  from local recorder completion.
 - Browser capture uses the proven `tabCapture -> offscreen -> MediaRecorder`
   flow. The offscreen document owns the Blob and direct upload. Do not route the
   complete Blob through the side panel, use `captureStream()` as production

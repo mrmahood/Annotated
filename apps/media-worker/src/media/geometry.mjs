@@ -23,7 +23,12 @@ function assertStableObject(start, end, keys, label, tolerance = CSS_TOLERANCE, 
     const startValue = finite(start[key], `${label}.start.${key}`, minimum);
     const endValue = finite(end[key], `${label}.end.${key}`, minimum);
     if (!close(startValue, endValue, tolerance)) {
-      mediaCoreFailure('transcoding', 'unsafe_geometry', `${label}.${key} changed during capture.`);
+      mediaCoreFailure(
+        'transcoding',
+        'unsafe_geometry',
+        `${label}.${key} changed during capture.`,
+        'capture_changed',
+      );
     }
   }
 }
@@ -80,8 +85,11 @@ export function calculateVideoCrop(metadata, encodedWidth, encodedHeight) {
     CSS_TOLERANCE,
     { x: -CSS_TOLERANCE, y: -CSS_TOLERANCE, top: -CSS_TOLERANCE, left: -CSS_TOLERANCE },
   );
-  if (typeof fullscreen.start !== 'boolean' || typeof fullscreen.end !== 'boolean' || fullscreen.start !== fullscreen.end) {
+  if (typeof fullscreen.start !== 'boolean' || typeof fullscreen.end !== 'boolean') {
     mediaCoreFailure('transcoding', 'unsafe_geometry', 'Fullscreen state changed or is missing.');
+  }
+  if (fullscreen.start !== fullscreen.end) {
+    mediaCoreFailure('transcoding', 'unsafe_geometry', 'Fullscreen state changed during capture.', 'capture_changed');
   }
 
   const startViewport = viewport.start;
@@ -98,7 +106,7 @@ export function calculateVideoCrop(metadata, encodedWidth, encodedHeight) {
     startRect.right > viewportWidth + CSS_TOLERANCE ||
     startRect.bottom > viewportHeight + CSS_TOLERANCE
   ) {
-    mediaCoreFailure('transcoding', 'unsafe_geometry', 'The selected video is not fully visible.');
+    mediaCoreFailure('transcoding', 'unsafe_geometry', 'The selected video is not fully visible.', 'player_not_visible');
   }
 
   const encodedAspect = encodedWidth / encodedHeight;
@@ -106,27 +114,43 @@ export function calculateVideoCrop(metadata, encodedWidth, encodedHeight) {
   const track = metadata.capture_track?.tracks?.find((item) => item?.kind === 'video');
   const trackWidth = track?.settings?.width;
   const trackHeight = track?.settings?.height;
-  if (trackWidth !== undefined || trackHeight !== undefined) {
+  const resizeMode = track?.settings?.resizeMode;
+  const hasTrackSize = trackWidth !== undefined || trackHeight !== undefined;
+  let encodedMatchesTrack = false;
+  if (hasTrackSize) {
     finite(trackWidth, 'capture_track.video.width', 2);
     finite(trackHeight, 'capture_track.video.height', 2);
     const trackAspect = trackWidth / trackHeight;
-    if (Math.abs(trackAspect - encodedAspect) / encodedAspect > ASPECT_TOLERANCE) {
-      mediaCoreFailure('transcoding', 'unsafe_geometry', 'Captured track and probed frame aspect ratios do not match.');
-    }
+    encodedMatchesTrack = Math.abs(trackAspect - encodedAspect) / encodedAspect <= ASPECT_TOLERANCE;
   }
 
-  const aspectMismatch = Math.abs(encodedAspect - viewportAspect) / viewportAspect > ASPECT_TOLERANCE;
-  if (aspectMismatch && (
-    trackWidth === undefined || trackHeight === undefined ||
-    track.settings?.resizeMode !== 'crop-and-scale'
-  )) {
+  // Chrome tab capture often reports a crop-and-scale target (for example
+  // 1922x1200) while the WebM frames are the tab's device pixels. Those
+  // device pixels can share the CSS viewport's aspect even when the reported
+  // track does not. Map that case directly. Use the centered letterbox only
+  // when the probed frame matches the track and the viewport does not.
+  const encodedMatchesViewport = Math.abs(encodedAspect - viewportAspect) / viewportAspect <= ASPECT_TOLERANCE;
+  let scaleX;
+  let scaleY;
+  let offsetX;
+  let offsetY;
+  if (encodedMatchesViewport) {
+    if (hasTrackSize && !encodedMatchesTrack && resizeMode !== 'crop-and-scale') {
+      mediaCoreFailure('transcoding', 'unsafe_geometry', 'Captured track and probed frame aspect ratios do not match.');
+    }
+    scaleX = encodedWidth / viewportWidth;
+    scaleY = encodedHeight / viewportHeight;
+    offsetX = 0;
+    offsetY = 0;
+  } else if (resizeMode === 'crop-and-scale' && encodedMatchesTrack) {
+    const uniformScale = Math.min(encodedWidth / viewportWidth, encodedHeight / viewportHeight);
+    scaleX = uniformScale;
+    scaleY = uniformScale;
+    offsetX = (encodedWidth - viewportWidth * uniformScale) / 2;
+    offsetY = (encodedHeight - viewportHeight * uniformScale) / 2;
+  } else {
     mediaCoreFailure('transcoding', 'unsafe_geometry', 'Encoded frame and viewport aspect ratios do not match safely.');
   }
-  const uniformScale = Math.min(encodedWidth / viewportWidth, encodedHeight / viewportHeight);
-  const scaleX = aspectMismatch ? uniformScale : encodedWidth / viewportWidth;
-  const scaleY = aspectMismatch ? uniformScale : encodedHeight / viewportHeight;
-  const offsetX = aspectMismatch ? (encodedWidth - viewportWidth * uniformScale) / 2 : 0;
-  const offsetY = aspectMismatch ? (encodedHeight - viewportHeight * uniformScale) / 2 : 0;
   const x = Math.max(0, evenFloor(offsetX + startRect.left * scaleX));
   const y = Math.max(0, evenFloor(offsetY + startRect.top * scaleY));
   const right = Math.min(encodedWidth, evenCeil(offsetX + startRect.right * scaleX));

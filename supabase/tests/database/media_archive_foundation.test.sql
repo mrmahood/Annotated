@@ -549,15 +549,13 @@ where media.annotation_id = (
   select id from public.annotations where commentary_text = 'Hosted video 90 seconds'
 );
 
-select throws_ok(
+select lives_ok(
   $$
     update public.annotations
     set status = 'published', published_at = pg_catalog.now()
     where commentary_text = 'Hosted video 90 seconds'
   $$,
-  '23514',
-  'A hosted media transcript is required before publication.',
-  'ready hosted media cannot publish without a transcript'
+  'ready hosted media can publish before a transcript exists'
 );
 
 -- Worker failure/retry: stage a valid derivative, fail transcription, and prove
@@ -664,8 +662,8 @@ select is(
       600
     ) as claimed
   ),
-  'transcribing',
-  'transcription retry reuses the staged derivative without recapture or retranscode'
+  'raw_cleanup',
+  'a staged derivative whose raw object is still present resumes at raw cleanup'
 );
 
 -- Complete the hosted audio path through raw allocation, lease, derivative,
@@ -746,7 +744,7 @@ select lives_ok(
     join public.annotations on annotations.id = media.annotation_id
     where annotations.commentary_text = 'Hosted audio 30 seconds'
   $$,
-  'raw deletion is confirmed only after derivative and transcript staging'
+  'raw deletion is confirmed after the derivative exists'
 );
 select lives_ok(
   $$

@@ -163,7 +163,7 @@ export default function TermsOfServicePage() {
           <li>Selected hosted media ranges are between 1 and 90 seconds.</li>
           <li>Only the excerpt you selected is used as media-processing and transcription input.</li>
           <li>Raw captured source media is private, is not offered as a download, and must be deleted before an annotation is successfully published.</li>
-          <li>A hosted-media annotation remains a private draft until processing is complete, the excerpt transcript is ready, and raw-media deletion is confirmed.</li>
+          <li>A hosted-media annotation remains a private draft until the playable excerpt is ready and raw-media deletion is confirmed. The excerpt transcript is added when it is ready.</li>
           <li>Annotated does not provide a source-media download feature.</li>
         </ul>
         <p>

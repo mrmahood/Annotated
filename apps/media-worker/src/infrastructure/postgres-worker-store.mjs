@@ -109,6 +109,12 @@ export class PostgresWorkerStore {
     this.database.execute(`select private.confirm_annotation_media_raw_deleted(${sqlText(id)}::uuid, ${sqlText(lease)}::uuid);`);
   }
 
+  publishPlayable(mediaId, leaseToken) {
+    const id = requireMediaId(mediaId);
+    const lease = requireLeaseToken(leaseToken);
+    this.database.execute(`select private.publish_annotation_media_playable(${sqlText(id)}::uuid, ${sqlText(lease)}::uuid);`);
+  }
+
   finalize(mediaId, leaseToken) {
     const id = requireMediaId(mediaId);
     const lease = requireLeaseToken(leaseToken);

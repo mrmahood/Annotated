@@ -8,6 +8,14 @@ import { transcribeAndValidate } from '../transcription/transcript.mjs';
 import { requireBoundedInteger, requireMediaId } from './validation.mjs';
 
 const RESUME_STAGES = new Set(['probing', 'transcribing', 'raw_cleanup', 'finalizing']);
+const GEOMETRY_FAILURE_REASONS = new Set(['capture_changed', 'player_not_visible']);
+
+export function persistedFailureCode(failure) {
+  if (failure?.code === 'unsafe_geometry' && GEOMETRY_FAILURE_REASONS.has(failure.reason)) {
+    return failure.reason;
+  }
+  return failure.code;
+}
 
 function validateClaim(claim, expectedMediaId) {
   if (!claim || typeof claim !== 'object' || Array.isArray(claim)) throw new TypeError('Worker claim is invalid.');
@@ -125,6 +133,9 @@ export async function runOneMediaJob({
   logger,
   leaseSeconds = 900,
   temporaryRoot = os.tmpdir(),
+  loadStagedDerivative = obtainStagedDerivative,
+  createDerivativeAudio = createDerivativeAudioInput,
+  transcribeExcerpt = transcribeAndValidate,
 }) {
   const normalizedMediaId = requireMediaId(mediaId);
   if (!store || typeof store.claim !== 'function' || !storage || typeof storage.download !== 'function') {
@@ -167,23 +178,6 @@ export async function runOneMediaJob({
         duration_ms: output.durationMs,
         byte_size: output.byteSize,
       });
-      stage = 'transcribing';
-    }
-
-    if (stage === 'transcribing') {
-      output ??= await obtainStagedDerivative({ claim, storage, outputPath, ffprobePath });
-      const capability = await createDerivativeAudioInput({
-        ffmpegPath,
-        ffprobePath,
-        mediaType: claim.media_type,
-        derivativePath: outputPath,
-        derivativeChecksumSha256: output.checksumSha256,
-        derivativeDurationMs: output.durationMs,
-        transcriptionAudioPath,
-      });
-      const transcript = await transcribeAndValidate(transcriber, capability);
-      await store.stageTranscript(normalizedMediaId, claim.lease_token, transcript);
-      logger?.emit('transcript_staged', { media_id: normalizedMediaId, duration_ms: output.durationMs });
       stage = 'raw_cleanup';
     }
 
@@ -196,6 +190,28 @@ export async function runOneMediaJob({
       }
       await store.confirmRawDeleted(normalizedMediaId, claim.lease_token);
       logger?.emit('raw_cleanup_confirmed', { media_id: normalizedMediaId });
+      stage = 'transcribing';
+    }
+
+    if (stage === 'transcribing') {
+      if (typeof store.publishPlayable !== 'function') throw new TypeError('Playable publication is unavailable.');
+      await store.publishPlayable(normalizedMediaId, claim.lease_token);
+      logger?.emit('playable_published', { media_id: normalizedMediaId });
+      if (!claim.transcript_present) {
+        output ??= await loadStagedDerivative({ claim, storage, outputPath, ffprobePath });
+        const capability = await createDerivativeAudio({
+          ffmpegPath,
+          ffprobePath,
+          mediaType: claim.media_type,
+          derivativePath: outputPath,
+          derivativeChecksumSha256: output.checksumSha256,
+          derivativeDurationMs: output.durationMs,
+          transcriptionAudioPath,
+        });
+        const transcript = await transcribeExcerpt(transcriber, capability);
+        await store.stageTranscript(normalizedMediaId, claim.lease_token, transcript);
+        logger?.emit('transcript_staged', { media_id: normalizedMediaId, duration_ms: output.durationMs });
+      }
       stage = 'finalizing';
     }
 
@@ -205,18 +221,19 @@ export async function runOneMediaJob({
     return Object.freeze({ outcome: 'ready' });
   } catch (error) {
     const failure = failureFacts(error, stage);
+    const code = persistedFailureCode(failure);
     try {
-      const released = await store.releaseAttempt(normalizedMediaId, claim.lease_token, failure.stage, failure.code);
+      const released = await store.releaseAttempt(normalizedMediaId, claim.lease_token, failure.stage, code);
       const outcome = released?.result_status === 'processing' ? 'retry_scheduled' : 'failed';
       logger?.emit('worker_failed', {
         media_id: normalizedMediaId,
         stage: failure.stage,
-        code: failure.code,
+        code,
         outcome,
         attempt_count: Number(claim.attempt_count),
         reason: failure.reason,
       });
-      return Object.freeze({ outcome, stage: failure.stage, code: failure.code });
+      return Object.freeze({ outcome, stage: failure.stage, code });
     } catch {
       logger?.emit('worker_failed', { media_id: normalizedMediaId, stage: 'finalizing', code: 'lease_lost', outcome: 'failed' });
       return Object.freeze({ outcome: 'failed', stage: 'finalizing', code: 'lease_lost' });

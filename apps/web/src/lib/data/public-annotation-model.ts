@@ -103,7 +103,7 @@ export type PublicAnnotation = PublicAnnotationBase & (
         height: number;
         byteSize: number;
       };
-      transcript: PublicTranscript;
+      transcript: PublicTranscript | null;
     }
   | {
       kind: "audio_hosted";
@@ -119,7 +119,7 @@ export type PublicAnnotation = PublicAnnotationBase & (
         height: null;
         byteSize: number;
       };
-      transcript: PublicTranscript;
+      transcript: PublicTranscript | null;
     }
   | {
       kind: "media_removed";
@@ -189,6 +189,17 @@ function parseTranscript(
     previousEnd = candidate.end_ms as number;
   }
   return { text, language, segments };
+}
+
+function withHostedTranscript<T extends object>(
+  transcriptValue: unknown,
+  annotationId: string,
+  durationMs: number,
+  detail: T,
+): (T & { transcript: PublicTranscript | null }) | null {
+  if (transcriptValue === null) return { ...detail, transcript: null };
+  const transcript = parseTranscript(transcriptValue, annotationId, durationMs);
+  return transcript ? { ...detail, transcript } : null;
 }
 
 function parseReadyMedia(
@@ -336,10 +347,9 @@ export function mapPublicAnnotationDetail(
         : null;
       const media = parseReadyMedia(mediaState, annotationId, "video", targetDurationMs);
       if (!media || media.mimeType !== "video/mp4") return null;
-      const transcript = media ? parseTranscript(transcriptValue, annotationId, media.durationMs) : null;
-      return media && transcript
-        ? { ...common, kind: "video_hosted", selectedText: null, startMs, endMs, source, media, transcript }
-        : null;
+      return withHostedTranscript(transcriptValue, annotationId, media.durationMs, {
+        ...common, kind: "video_hosted" as const, selectedText: null, startMs, endMs, source, media,
+      });
     } catch { return null; }
   }
 
@@ -356,10 +366,9 @@ export function mapPublicAnnotationDetail(
         : null;
       const media = parseReadyMedia(mediaState, annotationId, "video", targetDurationMs);
       if (!media || media.mimeType !== "video/mp4") return null;
-      const transcript = media ? parseTranscript(transcriptValue, annotationId, media.durationMs) : null;
-      return media && transcript
-        ? { ...common, kind: "video_hosted", selectedText: null, startMs, endMs, source, media, transcript }
-        : null;
+      return withHostedTranscript(transcriptValue, annotationId, media.durationMs, {
+        ...common, kind: "video_hosted" as const, selectedText: null, startMs, endMs, source, media,
+      });
     } catch { return null; }
   }
 
@@ -377,10 +386,9 @@ export function mapPublicAnnotationDetail(
         : null;
       const media = parseReadyMedia(mediaState, annotationId, "video", targetDurationMs);
       if (!media || media.mimeType !== "video/mp4") return null;
-      const transcript = media ? parseTranscript(transcriptValue, annotationId, media.durationMs) : null;
-      return media && transcript
-        ? { ...common, kind: "video_hosted", selectedText: null, startMs, endMs, source, media, transcript }
-        : null;
+      return withHostedTranscript(transcriptValue, annotationId, media.durationMs, {
+        ...common, kind: "video_hosted" as const, selectedText: null, startMs, endMs, source, media,
+      });
     } catch { return null; }
   }
 
@@ -398,10 +406,9 @@ export function mapPublicAnnotationDetail(
         : null;
       const media = parseReadyMedia(mediaState, annotationId, "audio", targetDurationMs);
       if (!media || media.mimeType !== "audio/mp4") return null;
-      const transcript = media ? parseTranscript(transcriptValue, annotationId, media.durationMs) : null;
-      return media && transcript
-        ? { ...common, kind: "audio_hosted", selectedText: null, startMs, endMs, source, media, transcript }
-        : null;
+      return withHostedTranscript(transcriptValue, annotationId, media.durationMs, {
+        ...common, kind: "audio_hosted" as const, selectedText: null, startMs, endMs, source, media,
+      });
     } catch { return null; }
   }
 
@@ -423,10 +430,9 @@ export function mapPublicAnnotationDetail(
         : null;
       const media = parseReadyMedia(mediaState, annotationId, "audio", targetDurationMs);
       if (!media || media.mimeType !== "audio/mp4") return null;
-      const transcript = media ? parseTranscript(transcriptValue, annotationId, media.durationMs) : null;
-      return media && transcript
-        ? { ...common, kind: "audio_hosted", selectedText: null, startMs, endMs, source, media, transcript }
-        : null;
+      return withHostedTranscript(transcriptValue, annotationId, media.durationMs, {
+        ...common, kind: "audio_hosted" as const, selectedText: null, startMs, endMs, source, media,
+      });
     } catch { return null; }
   }
 

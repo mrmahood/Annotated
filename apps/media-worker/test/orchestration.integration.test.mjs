@@ -201,6 +201,7 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
       model: 'fixture-v1',
       providerMetadata: { local_fixture: true },
     };
+    const before = state(scenario.mediaId);
     database.execute(`
       select private.stage_annotation_media_transcript(
         ${sqlText(scenario.mediaId)}::uuid,
@@ -213,7 +214,10 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
         ${sqlText(JSON.stringify(candidate.providerMetadata))}::jsonb
       );
     `);
-    assertDraft(scenario.mediaId, 'raw_cleanup');
+    const after = state(scenario.mediaId);
+    assert.equal(after.processing_stage, before.raw_deleted ? 'finalizing' : 'raw_cleanup');
+    assert.equal(after.annotation_status, before.annotation_status);
+    assert.equal(after.transcript_present, true);
   }
 
   async function deleteAndConfirmRaw(scenario, leaseToken) {
@@ -221,12 +225,17 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
       await storage.remove('annotation-media-raw', [scenario.rawPath]);
     }
     assert.equal(await storage.exists('annotation-media-raw', scenario.rawPath), false);
+    const before = state(scenario.mediaId);
     database.execute(`
       select private.confirm_annotation_media_raw_deleted(
         ${sqlText(scenario.mediaId)}::uuid, ${sqlText(leaseToken)}::uuid
       );
     `);
-    assertDraft(scenario.mediaId, 'finalizing');
+    const after = state(scenario.mediaId);
+    assert.equal(after.raw_deleted, true);
+    assert.equal(after.raw_storage_path, null);
+    assert.equal(after.processing_stage, before.transcript_present ? 'finalizing' : 'transcribing');
+    assert.equal(after.annotation_status, before.annotation_status);
   }
 
   async function finalize(scenario, leaseToken) {
@@ -248,12 +257,29 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
     await storage.assertPrivate('annotation-media', scenario.processedPath);
   }
 
+  function publishPlayable(scenario, leaseToken) {
+    database.execute(`
+      select private.publish_annotation_media_playable(
+        ${sqlText(scenario.mediaId)}::uuid, ${sqlText(leaseToken)}::uuid
+      );
+    `);
+    const current = state(scenario.mediaId);
+    assert.equal(current.annotation_status, 'published');
+    assert.equal(current.processing_status, 'ready');
+    assert.equal(current.lease_present, true);
+  }
+
   async function completeFromClaim(scenario, activeClaim, options = {}) {
     await ensureDerivativeObject(scenario);
     if (!activeClaim.processed_storage_path) stageDerivative(scenario, activeClaim.lease_token);
     const afterDerivative = state(scenario.mediaId);
-    if (!afterDerivative.transcript_present) stageTranscript(scenario, activeClaim.lease_token, options.transcript);
     if (!afterDerivative.raw_deleted) await deleteAndConfirmRaw(scenario, activeClaim.lease_token);
+    if (state(scenario.mediaId).annotation_status === 'draft') {
+      publishPlayable(scenario, activeClaim.lease_token);
+    }
+    if (!state(scenario.mediaId).transcript_present) {
+      stageTranscript(scenario, activeClaim.lease_token, options.transcript);
+    }
     await finalize(scenario, activeClaim.lease_token);
   }
 
@@ -339,9 +365,11 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
         transcriptionAudioPath,
       });
       const transcript = await transcribeAndValidate(new DeterministicFakeTranscriber(), capability);
-      stageTranscript(scenario, firstClaim.lease_token, transcript);
       await rm(transcriptionAudioPath, { force: true });
       await deleteAndConfirmRaw(scenario, firstClaim.lease_token);
+      publishPlayable(scenario, firstClaim.lease_token);
+      assert.equal(state(scenario.mediaId).transcript_present, false);
+      stageTranscript(scenario, firstClaim.lease_token, transcript);
       await finalize(scenario, firstClaim.lease_token);
       assert.equal(claim(scenario.mediaId), null, 'ready rows must not be reclaimable');
       record('complete-lifecycle-fake-transcription');
@@ -365,7 +393,7 @@ test('C4 Local private Storage lifecycle and crash-boundary matrix', { timeout: 
       },
       {
         name: 'after derivative database staging',
-        expectedResume: 'transcribing',
+        expectedResume: 'raw_cleanup',
         prepare: async (scenario, activeClaim) => {
           await ensureDerivativeObject(scenario);
           stageDerivative(scenario, activeClaim.lease_token);
