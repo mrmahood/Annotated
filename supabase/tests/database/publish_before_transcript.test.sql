@@ -26,9 +26,9 @@ select ok(
 );
 
 insert into auth.users (id, raw_user_meta_data)
-values ('pbt00000-0000-4000-8000-000000000001', '{"full_name":"Playable Excerpt"}'::jsonb);
+values ('0b700000-0000-4000-8000-000000000001', '{"full_name":"Playable Excerpt"}'::jsonb);
 
-select pg_catalog.set_config('request.jwt.claim.sub', 'pbt00000-0000-4000-8000-000000000001', true);
+select pg_catalog.set_config('request.jwt.claim.sub', '0b700000-0000-4000-8000-000000000001', true);
 set local role authenticated;
 select * from public.begin_hosted_audio_annotation(
   'https://example.test/pbt-geometry', 'https://example.test/pbt-geometry',
