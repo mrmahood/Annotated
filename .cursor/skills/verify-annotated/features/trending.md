@@ -23,11 +23,11 @@ Preconditions:
 
 - **Open trending.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive trending`. The path is `/trending`. The document title is `What’s Trending | Annotated`. The heading `This week’s most active annotations.` is visible. `Trending` in `Primary navigation` is the current page.
 - **Read the body.** One of these is visible: a list named `Trending annotations` with a `View annotation` link, the heading `Not enough trending activity yet.`, or the alert heading `Trending is temporarily unavailable.`
-- **Proof.** A passing card proof requires the named list. The quiet and unavailable headings are written to `notes.md` and exit 1. `result.png` and `result.aria.txt` still record what rendered.
+- **Proof.** A card proof requires the list `Trending annotations` and exits 0. The heading `Not enough trending activity yet.` with the right title and HTTP 2xx is `pass-empty` and exits 2. The alert `Trending is temporarily unavailable.`, a wrong title, or a non-2xx response exits 1. `result.png` and `result.aria.txt` still record what rendered.
 
 ## Gotchas
 
 - The title and heading use a curly apostrophe (`What’s`, `week’s`). Match that character.
 - The feed's trending strip on `/` is not this page. Prove `/trending` itself.
-- Quiet is a successful render of an empty ranking and a failed proof of cards. Say which one you observed.
+- Quiet is a successful render of an empty ranking. Report `pass-empty` and exit 2. Do not call that a card proof, and do not seed activity to fill the list.
 - Do not sign in to try to change the ranking.

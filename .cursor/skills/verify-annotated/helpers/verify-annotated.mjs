@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Signed-out verification harness for Annotated's public web app.
 // Never print Supabase keys, service-role keys, or session tokens.
 
 import { spawn, spawnSync } from "node:child_process";
@@ -14,6 +13,14 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyQuietList } from "./drive-outcome.mjs";
+import {
+  createSupabaseMintPort,
+  mintDedicatedTestSession,
+  readMintEnv,
+  redactSecrets,
+  toPlaywrightCookies,
+} from "./mint-test-session.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "../../../..");
@@ -37,12 +44,37 @@ const COMMANDS = [
   "help",
 ];
 
+const QUIET_PAGES = {
+  trending: {
+    path: "/trending",
+    heading: "This week’s most active annotations.",
+    expectedTitle: "What’s Trending | Annotated",
+    listLabel: "Trending annotations",
+    presenceLabel: "Trending list present",
+    emptyHeading: "Not enough trending activity yet.",
+    emptyLabel: "Quiet heading",
+    unavailableHeading: "Trending is temporarily unavailable.",
+    extraNotes: ["- Side effects: none."],
+  },
+  "who-to-follow": {
+    path: "/who-to-follow",
+    heading: "Accounts worth following.",
+    expectedTitle: "Who to Follow | Annotated",
+    listLabel: "Suggested accounts",
+    presenceLabel: "Suggested accounts present",
+    emptyHeading: "No suggestions right now.",
+    emptyLabel: "Empty heading",
+    unavailableHeading: "Who to Follow is temporarily unavailable.",
+    extraNotes: ["- Follow was not clicked.", "- Side effects: none."],
+  },
+};
+
 const DRIVES = {
   "public-feed": drivePublicFeed,
   "public-annotation": drivePublicAnnotation,
   legal: driveLegal,
-  trending: driveTrending,
-  "who-to-follow": driveWhoToFollow,
+  trending: (ctx) => driveQuietPage(ctx, "trending", QUIET_PAGES.trending),
+  "who-to-follow": (ctx) => driveQuietPage(ctx, "who-to-follow", QUIET_PAGES["who-to-follow"]),
   "me-signed-out": driveMeSignedOut,
 };
 
@@ -407,11 +439,14 @@ async function withBrowser(state, featureId, run) {
   const page = await context.newPage();
   const dir = join(EVIDENCE_ROOT, featureId, state.runId);
   mkdirSync(dir, { recursive: true });
+  let exitCode = 0;
   let failed = null;
   try {
-    await run({ page, state, dir });
+    const outcome = await run({ page, context, state, dir });
+    if (outcome?.exitCode === 2) exitCode = 2;
   } catch (error) {
     failed = error;
+    exitCode = Number.isInteger(error?.exitCode) ? error.exitCode : 1;
     try {
       await page.screenshot({ path: join(dir, "error.png") });
     } catch {
@@ -430,7 +465,8 @@ async function withBrowser(state, featureId, run) {
     await browser.close();
   }
   console.log(`evidence: ${dir}`);
-  if (failed) die(failed instanceof Error ? failed.message : String(failed));
+  if (exitCode === 2) process.exit(2);
+  if (failed) die(failed instanceof Error ? failed.message : String(failed), exitCode);
 }
 
 async function dismissCallout(page) {
@@ -572,58 +608,51 @@ async function driveLegal({ page, state, dir }) {
   console.log("drive: legal pass");
 }
 
-async function driveTrending({ page, state, dir }) {
-  await page.goto(`${state.baseUrl}/trending`, { waitUntil: "domcontentloaded", timeout: 30000 });
-  const heading = page.getByRole("heading", { level: 1, name: "This week’s most active annotations." });
-  await heading.waitFor({ timeout: 15000 });
-  const title = await page.title();
-  const cards = await page.locator("[aria-label=\"Trending annotations\"]").count();
-  const quiet = await page.getByRole("heading", { name: "Not enough trending activity yet." }).count();
-  const unavailable = await page.getByRole("heading", { name: "Trending is temporarily unavailable." }).count();
+async function driveQuietPage({ page, state, dir }, featureId, spec) {
+  const response = await page.goto(`${state.baseUrl}${spec.path}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  const httpStatus = response?.status() ?? 0;
+  let title = "";
+  let listCount = 0;
+  let empty = 0;
+  let unavailable = 0;
+  if (httpStatus >= 200 && httpStatus < 300) {
+    await page.getByRole("heading", { level: 1, name: spec.heading }).waitFor({ timeout: 15000 });
+    title = await page.title();
+    listCount = await page.locator(`[aria-label="${spec.listLabel}"]`).count();
+    empty = await page.getByRole("heading", { name: spec.emptyHeading }).count();
+    unavailable = await page.getByRole("heading", { name: spec.unavailableHeading }).count();
+  } else {
+    title = await page.title().catch(() => "");
+  }
   await shot(page, join(dir, "result.png"));
-  writeFileSync(join(dir, "result.aria.txt"), await page.locator("main").ariaSnapshot());
-  const pass = title === "What’s Trending | Annotated" && cards > 0 && !quiet && !unavailable;
+  const aria = await page.locator("main").ariaSnapshot().catch(() => "(no main)");
+  writeFileSync(join(dir, "result.aria.txt"), aria);
+  const outcome = classifyQuietList({
+    httpStatus,
+    title,
+    expectedTitle: spec.expectedTitle,
+    listCount,
+    emptyVisible: empty > 0,
+    unavailableVisible: unavailable > 0,
+  });
   writeNotes(dir, [
-    "# Proof: trending",
+    `# Proof: ${featureId}`,
     "",
-    `- Feature ID: trending`,
-    `- Entry: GET /trending`,
-    `- Title: ${title}`,
-    `- Trending list present: ${cards > 0 ? "yes" : "no"}`,
-    `- Quiet heading: ${quiet ? "yes" : "no"}`,
+    `- Feature ID: ${featureId}`,
+    `- Entry: GET ${spec.path}`,
+    `- HTTP status: ${httpStatus || "none"}`,
+    `- Title: ${title || "(none)"}`,
+    `- ${spec.presenceLabel}: ${listCount > 0 ? "yes" : "no"}`,
+    `- ${spec.emptyLabel}: ${empty ? "yes" : "no"}`,
     `- Unavailable heading: ${unavailable ? "yes" : "no"}`,
-    `- Side effects: none.`,
-    `- Result: ${pass ? "pass" : "fail"}`,
+    ...spec.extraNotes,
+    `- Result: ${outcome.result}`,
   ]);
-  if (!pass) throw new Error("trending proof failed. Evidence was kept.");
-  console.log("drive: trending pass");
-}
-
-async function driveWhoToFollow({ page, state, dir }) {
-  await page.goto(`${state.baseUrl}/who-to-follow`, { waitUntil: "domcontentloaded", timeout: 30000 });
-  await page.getByRole("heading", { level: 1, name: "Accounts worth following." }).waitFor({ timeout: 15000 });
-  const title = await page.title();
-  const list = await page.locator("[aria-label=\"Suggested accounts\"]").count();
-  const empty = await page.getByRole("heading", { name: "No suggestions right now." }).count();
-  const unavailable = await page.getByRole("heading", { name: "Who to Follow is temporarily unavailable." }).count();
-  await shot(page, join(dir, "result.png"));
-  writeFileSync(join(dir, "result.aria.txt"), await page.locator("main").ariaSnapshot());
-  const pass = title === "Who to Follow | Annotated" && list > 0 && !empty && !unavailable;
-  writeNotes(dir, [
-    "# Proof: who-to-follow",
-    "",
-    `- Feature ID: who-to-follow`,
-    `- Entry: GET /who-to-follow`,
-    `- Title: ${title}`,
-    `- Suggested accounts present: ${list > 0 ? "yes" : "no"}`,
-    `- Empty heading: ${empty ? "yes" : "no"}`,
-    `- Unavailable heading: ${unavailable ? "yes" : "no"}`,
-    `- Follow was not clicked.`,
-    `- Side effects: none.`,
-    `- Result: ${pass ? "pass" : "fail"}`,
-  ]);
-  if (!pass) throw new Error("who-to-follow proof failed. Evidence was kept.");
-  console.log("drive: who-to-follow pass");
+  console.log(`drive: ${featureId} ${outcome.result}`);
+  if (outcome.exitCode === 2) return outcome;
+  if (outcome.exitCode !== 0) {
+    throw new Error(`${featureId} proof failed (${outcome.reason}). Evidence was kept.`);
+  }
 }
 
 async function driveMeSignedOut({ page, state, dir }) {
@@ -650,6 +679,104 @@ async function driveMeSignedOut({ page, state, dir }) {
   console.log("drive: me-signed-out pass");
 }
 
+async function driveAuthenticatedMePage({ page, context, state, dir, sessionCookies }) {
+  await context.addCookies(toPlaywrightCookies(sessionCookies, state.baseUrl));
+  const response = await page.goto(`${state.baseUrl}/me`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  const httpStatus = response?.status() ?? 0;
+  await page.getByRole("heading", { level: 1, name: "Bookmarks" }).waitFor({ timeout: 15000 });
+  const dismissed = await dismissCallout(page);
+  const title = await page.title();
+  const handle = await page.getByRole("region", { name: "Public handle" }).count();
+  const feedback = await page.getByRole("link", { name: "Send feedback" }).count();
+  const signOut = await page.getByRole("button", { name: "Sign out" }).count();
+  const wall = await page.getByRole("heading", { name: "Sign in to see your bookmarks." }).count();
+  const google = await page.getByRole("button", { name: "Sign in with Google" }).count();
+  const unavailable = await page.getByRole("heading", { name: "Bookmarks are temporarily unavailable." }).count();
+  const empty = await page.getByRole("heading", { name: "No bookmarks yet." }).count();
+  const list = page.locator("[aria-label=\"Your bookmarks\"]");
+  const listCount = await list.count();
+  const viewCount = listCount > 0 ? await list.getByRole("link", { name: "View annotation" }).count() : 0;
+  await shot(page, join(dir, "result.png"));
+  writeFileSync(join(dir, "result.aria.txt"), await page.locator("main").ariaSnapshot());
+  const sessionOk = httpStatus >= 200 && httpStatus < 300
+    && title === "Bookmarks | Annotated"
+    && handle > 0 && feedback > 0 && signOut > 0
+    && wall === 0 && google === 0;
+  const cards = listCount > 0 && viewCount > 0 && empty === 0;
+  const quiet = empty > 0 && listCount === 0;
+  const bookmarkState = !sessionOk
+    ? "session-not-recognized"
+    : unavailable
+      ? "unavailable"
+      : cards
+        ? "cards"
+        : quiet
+          ? "empty"
+          : "unrecognized";
+  const pass = sessionOk && unavailable === 0 && (cards || quiet);
+  writeNotes(dir, [
+    "# Proof: authenticated-me",
+    "",
+    "- Feature ID: authenticated-me",
+    "- Entry: dedicated test session, then GET /me",
+    `- HTTP status: ${httpStatus || "none"}`,
+    `- Title: ${title}`,
+    `- Public handle region: ${handle > 0 ? "yes" : "no"}`,
+    `- Send feedback link: ${feedback > 0 ? "yes" : "no"}`,
+    `- Sign out button: ${signOut > 0 ? "yes" : "no"}`,
+    `- Sign-in wall: ${wall > 0 ? "yes" : "no"}`,
+    `- Bookmarks: ${bookmarkState}`,
+    `- View annotation links: ${viewCount}`,
+    `- Install callout dismissed: ${dismissed ? "yes" : "no"}`,
+    "- Claim handle, Save handle, Bookmarked, Share, Sign out, and Send feedback were not clicked.",
+    "- Side effects: none intended. No bookmark, comment, follow, reshare, vote, or handle claim.",
+    `- Result: ${pass ? "pass" : "fail"}`,
+  ]);
+  if (!pass) throw new Error(`authenticated-me proof failed (${bookmarkState}). Evidence was kept.`);
+  console.log(`drive: authenticated-me pass (${bookmarkState} bookmarks)`);
+}
+
+async function driveAuthenticatedMeCommand() {
+  const config = readMintEnv(process.env);
+  if (!config.ok) unreachable("authenticated-me", config.message);
+  const state = requireState();
+  const report = await doctorState(state);
+  printDoctor(state, report);
+  if (!report.ready) die("Doctor failed. Not driving.");
+  let minted;
+  try {
+    minted = await mintDedicatedTestSession(createSupabaseMintPort({
+      url: config.url,
+      serviceRoleKey: config.serviceRoleKey,
+      publishableKey: config.publishableKey,
+    }), config.email);
+  } catch (error) {
+    const code = typeof error?.code === "string" ? error.code : "mint_failed";
+    const dir = join(EVIDENCE_ROOT, "authenticated-me", state.runId);
+    mkdirSync(dir, { recursive: true });
+    writeNotes(dir, [
+      "# Proof: authenticated-me",
+      "",
+      "- Feature ID: authenticated-me",
+      "- Entry: session mint, then GET /me",
+      "- Result: fail",
+      `- Reason: ${code}`,
+      "- The browser was not opened.",
+      "- Side effects: none intended. No bookmark, comment, follow, reshare, vote, or handle claim.",
+    ]);
+    die(redactSecrets(`authenticated-me mint failed: ${code}`, [config.serviceRoleKey, config.publishableKey]), 1);
+  }
+  console.log(redactSecrets(minted.log, [
+    config.serviceRoleKey,
+    config.publishableKey,
+    ...minted.cookies.map((cookie) => cookie.value),
+  ]));
+  await withBrowser(state, "authenticated-me", (ctx) => driveAuthenticatedMePage({
+    ...ctx,
+    sessionCookies: minted.cookies,
+  }));
+}
+
 function unreachable(feature, precondition) {
   console.log("verified-unreachable");
   console.log(`feature: ${feature}`);
@@ -670,7 +797,9 @@ Commands (run from the repository root):
 
 Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 
-chrome-extension and authenticated-me exit 3 (verified-unreachable).
+Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
+chrome-extension stays exit 3. It needs an unpacked extension, and a website session does not load the side panel.
+authenticated-me exits 3 until SUPABASE_SERVICE_ROLE_KEY is set.
 Evidence stays in .cursor/skills/verify-annotated/evidence/.
 `);
 }
@@ -688,13 +817,13 @@ if (command === "cleanup") cleanup();
 if (command === "drive") {
   const feature = process.argv[3];
   if (feature === "chrome-extension") {
-    unreachable("chrome-extension", "Chrome extension load (unpacked MV3 side panel). Not started.");
+    unreachable("chrome-extension", "Chrome extension load (unpacked MV3 side panel). A website session does not load the side panel. Not started.");
+  } else if (feature === "authenticated-me") {
+    await driveAuthenticatedMeCommand();
+  } else {
+    const drive = DRIVES[feature];
+    if (!drive) die(`Unknown feature ${feature ?? "(missing)"}. Run help.`);
+    const state = requireState();
+    await withBrowser(state, feature, drive);
   }
-  if (feature === "authenticated-me") {
-    unreachable("authenticated-me", "OAuth session for Me. Not started.");
-  }
-  const drive = DRIVES[feature];
-  if (!drive) die(`Unknown feature ${feature ?? "(missing)"}. Run help.`);
-  const state = requireState();
-  await withBrowser(state, feature, drive);
 }
