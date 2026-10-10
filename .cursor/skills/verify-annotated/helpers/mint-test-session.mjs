@@ -1,6 +1,3 @@
-// Mints a Supabase session for the dedicated test user only.
-// Never print the service-role key, publishable key, OTP, or cookie values.
-
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

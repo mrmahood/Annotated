@@ -1,5 +1,3 @@
-// Classifies a discovery page that can show cards, a known empty heading, or an error alert.
-
 export function classifyQuietList({
   httpStatus,
   title,

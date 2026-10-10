@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// Verification harness for Annotated's public web app.
 // Never print Supabase keys, service-role keys, or session tokens.
 
 import { spawn, spawnSync } from "node:child_process";
