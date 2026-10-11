@@ -292,12 +292,13 @@ test("playwright cookies keep the value and do not invent a second domain", () =
   assert.deepEqual(cookies, [{
     name: "sb-example-auth-token",
     value: "cookie-value",
-    url: "https://annotated.cbandcoop.com",
-    path: "/",
+    url: "https://annotated.cbandcoop.com/",
     httpOnly: false,
     secure: true,
     sameSite: "Lax",
   }]);
+  assert.equal("path" in cookies[0], false);
+  assert.equal("domain" in cookies[0], false);
 });
 
 test("redactSecrets removes a known token and a JWT", () => {
