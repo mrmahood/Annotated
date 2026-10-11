@@ -153,11 +153,14 @@ export function toPlaywrightCookies(cookies, baseUrl) {
   const origin = new URL(baseUrl);
   return cookies.map((cookie) => {
     const sameSite = String(cookie.options?.sameSite || "lax").toLowerCase();
+    const path = cookie.options?.path || "/";
+    // Playwright 1.55 rejects a cookie that sets both url and path. The url
+    // carries the site origin and the cookie path; domain is derived from it.
+    const url = new URL(path, origin.origin);
     return {
       name: cookie.name,
       value: cookie.value,
-      url: origin.origin,
-      path: cookie.options?.path || "/",
+      url: url.href,
       httpOnly: Boolean(cookie.options?.httpOnly),
       secure: origin.protocol === "https:",
       sameSite: sameSite === "strict" ? "Strict" : sameSite === "none" ? "None" : "Lax",
