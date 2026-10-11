@@ -38,10 +38,17 @@ export function redactSecrets(text, secrets) {
   return out.replace(/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[redacted]");
 }
 
+function linkFields(body) {
+  const nested = body?.properties;
+  if (nested && typeof nested.hashed_token === "string" && nested.hashed_token.length > 0) return nested;
+  return body ?? {};
+}
+
 export function parseGenerateLink(status, body) {
-  const hashed = body?.properties?.hashed_token;
+  const fields = linkFields(body);
+  const hashed = fields?.hashed_token;
   if (Number.isInteger(status) && status >= 200 && status < 300 && typeof hashed === "string" && hashed.length > 0) {
-    const verificationType = body?.properties?.verification_type;
+    const verificationType = fields?.verification_type;
     return {
       status: "ok",
       tokenHash: hashed,
@@ -146,11 +153,14 @@ export function toPlaywrightCookies(cookies, baseUrl) {
   const origin = new URL(baseUrl);
   return cookies.map((cookie) => {
     const sameSite = String(cookie.options?.sameSite || "lax").toLowerCase();
+    const path = cookie.options?.path || "/";
+    // Playwright 1.55 rejects a cookie that sets both url and path. The url
+    // carries the site origin and the cookie path; domain is derived from it.
+    const url = new URL(path, origin.origin);
     return {
       name: cookie.name,
       value: cookie.value,
-      url: origin.origin,
-      path: cookie.options?.path || "/",
+      url: url.href,
       httpOnly: Boolean(cookie.options?.httpOnly),
       secure: origin.protocol === "https:",
       sameSite: sameSite === "strict" ? "Strict" : sameSite === "none" ? "None" : "Lax",
