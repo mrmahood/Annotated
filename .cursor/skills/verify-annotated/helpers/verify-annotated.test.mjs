@@ -188,6 +188,21 @@ test("generate_link parser returns the hash and drops the email OTP", () => {
   assert.equal("email_otp" in parsed, false);
 });
 
+test("generate_link parser accepts the flat admin response and drops the email OTP", () => {
+  const parsed = parseGenerateLink(200, {
+    id: "user-id",
+    email: DEDICATED_TEST_EMAIL,
+    hashed_token: "hashed-token-value",
+    email_otp: "123456",
+    verification_type: "magiclink",
+    action_link: "https://example.test/verify?token=secret",
+  });
+  assert.deepEqual(parsed, { status: "ok", tokenHash: "hashed-token-value", otpType: "magiclink" });
+  assert.equal(JSON.stringify(parsed).includes("123456"), false);
+  assert.equal(JSON.stringify(parsed).includes("action_link"), false);
+  assert.equal(JSON.stringify(parsed).includes(DEDICATED_TEST_EMAIL), false);
+});
+
 test("generate_link parser treats a missing user as user_not_found and hides the body", () => {
   assert.deepEqual(parseGenerateLink(404, { msg: "User not found", email_otp: "999999" }), {
     status: "user_not_found",
