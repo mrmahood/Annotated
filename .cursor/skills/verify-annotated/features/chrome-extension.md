@@ -23,11 +23,11 @@ Preconditions:
 - For a publish proof, a signed-in extension session (Google OAuth through the extension) and a tab the panel can connect to.
 - Those preconditions are not met by `launch` or `doctor`.
 
-- **Do not drive it here.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive chrome-extension`. The command prints `verified-unreachable`, names the unmet precondition `Chrome extension load`, and exits 3. It does not download `extension.zip`, does not open `chrome://extensions`, and does not launch Chrome with a load-unpacked profile.
+- **Do not drive it here.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive chrome-extension`. The command prints `verified-unreachable` and exits 3. The unmet precondition is an unpacked Manifest V3 side panel. A website session, including the dedicated test user used by `authenticated-me`, does not load the panel. The command does not download `extension.zip`, does not open `chrome://extensions`, and does not launch Chrome with a load-unpacked profile.
 
 ## Gotchas
 
-- Needs an unpacked extension load. Not required for the first public proof.
+- Needs an unpacked extension load. Stays exit 3 for that reason. A signed-in website cookie is not a substitute.
 - There is no web route that renders the side panel. Proving `/` does not prove `Create`.
 - The visible button is `Create`. Do not look for a tab labeled `Context`.
 - Publishing is a real write (draft annotation, capture, upload). Do not attempt it from this read-only harness.

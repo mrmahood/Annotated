@@ -8,9 +8,9 @@ This directory is the maintained source for verifying Annotated's user-facing be
 - Launch first. Doctor must print `ready: yes` for that same state before any drive.
 - **Prod-public mode** is the default when `apps/web/.env.local` is missing or still has `.env.example` placeholders. Base URL: `https://annotated.cbandcoop.com`. No local server is started. This is the public verification target, not a guess about deploy health beyond the doctor's HTTP and title checks.
 - **Local mode** starts `next dev` on `http://127.0.0.1:3000` only when that env file holds a real `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Never print those values. Never put a service-role key in the skill or the evidence notes.
-- Prod-public is a shared read-only site. Do not sign in, comment, follow, bookmark, reshare, vote, or file a claim during a drive.
+- Prod-public is a shared site. Do not comment, follow, bookmark, reshare, vote, or file a claim during a drive. The only session the harness may install is `cbandcooptest@gmail.com` inside `drive authenticated-me`.
 - Local port 3000 belongs to one verification run. Do not drive a server this helper did not start.
-- The browser context is a fresh signed-out Chromium profile. Do not reuse a personal Chrome profile.
+- Public drives use a fresh signed-out Chromium profile. Do not reuse a personal Chrome profile.
 
 ## Driving conventions
 
@@ -27,9 +27,9 @@ This directory is the maintained source for verifying Annotated's user-facing be
 - Capture the user action and the resulting state, not only the final screen.
 - UI proof includes an ARIA snapshot and a screenshot with the page title or primary heading visible.
 - Record the feature ID, entry path, and run id with every artifact.
-- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable.
+- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable. `chrome-extension` stays there because the side panel is not loaded. `authenticated-me` stays there until `SUPABASE_SERVICE_ROLE_KEY` is set.
 - Do not report a skipped entry point as verified through a different path.
-- An unavailable alert or an empty state is a completed observation and a failed proof of populated content.
+- Exit 0 is a card or signed-in proof. Exit 2 is `pass-empty` for the documented Trending and Who to Follow quiet headings. An unavailable alert, a wrong title, or a 5xx is exit 1. Do not report `pass-empty` as populated content. The public feed's empty copy is still a failed proof.
 
 ## Feature entry contract
 
@@ -45,11 +45,11 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Public feed](./public-feed.md) covers the signed-out home feed at `/`, including populated cards, empty copy, unavailable copy, and pagination.
 - [Public annotation](./public-annotation.md) covers opening one published annotation from a card, the canonical `/[creatorHandle]/[annotationSlug]` URL, and the `/a/[annotationId]` compatibility path.
 - [Legal](./legal.md) covers the legal center, Privacy Policy, and Terms of Service.
-- [Trending](./trending.md) covers the signed-out What's Trending page.
-- [Who to Follow](./who-to-follow.md) covers the signed-out suggestion list. Following stays behind sign-in and is not completed.
+- [Trending](./trending.md) covers the signed-out What's Trending page. A quiet ranking is `pass-empty` (exit 2). Cards are exit 0.
+- [Who to Follow](./who-to-follow.md) covers the signed-out suggestion list. An empty suggestion list is `pass-empty` (exit 2). Following stays behind sign-in and is not completed.
 - [Me signed out](./me-signed-out.md) covers the signed-out wall at `/me`: title `Bookmarks | Annotated`, headings `Bookmarks` and `Sign in to see your bookmarks.`, and `Sign in with Google`.
-- [Chrome extension](./chrome-extension.md) is mapped and deferred. Create, Feed, and Me inside the side panel need an unpacked extension load.
-- [Authenticated Me and Create](./authenticated-me.md) is mapped and deferred. Signed-in bookmarks, the public handle, and Create need a real OAuth session or the extension. The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
+- [Chrome extension](./chrome-extension.md) stays exit 3. Create, Feed, and Me inside the side panel need an unpacked extension load. A website session does not load the panel.
+- [Authenticated Me and Create](./authenticated-me.md) reads bookmarks and the public-handle region on `/me` for `cbandcooptest@gmail.com`. Without `SUPABASE_SERVICE_ROLE_KEY` it exits 3. Create stays on [Chrome extension](./chrome-extension.md). The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
 
 ## Not a feature file yet
 
