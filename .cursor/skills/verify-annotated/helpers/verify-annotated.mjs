@@ -15,6 +15,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyQuietList } from "./drive-outcome.mjs";
 import {
+  PROD_PUBLIC_ORIGIN,
   createSupabaseMintPort,
   mintDedicatedTestSession,
   readMintEnv,
@@ -30,7 +31,7 @@ const STATE_PATH = join(TMP_ROOT, "state.json");
 const LOG_DIR = join(TMP_ROOT, "logs");
 const TOOLS_DIR = join(TMP_ROOT, "tools");
 const BROWSERS_DIR = join(TMP_ROOT, "ms-playwright");
-const PROD_URL = "https://annotated.cbandcoop.com";
+const PROD_URL = PROD_PUBLIC_ORIGIN;
 const LOCAL_URL = "http://127.0.0.1:3000";
 const LOCAL_PORT = 3000;
 const FEED_TITLE = "Public annotation feed";
@@ -679,7 +680,7 @@ async function driveMeSignedOut({ page, state, dir }) {
   console.log("drive: me-signed-out pass");
 }
 
-async function driveAuthenticatedMePage({ page, context, state, dir, sessionCookies }) {
+async function driveAuthenticatedMePage({ page, context, state, dir, sessionCookies, publicConfig }) {
   await context.addCookies(toPlaywrightCookies(sessionCookies, state.baseUrl));
   const response = await page.goto(`${state.baseUrl}/me`, { waitUntil: "domcontentloaded", timeout: 30000 });
   const httpStatus = response?.status() ?? 0;
@@ -728,6 +729,7 @@ async function driveAuthenticatedMePage({ page, context, state, dir, sessionCook
     `- Bookmarks: ${bookmarkState}`,
     `- View annotation links: ${viewCount}`,
     `- Install callout dismissed: ${dismissed ? "yes" : "no"}`,
+    `- Public Supabase config: ${publicConfig}`,
     "- Claim handle, Save handle, Bookmarked, Share, Sign out, and Send feedback were not clicked.",
     "- Side effects: none intended. No bookmark, comment, follow, reshare, vote, or handle claim.",
     `- Result: ${pass ? "pass" : "fail"}`,
@@ -737,7 +739,8 @@ async function driveAuthenticatedMePage({ page, context, state, dir, sessionCook
 }
 
 async function driveAuthenticatedMeCommand() {
-  const config = readMintEnv(process.env);
+  const launched = readState();
+  const config = readMintEnv(process.env, { baseUrl: launched?.baseUrl });
   if (!config.ok) unreachable("authenticated-me", config.message);
   const state = requireState();
   const report = await doctorState(state);
@@ -761,6 +764,7 @@ async function driveAuthenticatedMeCommand() {
       "- Entry: session mint, then GET /me",
       "- Result: fail",
       `- Reason: ${code}`,
+      `- Public Supabase config: ${config.publicConfig}`,
       "- The browser was not opened.",
       "- Side effects: none intended. No bookmark, comment, follow, reshare, vote, or handle claim.",
     ]);
@@ -774,6 +778,7 @@ async function driveAuthenticatedMeCommand() {
   await withBrowser(state, "authenticated-me", (ctx) => driveAuthenticatedMePage({
     ...ctx,
     sessionCookies: minted.cookies,
+    publicConfig: config.publicConfig,
   }));
 }
 
@@ -799,7 +804,8 @@ Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 
 Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
 chrome-extension stays exit 3. It needs an unpacked extension, and a website session does not load the side panel.
-authenticated-me exits 3 until SUPABASE_SERVICE_ROLE_KEY is set.
+authenticated-me exits 3 until SUPABASE_SERVICE_ROLE_KEY is set. That key is never defaulted and is never printed.
+On https://annotated.cbandcoop.com, an unset NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) uses the production public value. Environment values override. A local target does not receive those defaults.
 Evidence stays in .cursor/skills/verify-annotated/evidence/.
 `);
 }

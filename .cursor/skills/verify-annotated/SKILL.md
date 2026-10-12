@@ -73,7 +73,7 @@ node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive me-signe
 
 `me-signed-out` only checks the signed-out wall at `/me`. It does not click `Sign in with Google` or `Continue with X`.
 
-`authenticated-me` reads bookmarks and the public-handle region on `/me`. Without `SUPABASE_SERVICE_ROLE_KEY` it prints `verified-unreachable`, prints `set SUPABASE_SERVICE_ROLE_KEY`, and exits 3. It does not open Google. With the key set, it also needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Those values must come from the environment. Never print them.
+`authenticated-me` reads bookmarks and the public-handle region on `/me`. Without `SUPABASE_SERVICE_ROLE_KEY` it prints `verified-unreachable`, prints `set SUPABASE_SERVICE_ROLE_KEY`, and exits 3. It does not open Google. The service-role key is never defaulted and is never printed. With that key set, the drive also needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`). When the launched target is `https://annotated.cbandcoop.com` and either of those public values is unset, the helper uses the production public values already shipped in the production web bundle: `https://vnxjktpdzmykmqrqwvks.supabase.co` and `sb_publishable_pL8NB1pSVzZut54ED_eMmg_0Pq8X3-y`. Environment values override those defaults. A local target does not receive them. Never print the service-role key, session tokens, or cookie values. Evidence records only `production-defaults`, `environment`, or `mixed`.
 
 `chrome-extension` stays exit 3. The side panel is an unpacked Manifest V3 extension. This harness does not load it, and cookies on the website do not open it.
 
@@ -146,7 +146,7 @@ pnpm install --frozen-lockfile
 
 On first `drive` of a browser feature, the helper installs Playwright and Chromium under `/tmp/verify-annotated/tools` (not in the repo) and sets `PLAYWRIGHT_BROWSERS_PATH` to that tree. It does not add a repository dependency and does not print secrets.
 
-Exit codes: `0` ready or card proof, `1` launch, doctor, or drive failure, `2` `pass-empty` for a correctly rendered Trending or Who to Follow quiet page, `3` verified-unreachable. `chrome-extension` is always `3`. `authenticated-me` is `3` until `SUPABASE_SERVICE_ROLE_KEY` is set.
+Exit codes: `0` ready or card proof, `1` launch, doctor, or drive failure, `2` `pass-empty` for a correctly rendered Trending or Who to Follow quiet page, `3` verified-unreachable. `chrome-extension` is always `3`. `authenticated-me` is `3` until `SUPABASE_SERVICE_ROLE_KEY` is set. On the production origin, an unset public Supabase URL or publishable key uses the production public default. Environment values override. The service-role key is never defaulted.
 
 `/me` treats a visitor as signed in when `getUser()` returns a user id from the Supabase SSR cookies. The Google provider check lives only in the OAuth callback at `apps/web/src/lib/auth/auth-boundary.ts`. This drive does not open that callback. It asks the admin API for a magic-link token for the existing user with that email, exchanges the token with the publishable key, and injects the cookies `@supabase/ssr` stored. A Google-created user is reused. The helper does not run when `generate_link` is for any other email. If verify fails, the drive exits 1 with `mint_verify_failed` and stops. Do not set a password and do not automate Google.
 

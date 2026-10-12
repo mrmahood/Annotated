@@ -4,6 +4,13 @@ import { fileURLToPath } from "node:url";
 
 export const DEDICATED_TEST_EMAIL = "cbandcooptest@gmail.com";
 
+// Public values already shipped in the production web bundle. They are used
+// only when the launched target is the production origin and the matching
+// environment variable is unset. The service-role key is never defaulted.
+export const PROD_PUBLIC_ORIGIN = "https://annotated.cbandcoop.com";
+export const PROD_SUPABASE_URL = "https://vnxjktpdzmykmqrqwvks.supabase.co";
+export const PROD_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_pL8NB1pSVzZut54ED_eMmg_0Pq8X3-y";
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const OTP_TYPES = new Set(["magiclink", "email", "signup"]);
 
@@ -13,13 +20,16 @@ export function assertDedicatedTestEmail(email) {
   }
 }
 
-export function readMintEnv(env) {
+export function readMintEnv(env, options = {}) {
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY || "";
-  const url = env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const publishableKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
   if (!serviceRoleKey) {
     return { ok: false, exitCode: 3, message: "set SUPABASE_SERVICE_ROLE_KEY" };
   }
+  const envUrl = env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const envPublishableKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const prodTarget = options.baseUrl === PROD_PUBLIC_ORIGIN;
+  const url = envUrl || (prodTarget ? PROD_SUPABASE_URL : "");
+  const publishableKey = envPublishableKey || (prodTarget ? PROD_SUPABASE_PUBLISHABLE_KEY : "");
   if (!url || !publishableKey) {
     return {
       ok: false,
@@ -27,7 +37,19 @@ export function readMintEnv(env) {
       message: "set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
     };
   }
-  return { ok: true, url, serviceRoleKey, publishableKey, email: DEDICATED_TEST_EMAIL };
+  const publicConfig = envUrl && envPublishableKey
+    ? "environment"
+    : !envUrl && !envPublishableKey
+      ? "production-defaults"
+      : "mixed";
+  return {
+    ok: true,
+    url,
+    serviceRoleKey,
+    publishableKey,
+    email: DEDICATED_TEST_EMAIL,
+    publicConfig,
+  };
 }
 
 export function redactSecrets(text, secrets) {
