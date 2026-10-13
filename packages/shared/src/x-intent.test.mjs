@@ -46,3 +46,22 @@ test('commentary markup and the logo shortcode stay out of the intent text', () 
   assert.equal(url.searchParams.get('text'), 'Houthis seize a port and hold it. source');
   assert.equal(url.searchParams.get('text')?.startsWith('|*'), false);
 });
+
+test('exclamation points and hashtags stay in the intent text', () => {
+  const href = buildXPostIntentUrl({
+    take: "Let's see! #AI",
+    permalink: 'https://annotated.example/a/1',
+  });
+  assert.equal(new URL(href ?? '').searchParams.get('text'), "Let's see! #AI");
+});
+
+test('a leading logo shortcode and real markdown are removed from the intent text', () => {
+  const href = buildXPostIntentUrl({
+    take: "|* **Let's see!** _why_ #AI\n> quoted\n# Heading [matters](https://example.com/story)",
+    permalink: 'https://annotated.example/a/1',
+  });
+  assert.equal(
+    new URL(href ?? '').searchParams.get('text'),
+    "Let's see! why #AI quoted Heading matters",
+  );
+});
