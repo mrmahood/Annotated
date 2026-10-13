@@ -14,6 +14,31 @@ export const DEMO_PAGE_DESCRIPTION =
 
 export const DEMO_TEASER = "AI research tab — coming next";
 
+export const DEMO_VALUE_PROP =
+  "Annotated is the fact-check layer for the web: highlight any claim, attach sources, and they stay attached.";
+
+export const DEMO_GITHUB_URL = "https://github.com/mrmahood/Annotated";
+
+export const DEMO_TOUR_STEPS = [
+  { id: "highlight", label: "Highlight", targetId: "demo-highlight-needs-context" },
+  { id: "card", label: "Open card", targetId: "demo-fact-check" },
+  { id: "verdict", label: "Verdict", targetId: "demo-verdict" },
+  { id: "sources", label: "Sources", targetId: "demo-sources" },
+  { id: "consensus", label: "Consensus", targetId: "consensus" },
+  { id: "preserved", label: "Preserved post", targetId: "demo-preserved" },
+  { id: "post", label: "Post to X", targetId: "demo-post" },
+] as const;
+
+export type DemoTourStep = (typeof DEMO_TOUR_STEPS)[number];
+
+export type DemoPlayback = "auto" | "play" | "pause";
+
+export function demoTourIsPlaying(playback: DemoPlayback, reducedMotion: boolean): boolean {
+  if (playback === "pause") return false;
+  if (playback === "play") return true;
+  return !reducedMotion;
+}
+
 export const DEMO_BBC_URL = "https://www.bbc.com/news/articles/cqj6j7wlxd5eo";
 
 export const DEMO_PUBLISHED_ANNOTATION_URL =
@@ -42,14 +67,6 @@ export const BNM_SOURCE_URL =
 
 export const BNM_SNIPPET =
   "For instance, a 50MW data centre would consume approximately the equivalent power and water usage for ~22,000 and ~2,200 households per day, respectively.";
-
-export const DEMO_STEPS = [
-  "Read the sample article. Highlighted passages already have fact-checks.",
-  "Select a highlight with a click, a tap, or the keyboard. Enter or Space opens it.",
-  "Read the verdict, the note, and the source snippets. Agree, disagree, and helpful counts stay read-only.",
-  "Check the example preserved post and the Post to X preview. The preview does not post.",
-  "Install the sidebar for Chrome, or open the public feed.",
-] as const;
 
 export type DemoHighlightColor = "yellow" | "amber" | "green" | "red";
 

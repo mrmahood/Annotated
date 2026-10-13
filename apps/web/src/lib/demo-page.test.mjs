@@ -9,9 +9,12 @@ import {
   DEMO_PAGE_TITLE,
   DEMO_PASSAGE,
   DEMO_TEASER,
+  DEMO_TOUR_STEPS,
+  DEMO_VALUE_PROP,
   EESI_SNIPPET,
   composeDemoPostText,
   demoHighlightColor,
+  demoTourIsPlaying,
 } from "../app/demo/demo-data.ts";
 
 const demoDir = new URL("../app/demo/", import.meta.url);
@@ -42,6 +45,19 @@ test("demo notes reuse the published Batam fact-check and add other verdicts", (
   const preview = composeDemoPostText(needsContext);
   assert.match(preview, new RegExp(`^${DEMO_COMMENTARY_TITLE}\\nhttps://annotated\\.cbandcoop\\.com/factdesk/`));
   assert.doesNotMatch(preview, /x\.com\/intent|api\.twitter\.com/);
+  assert.deepEqual(DEMO_TOUR_STEPS.map((item) => item.label), [
+    "Highlight",
+    "Open card",
+    "Verdict",
+    "Sources",
+    "Consensus",
+    "Preserved post",
+    "Post to X",
+  ]);
+  assert.equal(demoTourIsPlaying("auto", false), true);
+  assert.equal(demoTourIsPlaying("auto", true), false);
+  assert.equal(demoTourIsPlaying("play", true), true);
+  assert.equal(demoTourIsPlaying("pause", false), false);
 });
 
 test("the public demo page is read-only, linked from the hero, and has an OG image", async () => {
@@ -58,20 +74,34 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(page, /description: DEMO_PAGE_DESCRIPTION/);
   assert.match(page, /canonical: DEMO_PAGE_PATH/);
   assert.equal(DEMO_PAGE_TITLE, "Annotated demo: the fact-check layer for the web");
+  assert.match(experience, /\{DEMO_VALUE_PROP\}/);
+  assert.equal(
+    DEMO_VALUE_PROP,
+    "Annotated is the fact-check layer for the web: highlight any claim, attach sources, and they stay attached.",
+  );
   assert.match(experience, /\{DEMO_TEASER\}/);
   assert.equal(DEMO_TEASER, "AI research tab — coming next");
   assert.match(experience, /Install for Chrome/);
   assert.match(experience, /EXTENSION_WHATS_NEW_PATH/);
   assert.match(experience, /View the feed/);
   assert.match(experience, /href="\/"/);
+  assert.match(experience, /DEMO_GITHUB_URL/);
+  assert.match(experience, /Why this matters/);
+  assert.match(experience, /aria-label="Guided tour"/);
+  assert.match(experience, /"Pause"/);
+  assert.match(experience, /"Play"/);
+  assert.match(experience, /Replay/);
+  assert.match(experience, /Skip/);
+  assert.match(experience, /prefers-reduced-motion: reduce/);
   assert.match(experience, /Example content/);
   assert.match(experience, /Post to X/);
   assert.match(experience, /Composed text only/);
   assert.match(experience, /aria-pressed=\{pressed\}/);
   assert.match(experience, /aria-expanded=\{pressed\}/);
   assert.match(experience, /role="dialog"/);
-  assert.match(experience, /aria-label="How to use this demo"/);
-  assert.match(experience, /Example votes/);
+  assert.match(experience, /Needs context/);
+  assert.match(experience, /They stay read-only here/);
+  assert.doesNotMatch(experience, /How to use this demo/);
   assert.doesNotMatch(experience, /onAgree|onDisagree|onToggleHelpful|Mark helpful/);
   assert.doesNotMatch(surface, /supabase|x\.com\/intent|rate_annotation|createClient\(/);
   assert.match(image, /ImageResponse/);

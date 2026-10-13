@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export default function DemoPage() {
   return (
     <>
-      <a className="skip-link" href="#demo-article">Skip to main content</a>
+      <a className="skip-link" href="#demo-value">Skip to main content</a>
       <SiteHeader returnTo={DEMO_PAGE_PATH} />
       <main className="demo-main">
         <DemoExperience />
