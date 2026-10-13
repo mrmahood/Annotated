@@ -106,96 +106,11 @@ export function useTypedClipRange(
   };
 }
 
-export function ClipRangeFields({
-  idPrefix,
-  startField,
-  endField,
-  lengthDisplay,
-  startError,
-  endError,
-  disabled,
-  onStartChange,
-  onEndChange,
-  onStartBlur,
-  onEndBlur,
-}: {
-  idPrefix: string;
-  startField: TypedClipField;
-  endField: TypedClipField;
-  lengthDisplay: string;
-  startError: string | null;
-  endError: string | null;
-  disabled: boolean;
-  onStartChange: (text: string) => void;
-  onEndChange: (text: string) => void;
-  onStartBlur: () => void;
-  onEndBlur: () => void;
-}) {
-  const startId = `${idPrefix}-clip-start`;
-  const endId = `${idPrefix}-clip-end`;
-  const startErrorId = `${startId}-error`;
-  const endErrorId = `${endId}-error`;
-  return (
-    <dl className="clip-time-grid clip-time-grid-editable">
-      <div>
-        <dt><label htmlFor={startId}>START</label></dt>
-        <dd>
-          <input
-            id={startId}
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="1:00"
-            aria-invalid={startError !== null}
-            aria-describedby={startError ? startErrorId : undefined}
-            value={startField.text}
-            disabled={disabled}
-            onChange={(event) => onStartChange(event.target.value)}
-            onBlur={onStartBlur}
-          />
-        </dd>
-        {startError && <p className="inline-error clip-field-error" id={startErrorId} role="alert">{startError}</p>}
-      </div>
-      <div>
-        <dt><label htmlFor={endId}>END</label></dt>
-        <dd>
-          <input
-            id={endId}
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="2:30"
-            aria-invalid={endError !== null}
-            aria-describedby={endError ? endErrorId : undefined}
-            value={endField.text}
-            disabled={disabled}
-            onChange={(event) => onEndChange(event.target.value)}
-            onBlur={onEndBlur}
-          />
-        </dd>
-        {endError && <p className="inline-error clip-field-error" id={endErrorId} role="alert">{endError}</p>}
-      </div>
-      <div>
-        <dt>LENGTH</dt>
-        <dd>{lengthDisplay}</dd>
-      </div>
-    </dl>
-  );
-}
-
 export function ClipRangeEditor({
-  idPrefix,
   startMs,
   endMs,
   durationMs,
   playheadMs = null,
-  startField,
-  endField,
-  lengthDisplay,
-  startError,
-  endError,
   rangeError,
   disabled,
   playerSelected,
@@ -204,24 +119,14 @@ export function ClipRangeEditor({
   previewEnabled,
   previewLabel,
   onCommitRange,
-  onStartChange,
-  onEndChange,
-  onStartBlur,
-  onEndBlur,
   onPreset,
   onPreview,
   onRefresh,
 }: {
-  idPrefix: string;
   startMs: number | null;
   endMs: number | null;
   durationMs: number | null;
   playheadMs?: number | null;
-  startField: TypedClipField;
-  endField: TypedClipField;
-  lengthDisplay: string;
-  startError: string | null;
-  endError: string | null;
   rangeError: string | null;
   disabled: boolean;
   playerSelected: boolean;
@@ -230,10 +135,6 @@ export function ClipRangeEditor({
   previewEnabled: boolean;
   previewLabel: string;
   onCommitRange: (startMs: number, endMs: number) => void;
-  onStartChange: (text: string) => void;
-  onEndChange: (text: string) => void;
-  onStartBlur: () => void;
-  onEndBlur: () => void;
   onPreset: (durationMs: number, window?: { startMs: number; durationMs: number }) => void;
   onPreview: () => void;
   onRefresh: () => void;
@@ -482,19 +383,6 @@ export function ClipRangeEditor({
           {playerReading ? 'Reading…' : 'Refresh time'}
         </button>
       </div>
-      <ClipRangeFields
-        idPrefix={idPrefix}
-        startField={startField}
-        endField={endField}
-        lengthDisplay={lengthDisplay}
-        startError={startError}
-        endError={endError}
-        disabled={disabled}
-        onStartChange={onStartChange}
-        onEndChange={onEndChange}
-        onStartBlur={onStartBlur}
-        onEndBlur={onEndBlur}
-      />
       <button
         className="button button-secondary preview-clip"
         type="button"
