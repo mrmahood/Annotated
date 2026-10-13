@@ -2,7 +2,7 @@
   "name": "annotated",
   "description": "Source-linked margin notes on articles, plus short video and audio clips from the current tab.",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",

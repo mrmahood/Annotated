@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <style>
+    .logo-stroke { stroke: #1a170c; }
+    .logo-highlight { fill: #ffe14a; }
+    @media (prefers-color-scheme: dark) {
+      .logo-stroke { stroke: #f6f3ea; }
+      .logo-highlight { fill: #e8c430; }
+    }
+  </style>
+  <line class="logo-stroke" x1="16" y1="10" x2="16" y2="54" fill="none" stroke-width="4" stroke-linecap="butt"/>
+  <rect class="logo-highlight" x="26" y="27" width="28" height="10"/>
+  <g class="logo-stroke" fill="none" stroke-width="4" stroke-linecap="butt">
+    <line x1="29" y1="32" x2="51" y2="32"/>
+    <line x1="32.2218" y1="24.2218" x2="47.7782" y2="39.7782"/>
+    <line x1="40" y1="21" x2="40" y2="43"/>
+    <line x1="47.7782" y1="24.2218" x2="32.2218" y2="39.7782"/>
+  </g>
+</svg>

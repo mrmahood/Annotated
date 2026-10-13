@@ -11,6 +11,7 @@
   --border: #3c382c;
   --border-strong: #564f3d;
   --text-primary: #f6f3ea;
+  --logo-stroke: #f6f3ea;
   --text-secondary: #cfc6b4;
   --text-muted: #948b78;
   --text-disabled: #625c50;
@@ -53,6 +54,7 @@
   --border: #e4dccb;
   --border-strong: #cfc4ab;
   --text-primary: #1c1914;
+  --logo-stroke: #1a170c;
   --text-secondary: #3f3a31;
   --text-muted: #6f685c;
   --text-disabled: #9a9284;

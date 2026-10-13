@@ -23,6 +23,13 @@ export const EXTENSION_UPDATE_GUIDE = [
  */
 export const EXTENSION_CHANGELOG = [
   {
+    version: "0.2.1",
+    items: [
+      "The header mark stays readable in dark mode: a cream bar and asterisk on the yellow highlight.",
+      "The Chrome toolbar icon is a yellow tile, so the mark stays clear on light and dark toolbars.",
+    ],
+  },
+  {
     version: "0.2.0",
     items: [
       "Annotated is the fact-check layer for the web. A note can be a fact check, receipts, or context, with a verdict and links back to the sources.",

@@ -20,7 +20,7 @@ export function LogoMark({ className = 'logo-mark' }: { className?: string }) {
         y1={LOGO_MARK_RULE.y1}
         x2={LOGO_MARK_RULE.x}
         y2={LOGO_MARK_RULE.y2}
-        stroke="currentColor"
+        stroke="var(--logo-stroke)"
         strokeWidth={LOGO_MARK_STROKE_WIDTH}
         strokeLinecap="butt"
       />
@@ -38,7 +38,7 @@ export function LogoMark({ className = 'logo-mark' }: { className?: string }) {
           y1={ray.y1}
           x2={ray.x2}
           y2={ray.y2}
-          stroke="var(--highlighter-ink)"
+          stroke="var(--logo-stroke)"
           strokeWidth={LOGO_MARK_STROKE_WIDTH}
           strokeLinecap="butt"
         />
