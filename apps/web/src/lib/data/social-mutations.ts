@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "@/lib/public-content";
+import { followInsertHeaders, requireFollowSession } from "./follow-session";
 import { normalizeReshareComment } from "./reshare";
 import { COMMENT_BODY_LIMIT, PUBLIC_COMMENT_STATUS } from "./social-query";
 
@@ -16,12 +17,17 @@ export async function followProfile(
   followedId: string,
 ): Promise<void> {
   if (!isUuid(followedId)) throw new Error("That profile is unavailable.");
-  const followerId = await requireUserId(supabase);
-  if (followerId === followedId) throw new Error("You cannot follow yourself.");
+  const { userId, accessToken } = await requireFollowSession(supabase);
+  if (userId === followedId) throw new Error("You cannot follow yourself.");
+  // profile_follows grants insert and not select. Returning the new row asks
+  // for SELECT and fails with 42501, so the insert stays minimal and uses the
+  // token just validated rather than a later session read.
+  const headers = followInsertHeaders(accessToken);
   const { error } = await supabase.from("profile_follows").insert({
-    follower_id: followerId,
+    follower_id: userId,
     followed_id: followedId,
-  });
+  }).setHeader("Authorization", headers.Authorization)
+    .setHeader("Prefer", headers.Prefer);
   if (error) throw new Error("The profile could not be followed.");
 }
 
