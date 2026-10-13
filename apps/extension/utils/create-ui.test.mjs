@@ -67,11 +67,11 @@ test('player selection is a bounded native radio group and gates every clip acti
   assert.match(source, /getPlayerActionToken\('audio'/);
   assert.match(source, /runSelectedPlayerAction\(token,/);
   assert.match(source, /playerTokenIsCurrent\(token\)/);
-  assert.match(source, /videoRangeDisplay\.length/);
-  assert.match(source, /audioRangeDisplay\.length/);
+  assert.doesNotMatch(source, /videoRangeDisplay\.length/);
+  assert.doesNotMatch(source, /audioRangeDisplay\.length/);
   assert.match(source, /<ClipRangeEditor/);
-  assert.match(source, /idPrefix="video"/);
-  assert.match(source, /idPrefix="audio"/);
+  assert.doesNotMatch(source, /idPrefix="video"/);
+  assert.doesNotMatch(source, /idPrefix="audio"/);
   assert.match(source, /Preview range/);
   assert.doesNotMatch(source, /Set start/);
   assert.doesNotMatch(source, /Set end/);
@@ -134,11 +134,12 @@ test('Create Video and Audio use a dual-handle clip slider instead of Set start 
     readFile(STYLE_URL, 'utf8'),
     readFile(new URL('./create-mode-capabilities.ts', import.meta.url), 'utf8'),
   ]);
-  assert.match(source, /useTypedClipRange/);
+  assert.doesNotMatch(source, /useTypedClipRange/);
+  assert.doesNotMatch(source, /getTypedClipFieldError/);
+  assert.doesNotMatch(source, /videoRangeEntry/);
+  assert.doesNotMatch(source, /audioRangeEntry/);
   assert.match(source, /commitVideoRange/);
   assert.match(source, /commitAudioRange/);
-  assert.match(source, /videoRangeEntry\.allowsPublish/);
-  assert.match(source, /audioRangeEntry\.allowsPublish/);
   assert.match(source, /applyMediaClipPreset/);
   assert.match(source, /applyClipPresetFromPlayhead\(player\.currentTimeMs, player\.durationMs, presetMs, window\)/);
   assert.match(source, /onPreset=\{\(presetMs, window\) => void applyMediaClipPreset\(presetMs, window\)\}/);
@@ -159,11 +160,13 @@ test('Create Video and Audio use a dual-handle clip slider instead of Set start 
   assert.match(source, /playheadMs=\{audioDraftState\.playerTimeMs\}/);
   assert.match(fields, /previewLabel/);
   assert.match(source, /Preview range/);
-  assert.match(fields, /id=\{startId\}/);
-  assert.match(fields, /id=\{endId\}/);
-  assert.match(fields, /placeholder="1:00"/);
-  assert.match(fields, /placeholder="2:30"/);
-  assert.match(fields, /htmlFor=\{startId\}/);
+  assert.doesNotMatch(fields, /id=\{startId\}/);
+  assert.doesNotMatch(fields, /id=\{endId\}/);
+  assert.doesNotMatch(fields, /placeholder="1:00"/);
+  assert.doesNotMatch(fields, /placeholder="2:30"/);
+  assert.doesNotMatch(fields, /htmlFor=\{startId\}/);
+  assert.doesNotMatch(fields, /type="text"/);
+  assert.doesNotMatch(fields, />START</);
   assert.match(style, /\.clip-range-slider input\[type="range"\]/);
   assert.match(style, /\.clip-range-readout/);
   assert.match(style, /\.clip-range-window-cue/);

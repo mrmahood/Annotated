@@ -14,6 +14,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyQuietList } from "./drive-outcome.mjs";
+import { driveChromeExtensionCommand } from "./drive-chrome-extension.mjs";
 import {
   createSupabaseMintPort,
   mintDedicatedTestSession,
@@ -798,7 +799,7 @@ Commands (run from the repository root):
 Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 
 Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
-chrome-extension stays exit 3. It needs an unpacked extension, and a website session does not load the side panel.
+chrome-extension exits 0 or 1. It loads apps/extension/.output/chrome-mv3 and does not need launch or doctor.
 authenticated-me exits 3 until SUPABASE_SERVICE_ROLE_KEY is set.
 Evidence stays in .cursor/skills/verify-annotated/evidence/.
 `);
@@ -817,7 +818,11 @@ if (command === "cleanup") cleanup();
 if (command === "drive") {
   const feature = process.argv[3];
   if (feature === "chrome-extension") {
-    unreachable("chrome-extension", "Chrome extension load (unpacked MV3 side panel). A website session does not load the side panel. Not started.");
+    await driveChromeExtensionCommand({
+      repoRoot: REPO_ROOT,
+      evidenceRoot: EVIDENCE_ROOT,
+      ensurePlaywright,
+    });
   } else if (feature === "authenticated-me") {
     await driveAuthenticatedMeCommand();
   } else {
