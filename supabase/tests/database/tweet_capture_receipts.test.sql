@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(23);
+select plan(24);
 
 select has_table('public', 'annotation_tweet_captures', 'annotation_tweet_captures table exists');
 select ok(
@@ -12,6 +12,18 @@ select results_eq(
   $$select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'annotation-tweet-captures'$$,
   $$values (true, 1572864::bigint, array['image/jpeg']::text[])$$,
   'the post screenshot bucket is public and JPEG-limited'
+);
+select results_eq(
+  $$select policyname from pg_catalog.pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname like 'annotation_tweet_captures_owner_%'
+    order by policyname$$,
+  $$values
+    ('annotation_tweet_captures_owner_delete'),
+    ('annotation_tweet_captures_owner_insert'),
+    ('annotation_tweet_captures_owner_select')$$,
+  'tweet screenshot storage has owner insert, select, and delete policies'
 );
 select has_table('public', 'annotation_receipt_sources', 'annotation_receipt_sources table exists');
 select ok(
