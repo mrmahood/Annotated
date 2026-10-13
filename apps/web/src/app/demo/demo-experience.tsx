@@ -264,7 +264,7 @@ export function DemoExperience() {
         <p className="eyebrow">DEMO</p>
         <h1 id="demo-value">{DEMO_VALUE_PROP}</h1>
         <p className="demo-watch">
-          <a href="/demo.mp4">Watch the 90-second extension demo</a>
+          <a href="/demo.mp4">Watch the 73.8-second extension demo</a>
         </p>
       </header>
 
