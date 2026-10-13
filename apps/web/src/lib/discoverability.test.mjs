@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  AGENTS_HEADING,
+  AGENTS_LEDE,
+  AGENTS_PATH,
+  ANNOTATED_REPOSITORY_URL,
   FEED_LEDE,
   getLlmsTxt,
   getPublicPageStructuredData,
@@ -10,6 +14,8 @@ import {
   INDEXABLE_PUBLIC_PATHS,
   LEGAL_HEADING,
   LEGAL_LEDE,
+  LLMS_TXT_PATH,
+  PLANNED_API_AND_MCP,
   PRIVACY_LEDE,
   TERMS_LEDE,
   TRENDING_HEADING,
@@ -17,6 +23,7 @@ import {
   WHO_TO_FOLLOW_HEADING,
   WHO_TO_FOLLOW_LEDE,
 } from "./discoverability.ts";
+import { DEMO_GITHUB_URL } from "../app/demo/demo-data.ts";
 import { LEGAL_OPERATOR, LEGAL_PATHS } from "./legal.ts";
 import { WHO_TO_FOLLOW_PATH } from "./data/who-to-follow.ts";
 
@@ -35,14 +42,31 @@ function withOrigin(run) {
 
 test("llms.txt follows the consultancy reading-file shape with published facts", () => {
   const text = withOrigin(() => getLlmsTxt());
-  assert.match(text, /^# Annotated\n\n> Annotated is a public web application/);
+  assert.match(text, /^# Annotated\n\n> The fact-check layer for the web\./);
+  assert.match(text, /Annotated is the fact-check layer for the web/);
+  assert.match(text, /\n## Read a fact-check\n/);
+  assert.match(text, /False \(1\), Misleading \(2\), Needs context \(3\), True \(4\)/);
+  assert.match(text, /True means the claim is accurate/);
+  assert.match(text, /ClaimReview JSON-LD/);
+  assert.match(text, /claimReviewed is the quoted passage/);
+  assert.match(text, /\n## URL patterns\n/);
+  assert.match(text, /\/\{handle\}\/\{slug\}/);
+  assert.match(text, /\/factdesk\/\.\.\./);
   assert.match(text, /\n## Pages\n\n- \[Feed\]/);
+  assert.match(text, /\n## Planned\n/);
+  assert.match(text, new RegExp(escapeRegExp(PLANNED_API_AND_MCP)));
+  assert.doesNotMatch(text, /20\d{2}|next quarter|coming soon|by the end/i);
   assert.match(text, /\n## Contact\n\n- Email: /);
   assert.match(text, /\n## Optional\n\n- \[Sitemap\]/);
+  assert.equal(ANNOTATED_REPOSITORY_URL, DEMO_GITHUB_URL);
   assert.match(text, new RegExp(`\\[Feed\\]\\(${ORIGIN}/\\): ${escapeRegExp(FEED_LEDE)}`));
   assert.match(text, new RegExp(`\\[Trending\\]\\(${ORIGIN}/trending\\):`));
   assert.match(text, new RegExp(`\\[Who to Follow\\]\\(${ORIGIN}${WHO_TO_FOLLOW_PATH}\\):`));
+  assert.match(text, new RegExp(`\\[Demo\\]\\(${ORIGIN}/demo\\):`));
+  assert.match(text, new RegExp(`\\[Agents\\]\\(${ORIGIN}${AGENTS_PATH}\\):`));
   assert.match(text, new RegExp(`\\[What's new\\]\\(${ORIGIN}/whats-new\\):`));
+  assert.match(text, new RegExp(`\\[GitHub\\]\\(${escapeRegExp(ANNOTATED_REPOSITORY_URL)}\\)`));
+  assert.match(text, new RegExp(escapeRegExp("/extension.zip")));
   assert.match(text, new RegExp(`\\[Legal\\]\\(${ORIGIN}${LEGAL_PATHS.center}\\):`));
   assert.match(text, new RegExp(`\\[Privacy Policy\\]\\(${ORIGIN}${LEGAL_PATHS.privacy}\\):`));
   assert.match(text, new RegExp(`\\[Terms of Service\\]\\(${ORIGIN}${LEGAL_PATHS.terms}\\):`));
@@ -65,6 +89,8 @@ test("robots and sitemap cover the stable public pages and skip private routes",
   assert.equal(robots.rules.allow, "/");
   assert.deepEqual(robots.rules.disallow, ["/api/", "/auth/", "/me", "/ops"]);
   assert.equal(robots.sitemap, `${ORIGIN}/sitemap.xml`);
+  assert.equal(robots.rules.disallow.includes(AGENTS_PATH), false);
+  assert.equal(robots.rules.disallow.includes(LLMS_TXT_PATH), false);
 
   const urls = withOrigin(() => getSitemapEntries()).map((entry) => entry.url);
   assert.deepEqual(urls, [
@@ -72,11 +98,14 @@ test("robots and sitemap cover the stable public pages and skip private routes",
     `${ORIGIN}/trending`,
     `${ORIGIN}${WHO_TO_FOLLOW_PATH}`,
     `${ORIGIN}/whats-new`,
+    `${ORIGIN}${AGENTS_PATH}`,
     `${ORIGIN}${LEGAL_PATHS.center}`,
     `${ORIGIN}${LEGAL_PATHS.privacy}`,
     `${ORIGIN}${LEGAL_PATHS.terms}`,
+    `${ORIGIN}${LLMS_TXT_PATH}`,
   ]);
-  assert.equal(INDEXABLE_PUBLIC_PATHS.length, urls.length);
+  assert.equal(INDEXABLE_PUBLIC_PATHS.includes(AGENTS_PATH), true);
+  assert.equal(INDEXABLE_PUBLIC_PATHS.includes(LLMS_TXT_PATH), false);
   assert.equal(urls.some((url) => url.includes("/me") || url.includes("/ops")), false);
 });
 
@@ -107,6 +136,12 @@ test("structured data repeats visible page copy and does not invent an offer", (
   const follow = documents.find((entry) => entry.path === WHO_TO_FOLLOW_PATH).data;
   assert.equal(follow["@graph"][0].name, WHO_TO_FOLLOW_HEADING);
   assert.equal(follow["@graph"][0].description, WHO_TO_FOLLOW_LEDE);
+
+  const agents = documents.find((entry) => entry.path === AGENTS_PATH).data;
+  assert.equal(agents["@graph"][0]["@type"], "WebPage");
+  assert.equal(agents["@graph"][0].name, AGENTS_HEADING);
+  assert.equal(agents["@graph"][0].description, AGENTS_LEDE);
+  assert.equal(agents["@graph"][0].url, `${ORIGIN}${AGENTS_PATH}`);
 
   for (const path of [LEGAL_PATHS.center, LEGAL_PATHS.privacy, LEGAL_PATHS.terms]) {
     const page = documents.find((entry) => entry.path === path).data;
@@ -143,6 +178,8 @@ test("missing site origin omits absolute urls instead of inventing one", () => {
     assert.deepEqual(getSitemapEntries(), []);
     const text = getLlmsTxt();
     assert.match(text, /\[Feed\]\(\/\):/);
+    assert.match(text, /\[Agents\]\(\/agents\):/);
+    assert.match(text, /\[llms\.txt\]\(\/llms\.txt\)/);
     assert.match(text, new RegExp(`Email: ${LEGAL_OPERATOR.email}`));
   } finally {
     if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
@@ -151,7 +188,7 @@ test("missing site origin omits absolute urls instead of inventing one", () => {
 });
 
 test("public pages wire canonical urls and the shared visible copy", async () => {
-  const [layout, home, trending, follow, legal, privacy, terms, robots, sitemap, llms] = await Promise.all([
+  const [layout, home, trending, follow, legal, privacy, terms, robots, sitemap, llms, agents, footer] = await Promise.all([
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/trending/page.tsx", import.meta.url), "utf8"),
@@ -162,6 +199,8 @@ test("public pages wire canonical urls and the shared visible copy", async () =>
     readFile(new URL("../app/robots.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/sitemap.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/llms.txt/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/agents/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/site-footer.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(layout, /metadataBase: new URL\(siteOrigin\)/);
@@ -184,6 +223,17 @@ test("public pages wire canonical urls and the shared visible copy", async () =>
   assert.match(sitemap, /getSitemapEntries/);
   assert.match(llms, /text\/plain; charset=utf-8/);
   assert.match(llms, /getLlmsTxt/);
+  assert.match(agents, /AGENTS_HEADING/);
+  assert.match(agents, /AGENTS_LEDE/);
+  assert.match(agents, /canonical: AGENTS_PATH/);
+  assert.match(agents, /getPublicPageStructuredData\(AGENTS_PATH\)/);
+  assert.match(agents, /PLANNED_API_AND_MCP/);
+  assert.match(agents, /CONSENSUS_GUIDE/);
+  assert.match(agents, /ClaimReview/);
+  assert.match(agents, /factdesk\/the-island-where-locals-say-data-centres-are-taking-their-water-99ceece3/);
+  assert.match(agents, /matt-mahood-85fdb29c\/the-island-where-locals-say-data-centres-are-taking-their-water-f4ea2383/);
+  assert.match(footer, /AGENTS_PATH/);
+  assert.match(footer, />Agents</);
 });
 
 function escapeRegExp(value) {
