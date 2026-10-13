@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ExtensionStepLine } from "../extension-step-code";
 import { SiteHeader } from "../site-header";
 import { JsonLd } from "../json-ld";
 import { getPublicPageStructuredData } from "@/lib/discoverability";
@@ -64,15 +65,11 @@ export default function WhatsNewPage() {
           <p>Use this when Annotated is already loaded unpacked. You do not sign in again.</p>
           <ol className="install-extension-steps whats-new-steps">
             {EXTENSION_UPDATE_GUIDE.map((step) => (
-              <li key={step.text}>
-                {step.text}
-                {"code" in step && step.code ? (
-                  <>
-                    {" "}
-                    <code>{step.code}</code>
-                  </>
-                ) : null}
-              </li>
+              <ExtensionStepLine
+                key={step.text}
+                text={step.text}
+                code={"code" in step ? step.code : undefined}
+              />
             ))}
           </ol>
         </section>

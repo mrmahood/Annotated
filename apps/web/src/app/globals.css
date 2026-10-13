@@ -552,15 +552,50 @@ a { color: inherit; }
   font-weight: 600;
   line-height: 1.6;
 }
+.install-extension-step-body { min-width: 0; }
+.install-extension-code {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45em;
+  max-width: 100%;
+  vertical-align: baseline;
+}
 .install-extension-steps code {
-  display: inline;
-  padding: 1px 5px;
-  border: 1px solid var(--border);
+  display: inline-block;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  max-width: 100%;
+  padding: 0.1em 0.4em;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   color: var(--text-primary);
   background: var(--control-background);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 0.92em;
+  line-height: 1.4;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.install-extension-copy {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7em;
+  margin: 0;
+  padding: 0.1em 0.45em;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-primary);
+  background: var(--surface);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+.install-extension-copy:hover { background: var(--surface-hover); }
+@media (max-width: 640px) {
+  .install-extension-steps code { white-space: normal; }
 }
 .install-extension-modal-footer {
   margin: 14px 0 0;
