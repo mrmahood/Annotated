@@ -13,16 +13,19 @@ select results_eq(
   $$values (true, 1572864::bigint, array['image/jpeg']::text[])$$,
   'the post screenshot bucket is public and JPEG-limited'
 );
-select results_eq(
-  $$select policyname::text from pg_catalog.pg_policies
+select is(
+  (
+    select pg_catalog.count(*)::integer
+    from pg_catalog.pg_policies
     where schemaname = 'storage'
       and tablename = 'objects'
-      and policyname like 'annotation_tweet_captures_owner_%'
-    order by 1$$,
-  $$values
-    ('annotation_tweet_captures_owner_delete'),
-    ('annotation_tweet_captures_owner_insert'),
-    ('annotation_tweet_captures_owner_select')$$,
+      and policyname = any (array[
+        'annotation_tweet_captures_owner_delete',
+        'annotation_tweet_captures_owner_insert',
+        'annotation_tweet_captures_owner_select'
+      ]::name[])
+  ),
+  3,
   'tweet screenshot storage has owner insert, select, and delete policies'
 );
 select has_table('public', 'annotation_receipt_sources', 'annotation_receipt_sources table exists');
