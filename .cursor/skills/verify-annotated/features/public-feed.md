@@ -1,6 +1,6 @@
 # Public feed
 
-The public feed is the signed-out home page. It lists published annotations, newest activity first, with a link to each annotation. The page eyebrow reads `PUBLIC ANNOTATIONS`. The landing heading is `The fact-check layer for the web.` The document title is `Public annotation feed | Annotated`.
+The public feed is the signed-out home page. It lists published annotations, newest activity first, with a link to each annotation. The page eyebrow reads `PUBLIC ANNOTATIONS`. The landing heading is `The fact-check layer for the web.` The document title is `Annotated: the fact-check layer for the web`.
 
 ## Sub-features
 
@@ -23,7 +23,7 @@ Preconditions:
 - `verify-annotated doctor` prints `ready: yes`.
 - The browser context has no Annotated session.
 
-- **Open the feed.** Visit `/` as a signed-out visitor. Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive public-feed`. The HTTP status is 200. The document title contains `Public annotation feed`. The lede `The fact-check layer for the web.` is visible.
+- **Open the feed.** Visit `/` as a signed-out visitor. Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive public-feed`. The HTTP status is 200. The document title contains `Annotated: the fact-check layer for the web`. The lede `The fact-check layer for the web.` is visible.
 - **See cards.** The list named `Published annotations` contains at least one `article`, and a link named `View annotation` is visible. The command records that link's href in `notes.md` and does not open it.
 - **Capture both states.** `feed-loaded.png` is the page as it finished loading. If `Dismiss install reminder` is visible, the command clicks it and then writes `feed.png`. If the callout is absent, `feed.png` is the same view. `feed.aria.txt` is the ARIA snapshot of `main`.
 - **Do not mutate.** The command does not activate Share, Bookmark, Follow, comment, or sign-in controls.

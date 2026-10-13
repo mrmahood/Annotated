@@ -174,17 +174,31 @@ function installDom(paragraphs, options = {}) {
     getComputedStyle: globalThis.getComputedStyle,
     CSSStyleSheet: globalThis.CSSStyleSheet,
     chrome: globalThis.chrome,
+    Highlight: globalThis.Highlight,
+    CSS: globalThis.CSS,
   };
   globalThis.document = document;
   globalThis.location = { href: options.href ?? PAGE };
   globalThis.CSSStyleSheet = CSSStyleSheet;
   globalThis.getComputedStyle = (element) => {
-    const sheet = element.shadowRoot?.adoptedStyleSheets?.[0];
-    const background = String(sheet?.css || '').includes('#ffe14a')
+    if (options.csp) {
+      return { display: 'block', visibility: 'visible', backgroundColor: 'rgba(0, 0, 0, 0)' };
+    }
+    const inline = String(element.getAttribute?.('style') || '');
+    const background = inline.toLowerCase().includes('#ffe14a')
       ? 'rgb(255, 225, 74)'
       : 'rgba(0, 0, 0, 0)';
     return { display: 'block', visibility: 'visible', backgroundColor: background };
   };
+  if (options.highlightApi) {
+    const registry = new Map();
+    class Highlight {
+      constructor(range) { this.ranges = new Set([range]); }
+      add(range) { this.ranges.add(range); }
+    }
+    globalThis.Highlight = Highlight;
+    globalThis.CSS = { highlights: registry };
+  }
   globalThis.chrome = {
     runtime: {
       sendMessage(message) { messages.push(message); },
@@ -213,6 +227,8 @@ function installDom(paragraphs, options = {}) {
       globalThis.getComputedStyle = previous.getComputedStyle;
       globalThis.CSSStyleSheet = previous.CSSStyleSheet;
       globalThis.chrome = previous.chrome;
+      globalThis.Highlight = previous.Highlight;
+      globalThis.CSS = previous.CSS;
     },
   };
 }
@@ -295,13 +311,13 @@ test('shadow-root passages highlight when the quote and context live there', () 
     assert.equal(marks.length, 1);
     assert.equal(marks[0].textContent, QUOTE);
     assert.equal(marks[0].getAttribute('data-annotated-color'), 'yellow');
-    assert.match(marks[0].shadowRoot.adoptedStyleSheets[0].css, /#ffe14a/);
+    assert.match(marks[0].getAttribute('style'), /#ffe14a/);
   } finally {
     dom.restore();
   }
 });
 
-test('verdict colors stay inside the shadow stylesheet', () => {
+test('verdict colors are inline style attributes', () => {
   const dom = installDom([{ text: 'Alpha beta gamma delta epsilon zeta eta theta.' }]);
   try {
     const result = applyPassageHighlightsOnPage({
@@ -313,7 +329,7 @@ test('verdict colors stay inside the shadow stylesheet', () => {
       }],
     });
     assert.equal(result.highlighted, 1);
-    assert.match(dom.marks()[0].shadowRoot.adoptedStyleSheets[0].css, /#ffb3b3/);
+    assert.match(dom.marks()[0].getAttribute('style'), /#ffb3b3/);
   } finally {
     dom.restore();
   }
@@ -465,6 +481,56 @@ test('a quote that appears once, only inside a shadow root, still highlights wit
   }
 });
 
+test('Wikipedia citation markers between a quote and its suffix still highlight', () => {
+  const quote = 'Glass is sometimes considered to be a liquid due to its lack of a first-order phase transition';
+  const dom = installDom([{
+    text: `${quote}[8][16] where certain thermodynamic variables such as volume, entropy and enthalpy are discontinuous.`,
+  }]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [{
+        annotationId: ANNOTATION_ID,
+        quote,
+        prefix: '',
+        suffix: 'where certain thermodynamic variables such as volume, entropy and enthalpy are discontinuous.',
+        color: 'amber',
+      }],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 1);
+    assert.equal(result.unmatched, 0);
+    const marks = dom.marks();
+    assert.equal(marks.length, 1);
+    assert.equal(marks[0].textContent, quote);
+    assert.equal(marks[0].getAttribute('data-annotated-color'), 'amber');
+    assert.match(marks[0].getAttribute('style'), /#ffd59a/);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('a changed suffix still does not highlight when no citation explains the mismatch', () => {
+  const quote = 'Glass is sometimes considered to be a liquid due to its lack of a first-order phase transition';
+  const dom = installDom([{ text: `${quote} Edited ending.` }]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [{
+        annotationId: ANNOTATION_ID,
+        quote,
+        prefix: '',
+        suffix: 'where certain thermodynamic variables such as volume, entropy and enthalpy are discontinuous.',
+        color: 'amber',
+      }],
+    });
+    assert.equal(result.highlighted, 0);
+    assert.equal(dom.marks().length, 0);
+  } finally {
+    dom.restore();
+  }
+});
+
 test('CSP style failure leaves the page unmarked', () => {
   const dom = installDom([{ text: QUOTE }], { csp: true });
   try {
@@ -476,6 +542,23 @@ test('CSP style failure leaves the page unmarked', () => {
       unmatched: 1,
     });
     assert.equal(dom.marks().length, 0);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('blocked inline styles fall back to the CSS highlight registry', () => {
+  const dom = installDom([{ text: QUOTE }], { csp: true, highlightApi: true });
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({ prefix: '', suffix: '' })],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 1);
+    assert.equal(dom.marks().length, 0);
+    const entry = globalThis.CSS.highlights.get('annotated-yellow');
+    assert.equal(entry.ranges.size, 1);
   } finally {
     dom.restore();
   }

@@ -35,7 +35,7 @@ const BROWSERS_DIR = join(TMP_ROOT, "ms-playwright");
 const PROD_URL = "https://annotated.cbandcoop.com";
 const LOCAL_URL = "http://127.0.0.1:3000";
 const LOCAL_PORT = 3000;
-const FEED_TITLE = "Public annotation feed";
+const FEED_TITLE = "Annotated: the fact-check layer for the web";
 const FEED_LEDE = "The fact-check layer for the web.";
 
 const COMMANDS = [

@@ -27,7 +27,7 @@ Local launch then runs, in the background, from the repository root:
 pnpm --dir apps/web exec next dev --hostname 127.0.0.1 --port 3000
 ```
 
-Ready means `http://127.0.0.1:3000/` returns HTTP 200 and the document title contains `Public annotation feed`. Next writes that title from the home page metadata. The landing heading is the feed lede.
+Ready means `http://127.0.0.1:3000/` returns HTTP 200 and the document title contains `Annotated: the fact-check layer for the web`. Next writes that title from the home page metadata. The landing heading is the feed lede.
 
 One local instance owns port 3000. If something else is already listening, launch exits without adopting it. Two verification runs must not share one local server.
 
@@ -50,7 +50,7 @@ node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs doctor
 Doctor requires a state file from launch. It then:
 
 - Refuses to continue when `launched` is not this helper's state.
-- Fetches `{baseUrl}/` and requires HTTP 200 and a title containing `Public annotation feed`.
+- Fetches `{baseUrl}/` and requires HTTP 200 and a title containing `Annotated: the fact-check layer for the web`.
 - In `prod-public` mode, reports `ownedProcess: n/a`. There is no local pid to check. A non-200 or wrong title means the public site is not worth driving.
 - In `local` mode, requires the recorded pid to still be alive and port 3000 to be held by that process group. A foreign listener is a failed doctor. Do not drive it.
 
@@ -84,7 +84,7 @@ node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive authenti
 
 Stable handles used by the public drives:
 
-- Home: title `Public annotation feed`, list `[aria-label="Published annotations"]`, link `View annotation`, nav `Primary navigation`, link `Annotated home`.
+- Home: title `Annotated: the fact-check layer for the web`, list `[aria-label="Published annotations"]`, link `View annotation`, nav `Primary navigation`, link `Annotated home`.
 - Annotation detail: title prefix `Annotation on `, heading `Comments`, source link name matching `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source`. Do not follow that source link.
 - Legal: `/legal` heading `Policies for Annotated`, `/privacy` heading `Privacy Policy`, `/terms` heading `Terms of Service`, footer nav `Legal`.
 - Trending: `/trending`, title `What’s Trending`, heading `This week’s most active annotations.`

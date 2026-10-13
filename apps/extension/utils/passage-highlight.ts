@@ -9,6 +9,12 @@ import {
 } from './passage-highlight-page.ts';
 
 export const PASSAGE_OPEN_MESSAGE = 'annotated-passage-open';
+export const PASSAGE_HIGHLIGHT_CSS = [
+  '::highlight(annotated-yellow){background-color:#ffe14a;color:#1a170c}',
+  '::highlight(annotated-green){background-color:#b6f0a2;color:#1a170c}',
+  '::highlight(annotated-red){background-color:#ffb3b3;color:#1a170c}',
+  '::highlight(annotated-amber){background-color:#ffd59a;color:#1a170c}',
+].join('');
 export const PASSAGE_OPEN_STORAGE_KEY = 'annotatedPassageOpen';
 const PASSAGE_OPEN_TTL_MS = 2 * 60 * 1000;
 
@@ -209,6 +215,10 @@ export async function applyPublishedPassageHighlights(options: {
       func: typeof applyPassageHighlightsOnPage;
       args: [PassageHighlightPageRequest];
     }) => Promise<unknown>;
+    insertCSS?: (injection: {
+      target: { tabId: number; frameIds: [0] };
+      css: string;
+    }) => Promise<unknown>;
   } | null | undefined;
   tabId: number;
   pageUrl: string;
@@ -226,6 +236,12 @@ export async function applyPublishedPassageHighlights(options: {
   }
 
   try {
+    try {
+      await options.scripting.insertCSS?.({
+        target: { tabId: options.tabId, frameIds: [0] },
+        css: PASSAGE_HIGHLIGHT_CSS,
+      });
+    } catch { /* Inline styles still paint when ::highlight CSS cannot be inserted. */ }
     const injection = await options.scripting.executeScript({
       target: { tabId: options.tabId, frameIds: [0] },
       func: applyPassageHighlightsOnPage,
