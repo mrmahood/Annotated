@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./annotation-title": "./src/annotation-title.ts",
+    "./annotation-note": "./src/annotation-note.ts",
     "./audio-source": "./src/audio-source.ts",
     "./url-normalization": "./src/url-normalization.ts",
     "./youtube": "./src/youtube.ts",

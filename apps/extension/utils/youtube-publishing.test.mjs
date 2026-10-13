@@ -28,6 +28,7 @@ test('begins a hosted normalized millisecond YouTube time range', async () => {
     sourceUrl: 'https://youtu.be/dQw4w9WgXcQ?t=42&si=tracking',
     title: 'Video', channelName: 'Channel', startMs: 42_000, endMs: 73_000,
     commentaryText: 'Required commentary', videoDurationMs: 100_000,
+    annotationNote: { noteType: 'hot_take', verdict: null, sourceUrls: [] },
   }), {
     annotationId: ANNOTATION_ID, mediaId: MEDIA_ID, creatorHandle: 'creator',
     annotationSlug: 'video-33333333', processingStatus: 'capture_pending',
@@ -37,6 +38,7 @@ test('begins a hosted normalized millisecond YouTube time range', async () => {
   assert.equal(client.calls[0][1].p_video_title, 'Video');
   assert.equal(client.calls[0][1].p_channel_name, 'Channel');
   assert.equal(client.calls[0][1].p_title, null);
+  assert.equal(client.calls[0][1].p_note_type, 'hot_take');
   assert.equal(Object.hasOwn(client.calls[0][1], 'user_id'), false);
 });
 
@@ -60,6 +62,7 @@ test('allows empty typed commentary when a recorded voice clip is present', asyn
     sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     title: 'Video', channelName: 'Channel', startMs: 1_000, endMs: 8_000,
     commentaryText: '', hasRecordedCommentary: true, annotationTitle: '  Voice take  ',
+    annotationNote: { noteType: 'context', verdict: null, sourceUrls: [] },
   });
   assert.equal(client.calls[0][1].p_commentary_text, '');
   assert.equal(client.calls[0][1].p_title, 'Voice take');

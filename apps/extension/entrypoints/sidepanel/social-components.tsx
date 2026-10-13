@@ -6,6 +6,8 @@ import {
   type AuthProvider,
 } from '../../utils/auth-boundary';
 import { TextWithLogoMark } from './logo-mark';
+import { AnnotationConsensusPanel, AnnotationNoteSummary } from './annotation-note-view';
+import { ClaimForm } from './claim-form';
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import { formatMediaTime } from '@annotated/shared/media-time';
@@ -1332,6 +1334,7 @@ function AnnotationCard({ annotation, reshare = null, navigation, supabase, getP
         <time dateTime={annotation.publishedAt}>{formatTimestamp(annotation.publishedAt)}</time>
       </header>
       <div className="annotation-card-body" {...cardHover}>
+        <AnnotationNoteSummary noteType={annotation.noteType} verdict={annotation.verdict} sourceLinks={annotation.sourceLinks} />
         {annotation.title ? (
           <p className="annotation-title"><TextWithLogoMark text={annotation.title} /></p>
         ) : null}
@@ -2159,8 +2162,9 @@ export function AnnotationDetailView({
         <button className="text-button creator-button" type="button" onClick={() => navigation.openProfile(annotation.creator.id)}><Avatar name={annotation.creator.displayName} url={annotation.creator.avatarUrl} size={34} /><span><strong>{annotation.creator.displayName}</strong><time dateTime={annotation.publishedAt}>Published {formatTimestamp(annotation.publishedAt)}</time></span></button>
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
-      {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" aria-label={annotation.title || 'Annotation'} {...commentaryHover}>{annotation.title ? <p className="annotation-title"><TextWithLogoMark text={annotation.title} /></p> : null}{annotation.commentaryText.trim() ? <p><TextWithLogoMark text={annotation.commentaryText} /></p> : null}{annotation.audio && audioUrl && <div className="detail-audio"><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</div>}</section>}
-{annotation.kind === 'article' ? (
+      <AnnotationNoteSummary noteType={annotation.noteType} verdict={annotation.verdict} sourceLinks={annotation.sourceLinks} />
+      {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" aria-label={annotation.title || (annotation.commentaryText.trim() ? 'Annotation' : 'Voice commentary')} {...commentaryHover}>{annotation.title ? <p className="annotation-title"><TextWithLogoMark text={annotation.title} /></p> : null}{annotation.commentaryText.trim() ? <p><TextWithLogoMark text={annotation.commentaryText} /></p> : null}{annotation.audio && audioUrl && <div className="detail-audio"><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</div>}</section>}
+      {annotation.kind === 'article' ? (
         <section className="detail-passage" {...sourceHover}><span className="visually-hidden">Captured passage</span><blockquote>{annotation.selectedText}</blockquote><ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} /></section>
       ) : annotation.kind === 'youtube' ? (
         <section className="detail-clip-range" {...sourceHover}><span className="visually-hidden">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
@@ -2222,7 +2226,9 @@ export function AnnotationDetailView({
         initialBookmarked={hasBookmarked}
         onChanged={onSocialMutation}
       />
+      <AnnotationConsensusPanel supabase={supabase} annotationId={annotation.id} creatorId={annotation.creator.id} currentUserId={currentUserId} onSignIn={onSignIn} />
       <Comments supabase={supabase} annotationId={annotation.id} currentUserId={currentUserId} onSignIn={onSignIn} onProfile={navigation.openProfile} autoFocus={focusComments} onCountChange={(commentCount) => setAnnotation((current) => current ? { ...current, commentCount } : current)} onMutation={onSocialMutation} />
+      <ClaimForm supabase={supabase} annotationId={annotation.id} />
     </article>
   );
 }

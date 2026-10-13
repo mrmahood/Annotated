@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ANNOTATION_TITLE_MAX_LENGTH } from '@annotated/shared/annotation-title';
+import { getAnnotationNoteError, readAnnotationNoteForPublish } from '@annotated/shared/annotation-note';
 import { normalizeArticleUrl, ArticleUrlNormalizationError } from '@annotated/shared/url-normalization';
 import {
   formatMediaTime,
@@ -9,6 +10,11 @@ import { formatMediaTimeTenths } from '../../utils/media-time-display';
 import { applyClipPresetFromPlayhead, type ClipPresetWindow } from '../../utils/clip-range';
 import { applyCreateClipRangeMark, clearCreateClipRangeMark } from '../../utils/clip-range-mark';
 import { ClipRangeEditor } from './clip-range-fields';
+import {
+  AnnotationNoteFields,
+  EMPTY_ANNOTATION_NOTE_DRAFT,
+  type AnnotationNoteDraft,
+} from './annotation-note-fields';
 import { AppearanceControl } from './appearance-control';
 import { BrandLockup } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
@@ -496,12 +502,19 @@ function getMetadataText(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function publishableAnnotationNote(draft: AnnotationNoteDraft) {
+  const parsed = readAnnotationNoteForPublish(draft);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.note;
+}
+
 function getPublishErrorMessage(error: unknown) {
   if (error instanceof ArticleUrlNormalizationError) return 'The captured source URL is invalid. Refresh the source and capture the passage again.';
   const message = error instanceof Error ? error.message : '';
   if (/auth|jwt|session|signed in/i.test(message)) return 'Your session could not be verified. Sign in again, then retry publishing.';
   if (/selected text/i.test(message)) return 'Capture a passage between 1 and 2,000 characters and try again.';
   if (/commentary/i.test(message)) return 'Your commentary must contain between 1 and 2,000 characters.';
+  if (/annotation type|verdict|source link/i.test(message)) return message;
   return 'The annotation could not be published. Your passage and commentary are still here—check your connection and try again.';
 }
 
@@ -695,6 +708,9 @@ function App() {
   const [modeSelection, setModeSelection] = useState<ModeSelectionState | null>(null);
   const [modeAnnouncement, setModeAnnouncement] = useState('');
   const [draftRestorationStatus, setDraftRestorationStatus] = useState<'loading' | 'ready'>('loading');
+  const [noteDraft, setNoteDraft] = useState<AnnotationNoteDraft>(EMPTY_ANNOTATION_NOTE_DRAFT);
+  const noteDraftRef = useRef(noteDraft);
+  noteDraftRef.current = noteDraft;
   const [publishState, setPublishState] = useState<PublishState>({ status: 'idle' });
   const [youtubePublishState, setYoutubePublishState] = useState<PublishState>({ status: 'idle' });
   const [audioPublishState, setAudioPublishState] = useState<PublishState>({ status: 'idle' });
@@ -1287,6 +1303,7 @@ function App() {
           textSuffix: captured.textSuffix,
           commentaryText: commentary,
           annotationTitle: title,
+          annotationNote: publishableAnnotationNote(noteDraftRef.current),
         },
         recordedAudio,
         reportCommentaryCleanup,
@@ -1997,6 +2014,7 @@ function App() {
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
         annotationTitle: videoDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -2092,6 +2110,7 @@ function App() {
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
         annotationTitle: videoDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -2200,6 +2219,7 @@ function App() {
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
         annotationTitle: videoDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -2303,6 +2323,7 @@ function App() {
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
         annotationTitle: audioDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         mediaDurationMs: player.durationMs,
       });
@@ -2418,6 +2439,7 @@ function App() {
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
         annotationTitle: audioDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         mediaDurationMs: player.durationMs,
       });
@@ -3895,7 +3917,8 @@ function App() {
     audioDraftState.commentary,
     audioCommentaryRecorder.state.status === 'recorded',
   );
-  const canPublish = authState.status === 'signed-in' && captured && hasTextCommentary &&
+  const noteReady = getAnnotationNoteError(noteDraft) === null;
+  const canPublish = authState.status === 'signed-in' && captured && hasTextCommentary && noteReady &&
     publishState.status !== 'publishing' && !textCommentaryBusy && postedConfirmation === null;
   const contextUrl = sourceState.status === 'connected' ? sourceState.source.url : null;
   const youtubeSource = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
@@ -4027,26 +4050,26 @@ function App() {
   const audioPlayerSelected = audioPlayerDiscovery.status === 'ready' &&
     audioPlayerDiscovery.pageGeneration === modeSelection?.page.generation &&
     audioPlayerDiscovery.candidates.some((candidate) => candidate.identity === audioDraftState.playerIdentity);
-  const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
+  const canPublishYoutube = authState.status === 'signed-in' && noteReady && youtubeSource !== null &&
     videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !youtubeAdShowing &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
-  const canPublishTikTok = authState.status === 'signed-in' && tiktokSource !== null &&
+  const canPublishTikTok = authState.status === 'signed-in' && noteReady && tiktokSource !== null &&
     videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
-  const canPublishWebpageVideo = authState.status === 'signed-in' && webVideoSource !== null &&
+  const canPublishWebpageVideo = authState.status === 'signed-in' && noteReady && webVideoSource !== null &&
     videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
-  const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
+  const canPublishAudio = authState.status === 'signed-in' && noteReady && audioSource !== null &&
     audioPlayerSelected &&
     (spotifySource !== null || audioDraftState.durationMs !== null) && audioClipRangeError === null &&
     hasAudioCommentary && !audioCommentaryBusy &&
@@ -4218,6 +4241,7 @@ function App() {
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
                 <TitleField id="youtube-title" value={videoDraftState.title} disabled={mediaEditorLocked} onChange={changeYoutubeTitle} />
                 <CommentaryField id="youtube-commentary" value={videoDraftState.commentary} disabled={mediaEditorLocked} onChange={changeYoutubeCommentary} />
+                <AnnotationNoteFields idPrefix="note-video" draft={noteDraft} disabled={mediaEditorLocked} onChange={setNoteDraft} />
                 <AudioRecorder controller={videoCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : tiktokSource ? <button className="button button-primary" type="button" onClick={() => void publishTikTokClip()} disabled={!canPublishTikTok}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {shouldShowCreatePublishError(youtubePublishState.status, hostedMediaSession) && youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
@@ -4253,6 +4277,7 @@ function App() {
                 {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
                 <TitleField id="audio-clip-title" value={audioDraftState.title} disabled={mediaEditorLocked} onChange={changeAudioTitle} />
                 <CommentaryField id="audio-clip-commentary" value={audioDraftState.commentary} disabled={mediaEditorLocked} onChange={changeAudioCommentary} />
+                <AnnotationNoteFields idPrefix="note-audio" draft={noteDraft} disabled={mediaEditorLocked} onChange={setNoteDraft} />
                 <AudioRecorder controller={audioCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {shouldShowCreatePublishError(audioPublishState.status, hostedMediaSession) && audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
@@ -4260,7 +4285,7 @@ function App() {
             </section>
           ) : selectedCreateMode === 'text' ? (
             <section className="create-panel" aria-labelledby="create-heading" key="create-text"><h2 id="create-heading" className="visually-hidden">Create annotation</h2>
-              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><ReceiptAssist key={captured.capturedAt} passage={captured.selectedText} pageUrl={captured.canonicalUrl || captured.sourceUrl} signedIn={authState.status === 'signed-in'} disabled={publishState.status === 'publishing'} supabase={supabase} onApprovedChange={rememberApprovedReceipts} /><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><TitleField id="annotation-title" value={title} disabled={publishState.status === 'publishing'} onChange={changeTitle} /><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
+              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><ReceiptAssist key={captured.capturedAt} passage={captured.selectedText} pageUrl={captured.canonicalUrl || captured.sourceUrl} signedIn={authState.status === 'signed-in'} disabled={publishState.status === 'publishing'} supabase={supabase} onApprovedChange={rememberApprovedReceipts} /><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><TitleField id="annotation-title" value={title} disabled={publishState.status === 'publishing'} onChange={changeTitle} /><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AnnotationNoteFields idPrefix="note-text" draft={noteDraft} disabled={publishState.status === 'publishing'} onChange={setNoteDraft} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
             </section>
           ) : (
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>

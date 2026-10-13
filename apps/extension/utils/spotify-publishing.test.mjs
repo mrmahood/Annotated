@@ -29,6 +29,7 @@ test('begins a hosted normalized millisecond Spotify time range', async () => {
     sourceUrl: `${CANONICAL}?si=share`,
     title: 'The Daily', author: 'The New York Times', showName: 'The Daily',
     startMs: 1_000, endMs: 8_000, commentaryText: 'Required commentary',
+    annotationNote: { noteType: 'context', verdict: null, sourceUrls: [] },
     mediaDurationMs: 20_000,
   }), {
     annotationId: ANNOTATION_ID, mediaId: MEDIA_ID, creatorHandle: 'creator',
@@ -65,6 +66,7 @@ test('allows empty typed commentary when a recorded voice clip is present', asyn
     sourceUrl: CANONICAL, title: 'The Daily', author: 'The New York Times',
     showName: 'The Daily', startMs: 1_000, endMs: 8_000,
     commentaryText: '', hasRecordedCommentary: true,
+    annotationNote: { noteType: 'context', verdict: null, sourceUrls: [] },
   });
   assert.equal(client.calls[0][1].p_commentary_text, '');
   assert.equal(client.calls[0][1].p_title, null);

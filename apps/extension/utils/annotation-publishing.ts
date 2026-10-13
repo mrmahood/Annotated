@@ -2,6 +2,10 @@ import {
   getAnnotationTitleError,
   normalizeAnnotationTitle,
 } from '@annotated/shared/annotation-title';
+import {
+  annotationNoteRpcArguments,
+  type AnnotationNoteInput,
+} from '@annotated/shared/annotation-note';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   ANNOTATION_AUDIO_BUCKET,
@@ -25,6 +29,7 @@ export type ArticleAnnotationInput = {
   textSuffix: string;
   commentaryText: string;
   annotationTitle?: string;
+  annotationNote: AnnotationNoteInput;
 };
 
 export type RecordedAudioInput = {
@@ -56,6 +61,7 @@ function getRpcArguments(
     p_text_suffix: input.textSuffix,
     p_commentary_text: input.commentaryText,
     p_title: normalizeAnnotationTitle(input.annotationTitle),
+    ...annotationNoteRpcArguments(input.annotationNote),
     ...(audio ? {
       p_storage_path: audio.storagePath,
       p_audio_duration_ms: audio.durationMs,

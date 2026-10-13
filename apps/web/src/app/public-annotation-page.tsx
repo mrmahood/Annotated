@@ -13,6 +13,8 @@ import {
   getPublicAnnotationComments,
 } from "@/lib/data/social";
 import { getAnnotationVoteSnapshot } from "@/lib/data/voting";
+import { getAnnotationConsensus } from "@/lib/data/annotation-consensus";
+import { AnnotationNoteLive } from "@/components/annotation-note/annotation-note-live";
 import { ClaimForm } from "./a/[annotationId]/claim-form";
 import { CommentsSection } from "./a/[annotationId]/comments-section";
 import { PostToXButton } from "./post-to-x";
@@ -31,13 +33,14 @@ function getDurationDateTime(durationMs: number): string {
 
 export async function PublicAnnotationPage({ annotation }: { annotation: PublicAnnotation }) {
   const currentUserId = await getCurrentUserId();
-  const [socialCounts, isFollowing, comments, voteSnapshot, hasReshared, hasBookmarked] = await Promise.all([
+  const [socialCounts, isFollowing, comments, voteSnapshot, hasReshared, hasBookmarked, consensus] = await Promise.all([
     getProfileSocialCounts(annotation.annotator.id),
     getCurrentUserFollowState(annotation.annotator.id, currentUserId),
     getPublicAnnotationComments(annotation.id),
     getAnnotationVoteSnapshot(annotation.id, currentUserId),
     getCurrentUserReshareState(annotation.id, currentUserId),
     getCurrentUserBookmarkState(annotation.id, currentUserId),
+    getAnnotationConsensus(annotation.id),
   ]);
   const publicPath = getPublicAnnotationPath(annotation.route, annotation.id);
   const siteOrigin = getConfiguredSiteOrigin();
@@ -104,6 +107,22 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
               />
             </div>
           </header>
+
+          <AnnotationNoteLive
+            annotationId={annotation.id}
+            creatorId={annotation.annotator.id}
+            currentUserId={currentUserId}
+            noteType={annotation.noteType}
+            verdict={annotation.verdict}
+            agreeCount={voteSnapshot?.upvoteCount ?? consensus?.agreeCount ?? 0}
+            disagreeCount={voteSnapshot?.downvoteCount ?? consensus?.disagreeCount ?? 0}
+            countsAvailable={voteSnapshot !== null || consensus !== null}
+            sources={consensus?.sources ?? annotation.sourceLinks.map((link) => ({
+              ...link,
+              helpfulCount: 0,
+              viewerMarkedHelpful: false,
+            }))}
+          />
 
           {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && (
             <section className="commentary-section" aria-labelledby="commentary-heading">

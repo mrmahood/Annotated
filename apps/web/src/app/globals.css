@@ -1739,6 +1739,53 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .vote-controls { grid-template-columns: 1fr; }
 }
 
+.note-block { display: grid; gap: 14px; padding: clamp(20px, 4vw, 34px); border-top: 1px solid var(--border); }
+.note-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.note-type, .note-verdict {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+.note-type { color: var(--text-secondary); background: var(--accent-fill); }
+.note-verdict { font-weight: 650; }
+.note-verdict-true { color: var(--success); background: var(--success-surface); }
+.note-verdict-false { color: var(--destructive); background: var(--destructive-surface); }
+.note-verdict-misleading { color: var(--warning); background: var(--warning-surface); }
+.note-verdict-needs_context { color: var(--text-secondary); background: var(--accent-fill); }
+.note-sources { display: grid; gap: 8px; margin: 0; }
+.note-sources ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.note-sources li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.note-sources a { overflow-wrap: anywhere; color: var(--text-primary); }
+.note-source-helpful-count { color: var(--text-muted); font-size: 0.78rem; }
+.note-source-helpful, .note-consensus-button {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  background: var(--control-background);
+  cursor: pointer;
+}
+.note-source-helpful[aria-pressed="true"], .note-consensus-button[aria-pressed="true"] {
+  border-color: var(--success-border);
+  background: var(--success-surface);
+}
+.note-consensus { display: grid; gap: 8px; scroll-margin-top: 20px; }
+.note-consensus-counts { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 0; color: var(--text-secondary); font-size: 0.84rem; }
+.note-consensus-bar { display: flex; height: 8px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.note-consensus-agree { background: var(--success); }
+.note-consensus-disagree { background: var(--destructive); }
+.note-consensus-empty { width: 100%; background: var(--border); }
+.note-consensus-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.note-consensus-unavailable, .note-source-help, .note-source-message { margin: 0; color: var(--text-muted); font-size: 0.8rem; }
+.card-note-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.card-note-sources { display: grid; gap: 4px; margin: 0 0 12px; }
+.card-note-sources a { overflow-wrap: anywhere; color: var(--text-secondary); font-size: 0.8rem; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
