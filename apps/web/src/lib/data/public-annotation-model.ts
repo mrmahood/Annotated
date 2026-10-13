@@ -1,4 +1,11 @@
 import { parseStoredAnnotationTitle } from "@annotated/shared/annotation-title";
+import {
+  parseStoredAnnotationNote,
+  type AnnotationNoteType,
+  type AnnotationSourceLink,
+  type AnnotationVerdict,
+} from "@annotated/shared/annotation-note";
+import type { PublicReceiptSource } from "@annotated/shared/receipt-source";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
 import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
@@ -12,6 +19,7 @@ import {
   isPublicCreatorHandle,
   type PublicAnnotationRoute,
 } from "../public-routes";
+import type { PublicTweetCapture } from "../tweet-capture";
 
 const VIDEO_MAX_BYTES = 16 * 1024 * 1024;
 const AUDIO_MAX_BYTES = 8 * 1024 * 1024;
@@ -41,6 +49,9 @@ type PublicAnnotationBase = {
   id: string;
   title: string | null;
   commentaryText: string;
+  noteType: AnnotationNoteType | null;
+  verdict: AnnotationVerdict | null;
+  sourceLinks: AnnotationSourceLink[];
   publishedAt: string;
   route: PublicAnnotationRoute | null;
   source: {
@@ -57,6 +68,8 @@ type PublicAnnotationBase = {
     avatarUrl: string | null;
   };
   audio: { publicUrl: string; durationMs: number } | null;
+  tweetCapture: PublicTweetCapture | null;
+  receiptSources: PublicReceiptSource[];
 };
 
 type YouTubeVideoSource = PublicAnnotationBase["source"] & { type: "youtube"; videoId: string };
@@ -298,10 +311,18 @@ export function mapPublicAnnotationDetail(
   const audio = audioMetadata && publicAudioUrl
     ? { publicUrl: publicAudioUrl.href, durationMs: audioMetadata.durationMs }
     : null;
+  const note = parseStoredAnnotationNote(
+    annotationValue.note_type,
+    annotationValue.verdict,
+    annotationValue.cited_sources,
+  );
   const common = {
     id: annotationId,
     title,
     commentaryText,
+    noteType: note.noteType,
+    verdict: note.verdict,
+    sourceLinks: note.sourceLinks,
     publishedAt: publishedDate.toISOString(),
     route: getRoute(annotationValue, profileValue),
     source: {
@@ -318,6 +339,8 @@ export function mapPublicAnnotationDetail(
       avatarUrl: getHttpUrl(profileValue.avatar_url)?.href ?? null,
     },
     audio,
+    tweetCapture: null,
+    receiptSources: [],
   };
 
   if (annotationValue.annotation_type === "article_text" && sourceValue.source_type === "article" &&

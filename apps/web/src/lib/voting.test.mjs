@@ -135,6 +135,27 @@ test("same-origin mutation validation uses only the configured trusted origin", 
   );
 });
 
+test("production origin passes and a preview host against that origin is rejected", () => {
+  const productionOrigin = "https://annotated.cbandcoop.com";
+  const accepted = new Request(`${productionOrigin}/api/annotations/x/vote`, {
+    method: "POST",
+    headers: { origin: productionOrigin, "sec-fetch-site": "same-origin" },
+  });
+  assert.doesNotThrow(() => assertSameOriginVoteMutation(accepted, `${productionOrigin}/`));
+
+  const preview = new Request("https://annotated-git-feature-example.vercel.app/api/annotations/x/vote", {
+    method: "POST",
+    headers: {
+      origin: "https://annotated-git-feature-example.vercel.app",
+      "sec-fetch-site": "same-origin",
+    },
+  });
+  assert.throws(
+    () => assertSameOriginVoteMutation(preview, `${productionOrigin}/`),
+    (error) => error instanceof VoteApiError && error.code === "CROSS_ORIGIN_REQUEST",
+  );
+});
+
 test("optimistic direction changes remain separate and never produce negative totals", () => {
   assert.deepEqual(
     getOptimisticVoteSnapshot({ currentVote: null, upvoteCount: 0, downvoteCount: 0 }, 1),

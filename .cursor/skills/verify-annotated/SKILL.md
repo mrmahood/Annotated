@@ -1,13 +1,13 @@
 ---
 name: verify-annotated
-description: "Drive Annotated's public Next.js web app and capture proof. Use for verify-annotated, a scripted check of the public feed, an annotation page, legal pages, trending, who-to-follow, the signed-out /me wall, or read-only signed-in /me for the dedicated test user, against local apps/web or the production public site https://annotated.cbandcoop.com."
+description: "Drive Annotated's public Next.js web app and the unpacked Chrome side panel, and capture proof. Use for verify-annotated, a scripted check of the public feed, an annotation page, legal pages, trending, who-to-follow, the signed-out /me wall, read-only signed-in /me for the dedicated test user, or chrome-extension Create on a YouTube tab. Web drives use local apps/web or the production public site https://annotated.cbandcoop.com. The extension drive stops before Publish."
 ---
 
 # Verify Annotated
 
-Annotated's primary scripted surface is the public Next.js app in `apps/web`. Public drives stay signed out. `authenticated-me` is the one signed-in drive. It mints a Supabase session for `cbandcooptest@gmail.com` only, then reads `/me`. It does not start Google or X. The Chrome side panel stays deferred because this harness does not load an unpacked extension, and a website session does not open the side panel.
+Annotated's primary scripted surface is the public Next.js app in `apps/web`. Public drives stay signed out. `authenticated-me` is the one signed-in drive. It mints a Supabase session for `cbandcooptest@gmail.com` only, then reads `/me`. It does not start Google or X. `drive chrome-extension` loads that unpacked side panel in Playwright Chromium. It stops before Publish.
 
-The harness is `verify-annotated` (`helpers/verify-annotated.mjs`). It launches one target, checks it, drives a feature in a fresh browser, and writes proof under `evidence/`. Run every command from the repository root.
+The harness is `verify-annotated` (`helpers/verify-annotated.mjs`). It launches one target, checks it, drives a feature in a fresh browser, and writes proof under `evidence/`. Run every command from the repository root. `drive chrome-extension` is the exception: it does not use the website launch. It loads the unpacked extension from `apps/extension/.output/chrome-mv3`.
 
 ## Launch
 
@@ -27,7 +27,7 @@ Local launch then runs, in the background, from the repository root:
 pnpm --dir apps/web exec next dev --hostname 127.0.0.1 --port 3000
 ```
 
-Ready means `http://127.0.0.1:3000/` returns HTTP 200 and the document title contains `Public annotation feed`. Next writes that title from the home page metadata. The feed has no `h1`.
+Ready means `http://127.0.0.1:3000/` returns HTTP 200 and the document title contains `Public annotation feed`. Next writes that title from the home page metadata. The landing heading is the feed lede.
 
 One local instance owns port 3000. If something else is already listening, launch exits without adopting it. Two verification runs must not share one local server.
 
@@ -73,9 +73,9 @@ node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive me-signe
 
 `me-signed-out` only checks the signed-out wall at `/me`. It does not click `Sign in with Google` or `Continue with X`.
 
-`authenticated-me` reads bookmarks and the public-handle region on `/me`. Without `SUPABASE_SERVICE_ROLE_KEY` it prints `verified-unreachable`, prints `set SUPABASE_SERVICE_ROLE_KEY`, and exits 3. It does not open Google. With the key set, it also needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`). Those values must come from the environment. Never print them.
+`authenticated-me` reads bookmarks and the public-handle region on `/me`. It does not open Google. A Staging preview origin (`https://annotated-staging.cbandcoop.com` or `https://annotated-staging-…-matt-mahoods-projects.vercel.app`) selects Staging mode. That mode reads `SUPABASE_STAGING_SERVICE_ROLE_KEY` and ignores `SUPABASE_SERVICE_ROLE_KEY`. When `NEXT_PUBLIC_SUPABASE_URL` or the publishable key is unset, it uses the public Staging values `https://nkkunkwirvfwhmpwonqz.supabase.co` and `sb_publishable_ZWqFkABY5Uvy34z55dVaLw_NLrzlUTr`. It refuses the Production project `vnxjktpdzmykmqrqwvks`. Any other target still requires `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) from the environment. Never print keys, session tokens, or cookie values.
 
-`chrome-extension` stays exit 3. The side panel is an unpacked Manifest V3 extension. This harness does not load it, and cookies on the website do not open it.
+`chrome-extension` does not use `launch` or `doctor`. Build the unpacked extension first with `pnpm --dir apps/extension run build`. The drive loads `apps/extension/.output/chrome-mv3` (override with `VERIFY_ANNOTATED_EXTENSION_DIR`), resolves the extension id, opens `chrome-extension://<id>/sidepanel.html` beside a YouTube watch tab, and drives Create: the 30s and 60s presets, a drag that must stay at or under 90 seconds, and no typed START/END fields. Publish clip is enabled only for a valid 1–90 second range when the visitor is signed in, a player is selected, and commentary is present. This drive stays signed out and never clicks Publish clip. A local audio fixture is included when the panel can connect to it. Exit 0 is a pass. Exit 1 is a failure. A missing build is exit 1.
 
 ```bash
 node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive chrome-extension
@@ -138,7 +138,13 @@ node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs help
 node --test .cursor/skills/verify-annotated/helpers/verify-annotated.test.mjs
 ```
 
-`helpers/verify-annotated.mjs` drives the browser. `helpers/drive-outcome.mjs` classifies quiet discovery pages. `helpers/mint-test-session.mjs` mints the dedicated test session. The mint helper refuses every email other than `cbandcooptest@gmail.com`. When the service-role key is present, install dependencies first so `@supabase/ssr` can write the same cookies the app reads:
+`helpers/verify-annotated.mjs` drives the browser. `helpers/drive-chrome-extension.mjs` drives the unpacked side panel and does not mint a session. `helpers/drive-outcome.mjs` classifies quiet discovery pages. `helpers/mint-test-session.mjs` mints the dedicated test session for the website. The mint helper refuses every email other than `cbandcooptest@gmail.com`. A Staging preview origin selects Staging mode and the public Staging URL and publishable key. The command another agent runs, with `SUPABASE_STAGING_SERVICE_ROLE_KEY` already in the environment, is:
+
+```bash
+node .cursor/skills/verify-annotated/helpers/mint-test-session.mjs --target https://annotated-staging-git-bounty-integration-matt-mahoods-projects.vercel.app
+```
+
+It prints the cookie count and writes the session to `/tmp/verify-annotated/staging-session.json`. It does not print the key or cookie values. When a service-role key is present, install dependencies first so `@supabase/ssr` can write the same cookies the app reads:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -146,7 +152,7 @@ pnpm install --frozen-lockfile
 
 On first `drive` of a browser feature, the helper installs Playwright and Chromium under `/tmp/verify-annotated/tools` (not in the repo) and sets `PLAYWRIGHT_BROWSERS_PATH` to that tree. It does not add a repository dependency and does not print secrets.
 
-Exit codes: `0` ready or card proof, `1` launch, doctor, or drive failure, `2` `pass-empty` for a correctly rendered Trending or Who to Follow quiet page, `3` verified-unreachable. `chrome-extension` is always `3`. `authenticated-me` is `3` until `SUPABASE_SERVICE_ROLE_KEY` is set.
+Exit codes: `0` ready or card proof, `1` launch, doctor, or drive failure, `2` `pass-empty` for a correctly rendered Trending or Who to Follow quiet page, `3` verified-unreachable. `chrome-extension` exits `0` or `1`. `authenticated-me` is `3` until the service-role key for that target is set. Staging preview origins use `SUPABASE_STAGING_SERVICE_ROLE_KEY` and the public Staging URL and publishable key.
 
 `/me` treats a visitor as signed in when `getUser()` returns a user id from the Supabase SSR cookies. The Google provider check lives only in the OAuth callback at `apps/web/src/lib/auth/auth-boundary.ts`. This drive does not open that callback. It asks the admin API for a magic-link token for the existing user with that email, exchanges the token with the publishable key, and injects the cookies `@supabase/ssr` stored. A Google-created user is reused. The helper does not run when `generate_link` is for any other email. If verify fails, the drive exits 1 with `mint_verify_failed` and stops. Do not set a password and do not automate Google.
 

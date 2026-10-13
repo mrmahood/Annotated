@@ -1,4 +1,11 @@
 import { parseStoredAnnotationTitle } from "@annotated/shared/annotation-title";
+import {
+  isMissingAnnotationNoteSchema,
+  parseStoredAnnotationNote,
+  type AnnotationNoteType,
+  type AnnotationSourceLink,
+  type AnnotationVerdict,
+} from "@annotated/shared/annotation-note";
 import { ANNOTATION_AUDIO_BUCKET, parsePublicAnnotationAudio } from "@/lib/audio-commentary";
 import { createClient } from "@/lib/supabase/server";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
@@ -22,6 +29,7 @@ import {
 } from "@/lib/public-routes";
 import {
   PUBLIC_ANNOTATION_CARD_SELECT,
+  PUBLIC_ANNOTATION_CARD_SELECT_BEFORE_NOTE,
   PUBLIC_ANNOTATION_STATUS,
 } from "./public-discovery-query";
 import {
@@ -46,6 +54,9 @@ type PublicAnnotationCardBase = {
   commentCount: number;
   title: string | null;
   commentaryText: string;
+  noteType: AnnotationNoteType | null;
+  verdict: AnnotationVerdict | null;
+  sourceLinks: AnnotationSourceLink[];
   audio: { publicUrl: string; durationMs: number } | null;
   publishedAt: string;
   route: PublicAnnotationRoute | null;
@@ -186,11 +197,15 @@ export function mapPublicAnnotation(
     ? { publicUrl: resolvedAudioUrl.href, durationMs: audioMetadata.durationMs }
     : null;
 
+  const note = parseStoredAnnotationNote(value.note_type, value.verdict, value.cited_sources);
   const common = {
     id: annotationId,
     commentCount: 0,
     title,
     commentaryText,
+    noteType: note.noteType,
+    verdict: note.verdict,
+    sourceLinks: note.sourceLinks,
     audio,
     publishedAt: publishedDate.toISOString(),
     route,
@@ -365,11 +380,19 @@ async function loadPublishedAnnotationsByIds(
   const mapped = new Map<string, PublicAnnotationCardData>();
   if (uniqueIds.length === 0) return mapped;
 
-  const { data, error } = await supabase
+  const primary = await supabase
     .from("annotations")
     .select(PUBLIC_ANNOTATION_CARD_SELECT)
     .eq("status", PUBLIC_ANNOTATION_STATUS)
     .in("id", uniqueIds);
+  const fallback = primary.error && isMissingAnnotationNoteSchema(primary.error)
+    ? await supabase
+      .from("annotations")
+      .select(PUBLIC_ANNOTATION_CARD_SELECT_BEFORE_NOTE)
+      .eq("status", PUBLIC_ANNOTATION_STATUS)
+      .in("id", uniqueIds)
+    : primary;
+  const { data, error } = fallback;
   if (error || !data) throw new Error("Annotations are unavailable.");
 
   for (const row of data) {

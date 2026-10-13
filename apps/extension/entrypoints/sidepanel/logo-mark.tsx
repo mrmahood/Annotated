@@ -1,4 +1,5 @@
 import {
+  LOGO_MARK_ASTERISK,
   LOGO_MARK_RULE,
   LOGO_MARK_STROKE_WIDTH,
   LOGO_MARK_VIEWBOX,
@@ -23,6 +24,13 @@ export function LogoMark({ className = 'logo-mark' }: { className?: string }) {
         strokeWidth={LOGO_MARK_STROKE_WIDTH}
         strokeLinecap="butt"
       />
+      <rect
+        x={LOGO_MARK_ASTERISK.cx - LOGO_MARK_ASTERISK.radius - 3}
+        y={LOGO_MARK_ASTERISK.cy - 5}
+        width={(LOGO_MARK_ASTERISK.radius + 3) * 2}
+        height={10}
+        fill="var(--highlighter)"
+      />
       {asteriskRays().map((ray, index) => (
         <line
           key={index}
@@ -30,7 +38,7 @@ export function LogoMark({ className = 'logo-mark' }: { className?: string }) {
           y1={ray.y1}
           x2={ray.x2}
           y2={ray.y2}
-          stroke="currentColor"
+          stroke="var(--highlighter-ink)"
           strokeWidth={LOGO_MARK_STROKE_WIDTH}
           strokeLinecap="butt"
         />

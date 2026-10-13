@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Newsreader } from "next/font/google";
+import { FEED_LEDE } from "@/lib/discoverability";
 import {
   APPEARANCE_COOKIE_NAME,
   getAppearanceBootstrapScript,
@@ -24,10 +25,17 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   ...(siteOrigin ? { metadataBase: new URL(siteOrigin) } : {}),
   title: "Annotated",
-  description: "Connect ideas to their sources.",
+  description: FEED_LEDE,
 };
 
 export default async function RootLayout({
@@ -44,7 +52,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
       data-theme={theme}
       data-appearance={appearance}
       suppressHydrationWarning

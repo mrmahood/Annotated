@@ -5,6 +5,7 @@ import {
   parsePublicAnnotationRoute,
   type PublicAnnotationRoute,
 } from './social-helpers.ts';
+import { getWebAppOrigin } from './web-app-url.ts';
 
 export const CREATE_POSTED_CONFIRMATION_STORAGE_KEY = 'annotated.createPosted.confirmation.v1';
 
@@ -18,6 +19,7 @@ export type CreatePostedConfirmation = {
   annotationId: string;
   kind: CreatePostedKind;
   publicPath: string;
+  take: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -33,6 +35,7 @@ export function createPostedConfirmation(input: {
   kind: CreatePostedKind;
   creatorHandle?: string | null;
   annotationSlug?: string | null;
+  take?: string | null;
 }): CreatePostedConfirmation {
   const route = parsePublicAnnotationRoute(
     input.creatorHandle ?? null,
@@ -42,6 +45,7 @@ export function createPostedConfirmation(input: {
     annotationId: input.annotationId,
     kind: input.kind,
     publicPath: getPublicAnnotationPath(route ?? null, input.annotationId),
+    take: (input.take ?? '').trim().slice(0, 2_000),
   };
 }
 
@@ -50,7 +54,58 @@ export function isCreatePostedConfirmation(value: unknown): value is CreatePoste
     isUuid(value.annotationId) &&
     (value.kind === 'text' || value.kind === 'video' || value.kind === 'audio') &&
     typeof value.publicPath === 'string' &&
-    value.publicPath.startsWith('/');
+    value.publicPath.startsWith('/') &&
+    (value.take === undefined || (typeof value.take === 'string' && value.take.length <= 2_000));
+}
+
+export function withPostedTake(
+  confirmation: CreatePostedConfirmation,
+  take: string,
+): CreatePostedConfirmation {
+  return { ...confirmation, take: take.trim().slice(0, 2_000) };
+}
+
+export async function readPostedTake(
+  supabase: SupabaseClient,
+  annotationId: string,
+): Promise<string> {
+  if (!isUuid(annotationId)) return '';
+  const { data, error } = await supabase
+    .from('annotations')
+    .select('commentary_text')
+    .eq('id', annotationId)
+    .maybeSingle();
+  if (error || !isRecord(data) || typeof data.commentary_text !== 'string') return '';
+  return data.commentary_text.trim().slice(0, 2_000);
+}
+
+export function postedPermalinkHref(publicPath: string, origin: string): string | null {
+  try {
+    const url = new URL(publicPath, origin);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/** Open the public permalink as soon as publish succeeds. No extra view click. */
+export function openPostedPermalink(publicPath: string): void {
+  let href: string | null = null;
+  try {
+    href = postedPermalinkHref(publicPath, getWebAppOrigin());
+  } catch {
+    return;
+  }
+  if (!href) return;
+  const tabs = chrome?.tabs;
+  if (tabs?.create) {
+    void tabs.create({ url: href, active: true });
+    return;
+  }
+  if (typeof window !== 'undefined') {
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
 }
 
 export async function persistCreatePostedConfirmation(
@@ -68,7 +123,8 @@ export async function persistCreatePostedConfirmation(
 export async function readCreatePostedConfirmation(): Promise<CreatePostedConfirmation | null> {
   const stored = await chrome.storage.session.get(CREATE_POSTED_CONFIRMATION_STORAGE_KEY);
   const value = stored[CREATE_POSTED_CONFIRMATION_STORAGE_KEY];
-  return isCreatePostedConfirmation(value) ? value : null;
+  if (!isCreatePostedConfirmation(value)) return null;
+  return { ...value, take: typeof value.take === 'string' ? value.take : '' };
 }
 
 export async function queryPostedAnnotationRoute(

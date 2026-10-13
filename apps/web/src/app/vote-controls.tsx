@@ -72,6 +72,13 @@ export function VoteControls({
       const authoritative = parseVoteSnapshotResponse(body);
       if (response.ok && authoritative) {
         setSnapshot(authoritative);
+        window.dispatchEvent(new CustomEvent("annotated-annotation-vote", {
+          detail: {
+            annotationId,
+            upvoteCount: authoritative.upvoteCount,
+            downvoteCount: authoritative.downvoteCount,
+          },
+        }));
         setMessage(requestedVote === null
           ? "Vote cleared."
           : requestedVote === 1 ? "Upvote saved." : "Downvote saved.");

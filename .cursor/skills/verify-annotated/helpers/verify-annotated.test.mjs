@@ -2,10 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyQuietList } from "./drive-outcome.mjs";
 import {
+  assessPublishControl,
+  extensionIdFromChromeUrl,
+  judgeCreateProbe,
+  parseClipSpanReadout,
+  sidePanelPathFromManifest,
+} from "./drive-chrome-extension.mjs";
+import {
   DEDICATED_TEST_EMAIL,
+  PRODUCTION_PROJECT_REF,
+  STAGING_PROJECT_REF,
+  STAGING_SUPABASE_PUBLISHABLE_KEY,
+  STAGING_SUPABASE_URL,
   createSupabaseMintPort,
+  isStagingPreviewOrigin,
   mintDedicatedTestSession,
   parseGenerateLink,
+  projectRefFromServiceRole,
   readMintEnv,
   redactSecrets,
   toPlaywrightCookies,
@@ -106,6 +119,79 @@ test("anon key alias satisfies the publishable key input", () => {
   assert.equal(result.ok, true);
   assert.equal(result.email, DEDICATED_TEST_EMAIL);
   assert.equal(result.publishableKey, "anon-canary-value");
+});
+
+function jwtWithRef(ref) {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ ref, role: "service_role" })).toString("base64url");
+  return `${header}.${payload}.signature`;
+}
+
+const STAGING_PREVIEW = "https://annotated-staging-git-bounty-integration-matt-mahoods-projects.vercel.app";
+
+test("staging preview origins are the bounty preview, deployment hosts, and the staging site", () => {
+  assert.equal(isStagingPreviewOrigin(STAGING_PREVIEW), true);
+  assert.equal(isStagingPreviewOrigin("https://annotated-staging-5rgjyy7bc-matt-mahoods-projects.vercel.app/me"), true);
+  assert.equal(isStagingPreviewOrigin("https://annotated-staging.cbandcoop.com"), true);
+  assert.equal(isStagingPreviewOrigin("https://annotated.cbandcoop.com"), false);
+  assert.equal(isStagingPreviewOrigin("https://annotated-staging.cbandcoop.com.evil.example"), false);
+  assert.equal(isStagingPreviewOrigin("https://annotated-staging-evil-other-team.vercel.app"), false);
+  assert.equal(isStagingPreviewOrigin("http://annotated-staging.cbandcoop.com"), false);
+  assert.equal(isStagingPreviewOrigin("https://vnxjktpdzmykmqrqwvks.supabase.co"), false);
+});
+
+test("a staging preview uses the public Staging defaults and ignores the other service-role key", () => {
+  const stagingKey = jwtWithRef(STAGING_PROJECT_REF);
+  const prodKey = jwtWithRef(PRODUCTION_PROJECT_REF);
+  const result = readMintEnv({
+    SUPABASE_STAGING_SERVICE_ROLE_KEY: stagingKey,
+    SUPABASE_SERVICE_ROLE_KEY: prodKey,
+    NEXT_PUBLIC_SUPABASE_URL: `https://${PRODUCTION_PROJECT_REF}.supabase.co`,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "prod-publishable-canary",
+  }, { baseUrl: STAGING_PREVIEW });
+  assert.equal(result.ok, false);
+  assert.equal(result.message, "NEXT_PUBLIC_SUPABASE_URL must be the Staging project or be unset");
+  assert.equal(result.message.includes(prodKey), false);
+  assert.equal(result.message.includes(stagingKey), false);
+  const defaults = readMintEnv({
+    SUPABASE_STAGING_SERVICE_ROLE_KEY: stagingKey,
+    SUPABASE_SERVICE_ROLE_KEY: prodKey,
+  }, { baseUrl: STAGING_PREVIEW });
+  assert.equal(defaults.ok, true);
+  assert.equal(defaults.url, STAGING_SUPABASE_URL);
+  assert.equal(defaults.publishableKey, STAGING_SUPABASE_PUBLISHABLE_KEY);
+  assert.equal(defaults.serviceRoleKey, stagingKey);
+  assert.equal(defaults.serviceRoleKey === prodKey, false);
+  assert.equal(defaults.publicConfig, "staging-defaults");
+  assert.equal(defaults.project, "staging");
+  assert.equal(defaults.url.includes(PRODUCTION_PROJECT_REF), false);
+});
+
+test("staging mode stays unreachable without its own service-role key and refuses the Production project", () => {
+  const missing = readMintEnv({
+    SUPABASE_SERVICE_ROLE_KEY: jwtWithRef(PRODUCTION_PROJECT_REF),
+  }, { baseUrl: "https://annotated-staging.cbandcoop.com" });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.exitCode, 3);
+  assert.equal(missing.message, "set SUPABASE_STAGING_SERVICE_ROLE_KEY");
+  assert.equal("serviceRoleKey" in missing, false);
+  const prodKey = jwtWithRef(PRODUCTION_PROJECT_REF);
+  const refused = readMintEnv({
+    SUPABASE_STAGING_SERVICE_ROLE_KEY: prodKey,
+  }, { baseUrl: STAGING_PREVIEW });
+  assert.equal(refused.ok, false);
+  assert.equal(refused.message, "SUPABASE_STAGING_SERVICE_ROLE_KEY is not the Staging project");
+  assert.equal(refused.message.includes(prodKey), false);
+  assert.equal(refused.message.includes(PRODUCTION_PROJECT_REF), false);
+  assert.equal(projectRefFromServiceRole(prodKey), PRODUCTION_PROJECT_REF);
+});
+
+test("a non-staging target does not receive Staging defaults", () => {
+  const result = readMintEnv({
+    SUPABASE_STAGING_SERVICE_ROLE_KEY: jwtWithRef(STAGING_PROJECT_REF),
+  }, { baseUrl: "https://annotated.cbandcoop.com" });
+  assert.equal(result.ok, false);
+  assert.equal(result.message, "set SUPABASE_SERVICE_ROLE_KEY");
 });
 
 test("mint refuses any other email before the port is called", async () => {
@@ -308,4 +394,82 @@ test("redactSecrets removes a known token and a JWT", () => {
   assert.equal(text.includes("service-role-canary-value"), false);
   assert.equal(text.includes("eyJhbGciOi"), false);
   assert.match(text, /\[redacted\]/);
+});
+
+test("extension id comes from the chrome-extension host", () => {
+  assert.equal(
+    extensionIdFromChromeUrl("chrome-extension://abcdefghijklmnopabcdefghijklmnop/sidepanel.html"),
+    "abcdefghijklmnopabcdefghijklmnop",
+  );
+  assert.equal(extensionIdFromChromeUrl("https://example.com/"), null);
+  assert.equal(sidePanelPathFromManifest({ side_panel: { default_path: "sidepanel.html" } }), "sidepanel.html");
+});
+
+test("clip readout parses the en dash and empty span", () => {
+  assert.deepEqual(parseClipSpanReadout("–"), { startMs: null, endMs: null, spanMs: null });
+  assert.deepEqual(parseClipSpanReadout("0:10–1:40"), { startMs: 10_000, endMs: 100_000, spanMs: 90_000 });
+  assert.equal(parseClipSpanReadout("0:10-1:40"), null);
+});
+
+test("publish stays disabled until every gate is open and the range is 1 to 90 seconds", () => {
+  assert.equal(assessPublishControl({
+    signedIn: false,
+    commentaryReady: false,
+    playerSelected: true,
+    spanMs: null,
+    publishPresent: false,
+    publishEnabled: false,
+  }).reason, "publish-held");
+  assert.equal(assessPublishControl({
+    signedIn: true,
+    commentaryReady: true,
+    playerSelected: true,
+    spanMs: 120_000,
+    publishPresent: true,
+    publishEnabled: true,
+  }).reason, "publish-enabled-for-invalid-range");
+  assert.equal(assessPublishControl({
+    signedIn: true,
+    commentaryReady: false,
+    playerSelected: true,
+    spanMs: 30_000,
+    publishPresent: true,
+    publishEnabled: true,
+  }).reason, "publish-enabled-with-closed-gate");
+  assert.equal(assessPublishControl({
+    signedIn: true,
+    commentaryReady: true,
+    playerSelected: true,
+    spanMs: 60_000,
+    publishPresent: true,
+    publishEnabled: true,
+  }).reason, "publish-enabled");
+});
+
+test("a create probe passes only for 30s, 60s, and a clamped drag", () => {
+  const pass = judgeCreateProbe({
+    typedFieldCount: 0,
+    preset30Ms: 30_000,
+    preset60Ms: 60_000,
+    dragSpanMs: 90_000,
+    signedIn: false,
+    playerSelected: true,
+    publishPresent: false,
+    publishEnabledBeforeCommentary: false,
+    publishEnabledAfterCommentary: false,
+  });
+  assert.equal(pass.ok, true);
+  const fail = judgeCreateProbe({
+    typedFieldCount: 1,
+    preset30Ms: 30_000,
+    preset60Ms: 70_000,
+    dragSpanMs: 120_000,
+    signedIn: true,
+    playerSelected: true,
+    publishPresent: true,
+    publishEnabledBeforeCommentary: false,
+    publishEnabledAfterCommentary: false,
+  });
+  assert.equal(fail.ok, false);
+  assert.ok(fail.failures.includes("typed-start-end-fields"));
 });

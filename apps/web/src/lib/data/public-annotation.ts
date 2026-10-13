@@ -1,5 +1,9 @@
 import { cache } from "react";
+import { isMissingAnnotationNoteSchema } from "@annotated/shared/annotation-note";
 import { ANNOTATION_AUDIO_BUCKET, parsePublicAnnotationAudio } from "@/lib/audio-commentary";
+import { publicReceiptSourcesFrom } from "@/lib/receipts";
+import { TWEET_CAPTURE_BUCKET, parsePublicTweetCapture, type PublicTweetCapture } from "@/lib/tweet-capture";
+import type { PublicReceiptSource } from "@annotated/shared/receipt-source";
 import { mapPublicAnnotationDetail, type PublicAnnotation } from "./public-annotation-model";
 import { isUuid } from "@/lib/public-content";
 import {
@@ -88,22 +92,88 @@ export const resolvePublicAnnotationUuid = cache(
   },
 );
 
+async function loadPreservedAnnotation(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  annotationId: string,
+): Promise<{ tweetCapture: PublicTweetCapture | null; receiptSources: PublicReceiptSource[] }> {
+  let tweetCapture: PublicTweetCapture | null = null;
+  try {
+    const result = await supabase
+      .from("annotation_tweet_captures")
+      .select("status_url, tweet_id, author_handle, author_name, tweet_text, posted_at, screenshot_path, screenshot_width, screenshot_height")
+      .eq("annotation_id", annotationId)
+      .maybeSingle();
+    if (!result.error && result.data) {
+      const path = typeof result.data.screenshot_path === "string" ? result.data.screenshot_path : "";
+      const screenshotUrl = path
+        ? supabase.storage.from(TWEET_CAPTURE_BUCKET).getPublicUrl(path).data.publicUrl
+        : null;
+      tweetCapture = parsePublicTweetCapture(result.data, screenshotUrl);
+    }
+  } catch {
+    tweetCapture = null;
+  }
+
+  let receiptRows: unknown[] = [];
+  try {
+    const result = await supabase
+      .from("annotation_receipt_sources")
+      .select("url, title, publisher, origin")
+      .eq("annotation_id", annotationId)
+      .order("created_at", { ascending: true });
+    if (!result.error && Array.isArray(result.data)) receiptRows = result.data;
+  } catch {
+    receiptRows = [];
+  }
+
+  let sourcesColumn: unknown[] = [];
+  try {
+    const result = await supabase
+      .from("annotations")
+      .select("sources")
+      .eq("id", annotationId)
+      .maybeSingle();
+    const sources = result.data && typeof result.data === "object" && "sources" in result.data
+      ? result.data.sources
+      : null;
+    if (!result.error && Array.isArray(sources)) sourcesColumn = sources;
+  } catch {
+    sourcesColumn = [];
+  }
+
+  return {
+    tweetCapture,
+    receiptSources: publicReceiptSourcesFrom(receiptRows, sourcesColumn),
+  };
+}
+
 export const loadPublicAnnotation = cache(
   async (annotationId: string): Promise<PublicAnnotation | null> => {
     if (!isUuid(annotationId)) return null;
 
     try {
       const supabase = await createClient();
-      const { data: annotation, error: annotationError } = await supabase
+      const detailSelect = "id, source_id, user_id, annotation_type, title, commentary_text, note_type, verdict, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)";
+      const detailSelectBeforeNote = "id, source_id, user_id, annotation_type, title, commentary_text, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)";
+      const primaryAnnotation = await supabase
         .from("annotations")
-        .select("id, source_id, user_id, annotation_type, title, commentary_text, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)")
+        .select(detailSelect)
         .eq("id", annotationId)
         .eq("status", "published")
         .maybeSingle();
+      const annotationResult = primaryAnnotation.error && isMissingAnnotationNoteSchema(primaryAnnotation.error)
+        ? await supabase
+          .from("annotations")
+          .select(detailSelectBeforeNote)
+          .eq("id", annotationId)
+          .eq("status", "published")
+          .maybeSingle()
+        : primaryAnnotation;
+      const { data: annotation, error: annotationError } = annotationResult;
 
       if (annotationError || !annotation) return null;
 
-      const [targetResult, sourceResult, profileResult, mediaStateResult] = await Promise.all([
+      const [targetResult, sourceResult, profileResult, mediaStateResult, citedSourcesResult] = await Promise.all([
         supabase
           .from("annotation_targets")
           .select("target_type, selected_text, start_ms, end_ms")
@@ -122,13 +192,22 @@ export const loadPublicAnnotation = cache(
         supabase
           .rpc("get_public_annotation_media_state", { p_annotation_id: annotation.id })
           .maybeSingle(),
+        supabase
+          .from("annotation_sources")
+          .select("id, url, position")
+          .eq("annotation_id", annotation.id)
+          .order("position", { ascending: true }),
       ]);
 
+      const citedSourcesMissing = Boolean(
+        citedSourcesResult.error && isMissingAnnotationNoteSchema(citedSourcesResult.error),
+      );
       if (
         targetResult.error ||
         sourceResult.error ||
         profileResult.error ||
-        mediaStateResult.error
+        mediaStateResult.error ||
+        (citedSourcesResult.error && !citedSourcesMissing)
       ) return null;
 
       let transcript: unknown = null;
@@ -149,8 +228,8 @@ export const loadPublicAnnotation = cache(
           .getPublicUrl(audioMetadata.storagePath).data.publicUrl;
       }
 
-      return mapPublicAnnotationDetail(
-        annotation,
+      const detail = mapPublicAnnotationDetail(
+        { ...annotation, cited_sources: citedSourcesMissing ? [] : (citedSourcesResult.data ?? []) },
         targetResult.data,
         sourceResult.data,
         profileResult.data,
@@ -158,6 +237,9 @@ export const loadPublicAnnotation = cache(
         mediaState,
         transcript,
       );
+      if (!detail) return null;
+      const preserved = await loadPreservedAnnotation(supabase, annotation.id);
+      return { ...detail, ...preserved };
     } catch {
       return null;
     }

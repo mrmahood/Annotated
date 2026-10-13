@@ -15,6 +15,7 @@ const INPUT = {
   textPrefix: '',
   textSuffix: '',
   commentaryText: 'Required text commentary',
+  annotationNote: { noteType: 'context', verdict: null, sourceUrls: [] },
 };
 
 function createFakeClient({ rpcError = null, cleanupError = null } = {}) {
@@ -54,6 +55,8 @@ test('text-only publishing remains routed directly to the existing RPC', async (
     ['rpc', 'publish_article_annotation'],
   ]);
   assert.equal(fake.calls[0][2].p_title, null);
+  assert.equal(fake.calls[0][2].p_note_type, 'context');
+  assert.deepEqual(fake.calls[0][2].p_source_urls, []);
 });
 
 test('optional titles are trimmed and sent as p_title', async () => {

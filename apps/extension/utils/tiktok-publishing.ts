@@ -2,6 +2,10 @@ import {
   getAnnotationTitleError,
   normalizeAnnotationTitle,
 } from '@annotated/shared/annotation-title';
+import {
+  annotationNoteRpcArguments,
+  type AnnotationNoteInput,
+} from '@annotated/shared/annotation-note';
 import { getNewMediaPublicationRangeError } from '@annotated/shared/media-time';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -17,6 +21,7 @@ export type TikTokAnnotationInput = {
   endMs: number;
   commentaryText: string;
   annotationTitle?: string;
+  annotationNote: AnnotationNoteInput;
   hasRecordedCommentary?: boolean;
   videoDurationMs?: number | null;
 };
@@ -77,6 +82,7 @@ export async function beginHostedTikTokAnnotation(
     p_end_ms: input.endMs,
     p_commentary_text: input.commentaryText,
     p_title: normalizeAnnotationTitle(input.annotationTitle),
+    ...annotationNoteRpcArguments(input.annotationNote),
   });
   if (error) {
     const raw = typeof error.message === 'string' ? error.message.trim() : '';

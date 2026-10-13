@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./annotation-title": "./src/annotation-title.ts",
+    "./annotation-note": "./src/annotation-note.ts",
     "./audio-source": "./src/audio-source.ts",
     "./url-normalization": "./src/url-normalization.ts",
     "./youtube": "./src/youtube.ts",
@@ -14,7 +15,10 @@
     "./hosted-video-layout": "./src/hosted-video-layout.ts",
     "./logo-mark": "./src/logo-mark.ts",
     "./appearance": "./src/appearance.ts",
-    "./profile-handle": "./src/profile-handle.ts"
+    "./profile-handle": "./src/profile-handle.ts",
+    "./tweet-status": "./src/tweet-status.ts",
+    "./x-intent": "./src/x-intent.ts",
+    "./receipt-source": "./src/receipt-source.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.mjs"

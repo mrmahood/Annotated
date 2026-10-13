@@ -66,6 +66,8 @@ test('maps the Staging NYT hosted audio fixture as an Audio feed card', () => {
   assert.equal(mapped?.hosted, null);
   assert.equal(mapped?.route?.creatorHandle, 'matt-mahood-3e3882b6');
   assert.equal(mapped?.route?.annotationSlug, NYT_SLUG);
+  assert.equal(mapped?.noteType, null);
+  assert.deepEqual(mapped?.sourceLinks, []);
 });
 
 test('projects a creator-entered title without inventing one from the source nest', () => {

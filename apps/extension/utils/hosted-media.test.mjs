@@ -798,6 +798,7 @@ test('ready owner status becomes Posted with a handle/slug detail path', () => {
     annotationId: operation.annotationId,
     kind: 'video',
     publicPath: '/creator/clip-11111111',
+    take: '',
   });
   const removed = reconcileHostedMediaState(session, ownedStatus('removed'), null, null);
   assert.equal(removed.action, 'clear');

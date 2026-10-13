@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ANNOTATION_TITLE_MAX_LENGTH } from '@annotated/shared/annotation-title';
+import { getAnnotationNoteError, readAnnotationNoteForPublish } from '@annotated/shared/annotation-note';
 import { normalizeArticleUrl, ArticleUrlNormalizationError } from '@annotated/shared/url-normalization';
 import {
   formatMediaTime,
   getNewMediaPublicationRangeError,
 } from '@annotated/shared/media-time';
-import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-time-display';
-import { getTypedClipFieldError } from '../../utils/clip-range-entry';
+import { formatMediaTimeTenths } from '../../utils/media-time-display';
 import { applyClipPresetFromPlayhead, type ClipPresetWindow } from '../../utils/clip-range';
 import { applyCreateClipRangeMark, clearCreateClipRangeMark } from '../../utils/clip-range-mark';
-import { ClipRangeEditor, useTypedClipRange } from './clip-range-fields';
+import { ClipRangeEditor } from './clip-range-fields';
+import {
+  AnnotationNoteFields,
+  EMPTY_ANNOTATION_NOTE_DRAFT,
+  type AnnotationNoteDraft,
+} from './annotation-note-fields';
 import { AppearanceControl } from './appearance-control';
 import { BrandLockup } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
@@ -96,8 +101,11 @@ import {
   CREATE_POSTED_CONFIRMATION_STORAGE_KEY,
   createPostedConfirmation,
   isCreatePostedConfirmation,
+  openPostedPermalink,
   persistCreatePostedConfirmation,
   queryPostedAnnotationRoute,
+  readPostedTake,
+  withPostedTake,
   type CreatePostedConfirmation,
 } from '../../utils/create-posted';
 import {
@@ -112,9 +120,20 @@ import {
   type SelectionExtractionResult,
 } from '../../utils/selection-capture';
 import { getInitial, isUuid } from '../../utils/social-helpers';
+import {
+  applyPublishedPassageHighlights,
+  isPassageOpenMessage,
+  isPassageOpenRequest,
+  PASSAGE_OPEN_STORAGE_KEY,
+  type PassageHighlightPanel,
+} from '../../utils/passage-highlight';
+import { PassageHighlightList } from './passage-highlight-list';
 import { getSupabaseClient } from '../../utils/supabase';
 import { getWebAppOrigin } from '../../utils/web-app-url';
 import { publishArticleAnnotation, uploadAndAttachOwnerCommentaryAudio } from '../../utils/annotation-publishing';
+import { attachApprovedReceiptSources, type ApprovedReceiptSource } from '../../utils/receipt-sources';
+import { storeTweetCapture } from '../../utils/tweet-capture';
+import { ReceiptAssist } from './receipt-assist';
 import {
   CREATE_MODES,
   CREATE_MODE_SELECTION_STORAGE_KEY,
@@ -491,12 +510,19 @@ function getMetadataText(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function publishableAnnotationNote(draft: AnnotationNoteDraft) {
+  const parsed = readAnnotationNoteForPublish(draft);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.note;
+}
+
 function getPublishErrorMessage(error: unknown) {
   if (error instanceof ArticleUrlNormalizationError) return 'The captured source URL is invalid. Refresh the source and capture the passage again.';
   const message = error instanceof Error ? error.message : '';
   if (/auth|jwt|session|signed in/i.test(message)) return 'Your session could not be verified. Sign in again, then retry publishing.';
   if (/selected text/i.test(message)) return 'Capture a passage between 1 and 2,000 characters and try again.';
   if (/commentary/i.test(message)) return 'Your commentary must contain between 1 and 2,000 characters.';
+  if (/annotation type|verdict|source link/i.test(message)) return message;
   return 'The annotation could not be published. Your passage and commentary are still here—check your connection and try again.';
 }
 
@@ -690,6 +716,9 @@ function App() {
   const [modeSelection, setModeSelection] = useState<ModeSelectionState | null>(null);
   const [modeAnnouncement, setModeAnnouncement] = useState('');
   const [draftRestorationStatus, setDraftRestorationStatus] = useState<'loading' | 'ready'>('loading');
+  const [noteDraft, setNoteDraft] = useState<AnnotationNoteDraft>(EMPTY_ANNOTATION_NOTE_DRAFT);
+  const noteDraftRef = useRef(noteDraft);
+  noteDraftRef.current = noteDraft;
   const [publishState, setPublishState] = useState<PublishState>({ status: 'idle' });
   const [youtubePublishState, setYoutubePublishState] = useState<PublishState>({ status: 'idle' });
   const [audioPublishState, setAudioPublishState] = useState<PublishState>({ status: 'idle' });
@@ -715,7 +744,11 @@ function App() {
   const modeSwitchDialogRef = useRef<HTMLDialogElement | null>(null);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [navigation, dispatchNavigation] = useReducer(reduceNavigation, INITIAL_NAVIGATION);
+  const [passagePanel, setPassagePanel] = useState<PassageHighlightPanel>({ status: 'empty' });
+  const passageOpenRef = useRef<string | null>(null);
   const connectedContextRef = useRef<ActiveTabContext | null>(null);
+  const approvedReceiptsRef = useRef<ApprovedReceiptSource[]>([]);
+  const postedConfirmationRef = useRef<CreatePostedConfirmation | null>(null);
   const contextObservedRef = useRef(false);
   const captureRevisionRef = useRef(0);
   const draftRevisionRef = useRef(0);
@@ -974,12 +1007,19 @@ function App() {
     } catch { console.warn('Unable to clear the audio clip draft.'); }
   }, [audioCommentaryRecorder.discard, sourceState]);
 
+  const rememberApprovedReceipts = useCallback((sources: ApprovedReceiptSource[]) => {
+    approvedReceiptsRef.current = sources;
+  }, []);
+
   const showCreatePosted = useCallback((confirmation: CreatePostedConfirmation) => {
+    postedConfirmationRef.current = confirmation;
     setPostedConfirmation(confirmation);
     void persistCreatePostedConfirmation(confirmation).catch(() => undefined);
+    openPostedPermalink(confirmation.publicPath);
   }, []);
 
   const dismissCreatePosted = useCallback(async () => {
+    postedConfirmationRef.current = null;
     setPostedConfirmation(null);
     await persistCreatePostedConfirmation(null).catch(() => undefined);
   }, []);
@@ -1273,11 +1313,25 @@ function App() {
           textSuffix: captured.textSuffix,
           commentaryText: commentary,
           annotationTitle: title,
+          annotationNote: publishableAnnotationNote(noteDraftRef.current),
         },
         recordedAudio,
         reportCommentaryCleanup,
       );
       if (!isUuid(annotationId)) throw new Error('Publishing returned an invalid annotation identifier.');
+      const approvedReceipts = approvedReceiptsRef.current.slice();
+      approvedReceiptsRef.current = [];
+      await attachApprovedReceiptSources(supabase, annotationId, approvedReceipts).catch(() => undefined);
+      const captureContext = connectedContextRef.current;
+      if (captureContext) {
+        await storeTweetCapture(supabase, {
+          annotationId,
+          tabId: captureContext.tabId,
+          windowId: captureContext.windowId,
+          pageUrl: captured.canonicalUrl || captured.sourceUrl,
+          selectedText: captured.selectedText,
+        }).catch(() => undefined);
+      }
       const currentPage = createPageRef.current;
       if (!currentPage || !isModeAsyncTokenCurrent(
         token,
@@ -1293,6 +1347,7 @@ function App() {
         kind: 'text',
         creatorHandle: route?.creatorHandle ?? null,
         annotationSlug: route?.annotationSlug ?? null,
+        take: commentary,
       }));
       await clearDraft('publish-succeeded');
       socialCacheRef.current.clear();
@@ -1969,6 +2024,7 @@ function App() {
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
         annotationTitle: videoDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -2064,6 +2120,7 @@ function App() {
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
         annotationTitle: videoDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -2172,6 +2229,7 @@ function App() {
         endMs: videoDraftState.endMs,
         commentaryText: videoDraftState.commentary,
         annotationTitle: videoDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         videoDurationMs: player.durationMs,
       });
@@ -2275,6 +2333,7 @@ function App() {
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
         annotationTitle: audioDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         mediaDurationMs: player.durationMs,
       });
@@ -2390,6 +2449,7 @@ function App() {
         endMs: audioDraftState.endMs,
         commentaryText: audioDraftState.commentary,
         annotationTitle: audioDraftState.title,
+        annotationNote: publishableAnnotationNote(noteDraftRef.current),
         hasRecordedCommentary: Boolean(recordedCommentary),
         mediaDurationMs: player.durationMs,
       });
@@ -2448,6 +2508,14 @@ function App() {
       setMediaCaptureState({ status: 'idle' });
       void chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
       showCreatePosted(result.confirmation);
+      const postedId = result.confirmation.annotationId;
+      if (supabase) {
+        void readPostedTake(supabase, postedId).then((take) => {
+          const current = postedConfirmationRef.current;
+          if (!take || current?.annotationId !== postedId) return;
+          showCreatePosted(withPostedTake(current, take));
+        }).catch(() => undefined);
+      }
       return;
     }
     if (result.action === 'clear') {
@@ -2467,7 +2535,7 @@ function App() {
     setMediaCaptureState((current) => (
       shouldReplaceHostedCaptureSnapshot(current, result.snapshot) ? result.snapshot : current
     ));
-  }, [showCreatePosted]);
+  }, [showCreatePosted, supabase]);
 
   const createAnotherAnnotation = useCallback(async () => {
     const confirmation = postedConfirmation;
@@ -3011,6 +3079,58 @@ function App() {
     });
     return () => { current = false; };
   }, [sourceState]);
+
+  useEffect(() => {
+    const pageUrl = sourceState.status === 'connected' ? sourceState.source.url : null;
+    const tabId = connectedContextRef.current?.tabId;
+    if (!supabase || !pageUrl || tabId == null) {
+      setPassagePanel({ status: 'empty' });
+      return;
+    }
+    let cancelled = false;
+    setPassagePanel({ status: 'empty' });
+    void applyPublishedPassageHighlights({
+      supabase,
+      scripting: chrome.scripting,
+      tabId,
+      pageUrl,
+    }).then((result) => {
+      if (!cancelled) setPassagePanel(result);
+    });
+    return () => { cancelled = true; };
+  }, [sourceState, supabase]);
+
+  useEffect(() => {
+    const openPassage = (annotationId: string) => {
+      if (passageOpenRef.current === annotationId) return;
+      passageOpenRef.current = annotationId;
+      dispatchNavigation({ type: 'push', screen: { kind: 'annotation', annotationId } });
+      window.setTimeout(() => {
+        if (passageOpenRef.current === annotationId) passageOpenRef.current = null;
+      }, 500);
+      void chrome.storage.session.remove(PASSAGE_OPEN_STORAGE_KEY);
+    };
+    const openStored = (value: unknown) => {
+      if (isPassageOpenRequest(value)) openPassage(value.annotationId);
+    };
+    const onChanged = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+      if (area === 'session' && Object.prototype.hasOwnProperty.call(changes, PASSAGE_OPEN_STORAGE_KEY)) {
+        openStored(changes[PASSAGE_OPEN_STORAGE_KEY]?.newValue);
+      }
+    };
+    const onMessage = (message: unknown) => {
+      if (isPassageOpenMessage(message)) openPassage(message.annotationId);
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    chrome.runtime.onMessage.addListener(onMessage);
+    void chrome.storage.session.get(PASSAGE_OPEN_STORAGE_KEY).then((stored) => {
+      openStored(stored[PASSAGE_OPEN_STORAGE_KEY]);
+    }).catch(() => undefined);
+    return () => {
+      chrome.storage.onChanged.removeListener(onChanged);
+      chrome.runtime.onMessage.removeListener(onMessage);
+    };
+  }, []);
 
   useEffect(() => {
     authMountedRef.current = true;
@@ -3730,17 +3850,6 @@ function App() {
     }
   };
 
-  const videoRangeEntry = useTypedClipRange(
-    videoDraftState.startMs,
-    videoDraftState.endMs,
-    commitVideoRange,
-  );
-  const audioRangeEntry = useTypedClipRange(
-    audioDraftState.startMs,
-    audioDraftState.endMs,
-    commitAudioRange,
-  );
-
   const changeTitle = (value: string) => {
     draftRevisionRef.current += 1;
     dispatchCreateDraft({ type: 'set-text-title', title: value });
@@ -3870,7 +3979,8 @@ function App() {
     audioDraftState.commentary,
     audioCommentaryRecorder.state.status === 'recorded',
   );
-  const canPublish = authState.status === 'signed-in' && captured && hasTextCommentary &&
+  const noteReady = getAnnotationNoteError(noteDraft) === null;
+  const canPublish = authState.status === 'signed-in' && captured && hasTextCommentary && noteReady &&
     publishState.status !== 'publishing' && !textCommentaryBusy && postedConfirmation === null;
   const contextUrl = sourceState.status === 'connected' ? sourceState.source.url : null;
   const youtubeSource = sourceState.status === 'connected' && sourceState.source.classification === 'YouTube'
@@ -3990,71 +4100,39 @@ function App() {
     audioDraftState.endMs,
     audioDraftState.durationMs,
   );
-  const videoRangeDisplay = getMediaRangeDisplay(videoDraftState.startMs, videoDraftState.endMs);
-  const audioRangeDisplay = getMediaRangeDisplay(audioDraftState.startMs, audioDraftState.endMs);
-  const videoStartError = getTypedClipFieldError(
-    videoRangeEntry.startField,
-    videoDraftState.startMs,
-    videoDraftState.durationMs,
-    'start',
-  );
-  const videoEndError = getTypedClipFieldError(
-    videoRangeEntry.endField,
-    videoDraftState.endMs,
-    videoDraftState.durationMs,
-    'end',
-  );
-  const audioStartError = getTypedClipFieldError(
-    audioRangeEntry.startField,
-    audioDraftState.startMs,
-    audioDraftState.durationMs,
-    'start',
-  );
-  const audioEndError = getTypedClipFieldError(
-    audioRangeEntry.endField,
-    audioDraftState.endMs,
-    audioDraftState.durationMs,
-    'end',
-  );
-  const showVideoRangeError = videoRangeEntry.allowsPublish
-    && videoDraftState.startMs !== null
+  const showVideoRangeError = videoDraftState.startMs !== null
     && videoDraftState.endMs !== null
-    && videoClipRangeError !== null
-    && videoClipRangeError !== videoStartError
-    && videoClipRangeError !== videoEndError;
-  const showAudioRangeError = audioRangeEntry.allowsPublish
-    && audioDraftState.startMs !== null
+    && videoClipRangeError !== null;
+  const showAudioRangeError = audioDraftState.startMs !== null
     && audioDraftState.endMs !== null
-    && audioClipRangeError !== null
-    && audioClipRangeError !== audioStartError
-    && audioClipRangeError !== audioEndError;
+    && audioClipRangeError !== null;
   const videoPlayerSelected = videoPlayers.status === 'ready' &&
     videoPlayers.pageGeneration === modeSelection?.page.generation &&
     videoPlayers.candidates.some((candidate) => candidate.identity === videoDraftState.playerIdentity);
   const audioPlayerSelected = audioPlayerDiscovery.status === 'ready' &&
     audioPlayerDiscovery.pageGeneration === modeSelection?.page.generation &&
     audioPlayerDiscovery.candidates.some((candidate) => candidate.identity === audioDraftState.playerIdentity);
-  const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
-    videoPlayerSelected && videoRangeEntry.allowsPublish &&
+  const canPublishYoutube = authState.status === 'signed-in' && noteReady && youtubeSource !== null &&
+    videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !youtubeAdShowing &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
-  const canPublishTikTok = authState.status === 'signed-in' && tiktokSource !== null &&
-    videoPlayerSelected && videoRangeEntry.allowsPublish &&
+  const canPublishTikTok = authState.status === 'signed-in' && noteReady && tiktokSource !== null &&
+    videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
-  const canPublishWebpageVideo = authState.status === 'signed-in' && webVideoSource !== null &&
-    videoPlayerSelected && videoRangeEntry.allowsPublish &&
+  const canPublishWebpageVideo = authState.status === 'signed-in' && noteReady && webVideoSource !== null &&
+    videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
-  const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
-    audioPlayerSelected && audioRangeEntry.allowsPublish &&
+  const canPublishAudio = authState.status === 'signed-in' && noteReady && audioSource !== null &&
+    audioPlayerSelected &&
     (spotifySource !== null || audioDraftState.durationMs !== null) && audioClipRangeError === null &&
     hasAudioCommentary && !audioCommentaryBusy &&
     audioPublishState.status !== 'publishing' &&
@@ -4192,7 +4270,7 @@ function App() {
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading" key="create-video">
               <h2 id="create-heading" className="visually-hidden">Create clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
-                <p className="create-help">Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Type times if you prefer. Clips can be at most 90 seconds.</p>
+                <p className="create-help">Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Clips can be at most 90 seconds.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
                 {youtubeSource && youtubeAdShowing && (
                   <div className="compact-state" role="status">
@@ -4202,16 +4280,10 @@ function App() {
                 )}
                 {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTimeTenths(videoDraftState.durationMs)}</>}</p>}
                 <ClipRangeEditor
-                  idPrefix="video"
                   startMs={videoDraftState.startMs}
                   endMs={videoDraftState.endMs}
                   durationMs={videoDraftState.durationMs}
                   playheadMs={videoDraftState.playerTimeMs}
-                  startField={videoRangeEntry.startField}
-                  endField={videoRangeEntry.endField}
-                  lengthDisplay={videoRangeDisplay.length}
-                  startError={videoStartError}
-                  endError={videoEndError}
                   rangeError={showVideoRangeError ? videoClipRangeError : null}
                   disabled={mediaEditorLocked}
                   playerSelected={videoPlayerSelected}
@@ -4224,10 +4296,6 @@ function App() {
                   }
                   previewLabel="Preview range"
                   onCommitRange={(startMs, endMs) => commitVideoRange(startMs, endMs)}
-                  onStartChange={videoRangeEntry.changeStart}
-                  onEndChange={videoRangeEntry.changeEnd}
-                  onStartBlur={videoRangeEntry.commitStart}
-                  onEndBlur={videoRangeEntry.commitEnd}
                   onPreset={(presetMs, window) => void applyMediaClipPreset(presetMs, window)}
                   onPreview={() => void previewYoutubeDraft()}
                   onRefresh={() => { void readConnectedPlayer(); }}
@@ -4235,6 +4303,7 @@ function App() {
                 {videoDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">The current video player changed or could not be read. Reselect it and try again.</p>}
                 <TitleField id="youtube-title" value={videoDraftState.title} disabled={mediaEditorLocked} onChange={changeYoutubeTitle} />
                 <CommentaryField id="youtube-commentary" value={videoDraftState.commentary} disabled={mediaEditorLocked} onChange={changeYoutubeCommentary} />
+                <AnnotationNoteFields idPrefix="note-video" draft={noteDraft} disabled={mediaEditorLocked} onChange={setNoteDraft} />
                 <AudioRecorder controller={videoCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearVideoDraft()} disabled={youtubePublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : youtubeSource ? <button className="button button-primary" type="button" onClick={() => void publishYoutubeClip()} disabled={!canPublishYoutube}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : tiktokSource ? <button className="button button-primary" type="button" onClick={() => void publishTikTokClip()} disabled={!canPublishTikTok}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button> : <button className="button button-primary" type="button" onClick={() => void publishWebpageVideoClip()} disabled={!canPublishWebpageVideo}>{youtubePublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {shouldShowCreatePublishError(youtubePublishState.status, hostedMediaSession) && youtubePublishState.status === 'error' && <p className="inline-error" role="alert">{youtubePublishState.message}</p>}
@@ -4244,20 +4313,14 @@ function App() {
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
               <h2 id="create-heading" className="visually-hidden">Create audio clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
-                <p className="create-help">{spotifySource ? 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Preview plays only that range on the now-playing bar and stops at the end. Type times if you prefer. Clips can be at most 90 seconds.' : 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Type times if you prefer. Clips can be at most 90 seconds.'}</p>
+                <p className="create-help">{spotifySource ? 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Preview plays only that range on the now-playing bar and stops at the end. Clips can be at most 90 seconds.' : 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Clips can be at most 90 seconds.'}</p>
                 <PlayerSelector mode="audio" discovery={audioPlayerDiscovery} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
                 {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTimeTenths(audioDraftState.durationMs)}</>}</p>}
                 <ClipRangeEditor
-                  idPrefix="audio"
                   startMs={audioDraftState.startMs}
                   endMs={audioDraftState.endMs}
                   durationMs={audioDraftState.durationMs}
                   playheadMs={audioDraftState.playerTimeMs}
-                  startField={audioRangeEntry.startField}
-                  endField={audioRangeEntry.endField}
-                  lengthDisplay={audioRangeDisplay.length}
-                  startError={audioStartError}
-                  endError={audioEndError}
                   rangeError={showAudioRangeError ? audioClipRangeError : null}
                   disabled={mediaEditorLocked}
                   playerSelected={audioPlayerSelected}
@@ -4269,10 +4332,6 @@ function App() {
                   }
                   previewLabel="Preview range"
                   onCommitRange={(startMs, endMs) => commitAudioRange(startMs, endMs)}
-                  onStartChange={audioRangeEntry.changeStart}
-                  onEndChange={audioRangeEntry.changeEnd}
-                  onStartBlur={audioRangeEntry.commitStart}
-                  onEndBlur={audioRangeEntry.commitEnd}
                   onPreset={(presetMs, window) => void applyMediaClipPreset(presetMs, window)}
                   onPreview={() => void previewAudioDraft()}
                   onRefresh={() => { void readConnectedPlayer(); }}
@@ -4280,6 +4339,7 @@ function App() {
                 {audioDraftState.playerReadState === 'error' && <p className="inline-error" role="alert">{spotifySource ? 'The Spotify now-playing bar could not be read or could not seek. Reconnect the episode and try again.' : 'The page audio player disappeared or its current time could not be read. Reconnect the episode and try again.'}</p>}
                 <TitleField id="audio-clip-title" value={audioDraftState.title} disabled={mediaEditorLocked} onChange={changeAudioTitle} />
                 <CommentaryField id="audio-clip-commentary" value={audioDraftState.commentary} disabled={mediaEditorLocked} onChange={changeAudioCommentary} />
+                <AnnotationNoteFields idPrefix="note-audio" draft={noteDraft} disabled={mediaEditorLocked} onChange={setNoteDraft} />
                 <AudioRecorder controller={audioCommentaryRecorder} disabled={mediaEditorLocked} />
                 <div className="create-actions"><button className="button button-secondary" type="button" onClick={() => void clearAudioDraft()} disabled={audioPublishState.status === 'publishing' || mediaEditorLocked}>Clear clip</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void (spotifySource ? publishSpotifyClip() : publishAudioClip())} disabled={!canPublishAudio}>{audioPublishState.status === 'publishing' ? 'Creating draft…' : 'Publish clip'}</button>}</div>
                 {shouldShowCreatePublishError(audioPublishState.status, hostedMediaSession) && audioPublishState.status === 'error' && <p className="inline-error" role="alert">{audioPublishState.message}</p>}
@@ -4287,12 +4347,18 @@ function App() {
             </section>
           ) : selectedCreateMode === 'text' ? (
             <section className="create-panel" aria-labelledby="create-heading" key="create-text"><h2 id="create-heading" className="visually-hidden">Create annotation</h2>
-              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><TitleField id="annotation-title" value={title} disabled={publishState.status === 'publishing'} onChange={changeTitle} /><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
+              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><ReceiptAssist key={captured.capturedAt} passage={captured.selectedText} pageUrl={captured.canonicalUrl || captured.sourceUrl} signedIn={authState.status === 'signed-in'} disabled={publishState.status === 'publishing'} supabase={supabase} onApprovedChange={rememberApprovedReceipts} /><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><TitleField id="annotation-title" value={title} disabled={publishState.status === 'publishing'} onChange={changeTitle} /><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AnnotationNoteFields idPrefix="note-text" draft={noteDraft} disabled={publishState.status === 'publishing'} onChange={setNoteDraft} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
             </section>
           ) : (
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
           )}
           {hostedMediaPanel}
+          {passagePanel.status === 'list' && (
+            <PassageHighlightList
+              passages={passagePanel.passages}
+              onOpen={navigationCallbacks.openAnnotation}
+            />
+          )}
           {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? spotifySource?.normalizedUrl ?? contextUrl} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} onBookmarkChange={() => socialCacheRef.current.delete('bookmarks')} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle={youtubeSource || tiktokSource ? 'No clips on this video yet' : exclusivePodcast || spotifySource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource || tiktokSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast || spotifySource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource || tiktokSource ? 'Clips on this video' : exclusivePodcast || spotifySource ? 'Clips on this episode' : 'On this source'} />}
           <BrandLockup />
         </div>

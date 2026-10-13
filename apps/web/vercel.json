@@ -1,0 +1,3 @@
+{
+  "ignoreCommand": "bash -lc 'if [ -f apps/web/scripts/vercel-preview-ignore.mjs ]; then exec node apps/web/scripts/vercel-preview-ignore.mjs; elif [ -f scripts/vercel-preview-ignore.mjs ]; then exec node scripts/vercel-preview-ignore.mjs; else exit 1; fi'"
+}

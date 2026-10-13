@@ -14,8 +14,10 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classifyQuietList } from "./drive-outcome.mjs";
+import { driveChromeExtensionCommand } from "./drive-chrome-extension.mjs";
 import {
   createSupabaseMintPort,
+  isStagingPreviewOrigin,
   mintDedicatedTestSession,
   readMintEnv,
   redactSecrets,
@@ -34,7 +36,7 @@ const PROD_URL = "https://annotated.cbandcoop.com";
 const LOCAL_URL = "http://127.0.0.1:3000";
 const LOCAL_PORT = 3000;
 const FEED_TITLE = "Public annotation feed";
-const FEED_LEDE = "Your media notations across video, podcasts & text shared with the world.";
+const FEED_LEDE = "The fact-check layer for the web.";
 
 const COMMANDS = [
   "launch",
@@ -137,6 +139,19 @@ function localEnvStatus() {
 function resolveTarget() {
   const requested = process.env.VERIFY_ANNOTATED_TARGET;
   const envStatus = localEnvStatus();
+  if (requested === "staging" || isStagingPreviewOrigin(requested)) {
+    const candidate = isStagingPreviewOrigin(requested)
+      ? requested
+      : (process.env.VERIFY_ANNOTATED_BASE_URL || "");
+    if (!isStagingPreviewOrigin(candidate)) {
+      die("VERIFY_ANNOTATED_TARGET=staging requires VERIFY_ANNOTATED_BASE_URL to be an https Staging preview origin.");
+    }
+    return {
+      mode: "staging-preview",
+      baseUrl: new URL(candidate).origin,
+      reason: "Staging preview origin",
+    };
+  }
   if (requested === "prod") {
     return {
       mode: "prod-public",
@@ -150,8 +165,8 @@ function resolveTarget() {
     }
     return { mode: "local", baseUrl: LOCAL_URL, reason: "VERIFY_ANNOTATED_TARGET=local" };
   }
-  if (requested && requested !== "local" && requested !== "prod") {
-    die(`VERIFY_ANNOTATED_TARGET must be local or prod. Received ${requested}.`);
+  if (requested && requested !== "local" && requested !== "prod" && requested !== "staging") {
+    die(`VERIFY_ANNOTATED_TARGET must be local, prod, or staging. Received ${requested}.`);
   }
   if (envStatus.ready) {
     return { mode: "local", baseUrl: LOCAL_URL, reason: "apps/web/.env.local has a non-placeholder Supabase URL and publishable key" };
@@ -283,17 +298,21 @@ async function waitForLocalReady(state) {
 }
 
 async function launch() {
+  const target = resolveTarget();
   const existing = readState();
-  if (existing?.pid && pidAlive(existing.pid)) {
+  const sameTarget = existing?.baseUrl === target.baseUrl && existing?.mode === target.mode;
+  if (sameTarget && existing?.pid && pidAlive(existing.pid)) {
     console.log(`launch: reusing local run ${existing.runId} at ${existing.baseUrl}`);
     return;
   }
-  if (existing?.mode === "prod-public" && !existing.pid) {
-    console.log(`launch: reusing prod-public run ${existing.runId} at ${existing.baseUrl}`);
+  if (sameTarget && !existing?.pid && target.mode !== "local") {
+    console.log(`launch: reusing ${existing.mode} run ${existing.runId} at ${existing.baseUrl}`);
     console.log(`reason: ${existing.reason}`);
     return;
   }
-  const target = resolveTarget();
+  if (existing?.pid && pidAlive(existing.pid)) {
+    die(`A local server pid ${existing.pid} is still running at ${existing.baseUrl}. Run cleanup before launching ${target.baseUrl}.`);
+  }
   const state = {
     runId: stamp(),
     mode: target.mode,
@@ -338,7 +357,7 @@ async function launch() {
     }
   } else {
     writeState(state);
-    console.log(`launch: prod-public ${state.baseUrl}`);
+    console.log(`launch: ${state.mode} ${state.baseUrl}`);
     console.log(`reason: ${state.reason}`);
     console.log("launch: no local server started");
   }
@@ -679,7 +698,7 @@ async function driveMeSignedOut({ page, state, dir }) {
   console.log("drive: me-signed-out pass");
 }
 
-async function driveAuthenticatedMePage({ page, context, state, dir, sessionCookies }) {
+async function driveAuthenticatedMePage({ page, context, state, dir, sessionCookies, publicConfig }) {
   await context.addCookies(toPlaywrightCookies(sessionCookies, state.baseUrl));
   const response = await page.goto(`${state.baseUrl}/me`, { waitUntil: "domcontentloaded", timeout: 30000 });
   const httpStatus = response?.status() ?? 0;
@@ -728,6 +747,7 @@ async function driveAuthenticatedMePage({ page, context, state, dir, sessionCook
     `- Bookmarks: ${bookmarkState}`,
     `- View annotation links: ${viewCount}`,
     `- Install callout dismissed: ${dismissed ? "yes" : "no"}`,
+    `- Public Supabase config: ${publicConfig}`,
     "- Claim handle, Save handle, Bookmarked, Share, Sign out, and Send feedback were not clicked.",
     "- Side effects: none intended. No bookmark, comment, follow, reshare, vote, or handle claim.",
     `- Result: ${pass ? "pass" : "fail"}`,
@@ -737,7 +757,8 @@ async function driveAuthenticatedMePage({ page, context, state, dir, sessionCook
 }
 
 async function driveAuthenticatedMeCommand() {
-  const config = readMintEnv(process.env);
+  const launched = readState();
+  const config = readMintEnv(process.env, { baseUrl: launched?.baseUrl });
   if (!config.ok) unreachable("authenticated-me", config.message);
   const state = requireState();
   const report = await doctorState(state);
@@ -761,6 +782,7 @@ async function driveAuthenticatedMeCommand() {
       "- Entry: session mint, then GET /me",
       "- Result: fail",
       `- Reason: ${code}`,
+      `- Public Supabase config: ${config.publicConfig}`,
       "- The browser was not opened.",
       "- Side effects: none intended. No bookmark, comment, follow, reshare, vote, or handle claim.",
     ]);
@@ -774,6 +796,7 @@ async function driveAuthenticatedMeCommand() {
   await withBrowser(state, "authenticated-me", (ctx) => driveAuthenticatedMePage({
     ...ctx,
     sessionCookies: minted.cookies,
+    publicConfig: config.publicConfig,
   }));
 }
 
@@ -798,8 +821,12 @@ Commands (run from the repository root):
 Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 
 Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
-chrome-extension stays exit 3. It needs an unpacked extension, and a website session does not load the side panel.
-authenticated-me exits 3 until SUPABASE_SERVICE_ROLE_KEY is set.
+chrome-extension exits 0 or 1. It loads apps/extension/.output/chrome-mv3 and does not need launch or doctor.
+authenticated-me exits 3 until the service-role key for that target is set.
+A Staging preview origin uses SUPABASE_STAGING_SERVICE_ROLE_KEY and the public Staging URL and publishable key when those are unset.
+Mint that session directly with:
+  node .cursor/skills/verify-annotated/helpers/mint-test-session.mjs --target https://annotated-staging-git-bounty-integration-matt-mahoods-projects.vercel.app
+The command does not print keys or cookie values. Cookies are written to /tmp/verify-annotated/staging-session.json.
 Evidence stays in .cursor/skills/verify-annotated/evidence/.
 `);
 }
@@ -817,7 +844,11 @@ if (command === "cleanup") cleanup();
 if (command === "drive") {
   const feature = process.argv[3];
   if (feature === "chrome-extension") {
-    unreachable("chrome-extension", "Chrome extension load (unpacked MV3 side panel). A website session does not load the side panel. Not started.");
+    await driveChromeExtensionCommand({
+      repoRoot: REPO_ROOT,
+      evidenceRoot: EVIDENCE_ROOT,
+      ensurePlaywright,
+    });
   } else if (feature === "authenticated-me") {
     await driveAuthenticatedMeCommand();
   } else {

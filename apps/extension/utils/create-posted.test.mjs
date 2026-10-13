@@ -5,10 +5,19 @@ import {
   createPostedConfirmation,
   createPostedKindFromMediaType,
   isCreatePostedConfirmation,
+  postedPermalinkHref,
   queryPostedAnnotationRoute,
 } from './create-posted.ts';
 
 const ANNOTATION_ID = '11111111-1111-4111-8111-111111111111';
+
+test('posted permalink href is the public annotation URL', () => {
+  assert.equal(
+    postedPermalinkHref('/reader-one/source-title', 'https://annotated.example'),
+    'https://annotated.example/reader-one/source-title',
+  );
+  assert.equal(postedPermalinkHref('/a/x', 'not a url'), null);
+});
 
 test('Posted confirmation prefers handle/slug and falls back to /a/{id}', () => {
   assert.deepEqual(createPostedConfirmation({
@@ -16,10 +25,12 @@ test('Posted confirmation prefers handle/slug and falls back to /a/{id}', () => 
     kind: 'video',
     creatorHandle: 'reader-one',
     annotationSlug: 'source-title',
+    take: '  The take  ',
   }), {
     annotationId: ANNOTATION_ID,
     kind: 'video',
     publicPath: '/reader-one/source-title',
+    take: 'The take',
   });
   assert.deepEqual(createPostedConfirmation({
     annotationId: ANNOTATION_ID,
@@ -28,6 +39,7 @@ test('Posted confirmation prefers handle/slug and falls back to /a/{id}', () => 
     annotationId: ANNOTATION_ID,
     kind: 'audio',
     publicPath: `/a/${ANNOTATION_ID}`,
+    take: '',
   });
   assert.equal(createPostedKindFromMediaType('audio'), 'audio');
   assert.equal(createPostedKindFromMediaType('video'), 'video');
@@ -94,6 +106,10 @@ test('Create uses one Posted panel for text, video, and audio', async () => {
   assert.match(panel, /create-posted-mark/);
   assert.match(panel, /Open posted annotation/);
   assert.match(panel, /Create another/);
+  assert.match(panel, /Post to X/);
+  assert.match(panel, /buildXPostIntentUrl/);
+  assert.match(panel, /target="_blank"/);
+  assert.doesNotMatch(panel, /window\.open|api\.x\.com|api\.twitter\.com/);
   assert.doesNotMatch(panel, /hosted-media-spinner/);
   assert.match(style, /\.create-posted-mark[^}]*background: var\(--success\)/);
   assert.match(app, /kind: 'text'/);
@@ -101,6 +117,7 @@ test('Create uses one Posted panel for text, video, and audio', async () => {
   assert.match(app, /queryPostedAnnotationRoute\(supabase, annotationId\)/);
   assert.match(app, /postedConfirmation === null/);
   assert.match(app, /hostedMediaProgressCopy/);
+  assert.match(app, /openPostedPermalink\(confirmation\.publicPath\)/);
   assert.doesNotMatch(app, /getPostPublishNavigation/);
   assert.doesNotMatch(app, /chrome\.notifications/);
 });
