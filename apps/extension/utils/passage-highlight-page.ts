@@ -157,54 +157,49 @@ export function applyPassageHighlightsOnPage(
     return { normalized, map };
   };
 
-  const locatePassage = (
+  const normalizeAnchor = (value: string) => value.replace(/\s+/g, ' ').trim();
+  const stripEdgeQuotes = (value: string) =>
+    value.replace(/^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g, '').trim();
+
+  const lowerIfSameLength = (value: string) => {
+    const lower = value.toLowerCase();
+    return lower.length === value.length ? lower : null;
+  };
+
+  const ratio = (expected: string, actual: string, fromEnd: boolean) => {
+    if (!expected || !actual) return 0;
+    const left = expected.toLowerCase();
+    const right = actual.toLowerCase();
+    const length = Math.min(left.length, right.length);
+    let same = 0;
+    for (let size = 1; size <= length; size += 1) {
+      const expectedSlice = fromEnd ? left.slice(-size) : left.slice(0, size);
+      const actualSlice = fromEnd ? right.slice(-size) : right.slice(0, size);
+      if (expectedSlice === actualSlice) same = size;
+      else break;
+    }
+    return same / expected.length;
+  };
+
+  type PassageHit = {
+    start: number;
+    end: number;
+    score: number;
+    map: { node: Text; offset: number }[];
+  };
+
+  const exactHitsIn = (
     haystack: string,
-    quoteValue: string,
-    prefixValue: string,
-    suffixValue: string,
-  ): { start: number; end: number } | null => {
-    const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
-    const quote = normalize(quoteValue).replace(/^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g, '').trim();
-    const prefix = normalize(prefixValue);
-    const suffix = normalize(suffixValue);
-    if (!haystack || !quote) return null;
-
-    const lowerIfSameLength = (value: string) => {
-      const lower = value.toLowerCase();
-      return lower.length === value.length ? lower : null;
-    };
-
-    const allIndexes = (needle: string, caseFold: boolean): number[] => {
-      if (!needle || needle.length > haystack.length) return [];
-      const source = caseFold ? lowerIfSameLength(haystack) : haystack;
-      const target = caseFold ? lowerIfSameLength(needle) : needle;
-      if (!source || !target) return [];
-      const indexes: number[] = [];
-      let from = 0;
-      while (from <= source.length - target.length && indexes.length < 12) {
-        const index = source.indexOf(target, from);
-        if (index < 0) break;
-        indexes.push(index);
-        from = index + 1;
-      }
-      return indexes;
-    };
-
-    const ratio = (expected: string, actual: string, fromEnd: boolean) => {
-      if (!expected || !actual) return 0;
-      const left = expected.toLowerCase();
-      const right = actual.toLowerCase();
-      const length = Math.min(left.length, right.length);
-      let same = 0;
-      for (let size = 1; size <= length; size += 1) {
-        const expectedSlice = fromEnd ? left.slice(-size) : left.slice(0, size);
-        const actualSlice = fromEnd ? right.slice(-size) : right.slice(0, size);
-        if (expectedSlice === actualSlice) same = size;
-        else break;
-      }
-      return same / expected.length;
-    };
-
+    map: { node: Text; offset: number }[],
+    quote: string,
+    prefix: string,
+    suffix: string,
+    caseFold: boolean,
+  ): PassageHit[] => {
+    if (!haystack || !quote || quote.length > haystack.length) return [];
+    const source = caseFold ? lowerIfSameLength(haystack) : haystack;
+    const target = caseFold ? lowerIfSameLength(quote) : quote;
+    if (!source || !target) return [];
     const contextScore = (start: number, end: number) => {
       const parts: number[] = [];
       if (prefix) {
@@ -222,26 +217,30 @@ export function applyPassageHighlightsOnPage(
       if (parts.length === 0) return 1;
       return parts.reduce((sum, part) => sum + part, 0) / parts.length;
     };
+    const hits: PassageHit[] = [];
+    let from = 0;
+    while (from <= source.length - target.length && hits.length < 12) {
+      const index = source.indexOf(target, from);
+      if (index < 0) break;
+      const end = index + target.length;
+      hits.push({ start: index, end, score: contextScore(index, end), map });
+      from = index + 1;
+    }
+    return hits;
+  };
 
-    const pickExact = (indexes: number[]) => {
-      if (indexes.length === 0) return null;
-      const hits = indexes.map((start) => ({
-        start,
-        end: start + quote.length,
-        score: contextScore(start, start + quote.length),
-      }));
-      if (!prefix && !suffix) return hits.length === 1 ? hits[0] : null;
-      const ranked = [...hits].sort((left, right) => right.score - left.score);
-      const best = ranked[0];
-      const second = ranked[1];
-      if (!best || best.score < 0.72) return null;
-      if (second && best.score - second.score < 0.2) return null;
-      return best;
-    };
-
-    const exact = pickExact(allIndexes(quote, false)) ?? pickExact(allIndexes(quote, true));
-    if (!exact) return null;
-    return { start: exact.start, end: exact.end };
+  // Choice is page-wide. A root that contains the quote once is still ambiguous
+  // when another root contains it too. Case-fold runs only when the page has
+  // no case-sensitive hit, so a rejected exact match cannot fall through.
+  const choosePassageHit = (hits: PassageHit[], prefix: string, suffix: string): PassageHit | null => {
+    if (hits.length === 0) return null;
+    if (!prefix && !suffix) return hits.length === 1 ? hits[0] ?? null : null;
+    const ranked = [...hits].sort((left, right) => right.score - left.score);
+    const best = ranked[0];
+    const second = ranked[1];
+    if (!best || best.score < 0.72) return null;
+    if (second && best.score - second.score < 0.2) return null;
+    return best;
   };
 
   const unwrap = (host: Element) => {
@@ -380,47 +379,50 @@ export function applyPassageHighlightsOnPage(
     };
     collectRoots(document.body);
 
+    const paintHit = (located: PassageHit, passage: { annotationId: string; color: string }): boolean => {
+      const slices: { node: Text; startOffset: number; endOffset: number }[] = [];
+      let index = located.start;
+      while (index < located.end) {
+        const point = located.map[index];
+        if (!point) return false;
+        let next = index + 1;
+        while (next < located.end && located.map[next]?.node === point.node) next += 1;
+        const endPoint = located.map[next - 1];
+        if (!endPoint) return false;
+        slices.push({
+          node: point.node,
+          startOffset: point.offset,
+          endOffset: endPoint.offset + 1,
+        });
+        index = next;
+      }
+      if (slices.length === 0) return false;
+      for (let sliceIndex = slices.length - 1; sliceIndex >= 0; sliceIndex -= 1) {
+        const slice = slices[sliceIndex];
+        if (!slice || slice.startOffset >= slice.endOffset) continue;
+        paintSlice(slice.node, slice.startOffset, slice.endOffset, passage);
+      }
+      return true;
+    };
+
     let highlighted = 0;
     let unmatched = 0;
     for (const passage of passages) {
-      let painted = false;
-      for (const root of roots) {
-        const { normalized, map } = buildNormalized(collectText(root));
-        const located = locatePassage(normalized, passage.quote, passage.prefix, passage.suffix);
-        if (!located) continue;
-        const slices: { node: Text; startOffset: number; endOffset: number }[] = [];
-        let index = located.start;
-        let slicesValid = true;
-        while (index < located.end) {
-          const point = map[index];
-          if (!point) {
-            slicesValid = false;
-            break;
-          }
-          let next = index + 1;
-          while (next < located.end && map[next]?.node === point.node) next += 1;
-          const endPoint = map[next - 1];
-          if (!endPoint) {
-            slicesValid = false;
-            break;
-          }
-          slices.push({
-            node: point.node,
-            startOffset: point.offset,
-            endOffset: endPoint.offset + 1,
-          });
-          index = next;
-        }
-        if (!slicesValid || slices.length === 0) continue;
-        for (let sliceIndex = slices.length - 1; sliceIndex >= 0; sliceIndex -= 1) {
-          const slice = slices[sliceIndex];
-          if (!slice || slice.startOffset >= slice.endOffset) continue;
-          paintSlice(slice.node, slice.startOffset, slice.endOffset, passage);
-        }
-        painted = true;
-        break;
+      const quote = stripEdgeQuotes(normalizeAnchor(passage.quote));
+      const prefix = normalizeAnchor(passage.prefix);
+      const suffix = normalizeAnchor(passage.suffix);
+      const built = roots.map((root) => buildNormalized(collectText(root)));
+      let hits: PassageHit[] = [];
+      for (const { normalized, map } of built) {
+        hits.push(...exactHitsIn(normalized, map, quote, prefix, suffix, false));
       }
-      if (painted) highlighted += 1;
+      if (hits.length === 0) {
+        for (const { normalized, map } of built) {
+          hits.push(...exactHitsIn(normalized, map, quote, prefix, suffix, true));
+        }
+      }
+      const chosen = choosePassageHit(hits, prefix, suffix);
+      if (chosen && paintHit(chosen, passage)) highlighted += 1;
       else unmatched += 1;
     }
     return { ok: true, highlighted, unmatched };

@@ -264,7 +264,17 @@ test('a repeated quote inside an open shadow root is not highlighted when contex
   try {
     const result = applyPassageHighlightsOnPage({ pageUrl: PAGE, passages: [passage()] });
     assert.equal(result.highlighted, 1);
-    assert.equal(dom.marks().map((mark) => mark.textContent).join(''), QUOTE);
+    const marks = dom.marks();
+    assert.equal(marks.length, 1);
+    assert.equal(marks[0].textContent, QUOTE);
+    const shadowHost = globalThis.document.body.childNodes.find((node) => node.shadowRoot);
+    const shadowMarks = [];
+    const visitShadow = (node) => {
+      if (node?.tagName === 'ANNOTATED-PASSAGE') shadowMarks.push(node);
+      for (const child of node?.childNodes ?? []) visitShadow(child);
+    };
+    visitShadow(shadowHost.shadowRoot);
+    assert.equal(shadowMarks.length, 0);
   } finally {
     dom.restore();
   }
@@ -409,6 +419,47 @@ test('repeated exact quotes with no context are left unmarked', () => {
     assert.equal(result.highlighted, 0);
     assert.equal(result.unmatched, 1);
     assert.equal(dom.marks().length, 0);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('an ambiguous quote with null context does not paint the shadow-root copy', () => {
+  const dom = installDom([
+    { text: QUOTE },
+    { tag: 'blockquote', text: `Someone misquoted the log as: ${QUOTE} That retelling left out the tide.` },
+    { shadow: true, text: `Inside an open shadow root, a different telling says ${QUOTE} The shadow copy is not the seeded passage.` },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({ prefix: null, suffix: null })],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 0);
+    assert.equal(result.unmatched, 1);
+    assert.equal(dom.marks().length, 0);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('a quote that appears once, only inside a shadow root, still highlights with null context', () => {
+  const dom = installDom([
+    { text: 'The light DOM does not contain the log.' },
+    { shadow: true, text: `Inside an open shadow root, the log says ${QUOTE} and then ends.` },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({ prefix: null, suffix: null })],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 1);
+    assert.equal(result.unmatched, 0);
+    const marks = dom.marks();
+    assert.equal(marks.length, 1);
+    assert.equal(marks[0].textContent, QUOTE);
   } finally {
     dom.restore();
   }
