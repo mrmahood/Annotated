@@ -9,6 +9,7 @@ import { TextWithLogoMark } from './logo-mark';
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import { formatMediaTime } from '@annotated/shared/media-time';
+import { buildXPostIntentUrl } from '@annotated/shared/x-intent';
 import { hostedVideoPlayerLayout } from '@annotated/shared/hosted-video-layout';
 import {
   ANNOTATION_AUDIO_BUCKET,
@@ -2083,6 +2084,12 @@ export function AnnotationDetailView({
   if (status === 'missing') return <div className="compact-state view-state"><strong>Annotation unavailable</strong><span>It may have been removed or is not public.</span></div>;
   if (status === 'error' || !annotation) return <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotation unavailable</strong><span>Check your connection and go back to try again.</span></div>;
   const publicUrl = getPublicUrl(getPublicAnnotationPath(annotation.route, annotation.id));
+  const postToXHref = publicUrl
+    ? buildXPostIntentUrl({
+        take: annotation.title || annotation.commentaryText || '',
+        permalink: publicUrl,
+      })
+    : null;
   const audioUrl = annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;
@@ -2196,7 +2203,7 @@ export function AnnotationDetailView({
         <span>{annotation.commentCount.toLocaleString()} comments</span>
         {publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Public page ↗</a>}
         {publicUrl && <a href={`${publicUrl}#claim`} target="_blank" rel="noopener noreferrer">File a claim</a>}
-        {publicUrl && <a href={`https://twitter.com/intent/tweet?${new URLSearchParams({ text: (annotation.title || annotation.commentaryText.trim() || 'Annotated').slice(0, 200), url: publicUrl }).toString()}`} target="_blank" rel="noopener noreferrer">Post to X</a>}
+        {postToXHref && <a href={postToXHref} target="_blank" rel="noopener noreferrer">Post to X</a>}
       </div>
       <ShareControl
         key={`${annotation.id}:${String(hasReshared)}:${currentUserId ?? 'signed-out'}`}

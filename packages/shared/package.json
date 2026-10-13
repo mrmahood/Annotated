@@ -14,7 +14,8 @@
     "./hosted-video-layout": "./src/hosted-video-layout.ts",
     "./logo-mark": "./src/logo-mark.ts",
     "./appearance": "./src/appearance.ts",
-    "./profile-handle": "./src/profile-handle.ts"
+    "./profile-handle": "./src/profile-handle.ts",
+    "./x-intent": "./src/x-intent.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.mjs"
