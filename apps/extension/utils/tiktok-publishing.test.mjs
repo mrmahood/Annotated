@@ -29,6 +29,7 @@ test('begins a hosted normalized millisecond TikTok time range', async () => {
     sourceUrl: `${CANONICAL}?is_from_webapp=1&sender_device=pc`,
     title: 'BBC clip', author: 'bbcnews', startMs: 1_000, endMs: 8_000,
     commentaryText: 'Required commentary', videoDurationMs: 20_000,
+    annotationNote: { noteType: 'receipts', verdict: null, sourceUrls: ['https://example.test/receipt'] },
   }), {
     annotationId: ANNOTATION_ID, mediaId: MEDIA_ID, creatorHandle: 'creator',
     annotationSlug: 'tiktok-33333333', processingStatus: 'capture_pending',
@@ -62,6 +63,7 @@ test('allows empty typed commentary when a recorded voice clip is present', asyn
   await beginHostedTikTokAnnotation(client, {
     sourceUrl: CANONICAL, title: 'BBC clip', author: 'bbcnews',
     startMs: 1_000, endMs: 8_000, commentaryText: '', hasRecordedCommentary: true,
+    annotationNote: { noteType: 'context', verdict: null, sourceUrls: [] },
   });
   assert.equal(client.calls[0][1].p_commentary_text, '');
   assert.equal(client.calls[0][1].p_title, null);

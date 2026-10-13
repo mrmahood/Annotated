@@ -10,6 +10,9 @@ import type {
 } from "@/lib/data/public-discovery";
 import { getInitial, truncateExcerpt } from "@/lib/public-content";
 import { getPublicAnnotationPath } from "@/lib/public-routes";
+import { AnnotationTypeLabel } from "@/components/annotation-note/annotation-type-label";
+import { SourceLinks } from "@/components/annotation-note/source-links";
+import { VerdictPill } from "@/components/annotation-note/verdict-pill";
 import { HostedMediaPlayer } from "./hosted-media-player";
 import { TextWithLogoMark } from "./logo-mark";
 import { PublishedAudioPlayer } from "./published-audio-player";
@@ -133,6 +136,12 @@ export function AnnotationCard({
       </header>
 
       <div className="card-body">
+        {(annotation.noteType || annotation.verdict) && (
+          <p className="card-note-pills">
+            {annotation.noteType && <AnnotationTypeLabel noteType={annotation.noteType} />}
+            {annotation.verdict && <VerdictPill verdict={annotation.verdict} />}
+          </p>
+        )}
         {annotation.title ? (
           <p className="card-annotation-title" id={headingId}>
             <TextWithLogoMark text={annotation.title} />
@@ -143,6 +152,18 @@ export function AnnotationCard({
             <TextWithLogoMark text={commentaryLead} />
           </p>
         ) : null}
+        {annotation.sourceLinks.length > 0 && (
+          <div className="card-note-sources">
+            <SourceLinks
+              heading={false}
+              sources={annotation.sourceLinks.map((link) => ({
+                ...link,
+                helpfulCount: 0,
+                viewerMarkedHelpful: false,
+              }))}
+            />
+          </div>
+        )}
         {annotation.audio && (
           <PublishedAudioPlayer
             publicUrl={annotation.audio.publicUrl}

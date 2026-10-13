@@ -1,4 +1,10 @@
 import { parseStoredAnnotationTitle } from "@annotated/shared/annotation-title";
+import {
+  parseStoredAnnotationNote,
+  type AnnotationNoteType,
+  type AnnotationSourceLink,
+  type AnnotationVerdict,
+} from "@annotated/shared/annotation-note";
 import type { PublicReceiptSource } from "@annotated/shared/receipt-source";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
@@ -43,6 +49,9 @@ type PublicAnnotationBase = {
   id: string;
   title: string | null;
   commentaryText: string;
+  noteType: AnnotationNoteType | null;
+  verdict: AnnotationVerdict | null;
+  sourceLinks: AnnotationSourceLink[];
   publishedAt: string;
   route: PublicAnnotationRoute | null;
   source: {
@@ -302,10 +311,18 @@ export function mapPublicAnnotationDetail(
   const audio = audioMetadata && publicAudioUrl
     ? { publicUrl: publicAudioUrl.href, durationMs: audioMetadata.durationMs }
     : null;
+  const note = parseStoredAnnotationNote(
+    annotationValue.note_type,
+    annotationValue.verdict,
+    annotationValue.cited_sources,
+  );
   const common = {
     id: annotationId,
     title,
     commentaryText,
+    noteType: note.noteType,
+    verdict: note.verdict,
+    sourceLinks: note.sourceLinks,
     publishedAt: publishedDate.toISOString(),
     route: getRoute(annotationValue, profileValue),
     source: {

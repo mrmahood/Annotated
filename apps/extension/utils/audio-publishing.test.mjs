@@ -17,6 +17,7 @@ const input = {
   canonicalUrl: 'https://example.test/episode/42',
   title: 'Episode 42', author: 'Host', publisher: 'Example FM', showName: 'Example Show',
   startMs: 20_000, endMs: 50_000, commentaryText: 'Required commentary', mediaDurationMs: 120_000,
+  annotationNote: { noteType: 'context', verdict: null, sourceUrls: [] },
 };
 
 function fakeClient() {

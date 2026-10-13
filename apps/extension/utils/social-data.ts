@@ -1,4 +1,11 @@
 import { parseStoredAnnotationTitle } from '@annotated/shared/annotation-title';
+import {
+  isMissingAnnotationNoteSchema,
+  parseStoredAnnotationNote,
+  type AnnotationNoteType,
+  type AnnotationSourceLink,
+  type AnnotationVerdict,
+} from '@annotated/shared/annotation-note';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getHistoricalStoredTargetRangeError } from '@annotated/shared/media-time';
 import { getYouTubeVideoIdentity, isYouTubeVideoUrl } from '@annotated/shared/youtube';
@@ -38,6 +45,9 @@ type PublicAnnotationBase = {
   id: string;
   title: string | null;
   commentaryText: string;
+  noteType: AnnotationNoteType | null;
+  verdict: AnnotationVerdict | null;
+  sourceLinks: AnnotationSourceLink[];
   publishedAt: string;
   route: PublicAnnotationRoute | null;
   creator: { id: string; displayName: string; avatarUrl: string | null };
@@ -153,16 +163,22 @@ type UnknownRecord = Record<string, unknown>;
 const ANNOTATION_SOURCE_EMBED =
   'canonical_url, normalized_url, source_type, title, author, publisher, metadata';
 
-export function buildAnnotationSelect(options: { innerSource?: boolean } = {}): string {
+export function buildAnnotationSelect(options: { innerSource?: boolean; classification?: boolean } = {}): string {
   const sourceHint = options.innerSource
     ? 'source:sources!annotations_source_id_fkey!inner'
     : 'source:sources!annotations_source_id_fkey';
+  const classification = options.classification === false
+    ? ''
+    : `
+  note_type,
+  verdict,
+  cited_sources:annotation_sources(id, url, position),`;
   return `
   id,
   slug,
   annotation_type,
   title,
-  commentary_text,
+  commentary_text,${classification}
   published_at,
   creator:profiles!annotations_user_id_fkey(id, username, display_name, avatar_url),
   ${sourceHint}(${ANNOTATION_SOURCE_EMBED}),
@@ -216,10 +232,14 @@ export function mapPublicAnnotation(value: unknown): PublicAnnotation | null {
     return null;
   }
 
+  const note = parseStoredAnnotationNote(value.note_type, value.verdict, value.cited_sources);
   const common = {
     id,
     title,
     commentaryText,
+    noteType: note.noteType,
+    verdict: note.verdict,
+    sourceLinks: note.sourceLinks,
     publishedAt: date.toISOString(),
     route,
     commentCount: 0,
@@ -406,25 +426,30 @@ export async function queryAnnotations(
   const offset = options.offset ?? 0;
   if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid page offset.');
 
-  let query = supabase
-    .from('annotations')
-    .select(buildAnnotationSelect({
-      innerSource: Boolean(plan.normalizedUrl || plan.normalizedUrls),
-    }), { count: 'exact' })
-    .eq('status', plan.status);
-  if (plan.normalizedUrls && plan.normalizedUrls.length > 1) {
-    query = query.in('source.normalized_url', plan.normalizedUrls);
-  } else if (plan.normalizedUrl) {
-    query = query.eq('source.normalized_url', plan.normalizedUrl);
-  }
-  if (plan.profileId) query = query.eq('user_id', plan.profileId);
-  for (const order of plan.orders) {
-    query = query.order(order.column, { ascending: order.ascending });
-  }
-  const { data, count, error } = await query.range(
-    offset,
-    offset + ANNOTATION_PAGE_SIZE,
-  );
+  const listAnnotations = (classification: boolean) => {
+    let query = supabase
+      .from('annotations')
+      .select(buildAnnotationSelect({
+        innerSource: Boolean(plan.normalizedUrl || plan.normalizedUrls),
+        classification,
+      }), { count: 'exact' })
+      .eq('status', plan.status);
+    if (plan.normalizedUrls && plan.normalizedUrls.length > 1) {
+      query = query.in('source.normalized_url', plan.normalizedUrls);
+    } else if (plan.normalizedUrl) {
+      query = query.eq('source.normalized_url', plan.normalizedUrl);
+    }
+    if (plan.profileId) query = query.eq('user_id', plan.profileId);
+    for (const order of plan.orders) {
+      query = query.order(order.column, { ascending: order.ascending });
+    }
+    return query.range(offset, offset + ANNOTATION_PAGE_SIZE);
+  };
+  const primaryList = await listAnnotations(true);
+  const listed = primaryList.error && isMissingAnnotationNoteSchema(primaryList.error)
+    ? await listAnnotations(false)
+    : primaryList;
+  const { data, count, error } = listed;
   if (error || !data) throw new Error('Annotations are unavailable.');
 
   const rows = data.slice(0, ANNOTATION_PAGE_SIZE);
@@ -519,11 +544,19 @@ export async function queryTimeline(
   const annotationIds = [...new Set(timeline.map((row) => row.annotationId))];
   const annotationsById = new Map<string, PublicAnnotation>();
   if (annotationIds.length > 0) {
-    const { data: annotationRows, error: annotationError } = await supabase
+    const primaryRows = await supabase
       .from('annotations')
       .select(buildAnnotationSelect())
       .eq('status', 'published')
       .in('id', annotationIds);
+    const listedRows = primaryRows.error && isMissingAnnotationNoteSchema(primaryRows.error)
+      ? await supabase
+        .from('annotations')
+        .select(buildAnnotationSelect({ classification: false }))
+        .eq('status', 'published')
+        .in('id', annotationIds)
+      : primaryRows;
+    const { data: annotationRows, error: annotationError } = listedRows;
     if (annotationError || !annotationRows) throw new Error('Annotations are unavailable.');
     for (const row of annotationRows) {
       const annotation = mapPublicAnnotation(row);
@@ -640,12 +673,21 @@ export async function queryAnnotation(
   annotationId: string,
 ): Promise<PublicAnnotation | null> {
   if (!isUuid(annotationId)) return null;
-  const { data, error } = await supabase
+  const primaryAnnotation = await supabase
     .from('annotations')
     .select(buildAnnotationSelect())
     .eq('id', annotationId)
     .eq('status', 'published')
     .maybeSingle();
+  const annotationResult = primaryAnnotation.error && isMissingAnnotationNoteSchema(primaryAnnotation.error)
+    ? await supabase
+      .from('annotations')
+      .select(buildAnnotationSelect({ classification: false }))
+      .eq('id', annotationId)
+      .eq('status', 'published')
+      .maybeSingle()
+    : primaryAnnotation;
+  const { data, error } = annotationResult;
   if (error) throw new Error('The annotation is unavailable.');
   if (!data) return null;
   const annotation = mapPublicAnnotation(data);
@@ -915,11 +957,19 @@ export async function queryBookmarks(
 
   const annotationsById = new Map<string, PublicAnnotation>();
   if (annotationIds.length > 0) {
-    const { data: annotationRows, error: annotationError } = await supabase
+    const primaryRows = await supabase
       .from('annotations')
       .select(buildAnnotationSelect())
       .eq('status', 'published')
       .in('id', annotationIds);
+    const listedRows = primaryRows.error && isMissingAnnotationNoteSchema(primaryRows.error)
+      ? await supabase
+        .from('annotations')
+        .select(buildAnnotationSelect({ classification: false }))
+        .eq('status', 'published')
+        .in('id', annotationIds)
+      : primaryRows;
+    const { data: annotationRows, error: annotationError } = listedRows;
     if (annotationError || !annotationRows) throw new Error('Annotations are unavailable.');
     for (const row of annotationRows) {
       const annotation = mapPublicAnnotation(row);

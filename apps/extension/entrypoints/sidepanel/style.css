@@ -67,10 +67,10 @@
 * { box-sizing: border-box; }
 html { background: var(--background); }
 body { min-width: 300px; margin: 0; color: var(--text-primary); background: var(--background); font-size: 13px; }
-button, textarea, input { font: inherit; }
+button, textarea, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
-button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .panel { min-height: 100vh; display: flex; flex-direction: column; }
 .app-header { position: sticky; z-index: 10; top: 0; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--background) 92%, transparent); backdrop-filter: blur(10px); }
@@ -546,6 +546,32 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   .social-list { gap: 14px; }
   .annotation-card-body { padding: 12px 14px 10px; }
 }
+
+.annotation-note-fields { display: grid; gap: 10px; margin: 0; padding: 0; border: 0; }
+.annotation-note-fields select, .claim-form input, .claim-form textarea {
+  width: 100%; padding: 10px 11px; border: 1px solid var(--border); border-radius: var(--radius-medium);
+  color: var(--text-primary); background: var(--control-background); font-size: 13px;
+}
+.annotation-note-fields .field-hint, .note-consensus .field-hint, .claim-section p { color: var(--text-muted); font-size: 12px; }
+.note-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.note-type, .note-verdict { display: inline-flex; align-items: center; min-height: 22px; padding: 1px 8px; border-radius: 999px; font-size: 11px; }
+.note-type { color: var(--text-secondary); background: var(--accent-fill); }
+.note-verdict-true { color: var(--success); background: color-mix(in srgb, var(--success) 18%, transparent); }
+.note-verdict-false { color: var(--destructive); background: var(--destructive-surface); }
+.note-verdict-misleading { color: #fde047; background: color-mix(in srgb, #fde047 16%, transparent); }
+:root[data-theme="light"] .note-verdict-misleading { color: #854d0e; background: #fefce8; }
+.note-verdict-needs_context { color: var(--text-secondary); background: var(--accent-fill); }
+.note-source-links, .note-consensus { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.note-source-links a, .note-sources a { overflow-wrap: anywhere; }
+.note-consensus h2 { margin: 0; font-size: 14px; }
+.note-consensus-counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; color: var(--text-secondary); font-size: 12px; }
+.note-consensus-bar { display: flex; height: 8px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.note-consensus-agree { background: var(--success); }
+.note-consensus-actions { display: flex; gap: 8px; }
+.claim-section { display: grid; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.claim-section h2 { margin: 0; font-size: 15px; }
+.claim-form { display: grid; gap: 6px; }
+.claim-confirm { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }

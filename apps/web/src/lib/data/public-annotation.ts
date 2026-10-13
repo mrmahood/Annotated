@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { isMissingAnnotationNoteSchema } from "@annotated/shared/annotation-note";
 import { ANNOTATION_AUDIO_BUCKET, parsePublicAnnotationAudio } from "@/lib/audio-commentary";
 import { publicReceiptSourcesFrom } from "@/lib/receipts";
 import { TWEET_CAPTURE_BUCKET, parsePublicTweetCapture, type PublicTweetCapture } from "@/lib/tweet-capture";
@@ -152,16 +153,27 @@ export const loadPublicAnnotation = cache(
 
     try {
       const supabase = await createClient();
-      const { data: annotation, error: annotationError } = await supabase
+      const detailSelect = "id, source_id, user_id, annotation_type, title, commentary_text, note_type, verdict, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)";
+      const detailSelectBeforeNote = "id, source_id, user_id, annotation_type, title, commentary_text, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)";
+      const primaryAnnotation = await supabase
         .from("annotations")
-        .select("id, source_id, user_id, annotation_type, title, commentary_text, published_at, slug, audio:annotation_audio(storage_path, duration_ms, mime_type, byte_size)")
+        .select(detailSelect)
         .eq("id", annotationId)
         .eq("status", "published")
         .maybeSingle();
+      const annotationResult = primaryAnnotation.error && isMissingAnnotationNoteSchema(primaryAnnotation.error)
+        ? await supabase
+          .from("annotations")
+          .select(detailSelectBeforeNote)
+          .eq("id", annotationId)
+          .eq("status", "published")
+          .maybeSingle()
+        : primaryAnnotation;
+      const { data: annotation, error: annotationError } = annotationResult;
 
       if (annotationError || !annotation) return null;
 
-      const [targetResult, sourceResult, profileResult, mediaStateResult] = await Promise.all([
+      const [targetResult, sourceResult, profileResult, mediaStateResult, citedSourcesResult] = await Promise.all([
         supabase
           .from("annotation_targets")
           .select("target_type, selected_text, start_ms, end_ms")
@@ -180,13 +192,22 @@ export const loadPublicAnnotation = cache(
         supabase
           .rpc("get_public_annotation_media_state", { p_annotation_id: annotation.id })
           .maybeSingle(),
+        supabase
+          .from("annotation_sources")
+          .select("id, url, position")
+          .eq("annotation_id", annotation.id)
+          .order("position", { ascending: true }),
       ]);
 
+      const citedSourcesMissing = Boolean(
+        citedSourcesResult.error && isMissingAnnotationNoteSchema(citedSourcesResult.error),
+      );
       if (
         targetResult.error ||
         sourceResult.error ||
         profileResult.error ||
-        mediaStateResult.error
+        mediaStateResult.error ||
+        (citedSourcesResult.error && !citedSourcesMissing)
       ) return null;
 
       let transcript: unknown = null;
@@ -208,7 +229,7 @@ export const loadPublicAnnotation = cache(
       }
 
       const detail = mapPublicAnnotationDetail(
-        annotation,
+        { ...annotation, cited_sources: citedSourcesMissing ? [] : (citedSourcesResult.data ?? []) },
         targetResult.data,
         sourceResult.data,
         profileResult.data,

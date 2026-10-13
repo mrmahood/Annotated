@@ -17,6 +17,7 @@ const input = {
   title: 'News clip', author: null, publisher: 'Example News',
   startMs: 1_000, endMs: 8_000, commentaryText: 'Required commentary',
   videoDurationMs: 60_000,
+  annotationNote: { noteType: 'context', verdict: null, sourceUrls: [] },
 };
 
 function fakeClient() {
