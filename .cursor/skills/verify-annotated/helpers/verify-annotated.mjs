@@ -801,7 +801,6 @@ Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
 chrome-extension exits 0 or 1. It loads apps/extension/.output/chrome-mv3 and does not need launch or doctor.
 authenticated-me exits 3 until SUPABASE_SERVICE_ROLE_KEY is set.
-The staging mint exits 3 until STAGING_SUPABASE_SERVICE_ROLE_KEY, STAGING_SUPABASE_URL, and STAGING_SUPABASE_PUBLISHABLE_KEY are set.
 Evidence stays in .cursor/skills/verify-annotated/evidence/.
 `);
 }

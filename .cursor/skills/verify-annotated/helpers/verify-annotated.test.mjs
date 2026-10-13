@@ -17,7 +17,6 @@ import {
   redactSecrets,
   toPlaywrightCookies,
 } from "./mint-test-session.mjs";
-import { readStagingMintEnv } from "./mint-staging-test-session.mjs";
 
 const TRENDING_TITLE = "What’s Trending | Annotated";
 
@@ -318,12 +317,6 @@ test("redactSecrets removes a known token and a JWT", () => {
   assert.match(text, /\[redacted\]/);
 });
 
-function fakeJwt(ref) {
-  const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
-  const body = Buffer.from(JSON.stringify({ ref, role: "service_role" })).toString("base64url");
-  return `${header}.${body}.sig`;
-}
-
 test("extension id comes from the chrome-extension host", () => {
   assert.equal(
     extensionIdFromChromeUrl("chrome-extension://abcdefghijklmnopabcdefghijklmnop/sidepanel.html"),
@@ -400,41 +393,4 @@ test("a create probe passes only for 30s, 60s, and a clamped drag", () => {
   });
   assert.equal(fail.ok, false);
   assert.ok(fail.failures.includes("typed-start-end-fields"));
-});
-
-test("staging mint names the missing secrets and ignores the production service role", () => {
-  const missing = readStagingMintEnv({
-    SUPABASE_SERVICE_ROLE_KEY: fakeJwt("vnxjktpdzmykmqrqwvks"),
-    NEXT_PUBLIC_SUPABASE_URL: "https://vnxjktpdzmykmqrqwvks.supabase.co",
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "prod-publishable",
-  });
-  assert.equal(missing.ok, false);
-  assert.equal(missing.exitCode, 3);
-  assert.deepEqual(missing.missing, [
-    "STAGING_SUPABASE_SERVICE_ROLE_KEY",
-    "STAGING_SUPABASE_URL",
-    "STAGING_SUPABASE_PUBLISHABLE_KEY",
-  ]);
-});
-
-test("staging mint refuses a production key and a non-staging URL", () => {
-  const prodKey = readStagingMintEnv({
-    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeJwt("vnxjktpdzmykmqrqwvks"),
-    STAGING_SUPABASE_URL: "https://nkkunkwirvfwhmpwonqz.supabase.co",
-    STAGING_SUPABASE_PUBLISHABLE_KEY: "staging-publishable",
-  });
-  assert.equal(prodKey.message, "staging_key_refused");
-  const wrongUrl = readStagingMintEnv({
-    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeJwt("nkkunkwirvfwhmpwonqz"),
-    STAGING_SUPABASE_URL: "https://vnxjktpdzmykmqrqwvks.supabase.co",
-    STAGING_SUPABASE_PUBLISHABLE_KEY: "staging-publishable",
-  });
-  assert.equal(wrongUrl.message, "staging_url_refused");
-  const ready = readStagingMintEnv({
-    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeJwt("nkkunkwirvfwhmpwonqz"),
-    STAGING_SUPABASE_URL: "https://nkkunkwirvfwhmpwonqz.supabase.co",
-    STAGING_SUPABASE_PUBLISHABLE_KEY: "staging-publishable",
-  });
-  assert.equal(ready.ok, true);
-  assert.equal(ready.url, "https://nkkunkwirvfwhmpwonqz.supabase.co");
 });

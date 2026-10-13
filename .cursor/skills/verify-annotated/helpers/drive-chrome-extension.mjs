@@ -6,8 +6,6 @@ import { createServer } from "node:http";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mintStagingExtensionSession, readStagingMintEnv } from "./mint-staging-test-session.mjs";
-
 export const YOUTUBE_WATCH_URL = "https://www.youtube.com/watch?v=aqz-KE-bpKQ";
 export const MIN_PUBLISH_RANGE_MS = 1_000;
 export const MAX_PUBLISH_RANGE_MS = 90_000;
@@ -513,34 +511,13 @@ export async function runChromeExtensionDrive({
   const sidePanelPath = sidePanelPathFromManifest(manifest);
   if (!sidePanelPath) throw new Error("manifest-missing-side-panel");
   mkdirSync(evidenceDir, { recursive: true });
-  const staging = readStagingMintEnv(process.env);
   const notes = [];
   const failures = [];
   let audioStatus = "unavailable";
-  let sessionNote = staging.exitCode === 3
-    ? `- Staging session: not minted. Missing ${staging.missing.join(", ")}.`
-    : staging.ok
-      ? "- Staging session: not minted."
-      : `- Staging session: refused (${staging.message}).`;
   const fixture = await startAudioFixture();
   const launched = await launchExtensionContext(chromium, extensionDir);
   const { context, extensionId } = launched;
   try {
-    if (staging.ok) {
-      try {
-        const minted = await mintStagingExtensionSession(process.env);
-        const worker = context.serviceWorkers()[0];
-        if (!worker) throw new Error("service-worker-missing");
-        await worker.evaluate(async (value) => {
-          await chrome.storage.local.set({ "annotated:auth:supabase-session": value });
-        }, minted.sessionJson);
-        sessionNote = "- Staging session: minted for cbandcooptest@gmail.com. The session value was not logged.";
-      } catch (error) {
-        const code = typeof error?.code === "string" ? error.code : "mint_failed";
-        failures.push(`staging-mint:${code}`);
-        sessionNote = `- Staging session: mint failed (${code}).`;
-      }
-    }
     const sidePanelUrl = `chrome-extension://${extensionId}/${sidePanelPath}`;
     const [youtube] = context.pages();
     await youtube.goto(youtubeUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -627,7 +604,7 @@ export async function runChromeExtensionDrive({
       `- Typed START/END fields: ${youtubeProbe ? youtubeProbe.typedFieldCount : "not observed"}`,
       `- Signed in: ${youtubeProbe?.signedIn ? "yes" : "no"}`,
       "- Publish clip was not clicked.",
-      sessionNote,
+      "- Session: signed out. This drive does not mint a Supabase session.",
     );
     if (audioStatus === "pass") notes.push("- Audio source: pass. The same trim checks passed. Publish clip was not clicked.");
     notes.push(`- Result: ${failures.length === 0 ? "pass" : "fail"}`);

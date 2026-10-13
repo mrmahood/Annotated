@@ -27,7 +27,7 @@ This directory is the maintained source for verifying Annotated's user-facing be
 - Capture the user action and the resulting state, not only the final screen.
 - UI proof includes an ARIA snapshot and a screenshot with the page title or primary heading visible.
 - Record the feature ID, entry path, and run id with every artifact.
-- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable. `authenticated-me` stays there until `SUPABASE_SERVICE_ROLE_KEY` is set. The staging mint stays there until `STAGING_SUPABASE_SERVICE_ROLE_KEY`, `STAGING_SUPABASE_URL`, and `STAGING_SUPABASE_PUBLISHABLE_KEY` are set. `chrome-extension` exits 0 or 1.
+- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable. `authenticated-me` stays there until `SUPABASE_SERVICE_ROLE_KEY` is set. `chrome-extension` exits 0 or 1 and does not mint a session.
 - Do not report a skipped entry point as verified through a different path.
 - Exit 0 is a card or signed-in proof. Exit 2 is `pass-empty` for the documented Trending and Who to Follow quiet headings. An unavailable alert, a wrong title, or a 5xx is exit 1. Do not report `pass-empty` as populated content. The public feed's empty copy is still a failed proof.
 
