@@ -42,9 +42,19 @@ export function SiteHeaderAuth({
 
   if (!user) {
     return (
-      <div className="site-auth">
-        <ProviderSignInButton provider="google" returnTo={returnTo} className="site-auth-button" />
-        <ProviderSignInButton provider="x" returnTo={returnTo} className="site-auth-button" />
+      <div className="site-auth site-auth-signed-out">
+        <ProviderSignInButton
+          provider="google"
+          returnTo={returnTo}
+          className="site-auth-button"
+          compactLabel="Google"
+        />
+        <ProviderSignInButton
+          provider="x"
+          returnTo={returnTo}
+          className="site-auth-button"
+          compactLabel="X"
+        />
       </div>
     );
   }

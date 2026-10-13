@@ -61,7 +61,8 @@ test("web Feed side rail and Follow tab stay on the curated Who to Follow contra
   assert.match(styles, /\.who-to-follow-rail \{ display: none; \}/);
   assert.match(styles, /@media \(min-width: 1100px\)/);
   assert.match(styles, /\.discovery-main-with-rail/);
-  assert.match(styles, /\.site-feed-link\.site-who-to-follow-link \{ display: inline; \}/);
+  assert.match(styles, /@media \(max-width: 739px\) \{[\s\S]*\.site-header \.site-nav \{[^}]*overflow-x: auto;/);
+  assert.doesNotMatch(styles, /\.site-feed-link \{ display: none; \}/);
   assert.doesNotMatch(styles, /who-to-follow-rail[^{]*\{[^}]*order:\s*2/);
 });
 

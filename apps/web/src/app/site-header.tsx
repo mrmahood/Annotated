@@ -39,28 +39,30 @@ export async function SiteHeader({
   return (
     <>
       <header className="site-header">
-        <nav className="site-nav" aria-label="Primary navigation">
+        <div className="site-header-start">
           <Link className="site-wordmark" href="/" aria-label="Annotated home">
             <LogoMark />
-            Annotated
+            <span className="site-wordmark-text">Annotated</span>
           </Link>
-          <Link className="site-feed-link" href="/" aria-current={active === "feed" ? "page" : undefined}>
-            Feed
-          </Link>
-          <Link className="site-feed-link" href="/trending" aria-current={active === "trending" ? "page" : undefined}>
-            Trending
-          </Link>
-          <Link
-            className="site-feed-link site-who-to-follow-link"
-            href="/who-to-follow"
-            aria-current={active === "who-to-follow" ? "page" : undefined}
-          >
-            Follow
-          </Link>
-          <Link className="site-feed-link" href="/me" aria-current={active === "me" ? "page" : undefined}>
-            Me
-          </Link>
-        </nav>
+          <nav className="site-nav" aria-label="Primary navigation">
+            <Link className="site-feed-link" href="/" aria-current={active === "feed" ? "page" : undefined}>
+              Feed
+            </Link>
+            <Link className="site-feed-link" href="/trending" aria-current={active === "trending" ? "page" : undefined}>
+              Trending
+            </Link>
+            <Link
+              className="site-feed-link site-who-to-follow-link"
+              href="/who-to-follow"
+              aria-current={active === "who-to-follow" ? "page" : undefined}
+            >
+              Follow
+            </Link>
+            <Link className="site-feed-link" href="/me" aria-current={active === "me" ? "page" : undefined}>
+              Me
+            </Link>
+          </nav>
+        </div>
         <div className="site-chrome">
           <AppearanceControl compact />
           <SiteHeaderAuth user={user} returnTo={returnTo} />
