@@ -180,8 +180,8 @@ function installDom(paragraphs, options = {}) {
   globalThis.CSSStyleSheet = CSSStyleSheet;
   globalThis.getComputedStyle = (element) => {
     const sheet = element.shadowRoot?.adoptedStyleSheets?.[0];
-    const background = String(sheet?.css || '').includes('#ffe566')
-      ? 'rgb(255, 229, 102)'
+    const background = String(sheet?.css || '').includes('#ffe14a')
+      ? 'rgb(255, 225, 74)'
       : 'rgba(0, 0, 0, 0)';
     return { display: 'block', visibility: 'visible', backgroundColor: background };
   };
@@ -285,7 +285,7 @@ test('shadow-root passages highlight when the quote and context live there', () 
     assert.equal(marks.length, 1);
     assert.equal(marks[0].textContent, QUOTE);
     assert.equal(marks[0].getAttribute('data-annotated-color'), 'yellow');
-    assert.match(marks[0].shadowRoot.adoptedStyleSheets[0].css, /#ffe566/);
+    assert.match(marks[0].shadowRoot.adoptedStyleSheets[0].css, /#ffe14a/);
   } finally {
     dom.restore();
   }

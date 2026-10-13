@@ -88,7 +88,7 @@ export function highlighterTokenForVerdict(verdict: string | null): PassageHighl
     'disagree', 'refute', 'refuted', 'false', 'inaccurate', 'no', 'contradict', 'contradicted',
   ].includes(key)) return 'red';
   if ([
-    'mixed', 'uncertain', 'partial', 'disputed', 'context', 'unclear',
+    'mixed', 'uncertain', 'partial', 'disputed', 'context', 'unclear', 'misleading',
   ].includes(key)) return 'amber';
   return 'yellow';
 }

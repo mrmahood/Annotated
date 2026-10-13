@@ -1,7 +1,7 @@
 export const PASSAGE_HIGHLIGHT_LIMIT = 40;
 
 export const PASSAGE_HIGHLIGHTER_COLORS = {
-  yellow: '#ffe566',
+  yellow: '#ffe14a',
   green: '#b6f0a2',
   red: '#ffb3b3',
   amber: '#ffd59a',
@@ -35,7 +35,7 @@ export function applyPassageHighlightsOnPage(
   request: PassageHighlightPageRequest,
 ): PassageHighlightPageResult {
   const colors: Record<string, string> = {
-    yellow: '#ffe566',
+    yellow: '#ffe14a',
     green: '#b6f0a2',
     red: '#ffb3b3',
     amber: '#ffd59a',
@@ -368,13 +368,13 @@ export function applyPassageHighlightsOnPage(
     try {
       const shadow = host.attachShadow({ mode: 'open' });
       const sheet = new StyleSheetCtor();
-      sheet.replaceSync(':host{background-color:#ffe566 !important;color:#1a1a1a}');
+      sheet.replaceSync(':host{background-color:#ffe14a !important;color:#1a170c}');
       shadow.adoptedStyleSheets = [sheet];
       shadow.appendChild(document.createElement('slot'));
       (document.body ?? document.documentElement).appendChild(host);
       const computed = getComputedStyle(host).backgroundColor;
       const text = String(computed || '').toLowerCase().replace(/\s+/g, '');
-      blocked = !text.includes('255,229,102') && text !== '#ffe566';
+      blocked = !text.includes('255,225,74') && text !== '#ffe14a';
     } catch {
       blocked = true;
     } finally {
@@ -401,7 +401,7 @@ export function applyPassageHighlightsOnPage(
     if (typeof StyleSheetCtor !== 'function') throw new Error('stylesheet');
     const sheet = new StyleSheetCtor();
     const color = colors[passage.color] ?? colors.yellow;
-    sheet.replaceSync(`:host{background-color:${color};color:#1a1a1a;cursor:pointer;border-radius:2px}`);
+    sheet.replaceSync(`:host{background-color:${color};color:#1a170c;cursor:pointer;border-radius:2px}`);
     shadow.adoptedStyleSheets = [sheet];
     shadow.appendChild(document.createElement('slot'));
     host.appendChild(range.extractContents());

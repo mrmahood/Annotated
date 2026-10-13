@@ -15,6 +15,7 @@ const DEMO_TITLE = 'North channel log';
 const DEMO_PAGE_HEADING = 'Harbor night watch';
 
 const PRODUCTION_PROJECT_REF = 'vnxjktpdzmykmqrqwvks';
+const STAGING_PROJECT_REF = 'nkkunkwirvfwhmpwonqz';
 const PRODUCTION_HOSTS = new Set([
   'annotated.cbandcoop.com',
   'www.annotated.cbandcoop.com',
@@ -142,6 +143,28 @@ async function resolveSource(supabaseUrl, key, pageUrl) {
   return source.id;
 }
 
+async function insertPublishedAnnotation(supabaseUrl, key, body) {
+  try {
+    return await api(supabaseUrl, key, '/rest/v1/annotations', {
+      method: 'POST',
+      headers: { prefer: 'return=representation' },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!body.verdict || !/verdict/i.test(message) || !/(42703|PGRST204|does not exist|schema cache)/i.test(message)) {
+      throw error;
+    }
+    const withoutVerdict = { ...body };
+    delete withoutVerdict.verdict;
+    return api(supabaseUrl, key, '/rest/v1/annotations', {
+      method: 'POST',
+      headers: { prefer: 'return=representation' },
+      body: JSON.stringify(withoutVerdict),
+    });
+  }
+}
+
 async function seedPassage(supabaseUrl, key, pageUrl) {
   const userId = await resolveUser(supabaseUrl, key);
   const sourceId = await resolveSource(supabaseUrl, key, pageUrl);
@@ -157,18 +180,15 @@ async function seedPassage(supabaseUrl, key, pageUrl) {
   });
   let annotationId = current?.id;
   if (!annotationId) {
-    const inserted = await api(supabaseUrl, key, '/rest/v1/annotations', {
-      method: 'POST',
-      headers: { prefer: 'return=representation' },
-      body: JSON.stringify({
-        source_id: sourceId,
-        user_id: userId,
-        annotation_type: 'article_text',
-        commentary_text: DEMO_COMMENTARY,
-        title: DEMO_TITLE,
-        status: 'published',
-        published_at: new Date().toISOString(),
-      }),
+    const inserted = await insertPublishedAnnotation(supabaseUrl, key, {
+      source_id: sourceId,
+      user_id: userId,
+      annotation_type: 'article_text',
+      commentary_text: DEMO_COMMENTARY,
+      title: DEMO_TITLE,
+      status: 'published',
+      published_at: new Date().toISOString(),
+      verdict: 'true',
     });
     annotationId = (Array.isArray(inserted) ? inserted[0] : inserted)?.id;
   }
@@ -189,13 +209,42 @@ async function seedPassage(supabaseUrl, key, pageUrl) {
   return { annotationId, pageUrl };
 }
 
-async function main() {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !key) {
-    throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY for Local or Staging.');
+function projectRefFromServiceRole(token) {
+  if (typeof token !== 'string' || token.length === 0) return '';
+  const part = token.split('.')[1];
+  if (!part) return '';
+  try {
+    const json = JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
+    return typeof json.ref === 'string' ? json.ref : '';
+  } catch {
+    return '';
   }
-  const page = assertSeedTargetAllowed(supabaseUrl, readPageUrl(process.argv.slice(2)));
+}
+
+export function readSeedCredentials(env, supabaseUrl) {
+  if (!supabaseUrl) throw new Error('Set SUPABASE_URL for Local or Staging.');
+  const host = new URL(supabaseUrl).hostname;
+  const staging = host === `${STAGING_PROJECT_REF}.supabase.co`;
+  const stagingKey = env.SUPABASE_STAGING_SERVICE_ROLE_KEY || '';
+  const genericKey = env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const key = staging && stagingKey ? stagingKey : genericKey;
+  if (!key) {
+    throw new Error('Set SUPABASE_STAGING_SERVICE_ROLE_KEY for Staging, or SUPABASE_SERVICE_ROLE_KEY for Local.');
+  }
+  const ref = projectRefFromServiceRole(key);
+  if (ref === PRODUCTION_PROJECT_REF || supabaseUrl.includes(PRODUCTION_PROJECT_REF)) {
+    throw new Error('Refusing to seed Production. Use Local or Staging.');
+  }
+  if (staging && ref && ref !== STAGING_PROJECT_REF) {
+    throw new Error('The service role is not the Staging project.');
+  }
+  return { supabaseUrl, key };
+}
+
+async function main() {
+  const pageUrl = readPageUrl(process.argv.slice(2));
+  const { supabaseUrl, key } = readSeedCredentials(process.env, process.env.SUPABASE_URL);
+  const page = assertSeedTargetAllowed(supabaseUrl, pageUrl);
   const seeded = await seedPassage(supabaseUrl, key, page.page.href);
   console.log(`Seeded published passage ${seeded.annotationId} on ${seeded.pageUrl}`);
 }

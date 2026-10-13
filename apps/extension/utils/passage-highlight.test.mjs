@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { assertSeedTargetAllowed } from '../../../scripts/seed-passage-highlight-demo.mjs';
+import { assertSeedTargetAllowed, readSeedCredentials } from '../../../scripts/seed-passage-highlight-demo.mjs';
 import {
   applyPublishedPassageHighlights,
   highlighterTokenForVerdict,
@@ -62,6 +62,10 @@ test('verdict colors fall back to plain yellow', () => {
   assert.equal(highlighterTokenForVerdict('Supported'), 'green');
   assert.equal(highlighterTokenForVerdict('refuted'), 'red');
   assert.equal(highlighterTokenForVerdict('mixed'), 'amber');
+  assert.equal(highlighterTokenForVerdict('true'), 'green');
+  assert.equal(highlighterTokenForVerdict('false'), 'red');
+  assert.equal(highlighterTokenForVerdict('misleading'), 'amber');
+  assert.equal(highlighterTokenForVerdict('needs_context'), 'yellow');
 });
 
 test('published passage mapping reads verdicts defensively', () => {
@@ -213,6 +217,20 @@ test('the demo seed refuses Production and any page other than the fixture', asy
     'http://127.0.0.1:3000/demo/passage-highlight?utm_source=demo#log',
   );
   assert.equal(allowed.page.href, 'http://127.0.0.1:3000/demo/passage-highlight');
+  const stagingJwt = `e.${Buffer.from(JSON.stringify({ ref: 'nkkunkwirvfwhmpwonqz' })).toString('base64url')}.s`;
+  const productionJwt = `e.${Buffer.from(JSON.stringify({ ref: 'vnxjktpdzmykmqrqwvks' })).toString('base64url')}.s`;
+  assert.equal(readSeedCredentials({
+    SUPABASE_STAGING_SERVICE_ROLE_KEY: stagingJwt,
+    SUPABASE_SERVICE_ROLE_KEY: productionJwt,
+  }, 'https://nkkunkwirvfwhmpwonqz.supabase.co').key, stagingJwt);
+  assert.throws(
+    () => readSeedCredentials({ SUPABASE_SERVICE_ROLE_KEY: productionJwt }, 'https://nkkunkwirvfwhmpwonqz.supabase.co'),
+    /Refusing to seed Production/,
+  );
+  assert.throws(
+    () => readSeedCredentials({ SUPABASE_SERVICE_ROLE_KEY: productionJwt }, 'https://vnxjktpdzmykmqrqwvks.supabase.co'),
+    /Refusing to seed Production/,
+  );
   const [fixture, seed] = await Promise.all([
     readFile(new URL('../../../apps/web/src/app/demo/passage-highlight/fixture.ts', import.meta.url), 'utf8'),
     readFile(new URL('../../../scripts/seed-passage-highlight-demo.mjs', import.meta.url), 'utf8'),

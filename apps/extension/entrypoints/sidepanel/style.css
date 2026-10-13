@@ -163,7 +163,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .passage-list ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .passage-list button { width: 100%; display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-small); color: inherit; background: var(--surface); text-align: left; cursor: pointer; }
 .passage-list button:hover { border-color: var(--border-strong); background: var(--surface-active); }
-.passage-swatch { width: 12px; height: 12px; flex: 0 0 auto; margin-top: 3px; border-radius: 2px; background: #ffe566; }
+.passage-swatch { width: 12px; height: 12px; flex: 0 0 auto; margin-top: 3px; border-radius: 2px; background: #ffe14a; }
 .passage-swatch-green { background: #b6f0a2; }
 .passage-swatch-red { background: #ffb3b3; }
 .passage-swatch-amber { background: #ffd59a; }
