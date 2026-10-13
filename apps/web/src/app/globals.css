@@ -533,6 +533,48 @@ a { color: inherit; }
   }
 }
 
+@media (max-width: 640px) {
+  .install-extension-nudge { margin-top: 10px; }
+  .install-extension-callout {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: none;
+    padding: 7px 8px 7px 10px;
+  }
+  .install-extension-callout-head { display: contents; }
+  .install-extension-callout .install-extension-chrome-mark {
+    order: 1;
+    width: 18px;
+    height: 18px;
+  }
+  .install-extension-callout h2 {
+    order: 2;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 0.82rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .install-extension-callout p { display: none; }
+  .install-extension-callout-cta {
+    order: 3;
+    width: auto;
+    flex: 0 0 auto;
+    margin-top: 0;
+    min-height: 32px;
+    padding: 5px 10px;
+  }
+  .install-extension-callout .install-extension-icon-button {
+    order: 4;
+    flex: 0 0 auto;
+    margin: 0;
+  }
+}
+
 .site-footer {
   display: flex;
   flex-wrap: wrap;
@@ -794,6 +836,103 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   font-size: 1.05rem;
   line-height: 1.5;
 }
+.hero-illustration {
+  display: block;
+  width: min(100%, 420px);
+  height: auto;
+  margin-top: 16px;
+  overflow: visible;
+  color: var(--text-primary);
+}
+.hero-illustration-sheet,
+.hero-illustration-note-card {
+  fill: var(--surface);
+  stroke: var(--border-strong);
+  stroke-width: 1.25;
+}
+.hero-illustration-line { fill: var(--text-disabled); }
+.hero-illustration-highlight,
+.hero-illustration-chip { fill: var(--highlighter); }
+.hero-illustration-passage,
+.hero-illustration-chip-label { fill: var(--highlighter-ink); }
+.hero-illustration-passage {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  font-weight: 560;
+  dominant-baseline: middle;
+}
+.hero-illustration-chip-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 650;
+  dominant-baseline: middle;
+}
+.hero-illustration-badge {
+  fill: var(--background);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.hero-illustration-source {
+  fill: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  dominant-baseline: middle;
+}
+.hero-illustration-connector {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.hero-illustration-note {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hero-illustration-highlight {
+    animation: hero-highlight-sweep 720ms var(--motion-easing) both;
+  }
+  .hero-illustration-connector {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: hero-connector-draw 420ms ease 520ms forwards;
+  }
+  .hero-illustration-note {
+    animation: hero-note-pop 420ms var(--motion-easing) 780ms both;
+  }
+}
+@keyframes hero-highlight-sweep {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes hero-connector-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes hero-note-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@media (min-width: 960px) {
+  .landing-hero {
+    display: grid;
+    grid-template-columns: minmax(280px, 520px) minmax(260px, 360px);
+    column-gap: 36px;
+    align-items: center;
+    justify-content: start;
+    max-width: 920px;
+  }
+  .landing-hero h1 { font-size: clamp(2.6rem, 4vw, 3.6rem); }
+  .landing-hero .hero-illustration {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    width: 100%;
+    max-width: none;
+    margin-top: 0;
+  }
+  .button.landing-install { justify-self: start; }
+}
 .button.landing-install {
   margin-top: 22px;
   min-height: 42px;
@@ -807,6 +946,14 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   border-color: var(--highlighter-strong);
   background: var(--highlighter-strong);
   color: var(--highlighter-ink);
+}
+@media (max-width: 640px) {
+  .discovery-main:has(.landing-hero) { padding-top: 16px; }
+  .discovery-intro.landing-hero { margin-bottom: 16px; }
+  .landing-hero .eyebrow { margin-bottom: 6px; }
+  .landing-support { margin-top: 8px; font-size: 0.95rem; }
+  .hero-illustration { margin-top: 10px; }
+  .button.landing-install { margin-top: 12px; }
 }
 .annotation-list { display: grid; gap: 16px; }
 .trending-strip {

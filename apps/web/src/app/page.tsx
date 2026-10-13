@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AnnotationCard } from "./annotation-card";
+import { HeroIllustration } from "./hero-illustration";
 import { InstallForChromeButton } from "./install-extension-nudge";
 import { JsonLd } from "./json-ld";
 import { PaginationNav } from "./pagination-nav";
@@ -66,6 +67,7 @@ export default async function Home({ searchParams }: HomePageProps) {
           <p className="eyebrow">PUBLIC ANNOTATIONS</p>
           <h1 className="landing-title">{FEED_LEDE}</h1>
           <p className="landing-support">Comment on a passage or a short clip. The source stays attached.</p>
+          <HeroIllustration />
           <InstallForChromeButton />
         </header>
 
