@@ -126,7 +126,11 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
     experience.indexOf('if (event.key !== "Escape") return;'),
     experience.indexOf("window.addEventListener"),
   );
-  assert.match(escapeHandler, /focusReturnId\.current = activeId/);
+  assert.match(escapeHandler, /focusReturnId\.current = panelNoteId/);
+  assert.match(experience, /demo-panel-resting/);
+  assert.match(experience, /desktop && resting/);
+  assert.match(page, /installCallout=\{false\}/);
+  assert.match(styles, /\.demo-panel\.demo-panel-resting \{ display: none; \}/);
   assert.match(experience, /document\.getElementById\(demoHighlightElementId\(noteId\)\)\?\.focus\(\)/);
   assert.match(experience, /Needs context/);
   assert.match(experience, /They stay read-only here/);
@@ -143,6 +147,7 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   const desktop = styles.slice(styles.lastIndexOf("@media (min-width: 960px)"));
   assert.match(desktop, /\.demo-panel \{[\s\S]*position: sticky/);
   assert.match(desktop, /\.demo-backdrop \{ display: none; \}/);
+  assert.match(desktop, /\.demo-panel\.demo-panel-resting \{ display: grid; \}/);
   assert.match(home, /href="\/demo"/);
   const hero = home.slice(home.indexOf("landing-hero"), home.indexOf("</header>"));
   assert.match(hero, /href="\/demo"/);

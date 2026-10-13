@@ -22,7 +22,7 @@ export default function DemoPage() {
   return (
     <>
       <a className="skip-link" href="#demo-value">Skip to main content</a>
-      <SiteHeader returnTo={DEMO_PAGE_PATH} />
+      <SiteHeader returnTo={DEMO_PAGE_PATH} installCallout={false} />
       <main className="demo-main">
         <DemoExperience />
       </main>
