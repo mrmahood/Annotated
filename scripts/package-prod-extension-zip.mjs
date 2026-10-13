@@ -270,7 +270,7 @@ export async function zipChromeMv3Directory(sourceDirectory, destinationZip) {
     if (error && error.code !== "ENOENT") throw error;
   }
 
-  await run("zip", ["-r", "-X", "-q", destinationZip, ".", "-x", "*.mp4", "-x", "*/*.mp4"], {
+  await run("zip", ["-r", "-X", "-q", destinationZip, "."], {
     cwd: sourceDirectory,
   });
 }
