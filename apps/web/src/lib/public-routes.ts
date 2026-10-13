@@ -5,6 +5,7 @@ import {
   PROFILE_HANDLE_PATTERN,
 } from "@annotated/shared/profile-handle";
 import type { PublicAnnotation } from "@/lib/data/public-annotation-model";
+import { PROD_WEB_APP_ORIGIN } from "./extension-install.ts";
 
 const ANNOTATION_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -69,6 +70,11 @@ export function getConfiguredSiteOrigin(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function getMetadataBaseOrigin(): string | undefined {
+  return getConfiguredSiteOrigin() ??
+    (process.env.VERCEL_ENV === "production" ? PROD_WEB_APP_ORIGIN : undefined);
 }
 
 export function getConfiguredPublicPageUrl(path: string): string | undefined {

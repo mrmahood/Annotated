@@ -17,6 +17,7 @@ import {
   DEMO_TWEET,
   DEMO_VALUE_PROP,
   composeDemoPostText,
+  demoHighlightElementId,
   demoChipLabel,
   demoHighlightColor,
   demoSourceLabel,
@@ -79,7 +80,7 @@ function Highlight({
   const receipts = note.noteType === "receipts";
   return (
     <button
-      id={`demo-highlight-${note.id}`}
+      id={demoHighlightElementId(note.id)}
       data-demo-highlight={note.id}
       className={`demo-highlight demo-highlight-${color}${receipts ? " demo-highlight-receipts" : ""}${spotlight ? " demo-spotlight" : ""}`}
       type="button"
@@ -149,6 +150,7 @@ export function DemoExperience() {
   const [guided, setGuided] = useState(true);
   const [overrideId, setOverrideId] = useState<string | null | undefined>(undefined);
   const userOpened = useRef(false);
+  const focusReturnId = useRef<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const step = DEMO_TOUR_STEPS[stepIndex] ?? DEMO_TOUR_STEPS[0];
   const playing = guided && demoTourIsPlaying(playback, reducedMotion);
@@ -178,12 +180,21 @@ export function DemoExperience() {
     if (!activeId) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      event.preventDefault();
+      focusReturnId.current = activeId;
       setOverrideId(null);
       setPlayback("pause");
       setGuided(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [activeId]);
+
+  useEffect(() => {
+    if (activeId || !focusReturnId.current) return;
+    const noteId = focusReturnId.current;
+    focusReturnId.current = null;
+    document.getElementById(demoHighlightElementId(noteId))?.focus();
   }, [activeId]);
 
   useEffect(() => {

@@ -14,6 +14,7 @@ import {
   EESI_SNIPPET,
   composeDemoPostText,
   demoHighlightColor,
+  demoHighlightElementId,
   demoTourIsPlaying,
 } from "../app/demo/demo-data.ts";
 
@@ -58,6 +59,8 @@ test("demo notes reuse the published Batam fact-check and add other verdicts", (
   assert.equal(demoTourIsPlaying("auto", true), false);
   assert.equal(demoTourIsPlaying("play", true), true);
   assert.equal(demoTourIsPlaying("pause", false), false);
+  assert.equal(demoHighlightElementId("needs-context"), "demo-highlight-needs-context");
+  assert.equal(demoHighlightElementId("misleading"), "demo-highlight-misleading");
 });
 
 test("the public demo page is read-only, linked from the hero, and has an OG image", async () => {
@@ -109,6 +112,12 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(experience, /aria-pressed=\{pressed\}/);
   assert.match(experience, /aria-expanded=\{pressed\}/);
   assert.match(experience, /role="dialog"/);
+  const escapeHandler = experience.slice(
+    experience.indexOf('if (event.key !== "Escape") return;'),
+    experience.indexOf("window.addEventListener"),
+  );
+  assert.match(escapeHandler, /focusReturnId\.current = activeId/);
+  assert.match(experience, /document\.getElementById\(demoHighlightElementId\(noteId\)\)\?\.focus\(\)/);
   assert.match(experience, /Needs context/);
   assert.match(experience, /They stay read-only here/);
   assert.doesNotMatch(experience, /How to use this demo/);

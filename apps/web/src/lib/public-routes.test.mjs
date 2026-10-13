@@ -5,6 +5,7 @@ import {
   getCanonicalAnnotationPath,
   getConfiguredPublicPageUrl,
   getConfiguredSiteOrigin,
+  getMetadataBaseOrigin,
   getNotFoundMetadata,
   getPublicAnnotationMetadata,
   getPublicAnnotationPath,
@@ -114,6 +115,38 @@ test("accepts HTTPS or loopback HTTP site origins and rejects ambiguous origins"
   } finally {
     if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
     else process.env.NEXT_PUBLIC_SITE_URL = previous;
+  }
+});
+
+test("metadataBase uses NEXT_PUBLIC_SITE_URL and the production origin on Production", () => {
+  const previousSite = process.env.NEXT_PUBLIC_SITE_URL;
+  const previousEnv = process.env.VERCEL_ENV;
+  try {
+    process.env.NEXT_PUBLIC_SITE_URL = "https://annotated.example";
+    process.env.VERCEL_ENV = "production";
+    assert.equal(getMetadataBaseOrigin(), "https://annotated.example");
+    assert.equal(
+      new URL("/demo/opengraph-image", getMetadataBaseOrigin()).href,
+      "https://annotated.example/demo/opengraph-image",
+    );
+
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.VERCEL_ENV = "production";
+    assert.equal(getMetadataBaseOrigin(), "https://annotated.cbandcoop.com");
+    assert.equal(
+      new URL("/demo/opengraph-image", getMetadataBaseOrigin()).href,
+      "https://annotated.cbandcoop.com/demo/opengraph-image",
+    );
+
+    process.env.VERCEL_ENV = "preview";
+    assert.equal(getMetadataBaseOrigin(), undefined);
+    delete process.env.VERCEL_ENV;
+    assert.equal(getMetadataBaseOrigin(), undefined);
+  } finally {
+    if (previousSite === undefined) delete process.env.NEXT_PUBLIC_SITE_URL;
+    else process.env.NEXT_PUBLIC_SITE_URL = previousSite;
+    if (previousEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previousEnv;
   }
 });
 
