@@ -80,6 +80,7 @@ function Highlight({
   return (
     <button
       id={`demo-highlight-${note.id}`}
+      data-demo-highlight={note.id}
       className={`demo-highlight demo-highlight-${color}${receipts ? " demo-highlight-receipts" : ""}${spotlight ? " demo-spotlight" : ""}`}
       type="button"
       aria-pressed={pressed}
@@ -214,6 +215,11 @@ export function DemoExperience() {
     setPlayback(running ? "pause" : "play");
   };
 
+  const showNext = () => {
+    setPlayback("pause");
+    setStepIndex((current) => Math.min(current + 1, DEMO_TOUR_STEPS.length - 1));
+  };
+
   return (
     <>
       <header className="demo-intro">
@@ -231,17 +237,28 @@ export function DemoExperience() {
             <button
               className="demo-tour-button"
               type="button"
+              data-demo-tour-next=""
+              disabled={finished}
+              onClick={showNext}
+            >
+              Next
+            </button>
+            <button
+              className="demo-tour-button"
+              type="button"
+              data-demo-tour-pause=""
               aria-pressed={running}
               onClick={togglePlayback}
             >
               {running ? "Pause" : "Play"}
             </button>
-            <button className="demo-tour-button" type="button" onClick={replay}>
+            <button className="demo-tour-button" type="button" data-demo-tour-replay="" onClick={replay}>
               Replay
             </button>
             <button
               className="demo-tour-button"
               type="button"
+              data-demo-tour-skip=""
               onClick={() => {
                 setPlayback("pause");
                 setGuided(false);
@@ -254,7 +271,7 @@ export function DemoExperience() {
       ) : (
         <div className="demo-tour" role="region" aria-label="Guided tour">
           <div className="demo-tour-controls">
-            <button className="demo-tour-button" type="button" onClick={replay}>
+            <button className="demo-tour-button" type="button" data-demo-tour-replay="" onClick={replay}>
               Replay
             </button>
           </div>
@@ -346,6 +363,7 @@ export function DemoExperience() {
               ref={panelRef}
               className={`demo-panel${spotlightId === PANEL_ID ? " demo-spotlight" : ""}`}
               id={PANEL_ID}
+              data-demo-card=""
               role="dialog"
               aria-modal="false"
               aria-labelledby="demo-fact-check-title"
@@ -379,7 +397,7 @@ export function DemoExperience() {
               >
                 <p className="section-label" id="demo-post-heading">Post to X</p>
                 <p className="demo-preview-note">Composed text only. This demo does not post.</p>
-                <pre className="demo-post-preview">{composeDemoPostText(note)}</pre>
+                <pre className="demo-post-preview" data-demo-post-x="">{composeDemoPostText(note)}</pre>
               </section>
             </aside>
           </>
@@ -393,13 +411,13 @@ export function DemoExperience() {
       <footer className="demo-close-band">
         <p className="demo-teaser">{DEMO_TEASER}</p>
         <div className="demo-actions">
-          <Link className="public-button public-button-primary" href={EXTENSION_WHATS_NEW_PATH}>
+          <Link className="public-button public-button-primary" href={EXTENSION_WHATS_NEW_PATH} data-demo-cta-install="">
             Install for Chrome
           </Link>
-          <Link className="public-button" href="/">
+          <Link className="public-button" href="/" data-demo-cta-feed="">
             View the feed
           </Link>
-          <a className="public-button" href={DEMO_GITHUB_URL} target="_blank" rel="noopener noreferrer">
+          <a className="public-button" href={DEMO_GITHUB_URL} data-demo-cta-github="" target="_blank" rel="noopener noreferrer">
             GitHub
             <span aria-hidden="true"> ↗</span>
             <span className="visually-hidden"> (opens in a new tab)</span>

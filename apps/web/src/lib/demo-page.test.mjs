@@ -92,6 +92,16 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(experience, /"Play"/);
   assert.match(experience, /Replay/);
   assert.match(experience, /Skip/);
+  assert.match(experience, /data-demo-highlight=\{note\.id\}/);
+  assert.match(experience, /data-demo-card=""/);
+  assert.match(experience, /data-demo-tour-next=""/);
+  assert.match(experience, /data-demo-tour-pause=""/);
+  assert.match(experience, /data-demo-tour-replay=""/);
+  assert.match(experience, /data-demo-tour-skip=""/);
+  assert.match(experience, /data-demo-post-x=""/);
+  assert.match(experience, /data-demo-cta-install=""/);
+  assert.match(experience, /data-demo-cta-feed=""/);
+  assert.match(experience, /data-demo-cta-github=""/);
   assert.match(experience, /prefers-reduced-motion: reduce/);
   assert.match(experience, /Example content/);
   assert.match(experience, /Post to X/);
