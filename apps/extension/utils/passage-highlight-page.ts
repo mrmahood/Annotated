@@ -128,6 +128,18 @@ export function applyPassageHighlightsOnPage(
     return parts;
   };
 
+  const foldQuote = (character: string) => {
+    if (
+      character === '\u201C' || character === '\u201D' || character === '\u201E' ||
+      character === '\u201F' || character === '\u00AB' || character === '\u00BB'
+    ) return '"';
+    if (
+      character === '\u2018' || character === '\u2019' || character === '\u201A' ||
+      character === '\u201B'
+    ) return "'";
+    return character;
+  };
+
   const buildNormalized = (parts: Text[]) => {
     let normalized = '';
     const map: { node: Text; offset: number }[] = [];
@@ -144,7 +156,9 @@ export function applyPassageHighlightsOnPage(
           lastWasSpace = true;
           continue;
         }
-        normalized += character;
+        const folded = foldQuote(character);
+        if ((folded === '"' || folded === "'") && normalized.endsWith(folded)) continue;
+        normalized += folded;
         map.push({ node, offset });
         lastWasSpace = false;
         if (normalized.length > 200_000) break;
@@ -157,7 +171,24 @@ export function applyPassageHighlightsOnPage(
     return { normalized, map };
   };
 
-  const normalizeAnchor = (value: string) => value.replace(/\s+/g, ' ').trim();
+  const normalizeAnchor = (value: string) => {
+    let normalized = '';
+    let lastWasSpace = true;
+    for (const character of value) {
+      if (/\s/.test(character)) {
+        if (lastWasSpace) continue;
+        normalized += ' ';
+        lastWasSpace = true;
+        continue;
+      }
+      const folded = foldQuote(character);
+      if ((folded === '"' || folded === "'") && normalized.endsWith(folded)) continue;
+      normalized += folded;
+      lastWasSpace = false;
+    }
+    if (normalized.endsWith(' ')) normalized = normalized.slice(0, -1);
+    return normalized;
+  };
   const stripEdgeQuotes = (value: string) =>
     value.replace(/^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g, '').trim();
 
@@ -483,13 +514,12 @@ export function applyPassageHighlightsOnPage(
       return true;
     };
 
-    let highlighted = 0;
-    let unmatched = 0;
-    for (const passage of passages) {
-      const quote = stripEdgeQuotes(normalizeAnchor(passage.quote));
-      const prefix = normalizeAnchor(passage.prefix);
-      const suffix = normalizeAnchor(passage.suffix);
-      const built = roots.map((root) => buildNormalized(collectText(root)));
+    const collectHits = (
+      built: { normalized: string; map: { node: Text; offset: number }[] }[],
+      quote: string,
+      prefix: string,
+      suffix: string,
+    ) => {
       let hits: PassageHit[] = [];
       for (const { normalized, map } of built) {
         hits.push(...exactHitsIn(normalized, map, quote, prefix, suffix, false));
@@ -498,6 +528,21 @@ export function applyPassageHighlightsOnPage(
         for (const { normalized, map } of built) {
           hits.push(...exactHitsIn(normalized, map, quote, prefix, suffix, true));
         }
+      }
+      return hits;
+    };
+
+    let highlighted = 0;
+    let unmatched = 0;
+    for (const passage of passages) {
+      const quote = normalizeAnchor(passage.quote);
+      const prefix = normalizeAnchor(passage.prefix);
+      const suffix = normalizeAnchor(passage.suffix);
+      const built = roots.map((root) => buildNormalized(collectText(root)));
+      let hits = collectHits(built, quote, prefix, suffix);
+      if (hits.length === 0) {
+        const stripped = stripEdgeQuotes(quote);
+        if (stripped && stripped !== quote) hits = collectHits(built, stripped, prefix, suffix);
       }
       const chosen = choosePassageHit(hits, prefix, suffix);
       if (chosen && paintHit(chosen, passage)) highlighted += 1;

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -28,6 +30,7 @@ import {
   chromeExtensionIdFromPublicKey,
 } from "./prod-extension-key.mjs";
 
+const execFileAsync = promisify(execFile);
 const STAGING_SUPABASE_URL = `https://${STAGING_SUPABASE_HOST}`;
 const STAGING_WEB_APP_URL = `https://${STAGING_WEB_APP_HOST}`;
 
@@ -185,6 +188,27 @@ test("two Prod zips of the pinned chrome-mv3 output keep the same extension ID",
     chromeExtensionIdFromPublicKey(firstKey),
     chromeExtensionIdFromPublicKey(COMMITTED_PROD_EXTENSION_PUBLIC_KEY),
   );
+});
+
+test("Prod zip ignores mp4 files such as the public demo video", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "annotated-prod-zip-mp4-"));
+  const directory = join(parent, "chrome-mv3");
+  await mkdir(join(directory, "chunks"), { recursive: true });
+  await writeFile(
+    join(directory, "manifest.json"),
+    `${JSON.stringify({ manifest_version: 3, name: "Annotated" })}\n`,
+  );
+  await writeFile(join(directory, "demo.mp4"), "demo-video");
+  await writeFile(join(directory, "chunks", "clip.mp4"), "nested-video");
+  await writeFile(join(directory, "background.js"), "console.log('ok');\n");
+
+  const zipPath = join(parent, "extension.zip");
+  await zipChromeMv3Directory(directory, zipPath);
+  const { stdout } = await execFileAsync("unzip", ["-Z1", zipPath]);
+  const names = stdout.split("\n").filter(Boolean);
+  assert.equal(names.includes("manifest.json"), true);
+  assert.equal(names.includes("background.js"), true);
+  assert.equal(names.some((name) => name.endsWith(".mp4")), false);
 });
 
 test("extension version JSON is written from the package version even when the Prod zip is skipped", async () => {

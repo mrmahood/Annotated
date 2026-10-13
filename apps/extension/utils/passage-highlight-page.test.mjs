@@ -576,6 +576,64 @@ test('a navigated page is not highlighted', () => {
   }
 });
 
+test('smart quotes, a doubled opening quote, and uneven whitespace still highlight the page text', () => {
+  const live = '"Not a single drop has come through our taps," Dewi told the BBC.';
+  const stored = '““Not  a single drop has come through our taps,” Dewi told the BBC.';
+  const dom = installDom([
+    { text: 'Residents described the shortage.' },
+    { text: live },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({
+        quote: stored,
+        prefix: 'Residents described the shortage.',
+        suffix: '',
+      })],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 1);
+    assert.equal(result.unmatched, 0);
+    assert.equal(dom.marks()[0].textContent, live);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('a curly apostrophe matches the straight apostrophe on the page', () => {
+  const live = "according to Malaysia's central bank.";
+  const dom = installDom([{ text: `The comparison is ${live}` }]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({
+        quote: 'according to Malaysia’s central bank.',
+        prefix: 'The comparison is',
+        suffix: '',
+      })],
+    });
+    assert.equal(result.highlighted, 1);
+    assert.equal(dom.marks()[0].textContent, live);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('wrapping quotes that are not on the page still highlight the passage', () => {
+  const dom = installDom([{ text: QUOTE }]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({ quote: `“${QUOTE}”`, prefix: '', suffix: '' })],
+    });
+    assert.equal(result.highlighted, 1);
+    assert.equal(dom.marks()[0].textContent, QUOTE);
+  } finally {
+    dom.restore();
+  }
+});
+
 test('reapplying highlights does not nest marks', () => {
   const dom = installDom([{ text: QUOTE }]);
   try {
