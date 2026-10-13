@@ -23,6 +23,12 @@ export const EXTENSION_UPDATE_GUIDE = [
  */
 export const EXTENSION_CHANGELOG = [
   {
+    version: "0.2.2",
+    items: [
+      "Highlights now paint reliably for passages that start with quotes or have odd context.",
+    ],
+  },
+  {
     version: "0.2.1",
     items: [
       "The header mark stays readable in dark mode: a cream bar and asterisk on the yellow highlight.",

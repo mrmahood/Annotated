@@ -76,11 +76,10 @@ export function extractSelectionFromPage(): SelectionExtractionResult {
     return parent && parent !== traversalRoot ? parent : null;
   };
 
-  const nextNode = (node: Node, traversalRoot: Node): Node | null => {
-    if (node.firstChild) {
-      return node.firstChild;
-    }
-
+  // The node after this one in document order, without descending into it.
+  // An element boundary past the last child must use this. nextNode() would
+  // return firstChild and copy the selection's own start into the suffix.
+  const nextNodeAfter = (node: Node, traversalRoot: Node): Node | null => {
     let candidate: Node | null = node;
 
     while (candidate && candidate !== traversalRoot) {
@@ -92,6 +91,14 @@ export function extractSelectionFromPage(): SelectionExtractionResult {
     }
 
     return null;
+  };
+
+  const nextNode = (node: Node, traversalRoot: Node): Node | null => {
+    if (node.firstChild) {
+      return node.firstChild;
+    }
+
+    return nextNodeAfter(node, traversalRoot);
   };
 
   const getTraversalRoot = (node: Node): Node => {
@@ -158,7 +165,10 @@ export function extractSelectionFromPage(): SelectionExtractionResult {
       characterBudget -= localSlice.length;
       candidate = nextNode(container, traversalRoot);
     } else {
-      candidate = container.childNodes.item(offset) ?? nextNode(container, traversalRoot);
+      // Element offsets count children. item(childCount) is null when the
+      // selection ends after the last child, which is how Chrome reports a
+      // passage selected through the end of its paragraph.
+      candidate = container.childNodes.item(offset) ?? nextNodeAfter(container, traversalRoot);
     }
 
     while (candidate && characterBudget > 0 && visitedNodes < 250) {

@@ -2386,7 +2386,7 @@ test('production manifest and capture source keep the required security shape', 
   ]);
   const pkg = JSON.parse(pkgSource);
   assert.equal(pkg.name, 'annotated');
-  assert.equal(pkg.version, '0.2.1');
+  assert.equal(pkg.version, '0.2.2');
   assert.match(config, /default_icon:/);
   assert.match(config, /16: 'icon\/16.png'/);
   assert.match(config, /128: 'icon\/128.png'/);

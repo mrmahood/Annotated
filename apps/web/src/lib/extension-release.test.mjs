@@ -28,7 +28,7 @@ test("what's new publishes the extension package version and the zip download", 
   );
   assert.equal(version, JSON.parse(packageJson).version);
   assert.deepEqual(publishedVersion, { name: "Annotated", version });
-  assert.equal(version, "0.2.1");
+  assert.equal(version, "0.2.2");
   assert.deepEqual(extensionVersionDocument(version), { name: "Annotated", version });
   assert.equal(EXTENSION_DOWNLOAD_PATH, "/extension.zip");
   assert.equal(EXTENSION_VERSION_PATH, "/extension-version.json");
@@ -50,12 +50,17 @@ test("what's new publishes the extension package version and the zip download", 
   assert.match(EXTENSION_UPDATE_GUIDE.map((step) => step.text).join(" "), /Click Reload on Annotated/);
   assert.match(EXTENSION_UPDATE_GUIDE.map((step) => step.text).join(" "), /sign-in stays/i);
   assert.equal(EXTENSION_CHANGELOG[0].version, version);
-  assert.match(EXTENSION_CHANGELOG[0].items.join(" "), /dark mode/);
-  assert.match(EXTENSION_CHANGELOG[0].items.join(" "), /toolbar icon/);
-  assert.equal(EXTENSION_CHANGELOG[1].version, "0.2.0");
-  assert.match(EXTENSION_CHANGELOG[1].items.join(" "), /fact-check layer/);
-  assert.match(EXTENSION_CHANGELOG[1].items.join(" "), /Wikipedia/);
-  assert.match(EXTENSION_CHANGELOG[1].items.join(" "), /microphone/);
+  assert.match(
+    EXTENSION_CHANGELOG[0].items.join(" "),
+    /Highlights now paint reliably for passages that start with quotes or have odd context/,
+  );
+  assert.equal(EXTENSION_CHANGELOG[1].version, "0.2.1");
+  assert.match(EXTENSION_CHANGELOG[1].items.join(" "), /dark mode/);
+  assert.match(EXTENSION_CHANGELOG[1].items.join(" "), /toolbar icon/);
+  assert.equal(EXTENSION_CHANGELOG[2].version, "0.2.0");
+  assert.match(EXTENSION_CHANGELOG[2].items.join(" "), /fact-check layer/);
+  assert.match(EXTENSION_CHANGELOG[2].items.join(" "), /Wikipedia/);
+  assert.match(EXTENSION_CHANGELOG[2].items.join(" "), /microphone/);
 
   assert.match(footer, /WHATS_NEW_PATH/);
   assert.match(footer, /What's new/);
