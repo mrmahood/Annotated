@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AnnotationCard } from "./annotation-card";
+import { InstallForChromeButton } from "./install-extension-nudge";
 import { JsonLd } from "./json-ld";
 import { PaginationNav } from "./pagination-nav";
 import { SiteHeader } from "./site-header";
@@ -28,7 +29,7 @@ export async function generateMetadata({ searchParams }: HomePageProps): Promise
 
   return {
     title: "Public annotation feed | Annotated",
-    description: "Discover source-linked annotations published by Annotated readers.",
+    description: FEED_LEDE,
     alternates: { canonical: getPageHref(FEED_PATH, page) },
   };
 }
@@ -61,9 +62,11 @@ export default async function Home({ searchParams }: HomePageProps) {
       <JsonLd data={getPublicPageStructuredData(FEED_PATH)} />
       <SiteHeader active="feed" returnTo={returnTo} />
       <main className={showWhoToFollowRail ? "discovery-main discovery-main-with-rail" : "discovery-main"}>
-        <header className="discovery-intro">
+        <header className="discovery-intro landing-hero">
           <p className="eyebrow">PUBLIC ANNOTATIONS</p>
-          <p className="lede">{FEED_LEDE}</p>
+          <h1 className="landing-title">{FEED_LEDE}</h1>
+          <p className="landing-support">Comment on a passage or a short clip. The source stays attached.</p>
+          <InstallForChromeButton />
         </header>
 
         <div className="discovery-feed-column">

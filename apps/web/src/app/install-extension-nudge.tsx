@@ -94,6 +94,20 @@ function dispatchInstallCalloutChange() {
   window.dispatchEvent(new Event(INSTALL_CALLOUT_CHANGE_EVENT));
 }
 
+export const OPEN_INSTALL_MODAL_EVENT = "annotated:open-install-extension";
+
+export function InstallForChromeButton() {
+  return (
+    <button
+      className="button button-primary landing-install"
+      type="button"
+      onClick={() => window.dispatchEvent(new Event(OPEN_INSTALL_MODAL_EVENT))}
+    >
+      Install for Chrome
+    </button>
+  );
+}
+
 export function InstallExtensionNudge() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const dismissed = useSyncExternalStore(
@@ -116,6 +130,12 @@ export function InstallExtensionNudge() {
     if (modalOpen && !node.open) node.showModal();
     if (!modalOpen && node.open) node.close();
   }, [modalOpen]);
+
+  useEffect(() => {
+    const open = () => setModalOpen(true);
+    window.addEventListener(OPEN_INSTALL_MODAL_EVENT, open);
+    return () => window.removeEventListener(OPEN_INSTALL_MODAL_EVENT, open);
+  }, []);
 
   const dismissCallout = () => {
     persistInstallCalloutDismissed(storageOrNull());

@@ -27,7 +27,7 @@ Local launch then runs, in the background, from the repository root:
 pnpm --dir apps/web exec next dev --hostname 127.0.0.1 --port 3000
 ```
 
-Ready means `http://127.0.0.1:3000/` returns HTTP 200 and the document title contains `Public annotation feed`. Next writes that title from the home page metadata. The feed has no `h1`.
+Ready means `http://127.0.0.1:3000/` returns HTTP 200 and the document title contains `Public annotation feed`. Next writes that title from the home page metadata. The landing heading is the feed lede.
 
 One local instance owns port 3000. If something else is already listening, launch exits without adopting it. Two verification runs must not share one local server.
 

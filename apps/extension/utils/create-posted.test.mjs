@@ -5,10 +5,19 @@ import {
   createPostedConfirmation,
   createPostedKindFromMediaType,
   isCreatePostedConfirmation,
+  postedPermalinkHref,
   queryPostedAnnotationRoute,
 } from './create-posted.ts';
 
 const ANNOTATION_ID = '11111111-1111-4111-8111-111111111111';
+
+test('posted permalink href is the public annotation URL', () => {
+  assert.equal(
+    postedPermalinkHref('/reader-one/source-title', 'https://annotated.example'),
+    'https://annotated.example/reader-one/source-title',
+  );
+  assert.equal(postedPermalinkHref('/a/x', 'not a url'), null);
+});
 
 test('Posted confirmation prefers handle/slug and falls back to /a/{id}', () => {
   assert.deepEqual(createPostedConfirmation({
@@ -101,6 +110,7 @@ test('Create uses one Posted panel for text, video, and audio', async () => {
   assert.match(app, /queryPostedAnnotationRoute\(supabase, annotationId\)/);
   assert.match(app, /postedConfirmation === null/);
   assert.match(app, /hostedMediaProgressCopy/);
+  assert.match(app, /openPostedPermalink\(confirmation\.publicPath\)/);
   assert.doesNotMatch(app, /getPostPublishNavigation/);
   assert.doesNotMatch(app, /chrome\.notifications/);
 });

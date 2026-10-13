@@ -5,8 +5,7 @@ import { getConfiguredSiteOrigin } from "./public-routes.ts";
 export const FEED_PATH = "/";
 export const TRENDING_PATH = "/trending";
 
-export const FEED_LEDE =
-  "Your media notations across video, podcasts & text shared with the world.";
+export const FEED_LEDE = "The fact-check layer for the web.";
 
 export const TRENDING_HEADING = "This week’s most active annotations.";
 export const TRENDING_LEDE =

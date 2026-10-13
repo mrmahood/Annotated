@@ -89,7 +89,7 @@ export function HostedMediaPlayer({
   );
   const unavailableMessage = unavailable && (
     <p className="form-error hosted-media-error" role="status">
-      The archived excerpt is temporarily unavailable. The original source remains linked above.
+      The archived excerpt is temporarily unavailable. The original source remains linked.
     </p>
   );
 

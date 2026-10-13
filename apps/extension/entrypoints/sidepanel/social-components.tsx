@@ -9,6 +9,7 @@ import { TextWithLogoMark } from './logo-mark';
 
 const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import { formatMediaTime } from '@annotated/shared/media-time';
+import { buildXPostIntentUrl } from '@annotated/shared/x-intent';
 import { hostedVideoPlayerLayout } from '@annotated/shared/hosted-video-layout';
 import {
   ANNOTATION_AUDIO_BUCKET,
@@ -329,7 +330,7 @@ function HostedExcerptPlayer({
     </audio>
   ) : unavailable ? (
     <p className="inline-error" role="status">
-      The archived excerpt is temporarily unavailable. The original source remains linked above.
+      The archived excerpt is temporarily unavailable. The original source remains linked.
     </p>
   ) : null;
 
@@ -343,7 +344,7 @@ function HostedExcerptPlayer({
         {player}
         {mediaSrc && unavailable && (
           <p className="inline-error" role="status">
-            The archived excerpt is temporarily unavailable. The original source remains linked above.
+            The archived excerpt is temporarily unavailable. The original source remains linked.
           </p>
         )}
       </div>
@@ -366,7 +367,7 @@ function HostedExcerptPlayer({
       {player}
       {mediaSrc && unavailable && (
         <p className="inline-error" role="status">
-          The archived excerpt is temporarily unavailable. The original source remains linked above.
+          The archived excerpt is temporarily unavailable. The original source remains linked.
         </p>
       )}
     </section>
@@ -2083,6 +2084,12 @@ export function AnnotationDetailView({
   if (status === 'missing') return <div className="compact-state view-state"><strong>Annotation unavailable</strong><span>It may have been removed or is not public.</span></div>;
   if (status === 'error' || !annotation) return <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotation unavailable</strong><span>Check your connection and go back to try again.</span></div>;
   const publicUrl = getPublicUrl(getPublicAnnotationPath(annotation.route, annotation.id));
+  const postToXHref = publicUrl
+    ? buildXPostIntentUrl({
+        take: annotation.title || annotation.commentaryText || '',
+        permalink: publicUrl,
+      })
+    : null;
   const audioUrl = annotation.audio
     ? getAudioPublicUrl(supabase, annotation.audio.storagePath)
     : null;
@@ -2152,26 +2159,21 @@ export function AnnotationDetailView({
         <button className="text-button creator-button" type="button" onClick={() => navigation.openProfile(annotation.creator.id)}><Avatar name={annotation.creator.displayName} url={annotation.creator.avatarUrl} size={34} /><span><strong>{annotation.creator.displayName}</strong><time dateTime={annotation.publishedAt}>Published {formatTimestamp(annotation.publishedAt)}</time></span></button>
         {profile && <FollowControl supabase={supabase} profile={profile} currentUserId={currentUserId} onSignIn={onSignIn} />}
       </header>
-      {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" aria-label={annotation.title || (annotation.commentaryText.trim() ? 'Annotation' : 'Voice commentary')} {...commentaryHover}>{annotation.title ? <p className="annotation-title"><TextWithLogoMark text={annotation.title} /></p> : null}{annotation.commentaryText.trim() ? <p><TextWithLogoMark text={annotation.commentaryText} /></p> : null}{annotation.audio && audioUrl && <div className="detail-audio"><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</div>}</section>}
-      {annotation.kind === 'article' ? <>
-        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection)}>View original source ↗</a><ArticlePendingConnectHint show={showHint} /></section>
+      {(annotation.title || annotation.commentaryText.trim() || annotation.audio) && <section className="detail-commentary" aria-label={annotation.title || 'Annotation'} {...commentaryHover}>{annotation.title ? <p className="annotation-title"><TextWithLogoMark text={annotation.title} /></p> : null}{annotation.commentaryText.trim() ? <p><TextWithLogoMark text={annotation.commentaryText} /></p> : null}{annotation.audio && audioUrl && <div className="detail-audio"><audio controls preload="metadata" src={audioUrl} aria-label="Published audio commentary" onError={() => setAudioError('Audio commentary could not be played. Check your connection and try again.')} /><span className="audio-duration">{formatAudioDuration(annotation.audio.durationMs)}</span>{audioError && <p className="inline-error" role="alert">{audioError}</p>}</div>}</section>}
+{annotation.kind === 'article' ? (
         <section className="detail-passage" {...sourceHover}><span className="visually-hidden">Captured passage</span><blockquote>{annotation.selectedText}</blockquote><ArticlePassageMissStatus show={passageMissed} annotation={annotation} connection={articleHover} /></section>
-      </> : annotation.kind === 'youtube' ? <>
-        <section className="detail-source" {...sourceHover}><span className="visually-hidden">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing' || youtubeAdShowing}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{youtubeAdShowing && canPlayConnectedClip && <div className="compact-state" role="status"><strong>{YOUTUBE_AD_HEADING}</strong><span>{YOUTUBE_AD_BLOCKED_COPY}</span></div>}{playState === 'error' && !youtubeAdShowing && <p className="inline-error" role="alert">{isYouTubeAdBlockedCopy(playError) ? playError : 'The connected YouTube player could not be started. Reconnect the video and try again.'}</p>}</section>
+      ) : annotation.kind === 'youtube' ? (
         <section className="detail-clip-range" {...sourceHover}><span className="visually-hidden">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
-      </> : annotation.kind === 'tiktok' ? <>
-        <section className="detail-source" {...sourceHover}><span className="visually-hidden">TikTok source</span><h1>{annotation.source.title ?? 'TikTok video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">tiktok.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleTikTokSourceOpenClick(event, annotation, tiktokHover, sourceOpenUrl, onTikTokAwaitingConnection)}>Open on TikTok ↗</a></div><TikTokPendingConnectHint show={showTikTokHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected TikTok player could not be started. Reconnect the video and try again.</p>}</section>
+      ) : annotation.kind === 'tiktok' ? (
         <section className="detail-clip-range" {...sourceHover}><span className="visually-hidden">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
-      </> : annotation.kind === 'video' ? <>
-        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Webpage video</span><h1>{annotation.source.title ?? 'Video source'}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row"><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handlePageVideoSourceOpenClick(event, annotation, pageVideoHover, sourceOpenUrl, onPageVideoAwaitingConnection)}>Open original source ↗</a></div><PageVideoPendingConnectHint show={showPageVideoHint} /></section>
+      ) : annotation.kind === 'video' ? (
         <section className="detail-clip-range" {...sourceHover}><span className="visually-hidden">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
-      </> : annotation.kind === 'spotify' ? <>
-        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Spotify episode</span><h1>{annotation.source.title ?? 'Spotify episode'}</h1>{(annotation.source.showName || annotation.source.author) && <p>{[annotation.source.showName, annotation.source.author].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">open.spotify.com</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSpotifySourceOpenClick(event, annotation, spotifyHover, sourceOpenUrl, onSpotifyAwaitingConnection)}>Open on Spotify ↗</a></div><SpotifyPendingConnectHint show={showSpotifyHint} />{playState === 'error' && <p className="inline-error" role="alert">Seek the Spotify player to the clip start, then try again.</p>}</section>
+      ) : annotation.kind === 'spotify' ? (
         <section className="detail-clip-range" {...sourceHover}><span className="visually-hidden">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
-      </> : <>
-        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleAudioSourceOpenClick(event, annotation, audioHover, sourceOpenUrl, onAudioAwaitingConnection)}>Open original source ↗</a></div><AudioPendingConnectHint show={showAudioHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
+      ) : (
         <section className="detail-clip-range" {...sourceHover}><span className="visually-hidden">Saved clip</span><strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong><span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span></section>
-      </>}
+      )}
+
       {hostedReady && <HostedExcerptPlayer annotationId={annotation.id} media={hostedReady.media} getPublicUrl={getPublicUrl} sourceType={annotation.kind} />}
       {hostedTranscript && <ExcerptTranscript transcript={hostedTranscript} youtubeHover={youtubeHover} clipTarget={clipTarget} tiktokHover={tiktokHover} tiktokTarget={tiktokTarget} spotifyHover={spotifyHover} spotifyTarget={spotifyTarget} audioHover={audioHover} audioTarget={audioTarget} pageVideoHover={pageVideoHover} pageVideoTarget={pageVideoTarget} />}
       {hostedRemoved && (
@@ -2180,9 +2182,28 @@ export function AnnotationDetailView({
           <p>This archived excerpt is no longer available. The annotation and original source remain accessible.</p>
         </section>
       )}
+      <div className="permalink-slots">
+        <div id="verdict-slot" className="verdict-slot" data-slot="verdict" />
+        <div id="consensus-slot" className="consensus-slot" data-slot="consensus" />
+      </div>
+      {annotation.kind === 'article' ? (
+        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Original article</span><h1>{annotation.source.title ?? annotation.source.hostname}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{annotation.source.author && `By ${annotation.source.author}`}{annotation.source.author && annotation.source.publisher && ' · '}{annotation.source.publisher}</p>}<span className="source-kicker">{annotation.source.hostname}</span><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleArticleSourceOpenClick(event, annotation, articleHover, sourceOpenUrl, onArticleHoverResult, onAwaitingConnection)}>View original source ↗</a><ArticlePendingConnectHint show={showHint} /></section>
+      ) : annotation.kind === 'youtube' ? (
+        <section className="detail-source" {...sourceHover}><span className="visually-hidden">YouTube source</span><h1>{annotation.source.title ?? 'YouTube video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">youtube.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing' || youtubeAdShowing}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a></div>{youtubeAdShowing && canPlayConnectedClip && <div className="compact-state" role="status"><strong>{YOUTUBE_AD_HEADING}</strong><span>{YOUTUBE_AD_BLOCKED_COPY}</span></div>}{playState === 'error' && !youtubeAdShowing && <p className="inline-error" role="alert">{isYouTubeAdBlockedCopy(playError) ? playError : 'The connected YouTube player could not be started. Reconnect the video and try again.'}</p>}</section>
+      ) : annotation.kind === 'tiktok' ? (
+        <section className="detail-source" {...sourceHover}><span className="visually-hidden">TikTok source</span><h1>{annotation.source.title ?? 'TikTok video'}</h1>{annotation.source.author && <p>{annotation.source.author}</p>}<span className="source-kicker">tiktok.com</span><div className="clip-action-row">{canPlayConnectedClip && onPlayConnectedClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleTikTokSourceOpenClick(event, annotation, tiktokHover, sourceOpenUrl, onTikTokAwaitingConnection)}>Open on TikTok ↗</a></div><TikTokPendingConnectHint show={showTikTokHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected TikTok player could not be started. Reconnect the video and try again.</p>}</section>
+      ) : annotation.kind === 'video' ? (
+        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Webpage video</span><h1>{annotation.source.title ?? 'Video source'}</h1>{(annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row"><a className="button button-primary" href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handlePageVideoSourceOpenClick(event, annotation, pageVideoHover, sourceOpenUrl, onPageVideoAwaitingConnection)}>Open original source ↗</a></div><PageVideoPendingConnectHint show={showPageVideoHint} /></section>
+      ) : annotation.kind === 'spotify' ? (
+        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Spotify episode</span><h1>{annotation.source.title ?? 'Spotify episode'}</h1>{(annotation.source.showName || annotation.source.author) && <p>{[annotation.source.showName, annotation.source.author].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">open.spotify.com</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleSpotifySourceOpenClick(event, annotation, spotifyHover, sourceOpenUrl, onSpotifyAwaitingConnection)}>Open on Spotify ↗</a></div><SpotifyPendingConnectHint show={showSpotifyHint} />{playState === 'error' && <p className="inline-error" role="alert">Seek the Spotify player to the clip start, then try again.</p>}</section>
+      ) : (
+        <section className="detail-source" {...sourceHover}><span className="visually-hidden">Podcast / web audio</span><h1>{annotation.source.title ?? 'Audio episode'}</h1>{(annotation.source.showName || annotation.source.author || annotation.source.publisher) && <p>{[annotation.source.showName, annotation.source.author, annotation.source.publisher].filter(Boolean).join(' · ')}</p>}<span className="source-kicker">{annotation.source.hostname}</span><div className="clip-action-row">{canPlayConnectedAudioClip && onPlayConnectedAudioClip && <button className="button button-primary" type="button" onClick={() => void playConnected()} disabled={playState === 'playing'}>{playState === 'playing' ? 'Starting…' : 'Play clip'}</button>}<a className={canPlayConnectedAudioClip || hostedReady ? 'button button-secondary' : 'button button-primary'} href={sourceOpenUrl} target="_blank" rel="noopener noreferrer" onClick={(event) => handleAudioSourceOpenClick(event, annotation, audioHover, sourceOpenUrl, onAudioAwaitingConnection)}>Open original source ↗</a></div><AudioPendingConnectHint show={showAudioHint} />{playState === 'error' && <p className="inline-error" role="alert">The connected page audio could not be controlled. Reconnect the episode and try again.</p>}</section>
+      )}
       <div className="detail-secondary-actions">
         <span>{annotation.commentCount.toLocaleString()} comments</span>
         {publicUrl && <a href={publicUrl} target="_blank" rel="noopener noreferrer">Public page ↗</a>}
+        {publicUrl && <a href={`${publicUrl}#claim`} target="_blank" rel="noopener noreferrer">File a claim</a>}
+        {postToXHref && <a href={postToXHref} target="_blank" rel="noopener noreferrer">Post to X</a>}
       </div>
       <ShareControl
         key={`${annotation.id}:${String(hasReshared)}:${currentUserId ?? 'signed-out'}`}
