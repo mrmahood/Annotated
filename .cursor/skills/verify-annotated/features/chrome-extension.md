@@ -1,35 +1,41 @@
 # Chrome extension
 
-The Chrome side panel is where a person creates an annotation on the tab they are reading. The panel's top buttons are `Create`, `Feed`, and `Me`. `Create` is the connected-page view. This feature is mapped and deferred. The first public proof does not load the extension.
+The Chrome side panel is where a person creates an annotation on the tab they are reading. The panel's top buttons are `Create`, `Feed`, and `Me`. `Create` for a YouTube watch page trims with drag handles and `30s` / `60s` presets. There are no typed START/END fields. Publish clip stays disabled until the range is from 1 to 90 seconds and the other publish gates are open. This drive stops before publishing.
 
 ## Sub-features
 
-- `extension-load` makes the side panel available from the Chrome toolbar after an unpacked load.
-- `extension-create` shows the connected page and the capture controls under `Create`.
-- `extension-feed` shows the public feed inside the panel.
-- `extension-me` shows the signed-in Me view inside the panel, or a sign-in prompt when there is no session.
+- `extension-load` loads `apps/extension/.output/chrome-mv3` and opens `sidepanel.html` by its extension id.
+- `extension-create` drives YouTube Create: presets, drag-trim, the 90-second ceiling, and the Publish gate.
+- `extension-audio` repeats those trim checks on a local audio page when the panel connects to it.
+- `extension-feed` and `extension-me` stay outside this drive.
 
 ## How to get to it (user POV)
 
-- Install the unpacked extension, then open the Annotated side panel from the Chrome toolbar icon.
+- Build the unpacked extension, then open the side panel directly at `chrome-extension://<id>/sidepanel.html` while a YouTube watch tab is active.
 - The in-product install reminder on the public site is titled `Install for Chrome` and offers `Get sidebar`. The site states that Annotated is not on the Chrome Web Store.
-- Inside the panel, choose `Create`, `Feed`, or `Me`.
+- Inside the panel, `Create` is the connected-page view. Choose `Video` or `Audio` when the source supports it.
 
 ## Driving it with verify-annotated
 
 Preconditions:
 
-- A Chrome profile with the Annotated unpacked extension loaded.
-- For a publish proof, a signed-in extension session (Google OAuth through the extension) and a tab the panel can connect to.
-- Those preconditions are not met by `launch` or `doctor`.
+- `pnpm --dir apps/extension run build` has written `apps/extension/.output/chrome-mv3`, or `VERIFY_ANNOTATED_EXTENSION_DIR` points at that unpacked directory.
+- `launch` and `doctor` are not required. A website session does not open the panel.
+- Do not click `Publish clip`.
 
-- **Do not drive it here.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive chrome-extension`. The command prints `verified-unreachable` and exits 3. The unmet precondition is an unpacked Manifest V3 side panel. A website session, including the dedicated test user used by `authenticated-me`, does not load the panel. The command does not download `extension.zip`, does not open `chrome://extensions`, and does not launch Chrome with a load-unpacked profile.
+- **Load and drive Create.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive chrome-extension`. Playwright Chromium launches with `--load-extension`. Headless mode is tried first; if the extension service worker does not start, the drive retries under Xvfb. The command resolves the 32-character extension id, opens the YouTube watch page `https://www.youtube.com/watch?v=aqz-KE-bpKQ`, then opens `chrome-extension://<id>/sidepanel.html`. The YouTube tab stays in front so surf-follow keeps that tab as the connected source. Panel actions run inside the page so the side-panel tab is not focused.
+- **Presets and drag.** `30s` must produce a 30-second span and `60s` a 60-second span. Dragging the end handle past 90 seconds must leave a span of at most 90 seconds and at least 1 second. The readout uses an en dash. Inputs named START or END, other than the `Clip start` and `Clip end` range handles, fail the proof.
+- **Publish gate.** With no valid range, or without commentary, Publish clip must not be enabled. After a valid range and commentary, Publish clip is enabled only when the panel is signed in and a player is selected. Signed out, the button is absent and the proof records that. The drive does not click it.
+- **Audio, when the fixture connects.** A local page with an `<audio>` element and podcast metadata is opened after YouTube. The same trim checks run. If Audio Create never becomes ready, the notes say `audio: unavailable` and the YouTube result still stands.
+- **Staging session.** When `STAGING_SUPABASE_SERVICE_ROLE_KEY`, `STAGING_SUPABASE_URL`, and `STAGING_SUPABASE_PUBLISHABLE_KEY` are set, and the URL and key both belong to `nkkunkwirvfwhmpwonqz`, the drive mints `cbandcooptest@gmail.com` and stores that session in extension storage before the panel opens. Otherwise it stays signed out and names the missing variables. It never reads the production service-role key.
+
+Exit 0 is a pass. Exit 1 is a failure, including a missing build. The command does not exit 3.
 
 ## Gotchas
 
-- Needs an unpacked extension load. Stays exit 3 for that reason. A signed-in website cookie is not a substitute.
-- There is no web route that renders the side panel. Proving `/` does not prove `Create`.
-- The visible button is `Create`. Do not look for a tab labeled `Context`.
-- Publishing is a real write (draft annotation, capture, upload). Do not attempt it from this read-only harness.
+- Keep the source tab active. Focusing `sidepanel.html` makes surf-follow retarget the extension URL, and Create loses the player.
+- A YouTube player that never becomes visible fails the drive. Do not substitute a different page for the YouTube check.
+- The 90-second ceiling is enforced by the clip handles. A drag that lands longer than 90 seconds is a product failure.
+- Publishing is a real write. This drive must stop before `Publish clip`.
 - Browser restart cannot recover an in-memory recording. This skill does not try.
 - No Chrome Web Store listing is part of this map. Do not invent a store URL.

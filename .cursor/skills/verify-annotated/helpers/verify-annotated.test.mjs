@@ -2,6 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyQuietList } from "./drive-outcome.mjs";
 import {
+  assessPublishControl,
+  extensionIdFromChromeUrl,
+  judgeCreateProbe,
+  parseClipSpanReadout,
+  sidePanelPathFromManifest,
+} from "./drive-chrome-extension.mjs";
+import {
   DEDICATED_TEST_EMAIL,
   createSupabaseMintPort,
   mintDedicatedTestSession,
@@ -10,6 +17,7 @@ import {
   redactSecrets,
   toPlaywrightCookies,
 } from "./mint-test-session.mjs";
+import { readStagingMintEnv } from "./mint-staging-test-session.mjs";
 
 const TRENDING_TITLE = "What’s Trending | Annotated";
 
@@ -308,4 +316,125 @@ test("redactSecrets removes a known token and a JWT", () => {
   assert.equal(text.includes("service-role-canary-value"), false);
   assert.equal(text.includes("eyJhbGciOi"), false);
   assert.match(text, /\[redacted\]/);
+});
+
+function fakeJwt(ref) {
+  const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
+  const body = Buffer.from(JSON.stringify({ ref, role: "service_role" })).toString("base64url");
+  return `${header}.${body}.sig`;
+}
+
+test("extension id comes from the chrome-extension host", () => {
+  assert.equal(
+    extensionIdFromChromeUrl("chrome-extension://abcdefghijklmnopabcdefghijklmnop/sidepanel.html"),
+    "abcdefghijklmnopabcdefghijklmnop",
+  );
+  assert.equal(extensionIdFromChromeUrl("https://example.com/"), null);
+  assert.equal(sidePanelPathFromManifest({ side_panel: { default_path: "sidepanel.html" } }), "sidepanel.html");
+});
+
+test("clip readout parses the en dash and empty span", () => {
+  assert.deepEqual(parseClipSpanReadout("–"), { startMs: null, endMs: null, spanMs: null });
+  assert.deepEqual(parseClipSpanReadout("0:10–1:40"), { startMs: 10_000, endMs: 100_000, spanMs: 90_000 });
+  assert.equal(parseClipSpanReadout("0:10-1:40"), null);
+});
+
+test("publish stays disabled until every gate is open and the range is 1 to 90 seconds", () => {
+  assert.equal(assessPublishControl({
+    signedIn: false,
+    commentaryReady: false,
+    playerSelected: true,
+    spanMs: null,
+    publishPresent: false,
+    publishEnabled: false,
+  }).reason, "publish-held");
+  assert.equal(assessPublishControl({
+    signedIn: true,
+    commentaryReady: true,
+    playerSelected: true,
+    spanMs: 120_000,
+    publishPresent: true,
+    publishEnabled: true,
+  }).reason, "publish-enabled-for-invalid-range");
+  assert.equal(assessPublishControl({
+    signedIn: true,
+    commentaryReady: false,
+    playerSelected: true,
+    spanMs: 30_000,
+    publishPresent: true,
+    publishEnabled: true,
+  }).reason, "publish-enabled-with-closed-gate");
+  assert.equal(assessPublishControl({
+    signedIn: true,
+    commentaryReady: true,
+    playerSelected: true,
+    spanMs: 60_000,
+    publishPresent: true,
+    publishEnabled: true,
+  }).reason, "publish-enabled");
+});
+
+test("a create probe passes only for 30s, 60s, and a clamped drag", () => {
+  const pass = judgeCreateProbe({
+    typedFieldCount: 0,
+    preset30Ms: 30_000,
+    preset60Ms: 60_000,
+    dragSpanMs: 90_000,
+    signedIn: false,
+    playerSelected: true,
+    publishPresent: false,
+    publishEnabledBeforeCommentary: false,
+    publishEnabledAfterCommentary: false,
+  });
+  assert.equal(pass.ok, true);
+  const fail = judgeCreateProbe({
+    typedFieldCount: 1,
+    preset30Ms: 30_000,
+    preset60Ms: 70_000,
+    dragSpanMs: 120_000,
+    signedIn: true,
+    playerSelected: true,
+    publishPresent: true,
+    publishEnabledBeforeCommentary: false,
+    publishEnabledAfterCommentary: false,
+  });
+  assert.equal(fail.ok, false);
+  assert.ok(fail.failures.includes("typed-start-end-fields"));
+});
+
+test("staging mint names the missing secrets and ignores the production service role", () => {
+  const missing = readStagingMintEnv({
+    SUPABASE_SERVICE_ROLE_KEY: fakeJwt("vnxjktpdzmykmqrqwvks"),
+    NEXT_PUBLIC_SUPABASE_URL: "https://vnxjktpdzmykmqrqwvks.supabase.co",
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "prod-publishable",
+  });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.exitCode, 3);
+  assert.deepEqual(missing.missing, [
+    "STAGING_SUPABASE_SERVICE_ROLE_KEY",
+    "STAGING_SUPABASE_URL",
+    "STAGING_SUPABASE_PUBLISHABLE_KEY",
+  ]);
+});
+
+test("staging mint refuses a production key and a non-staging URL", () => {
+  const prodKey = readStagingMintEnv({
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeJwt("vnxjktpdzmykmqrqwvks"),
+    STAGING_SUPABASE_URL: "https://nkkunkwirvfwhmpwonqz.supabase.co",
+    STAGING_SUPABASE_PUBLISHABLE_KEY: "staging-publishable",
+  });
+  assert.equal(prodKey.message, "staging_key_refused");
+  const wrongUrl = readStagingMintEnv({
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeJwt("nkkunkwirvfwhmpwonqz"),
+    STAGING_SUPABASE_URL: "https://vnxjktpdzmykmqrqwvks.supabase.co",
+    STAGING_SUPABASE_PUBLISHABLE_KEY: "staging-publishable",
+  });
+  assert.equal(wrongUrl.message, "staging_url_refused");
+  const ready = readStagingMintEnv({
+    STAGING_SUPABASE_SERVICE_ROLE_KEY: fakeJwt("nkkunkwirvfwhmpwonqz"),
+    STAGING_SUPABASE_URL: "https://nkkunkwirvfwhmpwonqz.supabase.co",
+    STAGING_SUPABASE_PUBLISHABLE_KEY: "staging-publishable",
+  });
+  assert.equal(ready.ok, true);
+  assert.equal(ready.url, "https://nkkunkwirvfwhmpwonqz.supabase.co");
 });

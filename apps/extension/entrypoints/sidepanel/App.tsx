@@ -5,11 +5,10 @@ import {
   formatMediaTime,
   getNewMediaPublicationRangeError,
 } from '@annotated/shared/media-time';
-import { formatMediaTimeTenths, getMediaRangeDisplay } from '../../utils/media-time-display';
-import { getTypedClipFieldError } from '../../utils/clip-range-entry';
+import { formatMediaTimeTenths } from '../../utils/media-time-display';
 import { applyClipPresetFromPlayhead, type ClipPresetWindow } from '../../utils/clip-range';
 import { applyCreateClipRangeMark, clearCreateClipRangeMark } from '../../utils/clip-range-mark';
-import { ClipRangeEditor, useTypedClipRange } from './clip-range-fields';
+import { ClipRangeEditor } from './clip-range-fields';
 import { AppearanceControl } from './appearance-control';
 import { BrandLockup } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
@@ -3730,17 +3729,6 @@ function App() {
     }
   };
 
-  const videoRangeEntry = useTypedClipRange(
-    videoDraftState.startMs,
-    videoDraftState.endMs,
-    commitVideoRange,
-  );
-  const audioRangeEntry = useTypedClipRange(
-    audioDraftState.startMs,
-    audioDraftState.endMs,
-    commitAudioRange,
-  );
-
   const changeTitle = (value: string) => {
     draftRevisionRef.current += 1;
     dispatchCreateDraft({ type: 'set-text-title', title: value });
@@ -3990,44 +3978,12 @@ function App() {
     audioDraftState.endMs,
     audioDraftState.durationMs,
   );
-  const videoRangeDisplay = getMediaRangeDisplay(videoDraftState.startMs, videoDraftState.endMs);
-  const audioRangeDisplay = getMediaRangeDisplay(audioDraftState.startMs, audioDraftState.endMs);
-  const videoStartError = getTypedClipFieldError(
-    videoRangeEntry.startField,
-    videoDraftState.startMs,
-    videoDraftState.durationMs,
-    'start',
-  );
-  const videoEndError = getTypedClipFieldError(
-    videoRangeEntry.endField,
-    videoDraftState.endMs,
-    videoDraftState.durationMs,
-    'end',
-  );
-  const audioStartError = getTypedClipFieldError(
-    audioRangeEntry.startField,
-    audioDraftState.startMs,
-    audioDraftState.durationMs,
-    'start',
-  );
-  const audioEndError = getTypedClipFieldError(
-    audioRangeEntry.endField,
-    audioDraftState.endMs,
-    audioDraftState.durationMs,
-    'end',
-  );
-  const showVideoRangeError = videoRangeEntry.allowsPublish
-    && videoDraftState.startMs !== null
+  const showVideoRangeError = videoDraftState.startMs !== null
     && videoDraftState.endMs !== null
-    && videoClipRangeError !== null
-    && videoClipRangeError !== videoStartError
-    && videoClipRangeError !== videoEndError;
-  const showAudioRangeError = audioRangeEntry.allowsPublish
-    && audioDraftState.startMs !== null
+    && videoClipRangeError !== null;
+  const showAudioRangeError = audioDraftState.startMs !== null
     && audioDraftState.endMs !== null
-    && audioClipRangeError !== null
-    && audioClipRangeError !== audioStartError
-    && audioClipRangeError !== audioEndError;
+    && audioClipRangeError !== null;
   const videoPlayerSelected = videoPlayers.status === 'ready' &&
     videoPlayers.pageGeneration === modeSelection?.page.generation &&
     videoPlayers.candidates.some((candidate) => candidate.identity === videoDraftState.playerIdentity);
@@ -4035,26 +3991,26 @@ function App() {
     audioPlayerDiscovery.pageGeneration === modeSelection?.page.generation &&
     audioPlayerDiscovery.candidates.some((candidate) => candidate.identity === audioDraftState.playerIdentity);
   const canPublishYoutube = authState.status === 'signed-in' && youtubeSource !== null &&
-    videoPlayerSelected && videoRangeEntry.allowsPublish &&
+    videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !youtubeAdShowing &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
   const canPublishTikTok = authState.status === 'signed-in' && tiktokSource !== null &&
-    videoPlayerSelected && videoRangeEntry.allowsPublish &&
+    videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
   const canPublishWebpageVideo = authState.status === 'signed-in' && webVideoSource !== null &&
-    videoPlayerSelected && videoRangeEntry.allowsPublish &&
+    videoPlayerSelected &&
     videoClipRangeError === null && hasVideoCommentary && !videoCommentaryBusy &&
     youtubePublishState.status !== 'publishing' &&
     !hostedSessionBlocksCreatePublish(hostedMediaSession, contextUrl, mediaCaptureState) &&
     postedConfirmation === null;
   const canPublishAudio = authState.status === 'signed-in' && audioSource !== null &&
-    audioPlayerSelected && audioRangeEntry.allowsPublish &&
+    audioPlayerSelected &&
     (spotifySource !== null || audioDraftState.durationMs !== null) && audioClipRangeError === null &&
     hasAudioCommentary && !audioCommentaryBusy &&
     audioPublishState.status !== 'publishing' &&
@@ -4192,7 +4148,7 @@ function App() {
             <section className="create-panel youtube-clip-panel" aria-labelledby="create-heading" key="create-video">
               <h2 id="create-heading" className="visually-hidden">Create clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this video for unpublished work…</span></div> : <>
-                <p className="create-help">Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Type times if you prefer. Clips can be at most 90 seconds.</p>
+                <p className="create-help">Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Clips can be at most 90 seconds.</p>
                 <PlayerSelector mode="video" discovery={videoPlayers} selectedIdentity={videoDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('video', identity)} />
                 {youtubeSource && youtubeAdShowing && (
                   <div className="compact-state" role="status">
@@ -4202,16 +4158,10 @@ function App() {
                 )}
                 {videoDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(videoDraftState.playerTimeMs)}</strong>{videoDraftState.durationMs !== null && <> / {formatMediaTimeTenths(videoDraftState.durationMs)}</>}</p>}
                 <ClipRangeEditor
-                  idPrefix="video"
                   startMs={videoDraftState.startMs}
                   endMs={videoDraftState.endMs}
                   durationMs={videoDraftState.durationMs}
                   playheadMs={videoDraftState.playerTimeMs}
-                  startField={videoRangeEntry.startField}
-                  endField={videoRangeEntry.endField}
-                  lengthDisplay={videoRangeDisplay.length}
-                  startError={videoStartError}
-                  endError={videoEndError}
                   rangeError={showVideoRangeError ? videoClipRangeError : null}
                   disabled={mediaEditorLocked}
                   playerSelected={videoPlayerSelected}
@@ -4224,10 +4174,6 @@ function App() {
                   }
                   previewLabel="Preview range"
                   onCommitRange={(startMs, endMs) => commitVideoRange(startMs, endMs)}
-                  onStartChange={videoRangeEntry.changeStart}
-                  onEndChange={videoRangeEntry.changeEnd}
-                  onStartBlur={videoRangeEntry.commitStart}
-                  onEndBlur={videoRangeEntry.commitEnd}
                   onPreset={(presetMs, window) => void applyMediaClipPreset(presetMs, window)}
                   onPreview={() => void previewYoutubeDraft()}
                   onRefresh={() => { void readConnectedPlayer(); }}
@@ -4244,20 +4190,14 @@ function App() {
             <section className="create-panel audio-clip-panel" aria-labelledby="create-heading" key="create-audio">
               <h2 id="create-heading" className="visually-hidden">Create audio clip</h2>
               {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this episode for unpublished work…</span></div> : <>
-                <p className="create-help">{spotifySource ? 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Preview plays only that range on the now-playing bar and stops at the end. Type times if you prefer. Clips can be at most 90 seconds.' : 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Type times if you prefer. Clips can be at most 90 seconds.'}</p>
+                <p className="create-help">{spotifySource ? 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Preview plays only that range on the now-playing bar and stops at the end. Clips can be at most 90 seconds.' : 'Drag the clip range, or set 30s / 60s from the playhead or the timeline region you are viewing. Clips can be at most 90 seconds.'}</p>
                 <PlayerSelector mode="audio" discovery={audioPlayerDiscovery} selectedIdentity={audioDraftState.playerIdentity} disabled={mediaEditorLocked} onSelect={(identity) => choosePlayer('audio', identity)} />
                 {audioDraftState.playerTimeMs !== null && <p className="player-readout">Player now: <strong>{formatMediaTimeTenths(audioDraftState.playerTimeMs)}</strong>{audioDraftState.durationMs !== null && <> / {formatMediaTimeTenths(audioDraftState.durationMs)}</>}</p>}
                 <ClipRangeEditor
-                  idPrefix="audio"
                   startMs={audioDraftState.startMs}
                   endMs={audioDraftState.endMs}
                   durationMs={audioDraftState.durationMs}
                   playheadMs={audioDraftState.playerTimeMs}
-                  startField={audioRangeEntry.startField}
-                  endField={audioRangeEntry.endField}
-                  lengthDisplay={audioRangeDisplay.length}
-                  startError={audioStartError}
-                  endError={audioEndError}
                   rangeError={showAudioRangeError ? audioClipRangeError : null}
                   disabled={mediaEditorLocked}
                   playerSelected={audioPlayerSelected}
@@ -4269,10 +4209,6 @@ function App() {
                   }
                   previewLabel="Preview range"
                   onCommitRange={(startMs, endMs) => commitAudioRange(startMs, endMs)}
-                  onStartChange={audioRangeEntry.changeStart}
-                  onEndChange={audioRangeEntry.changeEnd}
-                  onStartBlur={audioRangeEntry.commitStart}
-                  onEndBlur={audioRangeEntry.commitEnd}
                   onPreset={(presetMs, window) => void applyMediaClipPreset(presetMs, window)}
                   onPreview={() => void previewAudioDraft()}
                   onRefresh={() => { void readConnectedPlayer(); }}

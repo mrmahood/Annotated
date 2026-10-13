@@ -36,6 +36,9 @@ secrets/
 !.env.example
 !.env.*.example
 
+# verify-annotated proof captured on a local drive
+.cursor/skills/verify-annotated/evidence/
+
 # Logs
 *.log
 npm-debug.log*
