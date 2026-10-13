@@ -1,3 +1,5 @@
+import { serializeJsonLd } from "@/lib/json-ld";
+
 export function JsonLd({ data }: { data: Record<string, unknown> | null }) {
   if (!data) return null;
 
@@ -5,7 +7,7 @@ export function JsonLd({ data }: { data: Record<string, unknown> | null }) {
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{
-        __html: JSON.stringify(data).replaceAll("<", "\\u003c"),
+        __html: serializeJsonLd(data),
       }}
     />
   );

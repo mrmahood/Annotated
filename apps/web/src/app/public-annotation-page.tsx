@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatMediaTime } from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
+import { getAnnotationStructuredData } from "@/lib/claim-review-jsonld";
 import type { PublicAnnotation } from "@/lib/data/public-annotation-model";
 import { getInitial } from "@/lib/public-content";
 import { getConfiguredSiteOrigin, getPublicAnnotationPath } from "@/lib/public-routes";
@@ -21,6 +22,7 @@ import { PostToXButton } from "./post-to-x";
 import { PublishedAudioPlayer } from "./published-audio-player";
 import { FollowButton } from "./follow-button";
 import { HostedMediaPlayer } from "./hosted-media-player";
+import { JsonLd } from "./json-ld";
 import { TextWithLogoMark } from "./logo-mark";
 import { SiteHeader } from "./site-header";
 import { BookmarkControl } from "./bookmark-control";
@@ -72,6 +74,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
 
   return (
     <>
+      <JsonLd data={getAnnotationStructuredData(annotation)} />
       <SiteHeader returnTo={publicPath} />
       <main className="annotation-shell">
         <article className="annotation-page">

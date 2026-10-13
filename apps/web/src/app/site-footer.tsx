@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AGENTS_PATH } from "@/lib/discoverability";
 import { WHATS_NEW_PATH } from "@/lib/extension-release";
 import { LEGAL_OPERATOR, LEGAL_PATHS } from "@/lib/legal";
 
@@ -14,6 +15,7 @@ export function SiteFooter() {
         </nav>
         <nav aria-label="About Annotated">
           <Link href={WHATS_NEW_PATH}>{"What's new"}</Link>
+          <Link href={AGENTS_PATH}>Agents</Link>
         </nav>
       </div>
       <p className="site-footer-copy">

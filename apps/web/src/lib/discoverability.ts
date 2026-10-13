@@ -1,10 +1,33 @@
+import {
+  claimReviewRatingEntries,
+  CLAIM_REVIEW_BEST_RATING,
+  CLAIM_REVIEW_WORST_RATING,
+} from "./claim-review-jsonld.ts";
 import { WHO_TO_FOLLOW_PATH } from "./data/who-to-follow.ts";
+import { EXTENSION_DOWNLOAD_PATH } from "./extension-install.ts";
 import { WHATS_NEW_HEADING, WHATS_NEW_LEDE, WHATS_NEW_PATH } from "./extension-release.ts";
 import { LEGAL_OPERATOR, LEGAL_PATHS } from "./legal.ts";
 import { getConfiguredSiteOrigin } from "./public-routes.ts";
 
 export const FEED_PATH = "/";
 export const TRENDING_PATH = "/trending";
+export const DEMO_PATH = "/demo";
+export const AGENTS_PATH = "/agents";
+export const LLMS_TXT_PATH = "/llms.txt";
+export const ANNOTATED_REPOSITORY_URL = "https://github.com/mrmahood/Annotated";
+
+export const AGENTS_HEADING = "Agents";
+export const AGENTS_LEDE =
+  "How to read Annotated, the fact-check layer for the web: public URLs, verdicts, sources, consensus, and ClaimReview markup.";
+
+export const PLANNED_API_AND_MCP =
+  "An API and an MCP server are planned. No release date is set.";
+
+export const CONSENSUS_GUIDE =
+  "Consensus is the count of agree and disagree votes on the annotation, plus helpful ratings on the source links. It is reader reaction. It is not a second verdict.";
+
+export const SOURCES_GUIDE =
+  "Sources are the links the author attached to the note. A reader can mark a source helpful.";
 
 export const FEED_LEDE = "The fact-check layer for the web.";
 
@@ -33,6 +56,7 @@ export const INDEXABLE_PUBLIC_PATHS = [
   TRENDING_PATH,
   WHO_TO_FOLLOW_PATH,
   WHATS_NEW_PATH,
+  AGENTS_PATH,
   LEGAL_PATHS.center,
   LEGAL_PATHS.privacy,
   LEGAL_PATHS.terms,
@@ -69,6 +93,11 @@ const PUBLIC_PAGE_COPY: Record<IndexablePublicPath, PublicPageCopy> = {
   [WHATS_NEW_PATH]: {
     name: WHATS_NEW_HEADING,
     description: WHATS_NEW_LEDE,
+    includeOperator: false,
+  },
+  [AGENTS_PATH]: {
+    name: AGENTS_HEADING,
+    description: AGENTS_LEDE,
     includeOperator: false,
   },
   [LEGAL_PATHS.center]: {
@@ -186,10 +215,17 @@ export function getRobotsDocument(): {
 }
 
 export function getSitemapEntries(): { url: string }[] {
-  return INDEXABLE_PUBLIC_PATHS.flatMap((path) => {
+  return [...INDEXABLE_PUBLIC_PATHS, LLMS_TXT_PATH].flatMap((path) => {
     const url = absolutePublicUrl(path);
     return url ? [{ url }] : [];
   });
+}
+
+function ratingScaleSentence(): string {
+  const labels = claimReviewRatingEntries()
+    .map((entry) => `${entry.alternateName} (${entry.ratingValue})`)
+    .join(", ");
+  return `Verdicts, from the claim holding least to most: ${labels}. True means the claim is accurate. worstRating is ${CLAIM_REVIEW_WORST_RATING} and bestRating is ${CLAIM_REVIEW_BEST_RATING}.`;
 }
 
 export function getLlmsTxt(): string {
@@ -199,21 +235,45 @@ export function getLlmsTxt(): string {
 
   return `# Annotated
 
-> Annotated is a public web application and Chrome side-panel extension for attributed annotations of selected article passages or selected audio or video ranges, with your own commentary.
+> ${FEED_LEDE}
+
+Annotated is the fact-check layer for the web. It is a public web application and Chrome side-panel extension for an attributed annotation of a selected article passage or a selected audio or video range, with commentary. A fact-check names a verdict and links the sources it used.
 
 Annotated preserves source attribution and original-source links. Selected hosted media ranges are between 1 and 90 seconds. Raw captured source media is not offered as a download. Annotated does not authorize DRM circumvention or paywall bypass.
 
 Annotated is currently offered worldwide as a free beta. You must be at least 18 years old to use it. ${operator}
 
+## Read a fact-check
+
+- ${ratingScaleSentence()}
+- ${SOURCES_GUIDE}
+- ${CONSENSUS_GUIDE}
+- A fact-check with a verdict and a quoted passage includes schema.org ClaimReview JSON-LD. claimReviewed is the quoted passage, trimmed. reviewRating.alternateName is the verdict label shown on the page. The author is a Person or an Organization, with the public profile URL. itemReviewed is a Claim whose appearance points at the source URL. citation is the source links. Other annotations use a Comment, or no structured data when a canonical URL is unavailable.
+
+## URL patterns
+
+- \`/{handle}/{slug}\` is a public annotation, including \`/factdesk/...\` and \`/matt-mahood-85fdb29c/...\`.
+- \`/a/{uuid}\` is a historical annotation address. It redirects to the handle path when one exists.
+- \`/p/{profileId}\` is a public profile.
+- [Feed](${url(FEED_PATH)}), [Demo](${url(DEMO_PATH)}), [Agents](${url(AGENTS_PATH)}), and [llms.txt](${url(LLMS_TXT_PATH)}) are public. robots.txt allows them.
+
 ## Pages
 
 - [Feed](${url(FEED_PATH)}): ${FEED_LEDE}
+- [Demo](${url(DEMO_PATH)}): A sample article with fact-checks, verdicts, sources, and read-only consensus. No install and no sign-in.
+- [Agents](${url(AGENTS_PATH)}): ${AGENTS_LEDE}
 - [Trending](${url(TRENDING_PATH)}): ${TRENDING_HEADING} ${TRENDING_LEDE}
 - [Who to Follow](${url(WHO_TO_FOLLOW_PATH)}): ${WHO_TO_FOLLOW_HEADING} A curated set of public Annotated profiles.
 - [What's new](${url(WHATS_NEW_PATH)}): ${WHATS_NEW_HEADING}. ${WHATS_NEW_LEDE}
+- [Extension download](${url(EXTENSION_DOWNLOAD_PATH)}): The Chrome side-panel extension as a zip. Load it unpacked. It is not on the Chrome Web Store yet.
+- [GitHub](${ANNOTATED_REPOSITORY_URL}): The Annotated source repository.
 - [Legal](${url(LEGAL_PATHS.center)}): ${LEGAL_HEADING}. ${LEGAL_LEDE}
 - [Privacy Policy](${url(LEGAL_PATHS.privacy)}): ${PRIVACY_LEDE}
 - [Terms of Service](${url(LEGAL_PATHS.terms)}): ${TERMS_LEDE}
+
+## Planned
+
+- ${PLANNED_API_AND_MCP}
 
 ## Contact
 
@@ -222,6 +282,6 @@ Annotated is currently offered worldwide as a free beta. You must be at least 18
 
 ## Optional
 
-- [Sitemap](${url("/sitemap.xml")}): Machine-readable list of public site URLs.
+- [Sitemap](${url("/sitemap.xml")}): Machine-readable list of public site URLs, including ${AGENTS_PATH} and ${LLMS_TXT_PATH}.
 `;
 }
