@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   ACTIVE_TAB_CONTEXT_KEY,
   ACTIVE_TAB_CONTEXT_MESSAGE,
+  activeTabUrlIsFollowable,
   adoptActiveTabContextFromLiveTab,
 } from './active-tab-context.ts';
 import { ACTIVE_CAPTURE_KEY } from './media-capture-background.ts';
@@ -141,6 +142,40 @@ test('followBrowsingTab writes the same context shape as action click and notifi
 
   assert.equal(await followBrowsingTab(chrome, tab({ title: 'Updated story' }), NOW + 20), 'updated');
   assert.equal(chrome.store[ACTIVE_TAB_CONTEXT_KEY].title, 'Updated story');
+});
+
+test('follow ignores about: URLs, including about:blank, without replacing the source', async () => {
+  const youtube = context({
+    title: 'YouTube',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+  });
+  const blank = tab({
+    id: 11,
+    windowId: 1,
+    title: '',
+    url: 'about:blank',
+    active: true,
+  });
+  const chrome = fakeChrome({
+    context: youtube,
+    tabs: [blank],
+  });
+
+  assert.equal(activeTabUrlIsFollowable('about:blank'), false);
+  assert.equal(activeTabUrlIsFollowable('about:srcdoc'), false);
+  assert.equal(activeTabUrlIsFollowable('https://example.com/about:blank'), true);
+  assert.equal(await followBrowsingTab(chrome, blank, NOW), 'skipped');
+  assert.equal(await followActiveBrowsingTab(chrome, NOW + 5), 'skipped');
+  assert.deepEqual(chrome.store[ACTIVE_TAB_CONTEXT_KEY], youtube);
+  assert.deepEqual(chrome.messages, []);
+
+  installSurfFollow(chrome);
+  chrome.listeners.updated[0](blank.id, { url: 'about:blank', status: 'complete' }, blank);
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(chrome.store[ACTIVE_TAB_CONTEXT_KEY], youtube);
+  assert.deepEqual(chrome.messages, []);
 });
 
 test('follow ignores the extension popup and chrome pages without replacing the source', async () => {

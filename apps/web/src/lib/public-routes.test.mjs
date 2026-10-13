@@ -74,6 +74,7 @@ test("constructs canonical paths only from validated stored route identity", () 
     "privacy",
     "terms",
     "legal",
+    "whats-new",
   ]) {
     assert.throws(
       () => getCanonicalAnnotationPath({ creatorHandle, annotationSlug: "source-title" }),

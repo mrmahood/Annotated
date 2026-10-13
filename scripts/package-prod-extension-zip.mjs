@@ -15,6 +15,8 @@ export const PROD_SUPABASE_URL = "https://vnxjktpdzmykmqrqwvks.supabase.co";
 export const STAGING_SUPABASE_HOST = "nkkunkwirvfwhmpwonqz.supabase.co";
 export const STAGING_WEB_APP_HOST = "annotated-staging.cbandcoop.com";
 export const WEB_ZIP_RELATIVE_PATH = "apps/web/public/extension.zip";
+export const WEB_VERSION_RELATIVE_PATH = "apps/web/public/extension-version.json";
+const EXTENSION_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 export const CI_PLACEHOLDER_KEY = "ci-local-publishable-placeholder";
 
 const SUPABASE_CONFIG_MARKER = "WXT_SUPABASE_URL must be a valid HTTPS Supabase project URL.";
@@ -273,10 +275,43 @@ export async function zipChromeMv3Directory(sourceDirectory, destinationZip) {
   });
 }
 
+export async function readExtensionPackageVersion(repoRoot) {
+  const pkg = JSON.parse(
+    await readFile(join(repoRoot, "apps/extension/package.json"), "utf8"),
+  );
+  if (typeof pkg.version !== "string" || !EXTENSION_VERSION_PATTERN.test(pkg.version)) {
+    throw new Error(
+      `Extension package version must be semver X.Y.Z, received ${String(pkg.version)}.`,
+    );
+  }
+  return pkg.version;
+}
+
+export function extensionVersionDocument(version) {
+  return {
+    name: "Annotated",
+    version,
+  };
+}
+
+export async function writeExtensionVersionDocument(repoRoot) {
+  const version = await readExtensionPackageVersion(repoRoot);
+  const destination = join(repoRoot, WEB_VERSION_RELATIVE_PATH);
+  await mkdir(dirname(destination), { recursive: true });
+  await writeFile(
+    destination,
+    `${JSON.stringify(extensionVersionDocument(version), null, 2)}\n`,
+  );
+  return { version, destination };
+}
+
 export async function packageProdExtensionZip({
   env = process.env,
   repoRoot = repoRootFromScript(),
 } = {}) {
+  const { version } = await writeExtensionVersionDocument(repoRoot);
+  console.log(`Wrote ${WEB_VERSION_RELATIVE_PATH} for extension ${version}.`);
+
   const publishableKey = resolveProdExtensionPublishableKey(env);
   if (!publishableKey) {
     if (productionWebBuildRequiresZip(env)) {
@@ -287,7 +322,7 @@ export async function packageProdExtensionZip({
     console.warn(
       "Skipping Prod extension zip: Production publishable key is not available in this environment.",
     );
-    return { skipped: true };
+    return { skipped: true, version };
   }
 
   const publicKey = resolveProdExtensionPublicKey(env);
@@ -303,7 +338,12 @@ export async function packageProdExtensionZip({
   });
 
   const chromeMv3Directory = join(repoRoot, "apps/extension/.output/chrome-mv3");
-  await pinProdExtensionOutput(chromeMv3Directory, publicKey);
+  const pinned = await pinProdExtensionOutput(chromeMv3Directory, publicKey);
+  if (pinned.version !== version) {
+    throw new Error(
+      `Built manifest version ${pinned.version} does not match apps/extension/package.json ${version}.`,
+    );
+  }
   await assertProdExtensionOutput(chromeMv3Directory, publicKey);
 
   const destination = join(repoRoot, WEB_ZIP_RELATIVE_PATH);
@@ -313,7 +353,7 @@ export async function packageProdExtensionZip({
 
   console.log(`Wrote ${WEB_ZIP_RELATIVE_PATH} from Prod chrome-mv3 output.`);
   console.log(formatProdExtensionKeyReport(publicKey));
-  return { skipped: false, destination };
+  return { skipped: false, destination, version };
 }
 
 async function main() {

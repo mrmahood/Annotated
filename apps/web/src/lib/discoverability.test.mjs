@@ -42,6 +42,7 @@ test("llms.txt follows the consultancy reading-file shape with published facts",
   assert.match(text, new RegExp(`\\[Feed\\]\\(${ORIGIN}/\\): ${escapeRegExp(FEED_LEDE)}`));
   assert.match(text, new RegExp(`\\[Trending\\]\\(${ORIGIN}/trending\\):`));
   assert.match(text, new RegExp(`\\[Who to Follow\\]\\(${ORIGIN}${WHO_TO_FOLLOW_PATH}\\):`));
+  assert.match(text, new RegExp(`\\[What's new\\]\\(${ORIGIN}/whats-new\\):`));
   assert.match(text, new RegExp(`\\[Legal\\]\\(${ORIGIN}${LEGAL_PATHS.center}\\):`));
   assert.match(text, new RegExp(`\\[Privacy Policy\\]\\(${ORIGIN}${LEGAL_PATHS.privacy}\\):`));
   assert.match(text, new RegExp(`\\[Terms of Service\\]\\(${ORIGIN}${LEGAL_PATHS.terms}\\):`));
@@ -70,6 +71,7 @@ test("robots and sitemap cover the stable public pages and skip private routes",
     `${ORIGIN}/`,
     `${ORIGIN}/trending`,
     `${ORIGIN}${WHO_TO_FOLLOW_PATH}`,
+    `${ORIGIN}/whats-new`,
     `${ORIGIN}${LEGAL_PATHS.center}`,
     `${ORIGIN}${LEGAL_PATHS.privacy}`,
     `${ORIGIN}${LEGAL_PATHS.terms}`,

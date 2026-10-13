@@ -13,6 +13,7 @@ export const RESERVED_PROFILE_HANDLES = [
   'privacy',
   'terms',
   'legal',
+  'whats-new',
 ] as const;
 
 const RESERVED_PROFILE_HANDLE_SET: ReadonlySet<string> = new Set(RESERVED_PROFILE_HANDLES);

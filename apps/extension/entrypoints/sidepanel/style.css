@@ -119,6 +119,39 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .back-button { grid-column: 1; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--radius-small); color: var(--text-secondary); background: transparent; cursor: pointer; }
 .back-button:hover { color: var(--text-primary); background: var(--surface); }
 .top-tabs { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 10px; }
+.extension-update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 8px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--accent-fill);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.extension-update-banner p { display: flex; align-items: baseline; gap: 6px; min-width: 0; margin: 0; }
+.extension-update-banner strong { font-weight: 650; }
+.extension-update-banner span { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.extension-update-banner a { color: inherit; font-weight: 650; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.extension-update-banner button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-small);
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.extension-update-banner button:hover { color: var(--text-primary); background: var(--surface-active); }
 .top-tabs button { position: relative; min-height: 32px; padding: 6px; border: 0; color: var(--text-muted); background: transparent; font-size: 12px; font-weight: 500; cursor: pointer; }
 .top-tabs button:hover { color: var(--text-secondary); }
 .top-tabs button.active { color: var(--text-primary); font-weight: 650; }

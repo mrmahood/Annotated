@@ -103,6 +103,7 @@ test('public annotation paths prefer validated canonical identity with UUID fall
     'privacy',
     'terms',
     'legal',
+    'whats-new',
   ]) {
     assert.equal(parsePublicAnnotationRoute(creatorHandle, 'source-title'), undefined);
     assert.throws(

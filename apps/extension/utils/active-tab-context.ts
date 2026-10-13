@@ -1,7 +1,7 @@
 export const ACTIVE_TAB_CONTEXT_KEY = 'annotatedActiveTabContext';
 export const ACTIVE_TAB_CONTEXT_MESSAGE = 'annotatedActiveTabContextUpdated';
 
-const UNFOLLOWABLE_ACTIVE_TAB_URL = /^(?:chrome-extension|chrome):/i;
+const UNFOLLOWABLE_ACTIVE_TAB_URL = /^(?:chrome-extension|chrome|about):/i;
 
 export function activeTabUrlIsFollowable(url: string): boolean {
   return !UNFOLLOWABLE_ACTIVE_TAB_URL.test(url);

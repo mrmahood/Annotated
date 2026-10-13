@@ -16,6 +16,7 @@ import {
   type AnnotationNoteDraft,
 } from './annotation-note-fields';
 import { AppearanceControl } from './appearance-control';
+import { ExtensionUpdateBanner } from './extension-update-banner';
 import { BrandLockup } from './logo-mark';
 import { getYouTubeVideoIdentity } from '@annotated/shared/youtube';
 import { getTikTokVideoIdentity } from '@annotated/shared/tiktok';
@@ -4209,6 +4210,7 @@ function App() {
         <nav className="top-tabs" aria-label="Primary">
           {(['context', 'feed', 'account'] as const).map((view) => <button key={view} type="button" className={currentScreen.kind === 'root' && currentScreen.view === view ? 'active' : ''} aria-current={currentScreen.kind === 'root' && currentScreen.view === view ? 'page' : undefined} onClick={() => selectRoot(view)}>{view === 'context' ? 'Create' : view === 'account' ? 'Me' : 'Feed'}</button>)}
         </nav>
+        <ExtensionUpdateBanner />
       </header>
 
       {!supabase && currentScreen.kind !== 'root' && <div className="compact-state compact-state-error view-state" role="alert"><strong>Annotated is unavailable</strong><span>Check the extension configuration and try again.</span></div>}

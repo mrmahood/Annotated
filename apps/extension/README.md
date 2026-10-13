@@ -81,5 +81,5 @@ source audio must still remain on the original site.
 
 Store release, semver, and Staging-vs-Prod packaging are in
 `docs/product/extension-release-versioning.md`. First Chrome Web Store
-submit (`0.1.0` listing copy, permission justifications, Prod ZIP):
+submit (`0.2.0` listing copy, permission justifications, Prod ZIP):
 `docs/product/chrome-web-store-submit.md`.
