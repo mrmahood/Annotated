@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
@@ -78,6 +79,15 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(page, /canonical: DEMO_PAGE_PATH/);
   assert.equal(DEMO_PAGE_TITLE, "Annotated demo: the fact-check layer for the web");
   assert.match(experience, /\{DEMO_VALUE_PROP\}/);
+  assert.match(experience, /Watch the 80-second demo/);
+  assert.match(experience, /<video controls preload="none" playsInline src="\/demo\.mp4">/);
+  const demoVideo = await readFile(new URL("../../public/demo.mp4", import.meta.url));
+  assert.equal(
+    createHash("sha256").update(demoVideo).digest("hex"),
+    "8df40f7ace5691f721c298841369e6e7df8c5940912dc97619573dd590f2d4e7",
+  );
+  const proxy = await readFile(new URL("../proxy.ts", import.meta.url), "utf8");
+  assert.match(proxy, /svg\|png\|jpg\|jpeg\|gif\|webp\|mp4/);
   assert.equal(
     DEMO_VALUE_PROP,
     "Annotated is the fact-check layer for the web: highlight any claim, attach sources, and they stay attached.",

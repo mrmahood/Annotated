@@ -236,6 +236,12 @@ export function DemoExperience() {
       <header className="demo-intro">
         <p className="eyebrow">DEMO</p>
         <h1 id="demo-value">{DEMO_VALUE_PROP}</h1>
+        <p className="demo-watch">
+          <a href="/demo.mp4">Watch the 80-second demo</a>
+          <video controls preload="none" playsInline src="/demo.mp4">
+            <a href="/demo.mp4">Watch the 80-second demo</a>
+          </video>
+        </p>
       </header>
 
       {guided ? (
