@@ -120,6 +120,14 @@ import {
   type SelectionExtractionResult,
 } from '../../utils/selection-capture';
 import { getInitial, isUuid } from '../../utils/social-helpers';
+import {
+  applyPublishedPassageHighlights,
+  isPassageOpenMessage,
+  isPassageOpenRequest,
+  PASSAGE_OPEN_STORAGE_KEY,
+  type PassageHighlightPanel,
+} from '../../utils/passage-highlight';
+import { PassageHighlightList } from './passage-highlight-list';
 import { getSupabaseClient } from '../../utils/supabase';
 import { getWebAppOrigin } from '../../utils/web-app-url';
 import { publishArticleAnnotation, uploadAndAttachOwnerCommentaryAudio } from '../../utils/annotation-publishing';
@@ -736,6 +744,8 @@ function App() {
   const modeSwitchDialogRef = useRef<HTMLDialogElement | null>(null);
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [navigation, dispatchNavigation] = useReducer(reduceNavigation, INITIAL_NAVIGATION);
+  const [passagePanel, setPassagePanel] = useState<PassageHighlightPanel>({ status: 'empty' });
+  const passageOpenRef = useRef<string | null>(null);
   const connectedContextRef = useRef<ActiveTabContext | null>(null);
   const approvedReceiptsRef = useRef<ApprovedReceiptSource[]>([]);
   const postedConfirmationRef = useRef<CreatePostedConfirmation | null>(null);
@@ -3071,6 +3081,58 @@ function App() {
   }, [sourceState]);
 
   useEffect(() => {
+    const pageUrl = sourceState.status === 'connected' ? sourceState.source.url : null;
+    const tabId = connectedContextRef.current?.tabId;
+    if (!supabase || !pageUrl || tabId == null) {
+      setPassagePanel({ status: 'empty' });
+      return;
+    }
+    let cancelled = false;
+    setPassagePanel({ status: 'empty' });
+    void applyPublishedPassageHighlights({
+      supabase,
+      scripting: chrome.scripting,
+      tabId,
+      pageUrl,
+    }).then((result) => {
+      if (!cancelled) setPassagePanel(result);
+    });
+    return () => { cancelled = true; };
+  }, [sourceState, supabase]);
+
+  useEffect(() => {
+    const openPassage = (annotationId: string) => {
+      if (passageOpenRef.current === annotationId) return;
+      passageOpenRef.current = annotationId;
+      dispatchNavigation({ type: 'push', screen: { kind: 'annotation', annotationId } });
+      window.setTimeout(() => {
+        if (passageOpenRef.current === annotationId) passageOpenRef.current = null;
+      }, 500);
+      void chrome.storage.session.remove(PASSAGE_OPEN_STORAGE_KEY);
+    };
+    const openStored = (value: unknown) => {
+      if (isPassageOpenRequest(value)) openPassage(value.annotationId);
+    };
+    const onChanged = (changes: Record<string, Browser.storage.StorageChange>, area: string) => {
+      if (area === 'session' && Object.prototype.hasOwnProperty.call(changes, PASSAGE_OPEN_STORAGE_KEY)) {
+        openStored(changes[PASSAGE_OPEN_STORAGE_KEY]?.newValue);
+      }
+    };
+    const onMessage = (message: unknown) => {
+      if (isPassageOpenMessage(message)) openPassage(message.annotationId);
+    };
+    chrome.storage.onChanged.addListener(onChanged);
+    chrome.runtime.onMessage.addListener(onMessage);
+    void chrome.storage.session.get(PASSAGE_OPEN_STORAGE_KEY).then((stored) => {
+      openStored(stored[PASSAGE_OPEN_STORAGE_KEY]);
+    }).catch(() => undefined);
+    return () => {
+      chrome.storage.onChanged.removeListener(onChanged);
+      chrome.runtime.onMessage.removeListener(onMessage);
+    };
+  }, []);
+
+  useEffect(() => {
     authMountedRef.current = true;
     if (!supabase) {
       setAuthState({ status: 'error', message: import.meta.env.DEV ? 'Supabase is not configured. Check apps/extension/.env.local.' : 'Authentication is temporarily unavailable.' });
@@ -4291,6 +4353,12 @@ function App() {
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>
           )}
           {hostedMediaPanel}
+          {passagePanel.status === 'list' && (
+            <PassageHighlightList
+              passages={passagePanel.passages}
+              onOpen={navigationCallbacks.openAnnotation}
+            />
+          )}
           {supabase && contextUrl && contextCacheKey && <AnnotationCollection key={contextCacheKey} supabase={supabase} cache={socialCacheRef.current} cacheKey={contextCacheKey} sourceUrl={youtubeSource?.normalizedUrl ?? tiktokSource?.normalizedUrl ?? spotifySource?.normalizedUrl ?? contextUrl} currentUserId={currentUserId} onSignIn={(provider) => void beginSignIn(provider)} onBookmarkChange={() => socialCacheRef.current.delete('bookmarks')} navigation={navigationCallbacks} getPublicUrl={getPublicUrl} youtubeHover={youtubeHover} articleHover={articleHover} audioHover={audioHover} pageVideoHover={pageVideoHover} tiktokHover={tiktokHover} spotifyHover={spotifyHover} emptyTitle={youtubeSource || tiktokSource ? 'No clips on this video yet' : exclusivePodcast || spotifySource ? 'No clips on this episode yet' : 'Be the first to annotate this source'} emptyMessage={youtubeSource || tiktokSource ? 'Create the first public time-coded annotation below.' : exclusivePodcast || spotifySource ? 'Create the first public audio clip below.' : 'Capture a passage below to add the first public annotation.'} compactHeading={youtubeSource || tiktokSource ? 'Clips on this video' : exclusivePodcast || spotifySource ? 'Clips on this episode' : 'On this source'} />}
           <BrandLockup />
         </div>

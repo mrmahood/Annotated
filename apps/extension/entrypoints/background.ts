@@ -10,6 +10,7 @@ import {
   installMediaCapture,
   reserveTabCaptureStreamIdFromInvoke,
 } from '../utils/media-capture-background';
+import { installPassageHighlightOpen } from '../utils/passage-highlight';
 import {
   followBrowsingTab,
   installSurfFollow,
@@ -23,6 +24,7 @@ export default defineBackground(() => {
   let actionContextRevision = 0;
 
   installMediaCapture(chrome);
+  installPassageHighlightOpen(chrome);
   installSurfFollow(chrome, {
     applyPending: async (tab) => {
       await applyPendingArticleHoverOnTab(tab);
