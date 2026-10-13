@@ -200,17 +200,49 @@ export function applyPassageHighlightsOnPage(
     const source = caseFold ? lowerIfSameLength(haystack) : haystack;
     const target = caseFold ? lowerIfSameLength(quote) : quote;
     if (!source || !target) return [];
+    const citationLength = (value: string, index: number) => {
+      if (value[index] !== '[') return 0;
+      const close = value.indexOf(']', index + 1);
+      if (close < 0 || close - index > 6) return 0;
+      return /^\d{1,4}$/.test(value.slice(index + 1, close)) ? close + 1 - index : 0;
+    };
+    // Wikipedia places [8][16] between a sentence and the words stored as its
+    // suffix. Skip those clusters, and the single space around them, without
+    // changing the comparison when no citation is present.
+    const skipCitationsForward = (value: string, index: number) => {
+      let cursor = index;
+      while (cursor < value.length) {
+        const size = citationLength(value, cursor);
+        if (!size) break;
+        cursor += size;
+        if (value[cursor] === ' ') cursor += 1;
+      }
+      return cursor;
+    };
+    const skipCitationsBackward = (value: string, index: number) => {
+      let cursor = index;
+      while (cursor > 0 && value[cursor - 1] === ']') {
+        const open = value.lastIndexOf('[', cursor - 2);
+        if (open < 0 || cursor - open > 7) break;
+        if (!/^\d{1,4}$/.test(value.slice(open + 1, cursor - 1))) break;
+        cursor = open;
+        if (value[cursor - 1] === ' ') cursor -= 1;
+      }
+      return cursor;
+    };
     const contextScore = (start: number, end: number) => {
       const parts: number[] = [];
       if (prefix) {
         let boundary = start;
         if (haystack[boundary - 1] === ' ') boundary -= 1;
+        boundary = skipCitationsBackward(haystack, boundary);
         const before = haystack.slice(Math.max(0, boundary - prefix.length), boundary);
         parts.push(ratio(prefix, before, true));
       }
       if (suffix) {
         let boundary = end;
         if (haystack[boundary] === ' ') boundary += 1;
+        boundary = skipCitationsForward(haystack, boundary);
         const after = haystack.slice(boundary, boundary + suffix.length);
         parts.push(ratio(suffix, after, false));
       }
@@ -265,32 +297,68 @@ export function applyPassageHighlightsOnPage(
     };
     visit(document.documentElement);
     for (const host of hosts) unwrap(host);
+    clearHighlightRegistry();
   };
 
-  const stylesStick = (): boolean => {
-    const StyleSheetCtor = (globalThis as { CSSStyleSheet?: new () => CSSStyleSheet }).CSSStyleSheet;
-    if (typeof StyleSheetCtor !== 'function' || typeof document.createElement !== 'function') return false;
+  const highlightName = (color: string) => {
+    if (color === 'green') return 'annotated-green';
+    if (color === 'red') return 'annotated-red';
+    if (color === 'amber') return 'annotated-amber';
+    return 'annotated-yellow';
+  };
+
+  const highlightApi = () => {
+    const root = globalThis as {
+      CSS?: { highlights?: { get?: (name: string) => { add?: (range: Range) => void } | undefined; set?: (name: string, value: unknown) => void; delete?: (name: string) => void } };
+      Highlight?: new (range: Range) => { add?: (range: Range) => void };
+    };
+    const registry = root.CSS?.highlights;
+    const HighlightCtor = root.Highlight;
+    if (!registry || typeof registry.set !== 'function' || typeof HighlightCtor !== 'function') return null;
+    return { registry, HighlightCtor };
+  };
+
+  const inlineStylesStick = (): boolean => {
+    if (typeof document.createElement !== 'function' || typeof getComputedStyle !== 'function') return false;
     const host = document.createElement('annotated-passage');
     host.setAttribute('data-annotated-passage-probe', '1');
     host.textContent = 'probe';
-    let blocked = false;
+    let stuck = false;
     try {
-      const shadow = host.attachShadow({ mode: 'open' });
-      const sheet = new StyleSheetCtor();
-      sheet.replaceSync(':host{background-color:#ffe14a !important;color:#1a170c}');
-      shadow.adoptedStyleSheets = [sheet];
-      shadow.appendChild(document.createElement('slot'));
+      host.setAttribute('style', 'background-color:#ffe14a !important;color:#1a170c');
       (document.body ?? document.documentElement).appendChild(host);
-      const computed = getComputedStyle(host).backgroundColor;
-      const text = String(computed || '').toLowerCase().replace(/\s+/g, '');
-      blocked = !text.includes('255,225,74') && text !== '#ffe14a';
+      const text = String(getComputedStyle(host).backgroundColor || '').toLowerCase().replace(/\s+/g, '');
+      stuck = text.includes('255,225,74') || text === '#ffe14a';
     } catch {
-      blocked = true;
+      stuck = false;
     } finally {
       host.remove();
     }
-    return !blocked;
+    return stuck;
   };
+
+  const ensureHighlightStyle = () => {
+    const style = document.createElement('style');
+    style.setAttribute('id', 'annotated-passage-highlight-style');
+    style.textContent = [
+      '::highlight(annotated-yellow){background-color:#ffe14a;color:#1a170c}',
+      '::highlight(annotated-green){background-color:#b6f0a2;color:#1a170c}',
+      '::highlight(annotated-red){background-color:#ffb3b3;color:#1a170c}',
+      '::highlight(annotated-amber){background-color:#ffd59a;color:#1a170c}',
+    ].join('');
+    (document.head ?? document.documentElement).appendChild(style);
+  };
+
+  const clearHighlightRegistry = () => {
+    const api = highlightApi();
+    if (!api || typeof api.registry.delete !== 'function') return;
+    api.registry.delete('annotated-yellow');
+    api.registry.delete('annotated-green');
+    api.registry.delete('annotated-red');
+    api.registry.delete('annotated-amber');
+  };
+
+  let paintMode: 'inline' | 'highlight' = 'inline';
 
   const paintSlice = (
     node: Text,
@@ -301,18 +369,21 @@ export function applyPassageHighlightsOnPage(
     const range = document.createRange();
     range.setStart(node, startOffset);
     range.setEnd(node, endOffset);
+    if (paintMode === 'highlight') {
+      const api = highlightApi();
+      if (!api) throw new Error('highlight');
+      const name = highlightName(passage.color);
+      const current = api.registry.get?.(name);
+      if (current && typeof current.add === 'function') current.add(range);
+      else api.registry.set?.(name, new api.HighlightCtor(range));
+      return;
+    }
     const host = document.createElement('annotated-passage');
     host.setAttribute('data-annotated-passage', passage.annotationId);
     host.setAttribute('data-annotated-color', passage.color);
     host.title = 'Open this annotation in Annotated';
-    const shadow = host.attachShadow({ mode: 'open' });
-    const StyleSheetCtor = (globalThis as { CSSStyleSheet?: new () => CSSStyleSheet }).CSSStyleSheet;
-    if (typeof StyleSheetCtor !== 'function') throw new Error('stylesheet');
-    const sheet = new StyleSheetCtor();
     const color = colors[passage.color] ?? colors.yellow;
-    sheet.replaceSync(`:host{background-color:${color};color:#1a170c;cursor:pointer;border-radius:2px}`);
-    shadow.adoptedStyleSheets = [sheet];
-    shadow.appendChild(document.createElement('slot'));
+    host.setAttribute('style', `background-color:${color} !important;color:#1a170c !important;cursor:pointer;border-radius:2px`);
     host.appendChild(range.extractContents());
     range.insertNode(host);
     host.addEventListener('click', (event) => {
@@ -360,7 +431,14 @@ export function applyPassageHighlightsOnPage(
 
     clearHighlights();
     if (passages.length === 0) return { ok: true, reason: 'cleared', highlighted: 0, unmatched: 0 };
-    if (!stylesStick()) return { ok: false, reason: 'csp-blocked', highlighted: 0, unmatched: passages.length };
+    if (inlineStylesStick()) {
+      paintMode = 'inline';
+    } else if (highlightApi()) {
+      paintMode = 'highlight';
+      ensureHighlightStyle();
+    } else {
+      return { ok: false, reason: 'csp-blocked', highlighted: 0, unmatched: passages.length };
+    }
 
     const roots: Node[] = [document.body];
     const collectRoots = (node: Node) => {
