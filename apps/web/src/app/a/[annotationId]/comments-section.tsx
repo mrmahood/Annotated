@@ -7,7 +7,7 @@ import {
   createComment,
   deleteComment,
 } from "@/lib/data/social-mutations";
-import { formatCommentTimestamp } from "@/lib/comment-time";
+import { CommentTime } from "../../comment-time";
 import {
   COMMENT_BODY_LIMIT,
   queryPublicComments,
@@ -139,9 +139,7 @@ export function CommentsSection({
         <p className="comments-empty">No comments yet. Start the conversation.</p>
       ) : (
         <ol className="comment-list">
-          {comments.map((comment) => {
-            const dateLabel = formatCommentTimestamp(comment.createdAt);
-            return (
+          {comments.map((comment) => (
               <li className="comment-item" key={comment.id}>
                 <Link className="comment-avatar-link" href={`/p/${comment.userId}`} aria-label={`View ${comment.author.displayName}’s profile`}>
                   {comment.author.avatarUrl ? (
@@ -156,7 +154,7 @@ export function CommentsSection({
                 <div className="comment-content">
                   <div className="comment-meta">
                     <Link href={`/p/${comment.userId}`}>{comment.author.displayName}</Link>
-                    <time dateTime={comment.createdAt}>{dateLabel}</time>
+                    <CommentTime dateTime={comment.createdAt} />
                   </div>
                   <p className="comment-body"><TextWithLogoMark text={comment.body} /></p>
                   {currentUserId === comment.userId && (
@@ -180,8 +178,7 @@ export function CommentsSection({
                   )}
                 </div>
               </li>
-            );
-          })}
+          ))}
         </ol>
       )}
 
