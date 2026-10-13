@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(25);
 
 select has_table('public', 'annotation_tweet_captures', 'annotation_tweet_captures table exists');
 select ok(
@@ -195,6 +195,13 @@ select is(
   'the stored embed keeps the canonical post URL'
 );
 
+select ok(
+  pg_catalog.strpos(
+    pg_catalog.pg_get_functiondef('private.limit_annotation_receipt_sources()'::regprocedure),
+    'pg_advisory_xact_lock(pg_catalog.hashtext(new.annotation_id::text))'
+  ) > 0,
+  'the receipt cap locks one annotation before counting concurrent inserts'
+);
 select lives_ok(
   $$insert into public.annotation_receipt_sources (annotation_id, url, title, publisher, origin) values
     ('73000000-0000-4000-8000-000000000001', 'https://www.congress.gov/bill/1', 'Bill', 'Congress', 'ai-suggested'),
