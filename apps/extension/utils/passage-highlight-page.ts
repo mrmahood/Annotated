@@ -216,7 +216,16 @@ export function applyPassageHighlightsOnPage(
     start: number;
     end: number;
     score: number;
+    prefixScore: number;
     map: { node: Text; offset: number }[];
+  };
+
+  // A suffix copied from the quote's own start (the first 120 characters, or
+  // the whole quote) is not context after the passage. Ignore it.
+  const suffixEchoesQuote = (quoteText: string, suffixText: string) => {
+    if (!quoteText || !suffixText) return false;
+    if (suffixText === quoteText || suffixText.startsWith(quoteText)) return true;
+    return quoteText.startsWith(suffixText) && suffixText.length >= 24;
   };
 
   const exactHitsIn = (
@@ -263,12 +272,14 @@ export function applyPassageHighlightsOnPage(
     };
     const contextScore = (start: number, end: number) => {
       const parts: number[] = [];
+      let prefixScore = 0;
       if (prefix) {
         let boundary = start;
         if (haystack[boundary - 1] === ' ') boundary -= 1;
         boundary = skipCitationsBackward(haystack, boundary);
         const before = haystack.slice(Math.max(0, boundary - prefix.length), boundary);
-        parts.push(ratio(prefix, before, true));
+        prefixScore = ratio(prefix, before, true);
+        parts.push(prefixScore);
       }
       if (suffix) {
         let boundary = end;
@@ -277,8 +288,11 @@ export function applyPassageHighlightsOnPage(
         const after = haystack.slice(boundary, boundary + suffix.length);
         parts.push(ratio(suffix, after, false));
       }
-      if (parts.length === 0) return 1;
-      return parts.reduce((sum, part) => sum + part, 0) / parts.length;
+      if (parts.length === 0) return { score: 1, prefixScore };
+      return {
+        score: parts.reduce((sum, part) => sum + part, 0) / parts.length,
+        prefixScore,
+      };
     };
     const hits: PassageHit[] = [];
     let from = 0;
@@ -286,7 +300,14 @@ export function applyPassageHighlightsOnPage(
       const index = source.indexOf(target, from);
       if (index < 0) break;
       const end = index + target.length;
-      hits.push({ start: index, end, score: contextScore(index, end), map });
+      const scored = contextScore(index, end);
+      hits.push({
+        start: index,
+        end,
+        score: scored.score,
+        prefixScore: scored.prefixScore,
+        map,
+      });
       from = index + 1;
     }
     return hits;
@@ -301,7 +322,11 @@ export function applyPassageHighlightsOnPage(
     const ranked = [...hits].sort((left, right) => right.score - left.score);
     const best = ranked[0];
     const second = ranked[1];
-    if (!best || best.score < 0.72) return null;
+    if (!best) return null;
+    // One exact hit whose prefix is already strong paints even when a bad
+    // suffix would pull the average under 0.72.
+    if (hits.length === 1 && prefix && best.prefixScore >= 0.72) return best;
+    if (best.score < 0.72) return null;
     if (second && best.score - second.score < 0.2) return null;
     return best;
   };
@@ -537,12 +562,16 @@ export function applyPassageHighlightsOnPage(
     for (const passage of passages) {
       const quote = normalizeAnchor(passage.quote);
       const prefix = normalizeAnchor(passage.prefix);
-      const suffix = normalizeAnchor(passage.suffix);
+      const storedSuffix = normalizeAnchor(passage.suffix);
+      const suffix = suffixEchoesQuote(quote, storedSuffix) ? '' : storedSuffix;
       const built = roots.map((root) => buildNormalized(collectText(root)));
       let hits = collectHits(built, quote, prefix, suffix);
       if (hits.length === 0) {
         const stripped = stripEdgeQuotes(quote);
-        if (stripped && stripped !== quote) hits = collectHits(built, stripped, prefix, suffix);
+        if (stripped && stripped !== quote) {
+          const strippedSuffix = suffixEchoesQuote(stripped, storedSuffix) ? '' : storedSuffix;
+          hits = collectHits(built, stripped, prefix, strippedSuffix);
+        }
       }
       const chosen = choosePassageHit(hits, prefix, suffix);
       if (chosen && paintHit(chosen, passage)) highlighted += 1;

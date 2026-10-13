@@ -634,6 +634,80 @@ test('wrapping quotes that are not on the page still highlight the passage', () 
   }
 });
 
+test('a suffix copied from the quote start still paints when the prefix is strong', () => {
+  const quote = '"Not a single drop has come through our taps for the last three months... Our water supply had been reliable until the data centres came," Dewi Susanti, one of the protesters, told the BBC.';
+  const prefix = 'Residents had described reliable taps before the centres arrived.';
+  const dom = installDom([{
+    text: `${prefix} ${quote} The utility and BP Batam point to other causes.`,
+  }]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({
+        quote,
+        prefix,
+        suffix: quote.slice(0, 120),
+      })],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 1);
+    assert.equal(result.unmatched, 0);
+    assert.equal(dom.marks().length, 1);
+    assert.equal(dom.marks()[0].textContent, quote);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('a suffix copied from the quote start paints the prefixed copy and not the repeat', () => {
+  const quote = '"Not a single drop has come through our taps for the last three months... Our water supply had been reliable until the data centres came," Dewi Susanti, one of the protesters, told the BBC.';
+  const prefix = 'Residents had described reliable taps before the centres arrived.';
+  const dom = installDom([
+    { text: `${prefix} ${quote} The utility and BP Batam point to other causes.` },
+    { text: `A later retelling repeated the line. ${quote} That second copy is not the annotation.` },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({
+        quote,
+        prefix,
+        suffix: quote.slice(0, 120),
+      })],
+    });
+    assert.equal(result.highlighted, 1);
+    const marks = dom.marks();
+    assert.equal(marks.length, 1);
+    assert.equal(marks[0].textContent, quote);
+    const firstParagraph = globalThis.document.body.childNodes[0];
+    assert.equal(firstParagraph.childNodes.some((node) => node.tagName === 'ANNOTATED-PASSAGE'), true);
+    const secondParagraph = globalThis.document.body.childNodes[1];
+    assert.equal(secondParagraph.childNodes.some((node) => node.tagName === 'ANNOTATED-PASSAGE'), false);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('an exact unique quote paints when the prefix is strong and the suffix does not match', () => {
+  const prefix = 'Edited introduction stays long enough to anchor the passage.';
+  const dom = installDom([{
+    text: `${prefix} ${QUOTE} A rewritten ending follows the passage.`,
+  }]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({
+        prefix,
+        suffix: 'The record is the passage this demo annotation marks.',
+      })],
+    });
+    assert.equal(result.highlighted, 1);
+    assert.equal(dom.marks()[0].textContent, QUOTE);
+  } finally {
+    dom.restore();
+  }
+});
+
 test('reapplying highlights does not nest marks', () => {
   const dom = installDom([{ text: QUOTE }]);
   try {
