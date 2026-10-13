@@ -98,6 +98,8 @@ import {
   openPostedPermalink,
   persistCreatePostedConfirmation,
   queryPostedAnnotationRoute,
+  readPostedTake,
+  withPostedTake,
   type CreatePostedConfirmation,
 } from '../../utils/create-posted';
 import {
@@ -115,6 +117,9 @@ import { getInitial, isUuid } from '../../utils/social-helpers';
 import { getSupabaseClient } from '../../utils/supabase';
 import { getWebAppOrigin } from '../../utils/web-app-url';
 import { publishArticleAnnotation, uploadAndAttachOwnerCommentaryAudio } from '../../utils/annotation-publishing';
+import { attachApprovedReceiptSources, type ApprovedReceiptSource } from '../../utils/receipt-sources';
+import { storeTweetCapture } from '../../utils/tweet-capture';
+import { ReceiptAssist } from './receipt-assist';
 import {
   CREATE_MODES,
   CREATE_MODE_SELECTION_STORAGE_KEY,
@@ -716,6 +721,8 @@ function App() {
   const [refreshSuccess, setRefreshSuccess] = useState(false);
   const [navigation, dispatchNavigation] = useReducer(reduceNavigation, INITIAL_NAVIGATION);
   const connectedContextRef = useRef<ActiveTabContext | null>(null);
+  const approvedReceiptsRef = useRef<ApprovedReceiptSource[]>([]);
+  const postedConfirmationRef = useRef<CreatePostedConfirmation | null>(null);
   const contextObservedRef = useRef(false);
   const captureRevisionRef = useRef(0);
   const draftRevisionRef = useRef(0);
@@ -974,13 +981,19 @@ function App() {
     } catch { console.warn('Unable to clear the audio clip draft.'); }
   }, [audioCommentaryRecorder.discard, sourceState]);
 
+  const rememberApprovedReceipts = useCallback((sources: ApprovedReceiptSource[]) => {
+    approvedReceiptsRef.current = sources;
+  }, []);
+
   const showCreatePosted = useCallback((confirmation: CreatePostedConfirmation) => {
+    postedConfirmationRef.current = confirmation;
     setPostedConfirmation(confirmation);
     void persistCreatePostedConfirmation(confirmation).catch(() => undefined);
     openPostedPermalink(confirmation.publicPath);
   }, []);
 
   const dismissCreatePosted = useCallback(async () => {
+    postedConfirmationRef.current = null;
     setPostedConfirmation(null);
     await persistCreatePostedConfirmation(null).catch(() => undefined);
   }, []);
@@ -1279,6 +1292,19 @@ function App() {
         reportCommentaryCleanup,
       );
       if (!isUuid(annotationId)) throw new Error('Publishing returned an invalid annotation identifier.');
+      const approvedReceipts = approvedReceiptsRef.current.slice();
+      approvedReceiptsRef.current = [];
+      await attachApprovedReceiptSources(supabase, annotationId, approvedReceipts).catch(() => undefined);
+      const captureContext = connectedContextRef.current;
+      if (captureContext) {
+        await storeTweetCapture(supabase, {
+          annotationId,
+          tabId: captureContext.tabId,
+          windowId: captureContext.windowId,
+          pageUrl: captured.canonicalUrl || captured.sourceUrl,
+          selectedText: captured.selectedText,
+        }).catch(() => undefined);
+      }
       const currentPage = createPageRef.current;
       if (!currentPage || !isModeAsyncTokenCurrent(
         token,
@@ -1294,6 +1320,7 @@ function App() {
         kind: 'text',
         creatorHandle: route?.creatorHandle ?? null,
         annotationSlug: route?.annotationSlug ?? null,
+        take: commentary,
       }));
       await clearDraft('publish-succeeded');
       socialCacheRef.current.clear();
@@ -2449,6 +2476,14 @@ function App() {
       setMediaCaptureState({ status: 'idle' });
       void chrome.storage.local.remove(HOSTED_MEDIA_SESSION_KEY);
       showCreatePosted(result.confirmation);
+      const postedId = result.confirmation.annotationId;
+      if (supabase) {
+        void readPostedTake(supabase, postedId).then((take) => {
+          const current = postedConfirmationRef.current;
+          if (!take || current?.annotationId !== postedId) return;
+          showCreatePosted(withPostedTake(current, take));
+        }).catch(() => undefined);
+      }
       return;
     }
     if (result.action === 'clear') {
@@ -2468,7 +2503,7 @@ function App() {
     setMediaCaptureState((current) => (
       shouldReplaceHostedCaptureSnapshot(current, result.snapshot) ? result.snapshot : current
     ));
-  }, [showCreatePosted]);
+  }, [showCreatePosted, supabase]);
 
   const createAnotherAnnotation = useCallback(async () => {
     const confirmation = postedConfirmation;
@@ -4225,7 +4260,7 @@ function App() {
             </section>
           ) : selectedCreateMode === 'text' ? (
             <section className="create-panel" aria-labelledby="create-heading" key="create-text"><h2 id="create-heading" className="visually-hidden">Create annotation</h2>
-              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><TitleField id="annotation-title" value={title} disabled={publishState.status === 'publishing'} onChange={changeTitle} /><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
+              {draftRestorationStatus === 'loading' ? <div className="compact-state" role="status"><strong>Restoring draft</strong><span>Checking this source for unpublished work…</span></div> : captured ? <><blockquote className="captured-passage">{captured.selectedText}</blockquote><ReceiptAssist key={captured.capturedAt} passage={captured.selectedText} pageUrl={captured.canonicalUrl || captured.sourceUrl} signedIn={authState.status === 'signed-in'} disabled={publishState.status === 'publishing'} supabase={supabase} onApprovedChange={rememberApprovedReceipts} /><dl className="capture-metadata">{captured.author && <div><dt>Author</dt><dd>{captured.author}</dd></div>}{captured.publisher && <div><dt>Publisher</dt><dd>{captured.publisher}</dd></div>}<div><dt>Source</dt><dd>{captured.hostname}</dd></div></dl><TitleField id="annotation-title" value={title} disabled={publishState.status === 'publishing'} onChange={changeTitle} /><CommentaryField id="annotation-commentary" value={commentary} disabled={publishState.status === 'publishing'} onChange={changeCommentary} /><AudioRecorder controller={textCommentaryRecorder} disabled={publishState.status === 'publishing'} /><div className="create-actions"><button className="button button-secondary" type="button" onClick={clearCapture} disabled={publishState.status === 'publishing'}>Clear capture</button>{authState.status !== 'signed-in' ? <SignInActions onSignIn={beginSignIn} /> : <button className="button button-primary" type="button" onClick={() => void publishAnnotation()} disabled={!canPublish}>{publishState.status === 'publishing' ? 'Publishing…' : 'Publish annotation'}</button>}</div>{publishState.status === 'error' && <p className="inline-error" role="alert">{publishState.message}</p>}</> : <><p className="create-help">Highlight article text in the connected page, then capture it here.</p><button className="button button-primary" type="button" onClick={() => void captureSelection()} disabled={sourceState.status !== 'connected' || isCapturing}>{isCapturing ? 'Capturing…' : 'Capture selected text'}</button>{(captureState.status === 'recoverable-error' || captureState.status === 'reconnect-required' || captureState.status === 'unexpected-error') && <p className="inline-error" role="alert">{captureState.message}</p>}</>}
             </section>
           ) : (
             <div className="compact-state" role="status"><strong>Choose an available mode</strong><span>Annotated is checking the connected page for supported creation options.</span></div>

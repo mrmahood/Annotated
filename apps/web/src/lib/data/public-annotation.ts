@@ -1,5 +1,8 @@
 import { cache } from "react";
 import { ANNOTATION_AUDIO_BUCKET, parsePublicAnnotationAudio } from "@/lib/audio-commentary";
+import { publicReceiptSourcesFrom } from "@/lib/receipts";
+import { TWEET_CAPTURE_BUCKET, parsePublicTweetCapture, type PublicTweetCapture } from "@/lib/tweet-capture";
+import type { PublicReceiptSource } from "@annotated/shared/receipt-source";
 import { mapPublicAnnotationDetail, type PublicAnnotation } from "./public-annotation-model";
 import { isUuid } from "@/lib/public-content";
 import {
@@ -88,6 +91,61 @@ export const resolvePublicAnnotationUuid = cache(
   },
 );
 
+async function loadPreservedAnnotation(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  annotationId: string,
+): Promise<{ tweetCapture: PublicTweetCapture | null; receiptSources: PublicReceiptSource[] }> {
+  let tweetCapture: PublicTweetCapture | null = null;
+  try {
+    const result = await supabase
+      .from("annotation_tweet_captures")
+      .select("status_url, tweet_id, author_handle, author_name, tweet_text, posted_at, screenshot_path, screenshot_width, screenshot_height")
+      .eq("annotation_id", annotationId)
+      .maybeSingle();
+    if (!result.error && result.data) {
+      const path = typeof result.data.screenshot_path === "string" ? result.data.screenshot_path : "";
+      const screenshotUrl = path
+        ? supabase.storage.from(TWEET_CAPTURE_BUCKET).getPublicUrl(path).data.publicUrl
+        : null;
+      tweetCapture = parsePublicTweetCapture(result.data, screenshotUrl);
+    }
+  } catch {
+    tweetCapture = null;
+  }
+
+  let receiptRows: unknown[] = [];
+  try {
+    const result = await supabase
+      .from("annotation_receipt_sources")
+      .select("url, title, publisher, origin")
+      .eq("annotation_id", annotationId)
+      .order("created_at", { ascending: true });
+    if (!result.error && Array.isArray(result.data)) receiptRows = result.data;
+  } catch {
+    receiptRows = [];
+  }
+
+  let sourcesColumn: unknown[] = [];
+  try {
+    const result = await supabase
+      .from("annotations")
+      .select("sources")
+      .eq("id", annotationId)
+      .maybeSingle();
+    const sources = result.data && typeof result.data === "object" && "sources" in result.data
+      ? result.data.sources
+      : null;
+    if (!result.error && Array.isArray(sources)) sourcesColumn = sources;
+  } catch {
+    sourcesColumn = [];
+  }
+
+  return {
+    tweetCapture,
+    receiptSources: publicReceiptSourcesFrom(receiptRows, sourcesColumn),
+  };
+}
+
 export const loadPublicAnnotation = cache(
   async (annotationId: string): Promise<PublicAnnotation | null> => {
     if (!isUuid(annotationId)) return null;
@@ -149,7 +207,7 @@ export const loadPublicAnnotation = cache(
           .getPublicUrl(audioMetadata.storagePath).data.publicUrl;
       }
 
-      return mapPublicAnnotationDetail(
+      const detail = mapPublicAnnotationDetail(
         annotation,
         targetResult.data,
         sourceResult.data,
@@ -158,6 +216,9 @@ export const loadPublicAnnotation = cache(
         mediaState,
         transcript,
       );
+      if (!detail) return null;
+      const preserved = await loadPreservedAnnotation(supabase, annotation.id);
+      return { ...detail, ...preserved };
     } catch {
       return null;
     }
