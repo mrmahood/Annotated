@@ -26,13 +26,13 @@ Preconditions:
 - Create still needs the extension loaded. See [Chrome extension](./chrome-extension.md).
 
 - **Signed-out wall.** Follow [Me signed out](./me-signed-out.md). Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive me-signed-out`. Pass and fail observations live in that file.
-- **Missing key.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive authenticated-me` with no service-role key. The command prints `verified-unreachable` and `set SUPABASE_SERVICE_ROLE_KEY`, then exits 3. It does not open a browser and does not start Google or X.
+- **Missing prerequisite.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive authenticated-me` when this target's env is incomplete. The command prints `verified-unreachable`, `feature: authenticated-me`, `prerequisite: …`, and `route attempted: none. OAuth and extension load were not started.`, then exits 3. It does not open a browser and does not start Google or X. On a non-staging target the prerequisite is `set SUPABASE_SERVICE_ROLE_KEY` when that key is unset, and `set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` when the service-role key is set but the public URL or publishable key is not. On a Staging preview origin the first missing piece is `set SUPABASE_STAGING_SERVICE_ROLE_KEY`.
 - **Authenticated bookmarks and handle.** With the env set, run the same command. It ensures that one auth user exists, exchanges a magic-link token for session cookies, and opens `/me`. Pass requires HTTP 2xx, title `Bookmarks | Annotated`, region `Public handle`, link `Send feedback`, button `Sign out`, and no heading `Sign in to see your bookmarks.` Bookmarks pass when the heading is `No bookmarks yet.` or the list `Your bookmarks` contains `View annotation`. The alert `Bookmarks are temporarily unavailable.` exits 1. Do not click `Claim handle`, `Save handle`, `Change handle`, `Bookmarked`, `Share`, `Sign out`, or `Send feedback`.
-- **Create.** Use `drive chrome-extension`. It exits 3 because the side panel is not loaded. Do not look for a `/create` page.
+- **Create.** Use `drive chrome-extension`. That command exits 0 or 1. It does not exit 3. Do not look for a `/create` page.
 
 ## Gotchas
 
-- Without `SUPABASE_SERVICE_ROLE_KEY` the drive stays exit 3. Do not paste a session into the skill or the evidence notes.
+- A non-staging target stays exit 3 until `SUPABASE_SERVICE_ROLE_KEY` and the public Supabase URL plus publishable key are all set. Read `prerequisite:` for which one is missing. Do not paste a session into the skill or the evidence notes.
 - `/me` accepts the Supabase cookie session from `getUser()`. The Google identity check runs only on the OAuth callback, which this drive does not open. If magic-link verify fails, stop at `mint_verify_failed`. Do not set a password and do not automate Google.
 - The helper may create the auth user when that email is missing. It must not create a second user, and it must not write bookmarks, comments, follows, or annotations.
 - Do not click `Sign in with Google` or `Continue with X`. Wall pass criteria live in [Me signed out](./me-signed-out.md).

@@ -25,7 +25,7 @@ Preconditions:
 - **Open the center.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive legal`. The command visits `/legal`. The document title is `Legal | Annotated`. The heading `Policies for Annotated` is visible, including the facts `Free beta`, `Ages 18+`, and an effective date.
 - **Open privacy.** The command chooses `Read the Privacy Policy`. The path is `/privacy`, the title is `Privacy Policy | Annotated`, and the heading `Privacy Policy` is visible. The contents nav includes `Who operates Annotated`.
 - **Open terms.** The command then visits `/terms`. The title is `Terms of Service | Annotated` and the heading `Terms of Service` is visible. The contents nav includes `Agreement to the terms`.
-- **Proof.** `loaded.png` is `/legal` before the privacy link. `result.png` is the Privacy Policy. `notes.md` records all three titles and paths. The Terms page is included in the ARIA snapshot file `terms.aria.txt`.
+- **Proof.** `loaded.png` is `/legal` before the privacy link. `result.png` is the Privacy Policy. `notes.md` records the expected legal title `Legal | Annotated` and the live Privacy and Terms titles. It does not record a fetched `/legal` title. The Terms page is included in the ARIA snapshot file `terms.aria.txt`.
 
 ## Gotchas
 

@@ -15,7 +15,7 @@ This directory is the maintained source for verifying Annotated's user-facing be
 ## Driving conventions
 
 - Start every recipe from the launched target unless its preconditions say otherwise.
-- Prefer ARIA roles and accessible names. The feed list is the exception: it is a `div` with `aria-label="Published annotations"` and no `h1`.
+- Prefer ARIA roles and accessible names. The feed list is a `div` with `aria-label="Published annotations"`. The landing lede is an `h1`.
 - Treat helper commands as literal.
 - Stay on the launched origin. Do not follow `Open source` or the annotation page's outbound source button.
 - Dismiss `Install for Chrome` only to uncover the subject of a screenshot. The button name is `Dismiss install reminder`.
@@ -27,7 +27,7 @@ This directory is the maintained source for verifying Annotated's user-facing be
 - Capture the user action and the resulting state, not only the final screen.
 - UI proof includes an ARIA snapshot and a screenshot with the page title or primary heading visible.
 - Record the feature ID, entry path, and run id with every artifact.
-- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable. `authenticated-me` stays there until `SUPABASE_SERVICE_ROLE_KEY` is set. `chrome-extension` exits 0 or 1 and does not mint a session.
+- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable. For a non-staging target, `authenticated-me` stays there until `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are set. The printed `prerequisite:` names the missing piece. `chrome-extension` exits 0 or 1 and does not mint a session.
 - Do not report a skipped entry point as verified through a different path.
 - Exit 0 is a card or signed-in proof. Exit 2 is `pass-empty` for the documented Trending and Who to Follow quiet headings. An unavailable alert, a wrong title, or a 5xx is exit 1. Do not report `pass-empty` as populated content. The public feed's empty copy is still a failed proof.
 
@@ -49,7 +49,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Who to Follow](./who-to-follow.md) covers the signed-out suggestion list. An empty suggestion list is `pass-empty` (exit 2). Following stays behind sign-in and is not completed.
 - [Me signed out](./me-signed-out.md) covers the signed-out wall at `/me`: title `Bookmarks | Annotated`, headings `Bookmarks` and `Sign in to see your bookmarks.`, and `Sign in with Google`.
 - [Chrome extension](./chrome-extension.md) loads the unpacked side panel and drives YouTube Create. It exits 0 or 1 and does not click Publish clip. It does not need `launch` or `doctor`.
-- [Authenticated Me and Create](./authenticated-me.md) reads bookmarks and the public-handle region on `/me` for `cbandcooptest@gmail.com`. Without `SUPABASE_SERVICE_ROLE_KEY` it exits 3. Create stays on [Chrome extension](./chrome-extension.md). The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
+- [Authenticated Me and Create](./authenticated-me.md) reads bookmarks and the public-handle region on `/me` for `cbandcooptest@gmail.com`. Without the service-role key for that target, or without the public Supabase URL and publishable key on a non-staging target, it exits 3. Create stays on [Chrome extension](./chrome-extension.md) and exits 0 or 1. The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
 
 ## Not a feature file yet
 
@@ -57,3 +57,4 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - `/ops` is an allowlisted operator console, not a public surface.
 - `/auth/error` is the sign-in failure page. Do not start OAuth to reach it.
 - `/robots.txt`, `/sitemap.xml`, and `/llms.txt` are public discoverability files on the same origin. They are not a signed-out browser drive.
+- `/whats-new` is the public extension changelog. The title is `What's new | Annotated`, the heading is `What's new`, and the page has sections `Changelog` and `Update in 30 seconds` plus a `Download zip` link. The footer nav `About Annotated` links `What's new`. It is not its own feature file. Do not download the zip during a drive.

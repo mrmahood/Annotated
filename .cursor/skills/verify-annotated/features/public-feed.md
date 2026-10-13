@@ -1,6 +1,6 @@
 # Public feed
 
-The public feed is the signed-out home page. It lists published annotations, newest activity first, with a link to each annotation. The page eyebrow reads `PUBLIC ANNOTATIONS`. The landing heading is `The fact-check layer for the web.` The document title is `Annotated: the fact-check layer for the web`.
+The public feed is the signed-out home page. It lists published annotations, newest activity first, with a link to each annotation. The page eyebrow reads `PUBLIC ANNOTATIONS`. The landing heading is an `h1`: `The fact-check layer for the web.` The support line under it reads `Comment on a passage or a short clip. The source stays attached.` The hero includes an illustration of a highlighted passage and a margin note. The document title is `Annotated: the fact-check layer for the web`.
 
 ## Sub-features
 
@@ -32,7 +32,7 @@ A populated list is the passing proof for `feed-cards`. When the alert `The publ
 
 ## Gotchas
 
-- Proof is the document title plus the named list. Do not wait for an `h1`.
+- Proof is the document title, the `h1` `The fact-check layer for the web.`, and the named list `Published annotations`.
 - `?page=0`, an empty `page` value, and repeated `page` params redirect to the canonical page URL. Assert the list on `/` or `/?page=2`, not on a non-canonical query.
 - Page 2's empty copy is `There are no annotations on this page.`, which is different from the page 1 empty heading.
 - The install callout can sit over the header in Chromium. Dismiss it for the result screenshot. Do not treat the callout as the feed.
