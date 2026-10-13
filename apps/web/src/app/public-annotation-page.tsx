@@ -3,7 +3,7 @@ import { formatMediaTime } from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
 import type { PublicAnnotation } from "@/lib/data/public-annotation-model";
 import { getInitial } from "@/lib/public-content";
-import { getPublicAnnotationPath } from "@/lib/public-routes";
+import { getConfiguredSiteOrigin, getPublicAnnotationPath } from "@/lib/public-routes";
 import {
   getCurrentUserFollowState,
   getCurrentUserId,
@@ -15,6 +15,7 @@ import {
 import { getAnnotationVoteSnapshot } from "@/lib/data/voting";
 import { ClaimForm } from "./a/[annotationId]/claim-form";
 import { CommentsSection } from "./a/[annotationId]/comments-section";
+import { PostToXButton } from "./post-to-x";
 import { PublishedAudioPlayer } from "./published-audio-player";
 import { FollowButton } from "./follow-button";
 import { HostedMediaPlayer } from "./hosted-media-player";
@@ -39,6 +40,8 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
     getCurrentUserBookmarkState(annotation.id, currentUserId),
   ]);
   const publicPath = getPublicAnnotationPath(annotation.route, annotation.id);
+  const siteOrigin = getConfiguredSiteOrigin();
+  const pageUrl = siteOrigin ? `${siteOrigin}${publicPath}` : publicPath;
   const sourceTitle = annotation.source.title ?? annotation.source.hostname;
   const isVideo = annotation.kind === "video_legacy" ||
     annotation.kind === "video_hosted" ||
@@ -60,6 +63,9 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
     month: "long",
     day: "numeric",
   }).format(new Date(annotation.publishedAt));
+  const intentText = [annotation.title, annotation.commentaryText]
+    .map((value) => value?.trim() ?? "")
+    .find((value) => value.length > 0) ?? "Annotated";
 
   return (
     <>
@@ -104,9 +110,7 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
               {annotation.title ? (
                 <h1 id="commentary-heading" className="annotation-title"><TextWithLogoMark text={annotation.title} /></h1>
               ) : (
-                <h1 id="commentary-heading" className="visually-hidden">
-                  {annotation.commentaryText.trim() ? "Annotation" : "Voice commentary"}
-                </h1>
+                <h1 id="commentary-heading" className="visually-hidden">Annotation</h1>
               )}
               {annotation.commentaryText.trim() ? (
                 <p className="commentary-text"><TextWithLogoMark text={annotation.commentaryText} /></p>
@@ -117,45 +121,33 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             </section>
           )}
 
-          <section className="source-attribution" aria-labelledby="source-heading">
-            <div className="source-copy">
-              <p className="visually-hidden">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isSpotifyEpisode ? "Spotify episode" : isAudio ? "Podcast / web audio" : "Original article"}</p>
-              <h2 id="source-heading">{sourceTitle}</h2>
-              {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
-                <p className="source-byline">
-                  {annotation.source.showName && isAudio && `${annotation.source.showName} · `}
-                  {annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`}
-                  {annotation.source.author && annotation.source.publisher && " · "}
-                  {annotation.source.publisher}
-                </p>
-              )}
-              <p className="source-hostname">{annotation.source.hostname}</p>
-            </div>
-            <a className="public-button public-button-primary source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
-              {isYouTubeVideo ? "Open clip on YouTube" : isTikTokVideo ? "Open clip on TikTok" : isSpotifyEpisode ? "Open clip on Spotify" : isAudio || isWebpageVideo ? "Open original source" : "View original source"}
-              <span aria-hidden="true">↗</span>
-            </a>
-          </section>
-
           {annotation.kind === "article" ? (
-            <section className="passage-section" aria-labelledby="passage-heading">
+            <section className="evidence-card passage-section" aria-labelledby="passage-heading">
               <p className="visually-hidden" id="passage-heading">Captured passage</p>
-              <blockquote>{annotation.selectedText}</blockquote>
+              <blockquote className="highlighted-quote">{annotation.selectedText}</blockquote>
             </section>
           ) : (
-            <section className="clip-range-section" aria-labelledby="clip-range-heading">
+            <section className="evidence-card clip-range-section" aria-labelledby="clip-range-heading">
               <p className="visually-hidden" id="clip-range-heading">Saved clip</p>
-              <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
-              <span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span>
+              {isHosted ? (
+                <HostedMediaPlayer
+                  annotationId={annotation.id}
+                  media={annotation.media}
+                  sourceType={annotation.source.type}
+                />
+              ) : (
+                <div className="clip-still">
+                  <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
+                  <span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span>
+                </div>
+              )}
+              {isHosted && (
+                <p className="clip-caption">
+                  <strong>{formatMediaTime(annotation.startMs)}–{formatMediaTime(annotation.endMs)}</strong>
+                  <span>{formatMediaTime(annotation.endMs - annotation.startMs)} long</span>
+                </p>
+              )}
             </section>
-          )}
-
-          {isHosted && (
-            <HostedMediaPlayer
-              annotationId={annotation.id}
-              media={annotation.media}
-              sourceType={annotation.source.type}
-            />
           )}
 
           {annotation.kind === "media_removed" && (
@@ -189,6 +181,36 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
               )}
             </section>
           )}
+
+          <div className="permalink-slots">
+            <div id="verdict-slot" className="verdict-slot" data-slot="verdict" />
+            <div id="consensus-slot" className="consensus-slot" data-slot="consensus" />
+          </div>
+
+          <section className="source-attribution" aria-labelledby="source-heading">
+            <div className="source-copy">
+              <p className="visually-hidden">{isYouTubeVideo ? "YouTube source" : isTikTokVideo ? "TikTok source" : isWebpageVideo ? "Webpage video" : isSpotifyEpisode ? "Spotify episode" : isAudio ? "Podcast / web audio" : "Original article"}</p>
+              <h2 id="source-heading">{sourceTitle}</h2>
+              {(annotation.source.showName || annotation.source.author || annotation.source.publisher) && (
+                <p className="source-byline">
+                  {annotation.source.showName && isAudio && `${annotation.source.showName} · `}
+                  {annotation.source.author && `${annotation.kind === "article" ? "By " : ""}${annotation.source.author}`}
+                  {annotation.source.author && annotation.source.publisher && " · "}
+                  {annotation.source.publisher}
+                </p>
+              )}
+              <p className="source-hostname">{annotation.source.hostname}</p>
+            </div>
+            <a className="public-button public-button-primary source-link" href={sourceUrl} target="_blank" rel="noopener noreferrer">
+              {isYouTubeVideo ? "Open clip on YouTube" : isTikTokVideo ? "Open clip on TikTok" : isSpotifyEpisode ? "Open clip on Spotify" : isAudio || isWebpageVideo ? "Open original source" : "View original source"}
+              <span aria-hidden="true">↗</span>
+            </a>
+          </section>
+
+          <ClaimForm annotationId={annotation.id} />
+          <div className="permalink-publish">
+            <PostToXButton pageUrl={pageUrl} text={intentText} />
+          </div>
 
           <section className="share-section" id="share" aria-labelledby="share-heading">
             <ShareControl
@@ -225,7 +247,6 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             initialPage={comments.status === "available" ? comments.page : null}
             returnTo={`${publicPath}#comments`}
           />
-          <ClaimForm annotationId={annotation.id} />
         </article>
       </main>
     </>

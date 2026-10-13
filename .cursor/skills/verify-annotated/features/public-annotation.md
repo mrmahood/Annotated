@@ -34,6 +34,6 @@ Exit 1 if the feed has no `View annotation` link or the detail title does not st
 
 - Do not follow the outbound source control. Leaving the origin drops the proof.
 - `/a/{annotationId}` often redirects to the canonical path. Assert the document the browser settles on, not the URL before the redirect.
-- Some annotations lead with a visible title and some with a visually hidden `Annotation` or `Voice commentary` heading. The document title prefix is the stable check.
+- Some annotations lead with a visible title and some with a visually hidden `Annotation` heading. The document title prefix is the stable check.
 - Comments may be empty (`No comments yet. Start the conversation.`) or an alert (`Comments are temporarily unavailable.`). The `Comments` heading is still required.
 - Share, bookmark, vote, follow, and comment composer actions ask a signed-out visitor to continue with Google or X. Do not click them.

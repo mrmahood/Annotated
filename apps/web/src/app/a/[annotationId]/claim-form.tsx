@@ -133,7 +133,7 @@ export function ClaimForm({ annotationId }: { annotationId: string }) {
   const isSubmitting = submission.status === "submitting";
 
   return (
-    <section className="claim-section" aria-labelledby="claim-heading">
+    <section className="claim-section" id="claim" aria-labelledby="claim-heading">
       <div className="claim-intro">
         <div>
           <p className="section-label">Content concerns</p>

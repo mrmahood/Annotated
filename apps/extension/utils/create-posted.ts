@@ -5,6 +5,7 @@ import {
   parsePublicAnnotationRoute,
   type PublicAnnotationRoute,
 } from './social-helpers.ts';
+import { getWebAppOrigin } from './web-app-url.ts';
 
 export const CREATE_POSTED_CONFIRMATION_STORAGE_KEY = 'annotated.createPosted.confirmation.v1';
 
@@ -51,6 +52,35 @@ export function isCreatePostedConfirmation(value: unknown): value is CreatePoste
     (value.kind === 'text' || value.kind === 'video' || value.kind === 'audio') &&
     typeof value.publicPath === 'string' &&
     value.publicPath.startsWith('/');
+}
+
+export function postedPermalinkHref(publicPath: string, origin: string): string | null {
+  try {
+    const url = new URL(publicPath, origin);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+/** Open the public permalink as soon as publish succeeds. No extra view click. */
+export function openPostedPermalink(publicPath: string): void {
+  let href: string | null = null;
+  try {
+    href = postedPermalinkHref(publicPath, getWebAppOrigin());
+  } catch {
+    return;
+  }
+  if (!href) return;
+  const tabs = chrome?.tabs;
+  if (tabs?.create) {
+    void tabs.create({ url: href, active: true });
+    return;
+  }
+  if (typeof window !== 'undefined') {
+    window.open(href, '_blank', 'noopener,noreferrer');
+  }
 }
 
 export async function persistCreatePostedConfirmation(

@@ -84,7 +84,7 @@ export function AnnotationCard({
     <article
       className={reshare ? "annotation-card annotation-card-reshare" : "annotation-card"}
       aria-labelledby={headingLead ? headingId : undefined}
-      aria-label={headingLead ? undefined : annotation.audio ? "Voice commentary" : sourceTitle}
+      aria-label={headingLead ? undefined : annotation.audio ? "Annotation" : sourceTitle}
     >
       {reshare && (
         <p className="reshare-attribution">

@@ -96,6 +96,7 @@ import {
   CREATE_POSTED_CONFIRMATION_STORAGE_KEY,
   createPostedConfirmation,
   isCreatePostedConfirmation,
+  openPostedPermalink,
   persistCreatePostedConfirmation,
   queryPostedAnnotationRoute,
   type CreatePostedConfirmation,
@@ -977,6 +978,7 @@ function App() {
   const showCreatePosted = useCallback((confirmation: CreatePostedConfirmation) => {
     setPostedConfirmation(confirmation);
     void persistCreatePostedConfirmation(confirmation).catch(() => undefined);
+    openPostedPermalink(confirmation.publicPath);
   }, []);
 
   const dismissCreatePosted = useCallback(async () => {

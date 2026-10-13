@@ -34,7 +34,7 @@ const PROD_URL = "https://annotated.cbandcoop.com";
 const LOCAL_URL = "http://127.0.0.1:3000";
 const LOCAL_PORT = 3000;
 const FEED_TITLE = "Public annotation feed";
-const FEED_LEDE = "Your media notations across video, podcasts & text shared with the world.";
+const FEED_LEDE = "The fact-check layer for the web.";
 
 const COMMANDS = [
   "launch",
