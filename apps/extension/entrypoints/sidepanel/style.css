@@ -157,6 +157,18 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .text-button:hover { color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; }
 .danger-text, .danger-button { color: var(--destructive); }
 
+.passage-list { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 12px; }
+.passage-list h2 { margin: 0; color: var(--text-primary); font-size: 12px; }
+.passage-list p { margin: 0; color: var(--text-secondary); line-height: 1.45; }
+.passage-list ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.passage-list button { width: 100%; display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-small); color: inherit; background: var(--surface); text-align: left; cursor: pointer; }
+.passage-list button:hover { border-color: var(--border-strong); background: var(--surface-active); }
+.passage-swatch { width: 12px; height: 12px; flex: 0 0 auto; margin-top: 3px; border-radius: 2px; background: #ffe14a; }
+.passage-swatch-green { background: #b6f0a2; }
+.passage-swatch-red { background: #ffb3b3; }
+.passage-swatch-amber { background: #ffd59a; }
+.passage-quote { display: block; color: var(--text-primary); line-height: 1.4; }
+.passage-verdict { display: block; margin-top: 3px; color: var(--text-muted); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
 .compact-state { min-height: 0; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 5px; padding: 10px 0; border: 0; border-radius: 0; color: var(--text-secondary); background: transparent; line-height: 1.45; }
 .compact-state-quiet { min-height: 0; padding: 4px 0; }
 .compact-state strong { color: var(--text-primary); font-size: 12px; }
