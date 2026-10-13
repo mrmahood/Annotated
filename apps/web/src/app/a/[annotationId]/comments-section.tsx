@@ -7,6 +7,7 @@ import {
   createComment,
   deleteComment,
 } from "@/lib/data/social-mutations";
+import { formatCommentTimestamp } from "@/lib/comment-time";
 import {
   COMMENT_BODY_LIMIT,
   queryPublicComments,
@@ -139,13 +140,7 @@ export function CommentsSection({
       ) : (
         <ol className="comment-list">
           {comments.map((comment) => {
-            const dateLabel = new Intl.DateTimeFormat("en-US", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            }).format(new Date(comment.createdAt));
+            const dateLabel = formatCommentTimestamp(comment.createdAt);
             return (
               <li className="comment-item" key={comment.id}>
                 <Link className="comment-avatar-link" href={`/p/${comment.userId}`} aria-label={`View ${comment.author.displayName}’s profile`}>

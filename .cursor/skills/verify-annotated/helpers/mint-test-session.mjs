@@ -1,8 +1,20 @@
 import { createRequire } from "node:module";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
 export const DEDICATED_TEST_EMAIL = "cbandcooptest@gmail.com";
+
+// Public values already shipped in the Staging web bundle. Used only when the
+// target origin is a Staging preview and the matching environment variable is
+// unset. The service-role key is never defaulted.
+export const STAGING_SUPABASE_URL = "https://nkkunkwirvfwhmpwonqz.supabase.co";
+export const STAGING_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ZWqFkABY5Uvy34z55dVaLw_NLrzlUTr";
+export const STAGING_PROJECT_REF = "nkkunkwirvfwhmpwonqz";
+export const PRODUCTION_PROJECT_REF = "vnxjktpdzmykmqrqwvks";
+export const STAGING_SITE_HOST = "annotated-staging.cbandcoop.com";
+export const STAGING_VERCEL_TEAM_SUFFIX = "-matt-mahoods-projects.vercel.app";
+export const STAGING_SESSION_PATH = "/tmp/verify-annotated/staging-session.json";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const OTP_TYPES = new Set(["magiclink", "email", "signup"]);
@@ -13,7 +25,48 @@ export function assertDedicatedTestEmail(email) {
   }
 }
 
-export function readMintEnv(env) {
+export function isStagingPreviewOrigin(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  const host = url.hostname.toLowerCase();
+  if (host === STAGING_SITE_HOST) return true;
+  if (!host.endsWith(STAGING_VERCEL_TEAM_SUFFIX)) return false;
+  const name = host.slice(0, -STAGING_VERCEL_TEAM_SUFFIX.length);
+  return name === "annotated-staging" || name.startsWith("annotated-staging-");
+}
+
+export function projectRefFromServiceRole(token) {
+  if (typeof token !== "string" || token.length === 0) return "";
+  const part = token.split(".")[1];
+  if (!part) return "";
+  try {
+    const json = JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+    return typeof json.ref === "string" ? json.ref : "";
+  } catch {
+    return "";
+  }
+}
+
+function stagingSupabaseUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.hostname !== `${STAGING_PROJECT_REF}.supabase.co`) return "";
+    if (url.pathname !== "/" && url.pathname !== "") return "";
+    return url.origin;
+  } catch {
+    return "";
+  }
+}
+
+export function readMintEnv(env, options = {}) {
+  const stagingTarget = isStagingPreviewOrigin(options.baseUrl || "");
+  if (stagingTarget) return readStagingMintEnv(env);
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY || "";
   const url = env.NEXT_PUBLIC_SUPABASE_URL || "";
   const publishableKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -27,7 +80,42 @@ export function readMintEnv(env) {
       message: "set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
     };
   }
-  return { ok: true, url, serviceRoleKey, publishableKey, email: DEDICATED_TEST_EMAIL };
+  return { ok: true, url, serviceRoleKey, publishableKey, email: DEDICATED_TEST_EMAIL, publicConfig: "environment", project: "other" };
+}
+
+function readStagingMintEnv(env) {
+  const serviceRoleKey = env.SUPABASE_STAGING_SERVICE_ROLE_KEY || "";
+  if (!serviceRoleKey) {
+    return { ok: false, exitCode: 3, message: "set SUPABASE_STAGING_SERVICE_ROLE_KEY" };
+  }
+  const ref = projectRefFromServiceRole(serviceRoleKey);
+  if (ref !== STAGING_PROJECT_REF) {
+    return { ok: false, exitCode: 3, message: "SUPABASE_STAGING_SERVICE_ROLE_KEY is not the Staging project" };
+  }
+  const envUrl = stagingSupabaseUrl(env.NEXT_PUBLIC_SUPABASE_URL || "");
+  if ((env.NEXT_PUBLIC_SUPABASE_URL || "") && !envUrl) {
+    return { ok: false, exitCode: 3, message: "NEXT_PUBLIC_SUPABASE_URL must be the Staging project or be unset" };
+  }
+  const envPublishableKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const url = envUrl || STAGING_SUPABASE_URL;
+  const publishableKey = envPublishableKey || STAGING_SUPABASE_PUBLISHABLE_KEY;
+  if (url.includes(PRODUCTION_PROJECT_REF)) {
+    return { ok: false, exitCode: 3, message: "refusing the Production project" };
+  }
+  const publicConfig = envUrl && envPublishableKey
+    ? "environment"
+    : !envUrl && !envPublishableKey
+      ? "staging-defaults"
+      : "mixed";
+  return {
+    ok: true,
+    url,
+    serviceRoleKey,
+    publishableKey,
+    email: DEDICATED_TEST_EMAIL,
+    publicConfig,
+    project: "staging",
+  };
 }
 
 export function redactSecrets(text, secrets) {
@@ -199,4 +287,59 @@ async function verifyWithServerClient({ url, publishableKey, link }) {
   const sessionCookies = jar.filter((cookie) => cookie.name && cookie.value);
   if (sessionCookies.length === 0) throw bounded("mint_verify_failed");
   return sessionCookies;
+}
+
+export function writeStagingSessionFile(filePath, payload) {
+  mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
+  writeFileSync(filePath, `${JSON.stringify({
+    email: payload.email,
+    baseUrl: payload.baseUrl,
+    publicConfig: payload.publicConfig,
+    cookies: payload.cookies,
+  })}\n`, { mode: 0o600 });
+}
+
+function readTargetArg(argv) {
+  const index = argv.indexOf("--target");
+  const value = index >= 0 ? argv[index + 1] : "";
+  if (!value || value.startsWith("--")) return "";
+  return value;
+}
+
+async function main() {
+  const target = readTargetArg(process.argv.slice(2));
+  if (!isStagingPreviewOrigin(target)) {
+    console.error("Pass --target with an https Staging preview origin.");
+    process.exit(1);
+  }
+  const config = readMintEnv(process.env, { baseUrl: target });
+  if (!config.ok) {
+    console.error(config.message);
+    process.exit(config.exitCode);
+  }
+  const secrets = [config.serviceRoleKey, config.publishableKey, process.env.SUPABASE_SERVICE_ROLE_KEY || ""];
+  try {
+    const minted = await mintDedicatedTestSession(createSupabaseMintPort({
+      url: config.url,
+      serviceRoleKey: config.serviceRoleKey,
+      publishableKey: config.publishableKey,
+    }), config.email);
+    writeStagingSessionFile(STAGING_SESSION_PATH, {
+      email: config.email,
+      baseUrl: new URL(target).origin,
+      publicConfig: config.publicConfig,
+      cookies: minted.cookies,
+    });
+    console.log(redactSecrets(minted.log, [...secrets, ...minted.cookies.map((cookie) => cookie.value)]));
+    console.log(`publicConfig: ${config.publicConfig}`);
+    console.log(`sessionFile: ${STAGING_SESSION_PATH}`);
+  } catch (error) {
+    const code = typeof error?.code === "string" ? error.code : "mint_failed";
+    console.error(redactSecrets(code, secrets));
+    process.exit(1);
+  }
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  await main();
 }
