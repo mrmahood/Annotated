@@ -15,7 +15,9 @@
     "./logo-mark": "./src/logo-mark.ts",
     "./appearance": "./src/appearance.ts",
     "./profile-handle": "./src/profile-handle.ts",
-    "./x-intent": "./src/x-intent.ts"
+    "./tweet-status": "./src/tweet-status.ts",
+    "./x-intent": "./src/x-intent.ts",
+    "./receipt-source": "./src/receipt-source.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.mjs"

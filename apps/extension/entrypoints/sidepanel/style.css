@@ -350,6 +350,15 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .create-posted { justify-items: start; gap: 8px; }
 .create-posted-mark { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; color: var(--background); background: var(--success); font-size: 16px; font-weight: 700; line-height: 1; }
 .create-posted-link { color: var(--text-primary); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
+.create-posted-x { margin-top: 2px; }
+.receipt-assist { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin: 8px 0 4px; }
+.receipt-assist-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.receipt-assist-heading h3 { margin: 0; font-size: 12px; }
+.receipt-summary, .receipt-source { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.receipt-source-list { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.receipt-source { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding-top: 8px; border-top: 1px solid var(--border); }
+.receipt-source a { color: var(--text-muted); font-size: 10px; overflow-wrap: anywhere; }
+.ai-suggested-label { color: var(--text-muted); font-family: var(--font-mono); font-size: 10px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
 .mode-switch-dialog { width: min(360px, calc(100vw - 28px)); max-height: calc(100vh - 28px); overflow: auto; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-medium); color: var(--text-primary); background: var(--background-elevated); box-shadow: 0 16px 40px color-mix(in srgb, #000 45%, transparent); }
 .mode-switch-dialog::backdrop { background: rgba(0, 0, 0, .72); }
 .mode-switch-dialog h2 { margin: 7px 0 0; font-size: 16px; line-height: 1.3; }

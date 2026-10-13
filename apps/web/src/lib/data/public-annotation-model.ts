@@ -1,4 +1,5 @@
 import { parseStoredAnnotationTitle } from "@annotated/shared/annotation-title";
+import type { PublicReceiptSource } from "@annotated/shared/receipt-source";
 import { getAudioSourceIdentity } from "@annotated/shared/audio-source";
 import { getHistoricalStoredTargetRangeError } from "@annotated/shared/media-time";
 import { normalizeArticleUrl } from "@annotated/shared/url-normalization";
@@ -12,6 +13,7 @@ import {
   isPublicCreatorHandle,
   type PublicAnnotationRoute,
 } from "../public-routes";
+import type { PublicTweetCapture } from "../tweet-capture";
 
 const VIDEO_MAX_BYTES = 16 * 1024 * 1024;
 const AUDIO_MAX_BYTES = 8 * 1024 * 1024;
@@ -57,6 +59,8 @@ type PublicAnnotationBase = {
     avatarUrl: string | null;
   };
   audio: { publicUrl: string; durationMs: number } | null;
+  tweetCapture: PublicTweetCapture | null;
+  receiptSources: PublicReceiptSource[];
 };
 
 type YouTubeVideoSource = PublicAnnotationBase["source"] & { type: "youtube"; videoId: string };
@@ -318,6 +322,8 @@ export function mapPublicAnnotationDetail(
       avatarUrl: getHttpUrl(profileValue.avatar_url)?.href ?? null,
     },
     audio,
+    tweetCapture: null,
+    receiptSources: [],
   };
 
   if (annotationValue.annotation_type === "article_text" && sourceValue.source_type === "article" &&

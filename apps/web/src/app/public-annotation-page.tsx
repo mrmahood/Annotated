@@ -150,6 +150,50 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             </section>
           )}
 
+          {annotation.tweetCapture && (
+            <section className="preserved-post" aria-labelledby="preserved-post-heading">
+              <p className="section-label">Preserved post</p>
+              <h2 id="preserved-post-heading">Post on X</h2>
+              <p className="preserved-post-note">Saved with this annotation. The post stays here if it is later deleted.</p>
+              {annotation.tweetCapture.screenshotUrl && (
+                // The screenshot is our stored crop of the visible post, not a live embed.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  className="preserved-post-shot"
+                  src={annotation.tweetCapture.screenshotUrl}
+                  alt={`Preserved post by @${annotation.tweetCapture.authorHandle}`}
+                  width={annotation.tweetCapture.screenshotWidth ?? undefined}
+                  height={annotation.tweetCapture.screenshotHeight ?? undefined}
+                />
+              )}
+              <p className="preserved-post-author">
+                {annotation.tweetCapture.authorName ? `${annotation.tweetCapture.authorName} · ` : null}
+                @{annotation.tweetCapture.authorHandle}
+              </p>
+              {annotation.tweetCapture.tweetText && <blockquote>{annotation.tweetCapture.tweetText}</blockquote>}
+              <a className="public-button public-button-secondary" href={annotation.tweetCapture.statusUrl} target="_blank" rel="noopener noreferrer">
+                View post on X
+                <span aria-hidden="true">↗</span>
+              </a>
+            </section>
+          )}
+
+          {annotation.receiptSources.length > 0 && (
+            <section className="receipt-sources" aria-labelledby="receipt-sources-heading">
+              <p className="section-label">Receipts</p>
+              <h2 id="receipt-sources-heading">Sources</h2>
+              <ul className="receipt-source-list">
+                {annotation.receiptSources.map((source) => (
+                  <li key={source.url}>
+                    <a href={source.url} target="_blank" rel="noopener noreferrer">{source.title}</a>
+                    {source.publisher && <span>{source.publisher}</span>}
+                    {source.origin === "ai-suggested" && <span className="ai-suggested-label">AI-suggested</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {annotation.kind === "media_removed" && (
             <section className="media-removed-section" aria-labelledby="media-removed-heading">
               <p className="section-label">Archived excerpt</p>

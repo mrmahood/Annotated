@@ -1214,6 +1214,8 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .hosted-media-section,
 .media-removed-section,
 .transcript-section,
+.preserved-post,
+.receipt-sources,
 .vote-section,
 .share-section,
 .comments-section,
@@ -1318,6 +1320,14 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
 .clip-range-section strong { color: var(--text-evidence); font-family: var(--font-mono); font-size: clamp(1.35rem, 4vw, 2rem); font-variant-numeric: tabular-nums; }
 .clip-range-section .clip-still strong { color: #f6f3ea; }
 .clip-range-section > span { color: var(--text-muted); font-family: var(--font-mono); font-size: .72rem; }
+.preserved-post, .receipt-sources { border-top: 1px solid var(--border); }
+.preserved-post-note, .preserved-post-author { margin: 0; color: var(--text-secondary); }
+.preserved-post-shot { display: block; width: min(100%, 640px); height: auto; margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.preserved-post blockquote, .receipt-source-list { margin: 12px 0 0; }
+.receipt-source-list { display: flex; flex-direction: column; gap: 12px; padding: 0; list-style: none; }
+.receipt-source-list li { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+.receipt-source-list a { color: var(--text-primary); }
+.ai-suggested-label { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.68rem; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
 .passage-section blockquote {
   margin: 0;
   padding: 0.04em 0.18em;
@@ -1677,7 +1687,7 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   .card-body { padding-inline: 14px; }
   .card-actions { align-items: flex-start; flex-direction: column; }
   .annotation-shell { padding: 14px 10px 36px; }
-  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .share-section, .vote-section, .comments-section, .claim-section { padding: 18px; }
+  .annotation-header, .source-attribution, .passage-section, .clip-range-section, .commentary-section, .hosted-media-section, .media-removed-section, .transcript-section, .preserved-post, .receipt-sources, .share-section, .vote-section, .comments-section, .claim-section { padding: 18px; }
   .source-attribution { grid-template-columns: 1fr; align-items: stretch; gap: 18px; }
   .source-link, .public-button-claim { width: 100%; }
   .annotator-line { align-items: flex-start; flex-wrap: wrap; }
