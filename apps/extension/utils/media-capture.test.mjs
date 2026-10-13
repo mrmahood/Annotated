@@ -2386,7 +2386,10 @@ test('production manifest and capture source keep the required security shape', 
   ]);
   const pkg = JSON.parse(pkgSource);
   assert.equal(pkg.name, 'annotated');
-  assert.equal(pkg.version, '0.2.0');
+  assert.equal(pkg.version, '0.2.1');
+  assert.match(config, /default_icon:/);
+  assert.match(config, /16: 'icon\/16.png'/);
+  assert.match(config, /128: 'icon\/128.png'/);
   assert.equal(
     pkg.description,
     'Source-linked margin notes on articles, plus short video and audio clips from the current tab.',

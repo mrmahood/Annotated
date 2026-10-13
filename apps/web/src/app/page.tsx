@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AnnotationCard } from "./annotation-card";
 import { HeroIllustration } from "./hero-illustration";
@@ -67,6 +68,9 @@ export default async function Home({ searchParams }: HomePageProps) {
           <p className="eyebrow">PUBLIC ANNOTATIONS</p>
           <h1 className="landing-title">{FEED_LEDE}</h1>
           <p className="landing-support">Comment on a passage or a short clip. The source stays attached.</p>
+          <p className="landing-demo-link">
+            <Link href="/demo">Try the demo</Link>
+          </p>
           <HeroIllustration />
           <InstallForChromeButton />
         </header>

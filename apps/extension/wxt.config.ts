@@ -15,8 +15,21 @@ export default defineConfig({
     // improve the in-panel prompt or chrome://settings reconnect path.
     permissions: ['sidePanel', 'activeTab', 'storage', 'scripting', 'identity', 'tabCapture', 'offscreen', 'tabs'],
     host_permissions: ['http://*/*', 'https://*/*'],
+    icons: {
+      16: 'icon/16.png',
+      32: 'icon/32.png',
+      48: 'icon/48.png',
+      96: 'icon/96.png',
+      128: 'icon/128.png',
+    },
     action: {
       default_title: 'Open Annotated',
+      default_icon: {
+        16: 'icon/16.png',
+        32: 'icon/32.png',
+        48: 'icon/48.png',
+        128: 'icon/128.png',
+      },
     },
     // Prod zip packaging sets ANNOTATED_PROD_EXTENSION_PUBLIC_KEY so Load
     // unpacked from extension.zip keeps one chromiumapp.org ID. Local and

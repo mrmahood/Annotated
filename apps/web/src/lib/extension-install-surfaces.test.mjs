@@ -58,3 +58,30 @@ test("web shell shows one dismissible install callout that opens one download mo
   assert.match(webPackage, /extension-install-surfaces\.test\.mjs/);
   assert.match(webPackage, /prod-extension-key\.test\.mjs/);
 });
+
+test("the extensions address chip wraps the full url and can be copied", async () => {
+  const [nudge, page, steps, styles] = await Promise.all([
+    readFile(new URL("../app/install-extension-nudge.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/whats-new/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/extension-step-code.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(nudge, /ExtensionStepLine/);
+  assert.match(page, /ExtensionStepLine/);
+  assert.match(steps, /install-extension-step-body/);
+  assert.match(steps, /Copy chrome:\/\/extensions/);
+  assert.match(steps, /Copied/);
+  assert.match(steps, /navigator\.clipboard\.writeText/);
+  const chip = styles.slice(styles.indexOf(".install-extension-steps code {"), styles.indexOf(".install-extension-copy {"));
+  assert.match(chip, /display: inline-block/);
+  assert.match(chip, /box-decoration-break: clone/);
+  assert.match(chip, /-webkit-box-decoration-break: clone/);
+  assert.match(chip, /padding: 0\.1em 0\.4em/);
+  assert.match(chip, /vertical-align: baseline/);
+  assert.match(chip, /line-height: 1\.4/);
+  assert.match(chip, /background: var\(--control-background\)/);
+  assert.match(chip, /border: 1px solid var\(--border-strong\)/);
+  assert.match(chip, /white-space: nowrap/);
+  const narrow = styles.slice(styles.indexOf("@media (max-width: 640px)"));
+  assert.match(narrow, /\.install-extension-steps code \{ white-space: normal; \}/);
+});

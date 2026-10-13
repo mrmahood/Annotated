@@ -10,6 +10,7 @@ import {
   isLikelyGoogleChrome,
   persistInstallCalloutDismissed,
 } from "@/lib/extension-install";
+import { ExtensionStepLine } from "./extension-step-code";
 
 const INSTALL_CALLOUT_CHANGE_EVENT = "annotated:install-extension-callout";
 
@@ -214,16 +215,12 @@ export function InstallExtensionNudge() {
           <a href={EXTENSION_WHATS_NEW_PATH}>{"What's new"}</a>
         </p>
         <ol className="install-extension-steps">
-          {EXTENSION_INSTALL_STEPS.map((step, index) => (
-            <li key={index}>
-              {step.text}
-              {"code" in step && step.code ? (
-                <>
-                  {" "}
-                  <code>{step.code}</code>
-                </>
-              ) : null}
-            </li>
+          {EXTENSION_INSTALL_STEPS.map((step) => (
+            <ExtensionStepLine
+              key={step.text}
+              text={step.text}
+              code={"code" in step ? step.code : undefined}
+            />
           ))}
         </ol>
         <p className="install-extension-modal-footer">{EXTENSION_INSTALL_COPY.footer}</p>
