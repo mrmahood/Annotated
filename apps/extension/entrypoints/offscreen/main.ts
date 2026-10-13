@@ -25,11 +25,17 @@ import {
   type OffscreenStartMessage,
 } from '../../utils/media-capture';
 import { diagnosticMimeType, resolveC6CaptureDiagnostic } from '../../utils/c6-capture-diagnostic';
+import {
+  assembleCaptureRecording,
+  type CaptureMixContext,
+} from '../../utils/capture-audio-mix';
+import { startCaptureRecorder, stopCaptureResources } from '../../utils/capture-recorder-start';
 
 type ActiveRecording = {
   message: OffscreenStartMessage;
   recorder: MediaRecorder;
   stream: MediaStream;
+  recordedStream: MediaStream;
   chunks: Blob[];
   selectedMimeType: string;
   startedAtPerformanceMs: number;
@@ -39,6 +45,8 @@ type ActiveRecording = {
   failsafeTimer: number;
   audioContext: AudioContext | null;
   audioSource: MediaStreamAudioSourceNode | null;
+  microphoneStream: MediaStream | null;
+  mixDisconnect: () => void;
   loopbackEnabled: boolean;
   recorderFacts: RecorderFacts;
   cancelled: { code: string; message: string } | null;
@@ -136,6 +144,9 @@ async function release(active: ActiveRecording) {
   window.clearTimeout(active.durationTimer);
   window.clearTimeout(active.failsafeTimer);
   active.stream.getTracks().forEach((track) => track.stop());
+  active.recordedStream.getTracks().forEach((track) => track.stop());
+  active.microphoneStream?.getTracks().forEach((track) => track.stop());
+  try { active.mixDisconnect(); } catch { /* Already disconnected. */ }
   try { active.audioSource?.disconnect(); } catch { /* Already disconnected. */ }
   if (active.audioContext && active.audioContext.state !== 'closed') {
     await active.audioContext.close().catch(() => undefined);
@@ -401,6 +412,16 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
     return { status: 'error', captureId: message.captureId, code: 'media-recorder-unsupported', message: 'MediaRecorder is unavailable.' };
   }
   let stream: MediaStream | null = null;
+  let recordedStream: MediaStream | null = null;
+  let microphoneStream: MediaStream | null = null;
+  let audioContext: AudioContext | null = null;
+  let mixDisconnect: (() => void) | null = null;
+  let active: ActiveRecording | null = null;
+  const closeAudio = () => {
+    if (audioContext && audioContext.state !== 'closed') {
+      void audioContext.close().catch(() => undefined);
+    }
+  };
   try {
     if (holdInFlight) await holdInFlight;
     const expectVideo = !isAudioOnlyCaptureSourceKind(message.prepared.sourceKind);
@@ -414,6 +435,7 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
     }
     if (stream.getAudioTracks().length === 0) throw new Error('no-audio-track');
     if (expectVideo && stream.getVideoTracks().length === 0) throw new Error('no-video-track');
+    const tabStream = stream;
     const supported = MediaRecorder.isTypeSupported.bind(MediaRecorder);
     const selectedMimeType = diagnosticMimeType(
       expectVideo,
@@ -423,59 +445,98 @@ async function start(message: OffscreenStartMessage): Promise<CaptureSnapshot> {
     );
     if (!selectedMimeType) throw new Error('media-recorder-unsupported');
 
-    let audioContext: AudioContext | null = null;
-    let audioSource: MediaStreamAudioSourceNode | null = null;
-    let loopbackEnabled = false;
-    try {
-      if (!C6_DIAGNOSTIC.loopbackEnabled) throw new Error('Loopback disabled for diagnostic build.');
-      audioContext = new AudioContext();
-      audioSource = audioContext.createMediaStreamSource(stream);
-      audioSource.connect(audioContext.destination);
-      if (audioContext.state === 'suspended') await audioContext.resume();
-      loopbackEnabled = audioContext.state === 'running';
-    } catch {
-      try { audioSource?.disconnect(); } catch { /* No active graph. */ }
-      await audioContext?.close().catch(() => undefined);
-      audioContext = null;
-      audioSource = null;
-    }
-
-    const recorder = new MediaRecorder(stream, {
+    const mix = await assembleCaptureRecording({
+      tabStream,
+      loopback: C6_DIAGNOSTIC.loopbackEnabled,
+      hasAudio: (value) => value.getAudioTracks().length > 0,
+      withTabVideo: (mixedAudio) => {
+        const mixed = new MediaStream();
+        for (const track of mixedAudio.getAudioTracks()) mixed.addTrack(track);
+        for (const track of tabStream.getVideoTracks()) mixed.addTrack(track);
+        return mixed;
+      },
+      openMicrophone: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+      createAudioContext: () => new AudioContext() as unknown as CaptureMixContext<MediaStream>,
+      releaseStream: (value) => { value.getTracks().forEach((track) => track.stop()); },
+    });
+    const captureRecordedStream = mix.recordedStream;
+    const captureMicrophoneStream = mix.microphoneStream;
+    const captureAudioContext = mix.audioContext as AudioContext | null;
+    recordedStream = captureRecordedStream;
+    audioContext = captureAudioContext;
+    microphoneStream = captureMicrophoneStream;
+    const loopbackEnabled = mix.loopbackEnabled;
+    mixDisconnect = mix.disconnect;
+    const recorderOptions: MediaRecorderOptions = {
       mimeType: selectedMimeType,
       ...(C6_DIAGNOSTIC.audioBitsPerSecond === null ? {} : { audioBitsPerSecond: C6_DIAGNOSTIC.audioBitsPerSecond }),
       ...(expectVideo && C6_DIAGNOSTIC.videoBitsPerSecond !== null
         ? { videoBitsPerSecond: C6_DIAGNOSTIC.videoBitsPerSecond } : {}),
+    };
+    const startedHolder: { session: ActiveRecording | null } = { session: null };
+    const recorder = startCaptureRecorder({
+      tabStream,
+      recordedStream: captureRecordedStream,
+      microphoneStream: captureMicrophoneStream,
+      disconnectMix: () => { mixDisconnect?.(); },
+      closeAudio,
+      timesliceMs: C6_DIAGNOSTIC.timesliceMs,
+      createRecorder: (target) => new MediaRecorder(target, recorderOptions),
+      assign: (next) => {
+        const session: ActiveRecording = {
+          message,
+          recorder: next,
+          stream: tabStream,
+          recordedStream: captureRecordedStream,
+          chunks: [],
+          selectedMimeType,
+          startedAtPerformanceMs: performance.now(),
+          playbackAcknowledgedAtMs: null,
+          playerStartMs: null,
+          durationTimer: 0,
+          failsafeTimer: 0,
+          audioContext: captureAudioContext,
+          audioSource: null,
+          microphoneStream: captureMicrophoneStream,
+          mixDisconnect: () => { mixDisconnect?.(); },
+          loopbackEnabled,
+          recorderFacts: {
+            variant: C6_DIAGNOSTIC.variant,
+            configured_timeslice_ms: C6_DIAGNOSTIC.timesliceMs,
+            configured_audio_bits_per_second: C6_DIAGNOSTIC.audioBitsPerSecond,
+            configured_video_bits_per_second: expectVideo ? C6_DIAGNOSTIC.videoBitsPerSecond : null,
+            observed_audio_bits_per_second: next.audioBitsPerSecond,
+            observed_video_bits_per_second: next.videoBitsPerSecond,
+          },
+          cancelled: null,
+        };
+        startedHolder.session = session;
+        active = session;
+        recording = session;
+      },
     });
-    const recorderFacts: RecorderFacts = {
-      variant: C6_DIAGNOSTIC.variant,
-      configured_timeslice_ms: C6_DIAGNOSTIC.timesliceMs,
-      configured_audio_bits_per_second: C6_DIAGNOSTIC.audioBitsPerSecond,
-      configured_video_bits_per_second: expectVideo ? C6_DIAGNOSTIC.videoBitsPerSecond : null,
-      observed_audio_bits_per_second: recorder.audioBitsPerSecond,
-      observed_video_bits_per_second: recorder.videoBitsPerSecond,
-    };
-    const active: ActiveRecording = {
-      message, recorder, stream, chunks: [], selectedMimeType,
-      startedAtPerformanceMs: performance.now(),
-      playbackAcknowledgedAtMs: null, playerStartMs: null,
-      durationTimer: 0, failsafeTimer: 0, audioContext, audioSource, loopbackEnabled,
-      recorderFacts,
-      cancelled: null,
-    };
-    recorder.addEventListener('dataavailable', (event) => { if (event.data.size > 0) active.chunks.push(event.data); });
-    recorder.addEventListener('stop', () => { void finalize(active); }, { once: true });
+    const started = startedHolder.session as ActiveRecording | null;
+    if (started === null) throw new Error('unexpected');
+    recorder.addEventListener('dataavailable', (event) => { if (event.data.size > 0) started.chunks.push(event.data); });
+    recorder.addEventListener('stop', () => { void finalize(started); }, { once: true });
     recorder.addEventListener('error', () => {
-      active.cancelled = { code: 'unexpected', message: 'MediaRecorder failed during capture.' };
+      started.cancelled = { code: 'unexpected', message: 'MediaRecorder failed during capture.' };
       stopRecording('cancel');
     }, { once: true });
-    if (C6_DIAGNOSTIC.timesliceMs === null) recorder.start();
-    else recorder.start(C6_DIAGNOSTIC.timesliceMs);
-    recording = active;
-    active.failsafeTimer = window.setTimeout(() => stopRecording('failsafe'), MEDIA_CAPTURE_FAILSAFE_MS);
+    started.failsafeTimer = window.setTimeout(() => stopRecording('failsafe'), MEDIA_CAPTURE_FAILSAFE_MS);
     snapshot = { status: 'capturing', captureId: message.captureId, requestedDurationMs: message.prepared.requestedDurationMs };
     return snapshot;
   } catch (error) {
-    stream?.getTracks().forEach((track) => track.stop());
+    const failed = active as ActiveRecording | null;
+    if (failed && recording === failed) recording = null;
+    stopCaptureResources({
+      recorder: failed?.recorder ?? null,
+      tabStream: stream,
+      microphoneStream,
+      recordedStream,
+      disconnectMix: () => { mixDisconnect?.(); },
+      closeAudio,
+    });
     const code = error instanceof Error ? error.message : '';
     return {
       status: 'error',

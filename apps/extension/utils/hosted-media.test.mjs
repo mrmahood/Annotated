@@ -28,6 +28,7 @@ import {
   shouldPollHostedOwnerStatus,
   shouldShowCreatePublishError,
 } from './hosted-media.ts';
+import { TAB_CAPTURE_INVOKE_MESSAGE } from './media-capture.ts';
 
 const operation = {
   annotationId: '11111111-1111-4111-8111-111111111111',
@@ -72,12 +73,11 @@ test('a hosted session hides the Create publish error so Recapture cannot leave 
     { status: 'error', message: 'Range is invalid.' },
   );
   assert.deepEqual(
-    createPublishStateAfterHostedFailure(
-      null,
-      'Click the Annotated toolbar icon on this tab, then Recapture.',
-    ),
-    { status: 'error', message: 'Capture could not start. Click Publish again.' },
+    createPublishStateAfterHostedFailure(null, TAB_CAPTURE_INVOKE_MESSAGE),
+    { status: 'error', message: TAB_CAPTURE_INVOKE_MESSAGE },
   );
+  assert.match(TAB_CAPTURE_INVOKE_MESSAGE, /toolbar icon/);
+  assert.match(TAB_CAPTURE_INVOKE_MESSAGE, /Publish clip again/);
 });
 
 test('Recapture and capture start clear Create publish errors before the next attempt', async () => {
@@ -134,7 +134,7 @@ test('attention and restore-error snapshots clear locally even without a live re
   }), true);
   assert.equal(hostedCancelClearsLocalAttention({
     status: 'error', captureId: null, code: 'tab-capture-denied',
-    message: 'Click the Annotated toolbar icon on this tab, then Recapture.',
+    message: TAB_CAPTURE_INVOKE_MESSAGE,
   }), true);
   assert.equal(hostedCancelClearsLocalAttention({
     status: 'error', captureId: null, code: 'unexpected',
@@ -704,7 +704,7 @@ test('failed Apple begin/start rolls back capture_pending instead of offering Re
   }), true);
   assert.equal(shouldRollbackHostedDraftAfterStartFailure({
     status: 'error', captureId: 'cap-1', code: 'tab-capture-denied',
-    message: 'Click the Annotated toolbar icon on this tab, then Recapture.',
+    message: TAB_CAPTURE_INVOKE_MESSAGE,
   }), true);
   assert.equal(shouldRollbackHostedDraftAfterStartFailure({
     status: 'error', captureId: null, code: 'recapture-required',
@@ -773,15 +773,12 @@ test('YouTube in-flight tab-switch Cancel then Apple Publish stays a clean first
 
   const beginStream = app.slice(app.indexOf('const beginPublishTabCaptureStreamId'));
   assert.match(beginStream, /rebindSidePanelToTabFromUserGesture/);
-  assert.match(beginStream, /holdPublishTabCaptureStream/);
+  assert.match(beginStream, /requestServiceWorkerCaptureMint/);
+  assert.doesNotMatch(beginStream.slice(0, beginStream.indexOf('const rollbackFailedHostedCaptureStart')), /chrome\.tabCapture|streamId/);
   assert.ok(
-    beginStream.indexOf('beginTabCaptureStreamIdFromUserGesture') <
+    beginStream.indexOf('requestServiceWorkerCaptureMint') <
       beginStream.indexOf('rebindSidePanelToTabFromUserGesture'),
-    'Publish must start getMediaStreamId before sidePanel.open can consume the gesture',
-  );
-  assert.ok(
-    beginStream.indexOf('beginTabCaptureStreamIdFromUserGesture') <
-      beginStream.indexOf('holdPublishTabCaptureStream'),
+    'Publish must ask the service worker to mint before sidePanel.open',
   );
 
   const abandonEffect = app.slice(app.indexOf('if (foreignAbandonAttemptKeyRef.current === attemptKey)'));

@@ -143,6 +143,63 @@ test('followBrowsingTab writes the same context shape as action click and notifi
   assert.equal(chrome.store[ACTIVE_TAB_CONTEXT_KEY].title, 'Updated story');
 });
 
+test('follow ignores the extension popup and chrome pages without replacing the source', async () => {
+  const youtube = context({
+    title: 'YouTube',
+    url: 'https://www.youtube.com/watch?v=abcdefghijk',
+  });
+  const helper = tab({
+    id: 3,
+    windowId: 9,
+    title: 'Microphone',
+    url: 'chrome-extension://annotated/microphone-permission.html',
+    active: true,
+  });
+  const settings = tab({
+    id: 8,
+    windowId: 1,
+    title: 'Settings',
+    url: 'chrome://settings/content/microphone',
+    active: true,
+  });
+  const chrome = fakeChrome({
+    context: youtube,
+    tabs: [
+      tab({
+        id: 17,
+        title: 'YouTube',
+        url: 'https://www.youtube.com/watch?v=abcdefghijk',
+        active: false,
+      }),
+      helper,
+    ],
+  });
+
+  assert.equal(await followBrowsingTab(chrome, helper, NOW), 'skipped');
+  assert.deepEqual(chrome.store[ACTIVE_TAB_CONTEXT_KEY], youtube);
+  assert.equal(await followBrowsingTab(chrome, settings, NOW + 5), 'skipped');
+  assert.deepEqual(chrome.store[ACTIVE_TAB_CONTEXT_KEY], youtube);
+  assert.deepEqual(chrome.messages, []);
+
+  assert.equal(await followActiveBrowsingTab(chrome, NOW + 10), 'skipped');
+  assert.deepEqual(chrome.store[ACTIVE_TAB_CONTEXT_KEY], youtube);
+
+  let reads = 0;
+  const readTab = chrome.tabs.get;
+  chrome.tabs.get = async (tabId) => {
+    reads += 1;
+    return readTab(tabId);
+  };
+  installSurfFollow(chrome);
+  chrome.listeners.activated[0]({ tabId: helper.id, windowId: helper.windowId });
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(reads, 1);
+  assert.deepEqual(chrome.store[ACTIVE_TAB_CONTEXT_KEY], youtube);
+  assert.deepEqual(chrome.messages, []);
+});
+
 test('followBrowsingTab holds context when a capture is active on another tab', async () => {
   const chrome = fakeChrome({
     context: context(),

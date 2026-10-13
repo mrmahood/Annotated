@@ -237,23 +237,23 @@ import {
 import {
   MEDIA_CAPTURE_CANCEL,
   MEDIA_CAPTURE_EVENT,
-  MEDIA_CAPTURE_HOLD_STREAM,
   MEDIA_CAPTURE_OFFSCREEN_RELEASE_HOLD,
   MEDIA_CAPTURE_RETRY,
   MEDIA_CAPTURE_START,
   MEDIA_CAPTURE_STATUS,
-  beginTabCaptureStreamIdFromUserGesture,
+  TAB_CAPTURE_INVOKE_MESSAGE,
   canClearHostedAttentionWithoutLiveCancel,
   isAudioOnlyCaptureSourceKind,
   isCaptureId,
+  isTabCaptureInvocationError,
   mapTabCaptureStartFailure,
   raceHostedCaptureCancel,
   raceHostedCaptureStart,
   rebindSidePanelToTabFromUserGesture,
-  resolvePanelTabCaptureStreamId,
+  requestServiceWorkerCaptureMint,
   shouldReplaceHostedCaptureSnapshot,
   sourceIdentityMatchesUrl,
-  type AcquiredTabCaptureStream,
+  type CaptureMintResponse,
   type CaptureSnapshot,
   type CaptureSourceIdentity,
   type HostedMediaOperation,
@@ -1689,38 +1689,35 @@ function App() {
     }
   }, [cancelHostedSessionOnServer]);
 
-  const holdPublishTabCaptureStream = useCallback((
-    acquired: AcquiredTabCaptureStream,
-    expectVideo: boolean,
-  ) => {
-    void chrome.runtime.sendMessage({
-      target: 'background',
-      type: MEDIA_CAPTURE_HOLD_STREAM,
-      tabId: acquired.tabId,
-      streamId: acquired.streamId,
-      expectVideo,
-    }).catch(() => undefined);
-  }, []);
-
-  const beginPublishTabCaptureStreamId = useCallback((expectVideo: boolean) => {
+  const beginPublishTabCaptureStreamId = useCallback((expectVideo: boolean): Promise<CaptureMintResponse> => {
     const context = connectedContextRef.current;
-    // Mint first so chrome.sidePanel.open cannot consume the Publish gesture
-    // before getMediaStreamId. Toolbar invoke does not survive YT→Apple.
-    const pending = beginTabCaptureStreamIdFromUserGesture(
-      chrome.tabCapture,
+    // Ask the service worker to mint before sidePanel.open. The panel never
+    // passes its own stream ID; only offscreen consumes the worker's ID.
+    const pending = requestServiceWorkerCaptureMint(
+      (message) => chrome.runtime.sendMessage(message),
       context?.tabId,
       context?.url,
+      expectVideo,
     );
     rebindSidePanelToTabFromUserGesture(
       chrome.sidePanel,
       context?.tabId,
       context?.windowId,
     );
-    void pending.then((acquired) => {
-      if (acquired) holdPublishTabCaptureStream(acquired, expectVideo);
+    return pending.then((result) => {
+      if (result.ok) return result;
+      if (result.code === 'tab-capture-denied' || isTabCaptureInvocationError(result.message)) {
+        void followActiveBrowsingTab(chrome, Date.now()).catch(() => undefined);
+        rebindSidePanelToTabFromUserGesture(
+          chrome.sidePanel,
+          context?.tabId,
+          context?.windowId,
+        );
+        return { ok: false, code: 'tab-capture-denied', message: TAB_CAPTURE_INVOKE_MESSAGE };
+      }
+      return result;
     });
-    return pending;
-  }, [holdPublishTabCaptureStream]);
+  }, []);
 
   const rollbackFailedHostedCaptureStart = useCallback(async (
     session: HostedMediaSession,
@@ -1763,7 +1760,7 @@ function App() {
     source: CaptureSourceIdentity,
     startMs: number,
     endMs: number,
-    acquiredStream?: AcquiredTabCaptureStream | null,
+    mintResult?: CaptureMintResponse | null,
     options?: { rollbackOnStartFailure?: boolean },
   ) => {
     if (!supabase) throw new Error('The authenticated session is unavailable.');
@@ -1804,12 +1801,7 @@ function App() {
       const { data, error } = await sessionPromise;
       const accessToken = data.session?.access_token;
       if (error || !accessToken) throw new Error('The authenticated session is unavailable.');
-      const streamId = await resolvePanelTabCaptureStreamId(
-        chrome.tabCapture,
-        context.tabId,
-        source.pageUrl,
-        acquiredStream,
-      );
+      if (mintResult && !mintResult.ok) throw new Error(mintResult.message);
       const response = await raceHostedCaptureStart(chrome.runtime.sendMessage({
         target: 'background',
         type: MEDIA_CAPTURE_START,
@@ -1823,7 +1815,6 @@ function App() {
           accessToken,
           apiOrigin: getWebAppOrigin(),
         },
-        ...(streamId ? { streamId } : {}),
       }) as Promise<{ ok?: boolean; snapshot?: CaptureSnapshot }>);
       responseSnapshot = response?.snapshot ?? null;
       if (hostedAttemptTokenIsCurrent(attempt, hostedMediaSessionRef.current, activeCaptureIdRef.current) && response?.snapshot) {
@@ -1855,6 +1846,13 @@ function App() {
         setMediaCaptureState(failure);
       }
       if (failure.status === 'error' && failure.code === 'tab-capture-denied') {
+        const context = connectedContextRef.current;
+        void followActiveBrowsingTab(chrome, Date.now()).catch(() => undefined);
+        rebindSidePanelToTabFromUserGesture(
+          chrome.sidePanel,
+          context?.tabId,
+          context?.windowId,
+        );
         void chrome.runtime.sendMessage({
           target: 'background',
           type: MEDIA_CAPTURE_CANCEL,
@@ -3142,6 +3140,18 @@ function App() {
     void supabase.auth.getSession().then(({ data, error }) => { if (error) throw error; return applyAuthenticatedUser(data.session?.user ?? null); }).catch(async () => { await clearLocalAuthSession(supabase); if (authMountedRef.current) setAuthState({ status: 'error', message: 'Authentication could not be restored. Please try again.' }); });
     return () => { authMountedRef.current = false; authRevisionRef.current += 1; subscription.unsubscribe(); };
   }, [applyAuthenticatedUser, supabase]);
+
+  useEffect(() => {
+    const followOpenTab = () => {
+      void followActiveBrowsingTab(chrome, Date.now()).catch(() => undefined);
+    };
+    followOpenTab();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') followOpenTab();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
 
   useEffect(() => {
     let mounted = true;

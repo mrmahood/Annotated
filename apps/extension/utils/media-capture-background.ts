@@ -24,6 +24,7 @@ import {
   MEDIA_CAPTURE_STATUS,
   isMediaCaptureCancelMessage,
   isMediaCaptureHoldStreamMessage,
+  isMediaCaptureMintStreamMessage,
   isMediaCaptureStartMessage,
   isCurrentCaptureId,
   isYoutubeCaptureKind,
@@ -566,9 +567,19 @@ export function installMediaCapture(
     }
   }
 
+  async function releaseFailedStartHold() {
+    const run = async () => {
+      if (active) return;
+      await releaseHeldCallerTabCapture();
+      if (await hasOffscreenDocument()) await closeOffscreenDocument(chrome);
+    };
+    const next = leaseRelease.then(run, run);
+    leaseRelease = next.then(() => undefined, () => undefined);
+    await next;
+  }
+
   async function begin(
     request: CaptureStartRequest,
-    callerStreamId?: string,
   ): Promise<CaptureStartResponse> {
     await leaseRelease;
     await reconcileActiveCapture();
@@ -599,26 +610,20 @@ export function installMediaCapture(
         emit(snapshot, request.operation);
         return { ok: false, snapshot };
       }
-      // Chrome gates getMediaStreamId like activeTab. Prefer a stream ID
-      // minted in the side-panel Publish/Recapture click turn — toolbar
-      // invoke does not survive same-tab navigation (YouTube → Apple
-      // Podcasts). Otherwise reuse a fresh same-page toolbar reserve, or
-      // re-acquire under a still-valid activeTab grant before prepare.
-      if (isTabCaptureStreamId(callerStreamId)) {
-        invalidateReservedTabCaptureStream();
-      }
-      const heldStreamId = heldCallerTabCapture?.tabId === request.tabId
-        ? heldCallerTabCapture.streamId
+      // Only a service-worker stream ID can be consumed by the offscreen
+      // document. Ignore any ID the side panel attached to this message.
+      // Prefer the held Publish mint, then a fresh same-page toolbar reserve,
+      // then a service-worker getMediaStreamId.
+      const heldForTab = heldCallerTabCapture?.tabId === request.tabId
+        ? heldCallerTabCapture
         : null;
-      const streamId = isTabCaptureStreamId(callerStreamId)
-        ? callerStreamId
-        : heldStreamId ?? await takeReservedTabCaptureStreamId(
-          request.tabId,
-          request.source.pageUrl,
-        ) ?? await raceTabCaptureStreamId(
-          chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
-          activeStreamIdTimeoutMs,
-        );
+      const streamId = heldForTab?.streamId ?? await takeReservedTabCaptureStreamId(
+        request.tabId,
+        request.source.pageUrl,
+      ) ?? await raceTabCaptureStreamId(
+        chrome.tabCapture.getMediaStreamId({ targetTabId: request.tabId }),
+        activeStreamIdTimeoutMs,
+      );
       if (heldCallerTabCapture && heldCallerTabCapture.streamId === streamId) {
         heldCallerTabCapture = null;
       } else if (heldCallerTabCapture) {
@@ -639,6 +644,7 @@ export function installMediaCapture(
         const snapshot = failure('stream-id-unavailable', 'Chrome returned an empty tab capture stream ID.', captureId);
         await clearActiveIfCurrent(captureId);
         emit(snapshot);
+        await releaseFailedStartHold();
         return { ok: false, snapshot };
       }
       const prepared = await raceTabCaptureStreamId(
@@ -654,6 +660,7 @@ export function installMediaCapture(
         });
         const snapshot = failure(captureFailureCode(prepared.code), prepared.message, captureId, prepared.code);
         emit(snapshot);
+        await releaseFailedStartHold();
         return { ok: false, snapshot };
       }
       await raceTabCaptureStreamId(ensureOffscreenDocument(), activeStreamIdTimeoutMs);
@@ -671,6 +678,7 @@ export function installMediaCapture(
       if (started.status === 'error') {
         await clearActiveIfCurrent(captureId);
         emit(started);
+        await releaseFailedStartHold();
         return { ok: false, snapshot: started };
       }
       const playback = await chrome.scripting.executeScript({
@@ -710,12 +718,71 @@ export function installMediaCapture(
           await clearActiveIfCurrent(captureId);
         }
       } catch { /* Cancellation is best-effort; the start failure is authoritative. */ }
+      await releaseFailedStartHold();
       emit(snapshot, request.operation);
       return { ok: false, snapshot };
     }
   }
 
   chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    if (isMediaCaptureMintStreamMessage(message)) {
+      const tabId = message.tabId;
+      const pageUrl = message.pageUrl;
+      const expectVideo = message.expectVideo;
+      const reserved = reservedTabCaptureStream;
+      const reusable = reserved && shouldReuseReservedTabCaptureStream(
+        reserved,
+        tabId,
+        pageUrl,
+        Date.now(),
+        activeReservedStreamMaxAgeMs,
+      ) ? reserved : null;
+      const inFlight = reusable ? null : reserveTabCaptureInFlight;
+      const fresh = reusable || inFlight
+        ? null
+        : chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+      void (async () => {
+        try {
+          let streamId = reusable?.streamId ?? null;
+          if (!streamId && inFlight) {
+            const settled = await raceTabCaptureStreamId(inFlight, activeStreamIdTimeoutMs).catch(() => null);
+            if (
+              settled &&
+              shouldReuseReservedTabCaptureStream(
+                settled,
+                tabId,
+                pageUrl,
+                Date.now(),
+                activeReservedStreamMaxAgeMs,
+              )
+            ) {
+              streamId = settled.streamId;
+            }
+          }
+          if (!streamId && fresh) {
+            const minted = await raceTabCaptureStreamId(fresh, activeStreamIdTimeoutMs);
+            streamId = isTabCaptureStreamId(minted) ? minted : null;
+          }
+          if (!isTabCaptureStreamId(streamId)) {
+            const snapshot = mapTabCaptureStartFailure(tabCaptureStreamIdTimeoutError(), null);
+            sendResponse({ ok: false, code: snapshot.code, message: snapshot.message });
+            return;
+          }
+          const held = await holdCallerTabCaptureStream(tabId, streamId, expectVideo);
+          sendResponse(held
+            ? { ok: true }
+            : {
+              ok: false,
+              code: 'stream-id-unavailable',
+              message: 'The connected tab capture stream could not be held.',
+            });
+        } catch (error) {
+          const snapshot = mapTabCaptureStartFailure(error, null);
+          sendResponse({ ok: false, code: snapshot.code, message: snapshot.message });
+        }
+      })();
+      return true;
+    }
     if (isMediaCaptureHoldStreamMessage(message)) {
       void holdCallerTabCaptureStream(message.tabId, message.streamId, message.expectVideo)
         .then((ok) => sendResponse({ ok }), () => sendResponse({ ok: false }));
@@ -730,7 +797,7 @@ export function installMediaCapture(
       return true;
     }
     if (isMediaCaptureStartMessage(message)) {
-      void begin(message.request, message.streamId).then(sendResponse, (error: unknown) => {
+      void begin(message.request).then(sendResponse, (error: unknown) => {
         sendResponse({
           ok: false,
           snapshot: mapTabCaptureStartFailure(error, message.request.captureId),
@@ -882,4 +949,6 @@ export function installMediaCapture(
       void releaseLeftoverOffscreenIfIdle();
     }
   });
+
+  void restoreActive.then(() => releaseLeftoverOffscreenIfIdle());
 }

@@ -36,7 +36,11 @@ export type RecordingState =
   | { status: 'error'; message: string };
 
 export type MicrophonePermissionState = 'unknown' | 'prompt' | 'granted' | 'denied';
-export type MicrophoneStartErrorKind = 'denied' | 'not-found' | 'unavailable' | 'generic';
+export type MicrophoneStartErrorKind = 'denied' | 'dismissed' | 'not-found' | 'unavailable' | 'generic';
+export type MicrophonePermissionResult = 'granted' | 'denied' | 'dismissed';
+
+export const MICROPHONE_PERMISSION_MESSAGE = 'annotated.microphonePermission.v1';
+export const MICROPHONE_PERMISSION_PAGE = '/microphone-permission.html';
 
 export const MICROPHONE_CHROME_SETTINGS_URL = 'chrome://settings/content/microphone';
 export const MICROPHONE_ENABLE_HEADING = 'Enable microphone';
@@ -49,6 +53,8 @@ export const MICROPHONE_DENIED_STEPS = [
   'Find Annotated in the list (the extension, not the website you are browsing) and set it to Allow.',
   'Return here and choose Enable microphone or Record again.',
 ] as const;
+export const MICROPHONE_HELPER_COPY =
+  'Choose Enable microphone. Annotated will open a tab where Chrome can allow the microphone.';
 
 export function parseMicrophonePermissionState(value: unknown): MicrophonePermissionState {
   if (value === 'granted' || value === 'denied' || value === 'prompt') return value;
@@ -71,6 +77,15 @@ export function shouldShowMicrophoneEnableGuidance(
   return permission !== 'granted' || startDenied;
 }
 
+export function interpretSidePanelMicrophoneQuery(
+  state: MicrophonePermissionState,
+): MicrophonePermissionState {
+  // The side panel can report denied while chrome://settings already allows
+  // the extension. Only the helper tab's "Permission denied" confirms a block.
+  if (state === 'denied') return 'prompt';
+  return state;
+}
+
 export function shouldShowMicrophoneReconnectSteps(
   permission: MicrophonePermissionState,
   startDenied = false,
@@ -90,16 +105,39 @@ export async function queryMicrophonePermission(
   }
 }
 
+export function isMicrophonePromptDismissal(error: unknown): boolean {
+  if (!(error instanceof DOMException)) return false;
+  if (error.name !== 'NotAllowedError' && error.name !== 'SecurityError') return false;
+  return /dismiss/i.test(error.message);
+}
+
 export function getMicrophoneStartErrorKind(error: unknown): MicrophoneStartErrorKind {
   const name = error instanceof DOMException ? error.name : '';
-  if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied';
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return isMicrophonePromptDismissal(error) ? 'dismissed' : 'denied';
+  }
   if (name === 'NotFoundError') return 'not-found';
   if (name === 'NotReadableError' || name === 'AbortError') return 'unavailable';
   return 'generic';
 }
 
+export function microphoneHelperResultFromStartError(error: unknown): 'denied' | 'dismissed' {
+  return getMicrophoneStartErrorKind(error) === 'denied' ? 'denied' : 'dismissed';
+}
+
+export function isMicrophonePermissionMessage(value: unknown): value is {
+  type: typeof MICROPHONE_PERMISSION_MESSAGE;
+  result: MicrophonePermissionResult;
+} {
+  if (typeof value !== 'object' || value === null) return false;
+  const result = (value as { result?: unknown }).result;
+  return (value as { type?: unknown }).type === MICROPHONE_PERMISSION_MESSAGE &&
+    (result === 'granted' || result === 'denied' || result === 'dismissed');
+}
+
 export function getMicrophoneErrorMessage(error: unknown): string {
   const kind = getMicrophoneStartErrorKind(error);
+  if (kind === 'dismissed') return MICROPHONE_HELPER_COPY;
   if (kind === 'denied') return MICROPHONE_DENIED_COPY;
   if (kind === 'not-found') {
     return 'No microphone was found. Connect a microphone or publish without audio.';

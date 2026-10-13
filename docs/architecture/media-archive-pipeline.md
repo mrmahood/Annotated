@@ -574,28 +574,28 @@ panel:
 2. Extension calls a media-begin endpoint/RPC with its bearer token. The
    user-context RPC normalizes source identity and atomically creates source,
    draft annotation, target, slug, and `capture_pending` media row.
-3. The side-panel Publish/Recapture click starts `getMediaStreamId` in that
-user-gesture turn **before** any other Chrome API (`sidePanel.open` must not
-consume the gesture first), rebinds the side panel to the current tab, and
-immediately consumes the ID into the offscreen document (`getUserMedia` hold)
-so Chrome cannot expire it during begin-RPC work. A toolbar invoke does
-not survive same-tab navigation (YouTube → Apple Podcasts); the service
-worker cannot mint an ID for a page that was never invoked. A same-tab ID
-reserved from the toolbar invoke is reused only while it is still fresh and
-still bound to that page URL. The Publish-click ID is kept for the attempt
-even after the toolbar freshness window—first Publish after commentary prep
-or after YouTube → Apple Cancel must not require Recapture or a second
-toolbar click. After the freshness window on the same page, Publish
-re-acquires `getMediaStreamId` under the still-valid activeTab grant instead
-of handing Chrome an expired ID. Same-tab host changes auto-release a live
-prior capture so the Apple Publish click is a clean first mint. Cancel of a
-prior draft must not drop that Publish-click hold. Stream-ID acquisition,
-page prepare, and offscreen start are bounded; the side panel also
-fail-closes within a few seconds. An activeTab / invocation failure after a
-host change must not leave only the toolbar Recapture string with no Cancel;
-Create should say to click Publish again. Then it revalidates the connected
-top-level tab and range, samples start geometry, seeks/pauses the player,
-creates the offscreen document, and starts the recorder.
+3. The side-panel Publish/Recapture click asks the service worker to mint
+`getMediaStreamId` **before** `sidePanel.open` can run. The panel never
+mints or forwards its own stream ID. Only the offscreen document consumes
+the worker's ID (`getUserMedia` hold) so Chrome cannot expire it during
+begin-RPC work. A side-panel ID is not valid in the offscreen process.
+A fresh same-page toolbar reserve or in-flight reserve is reused instead of
+a second `getMediaStreamId`. If Chrome says the extension has not been
+invoked, Create says to click the Annotated toolbar icon and then choose
+Publish clip again, and the panel rebinds to the active tab. The worker
+closes a leftover offscreen document or held stream after a failed start
+and on worker startup when no capture is active. The panel also re-follows
+the active tab when it opens and when the worker starts, so an already-open
+page does not need a refresh. Same-tab host changes auto-release a live
+prior capture. Cancel of a prior draft must not drop a Publish-click hold.
+Stream-ID acquisition, page prepare, and offscreen start are bounded. Then
+it revalidates the connected top-level tab and range, samples start geometry,
+seeks/pauses the player, creates the offscreen document, and starts the
+recorder. A blocked microphone does not fail that recorder: tab audio is
+kept, and voice is mixed only when the microphone opens. The recorder is
+started once. Voice notes open a small extension popup because the side panel
+cannot show the microphone prompt. Active-tab follow ignores that popup and
+chrome:// pages, so the source page stays connected.
 4. Background starts page playback and acknowledges it to offscreen. Offscreen
    measures the recorder lead-in on its own clock, runs the requested-duration
    timer from that acknowledgement, records with audible loopback, and owns the
@@ -638,7 +638,7 @@ has only a ghost active capture. A source navigation or tab closure must fully
 release the capture lease — reserved stream, live recorder, and leftover
 offscreen — not only mark the prior attempt cancelled. Same-tab host changes
 (YouTube → Apple Podcasts) otherwise leave Chrome tabCapture held, and the next
-Publish click cannot mint a fresh caller stream ID without a toolbar Recapture.
+Publish click cannot mint a fresh service-worker stream ID without a toolbar click.
 If the user prepares a new clip on the current host while a prior draft is still
 queued, Create must say to cancel that in-progress clip first. An orphaned
 `capture_pending` draft with no live capture must not keep Recapture or

@@ -217,7 +217,8 @@ export type CaptureErrorSnapshot = {
 };
 
 export const TAB_CAPTURE_INVOKE_MESSAGE =
-  'Click the Annotated toolbar icon on this tab, then Recapture.';
+  'Click the Annotated toolbar icon on this tab, then choose Publish clip again.';
+export const MEDIA_CAPTURE_MINT_STREAM = 'annotated.mediaCapture.mintStream.v1';
 export const CHROME_TAB_CAPTURE_INVOKE_ERROR =
   'Extension has not been invoked for the current page (see activeTab permission). Chrome pages cannot be captured.';
 export const RESERVED_TAB_CAPTURE_STREAM_MAX_AGE_MS = 8_000;
@@ -314,11 +315,61 @@ export function beginTabCaptureStreamIdFromUserGesture(
   if (!tabCapture || !Number.isInteger(tabId) || (tabId as number) < 0) {
     return Promise.resolve(null);
   }
-  // Start getMediaStreamId in this turn. Side-panel Publish/Recapture is the
-  // user gesture after same-tab navigation; the service worker cannot mint an
-  // ID for a page that was never toolbar-invoked.
+  // Gesture-turn timing helper for tests. Production Publish asks the service
+  // worker to mint. A side-panel stream ID cannot be consumed by offscreen.
   const pending = tabCapture.getMediaStreamId({ targetTabId: tabId as number });
   return settleAcquiredTabCaptureStream(pending, tabId as number, pageUrl);
+}
+
+export type CaptureMintResponse =
+  | { ok: true }
+  | { ok: false; code: string; message: string };
+
+export type CaptureMintSender = (message: unknown) => Promise<unknown> | unknown;
+
+export function requestServiceWorkerCaptureMint(
+  sendMessage: CaptureMintSender,
+  tabId: number | undefined,
+  pageUrl: string | undefined,
+  expectVideo: boolean,
+): Promise<CaptureMintResponse> {
+  if (!Number.isInteger(tabId) || (tabId as number) < 0) {
+    return Promise.resolve({
+      ok: false,
+      code: 'tab-capture-denied',
+      message: TAB_CAPTURE_INVOKE_MESSAGE,
+    });
+  }
+  let pending: Promise<unknown>;
+  try {
+    pending = Promise.resolve(sendMessage({
+      target: 'background',
+      type: MEDIA_CAPTURE_MINT_STREAM,
+      tabId,
+      expectVideo,
+      ...(typeof pageUrl === 'string' && pageUrl.length > 0 ? { pageUrl } : {}),
+    }));
+  } catch {
+    return Promise.resolve({
+      ok: false,
+      code: 'tab-capture-denied',
+      message: TAB_CAPTURE_INVOKE_MESSAGE,
+    });
+  }
+  return pending.then((response) => {
+    if (isRecord(response) && response.ok === true) return { ok: true };
+    const message = isRecord(response) && typeof response.message === 'string' && response.message.length > 0
+      ? response.message
+      : TAB_CAPTURE_INVOKE_MESSAGE;
+    const code = isRecord(response) && typeof response.code === 'string' && response.code.length > 0
+      ? response.code
+      : 'tab-capture-denied';
+    return { ok: false, code, message };
+  }, () => ({
+    ok: false as const,
+    code: 'tab-capture-denied',
+    message: TAB_CAPTURE_INVOKE_MESSAGE,
+  }));
 }
 
 async function settleAcquiredTabCaptureStream(
@@ -464,7 +515,7 @@ export function mapTabCaptureStartFailure(
   captureId: string | null,
 ): CaptureErrorSnapshot {
   const text = error instanceof Error ? error.message : String(error);
-  if (isTabCaptureInvocationError(text)) {
+  if (text === TAB_CAPTURE_INVOKE_MESSAGE || isTabCaptureInvocationError(text)) {
     return {
       status: 'error',
       captureId,
@@ -653,6 +704,17 @@ export function isMediaCaptureStartMessage(value: unknown): value is {
   return isRecord(value) && value.target === 'background' &&
     value.type === MEDIA_CAPTURE_START && isCaptureStartRequest(value.request) &&
     (value.streamId === undefined || isTabCaptureStreamId(value.streamId));
+}
+export function isMediaCaptureMintStreamMessage(value: unknown): value is {
+  target: 'background'; type: typeof MEDIA_CAPTURE_MINT_STREAM;
+  tabId: number; expectVideo: boolean; pageUrl?: string;
+} {
+  return isRecord(value) && value.target === 'background' &&
+    value.type === MEDIA_CAPTURE_MINT_STREAM &&
+    !Object.prototype.hasOwnProperty.call(value, 'streamId') &&
+    isInteger(value.tabId) && value.tabId >= 0 &&
+    typeof value.expectVideo === 'boolean' &&
+    (value.pageUrl === undefined || (typeof value.pageUrl === 'string' && value.pageUrl.length > 0));
 }
 export function isMediaCaptureHoldStreamMessage(value: unknown): value is {
   target: 'background'; type: typeof MEDIA_CAPTURE_HOLD_STREAM;
