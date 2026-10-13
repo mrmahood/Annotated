@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import {
   EXTENSION_DOWNLOAD_PATH,
+  EXTENSION_WHATS_NEW_PATH,
   EXTENSION_INSTALL_COPY,
   EXTENSION_INSTALL_STEPS,
   isInstallCalloutDismissed,
@@ -209,6 +210,9 @@ export function InstallExtensionNudge() {
         >
           {EXTENSION_INSTALL_COPY.downloadCta}
         </a>
+        <p className="install-extension-modal-update">
+          <a href={EXTENSION_WHATS_NEW_PATH}>{"What's new"}</a>
+        </p>
         <ol className="install-extension-steps">
           {EXTENSION_INSTALL_STEPS.map((step, index) => (
             <li key={index}>

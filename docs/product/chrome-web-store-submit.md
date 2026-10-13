@@ -1,4 +1,9 @@
-# Chrome Web Store submit — first listing (`0.1.0`)
+# Chrome Web Store submit — first listing (`0.2.0`)
+
+Matt pays the one-time **$5** developer fee and submits this listing
+himself. This file is the paste-in pack and the click path. Do not
+upload, pay, or click **Submit for review** from the repository, CI,
+or an agent.
 
 Owner walkthrough for the first Chrome Web Store upload. This does not
 invent or link a live store URL. Until review approves a listing, the
@@ -18,8 +23,13 @@ Companion packaging and ID notes:
 
 ## Locked decisions for this submit
 
-- First store version is **`0.1.0`**. WXT copies
+- First store version is **`0.2.0`**. No listing has been submitted,
+  so this bump is the first upload, not a second one. WXT copies
   `apps/extension/package.json` `version` into `manifest.json`.
+  Unpacked installs learn about it from
+  `https://annotated.cbandcoop.com/extension-version.json` and
+  `https://annotated.cbandcoop.com/whats-new`. That JSON is not an
+  auto-update.
 - Upload ZIP must be **Production-pinned**, same pins as
   `/extension.zip`:
   - Web: `https://annotated.cbandcoop.com`
@@ -78,7 +88,7 @@ Stop at the first failure. Do not upload a Staging build.
 
 ### Package inspection
 
-- [ ] Manifest `version` is `0.1.0`
+- [ ] Manifest `version` is `0.2.0`
 - [ ] Manifest `name` is `Annotated`
 - [ ] Permissions match the list in this doc
 - [ ] No `content_scripts` key
@@ -188,12 +198,21 @@ the tab can already play.
 
 ## Privacy tab — other fields
 
+### Privacy policy URL
+
+Paste this exact URL. It is the public policy, not a store URL:
+
+```text
+https://annotated.cbandcoop.com/privacy
+```
+
 ### Single purpose
 
-> Let a signed-in adult create a source-linked annotation — a margin
-> note on a selected article passage or a 1–90 second video/audio
-> excerpt from the current Chrome tab — and publish it to Annotated
-> with attribution and a link back to the original.
+> Annotated is the fact-check layer for the web. It lets a signed-in
+> adult attach a source-linked note — a passage, a verdict, and links
+> back to sources, or a 1–90 second video or audio excerpt — to the
+> current Chrome tab, and publish that note with attribution and a
+> link to the original.
 
 ### Remote code
 
@@ -247,21 +266,21 @@ Use these in the **Store listing** tab. The manifest `name` /
 Annotated
 ```
 
-### Short description (132-character limit; 94 characters)
+### Short description (132-character limit; 109 characters)
 
 ```text
-Source-linked margin notes on articles, plus short video and audio clips from the current tab.
+The fact-check layer for the web. Source-linked notes, verdicts, and short clips from the page you have open.
 ```
 
 ### Detailed description
 
 ```text
-Annotated is a Chrome side panel for source-linked margin notes. You select a passage of text or a 1–90 second clip of video or audio on the page you already have open, add written or recorded commentary, and publish it with the original source still attached.
+Annotated is the fact-check layer for the web. In a Chrome side panel, you select a passage or a 1–90 second clip of video or audio on the page you already have open, add your own commentary, and publish a source-linked note. A fact check carries a verdict and links back to the sources. Receipts and context notes stay attached to the original, too.
 
-The public page keeps attribution and a link back to the original. Hosted clips stay private drafts until the excerpt is processed and the raw capture is deleted. There is no download button. Annotated does not bypass DRM or paywalls and does not record more than the range you selected.
+The public page keeps attribution and a link back to the original. Published passages can light up on the page you were reading. Hosted clips stay private drafts until the excerpt is processed and the raw capture is deleted. There is no download button for someone else’s media. Annotated does not bypass DRM or paywalls and does not record more than the range you selected.
 
 What you can do
-• Annotate article text from the current tab
+• Annotate article text from the current tab, including a verdict and source links
 • Capture a 1–90 second video or audio excerpt from media the tab can already play
 • Add written or recorded commentary
 • Open the original source with a temporary amber highlight on the matched passage or player
@@ -270,6 +289,7 @@ What you can do
 Annotated is a free beta for ages 18 and older.
 
 Companion web app: https://annotated.cbandcoop.com
+What’s new and the unpacked update steps: https://annotated.cbandcoop.com/whats-new
 Privacy Policy: https://annotated.cbandcoop.com/privacy
 Terms of Service: https://annotated.cbandcoop.com/terms
 ```
@@ -307,23 +327,27 @@ The store listing also wants a 128×128 PNG. Reuse `128.png` after
 looking at it on light and dark backgrounds. Chrome’s image guide
 prefers ~96×96 artwork with transparent padding inside 128×128.
 
-### Screenshots the owner must capture
+### Screenshots (1280×800)
 
-Do not invent binaries. Capture from **Production**
-(`annotated.cbandcoop.com` + the Production-pinned extension), not
-Staging. Filenames and sizes:
+Chrome accepts **1280×800** (preferred) or **640×400**. Square
+corners, full bleed, no padding. Up to five. Filenames:
 `docs/product/chrome-web-store-assets/README.md`.
 
-Need at least one; five is better. 1280×800 preferred, or 640×400.
-Square corners, no padding.
+Web pages can be captured from the public site. The side panel cannot:
+it needs the Production-pinned extension on a real tab. Do not invent
+those shots.
 
-Suggested shots (actual UI, current product):
+| # | File | Who captures it |
+| --- | --- | --- |
+| 1 | `screenshot-01-public-feed-1280x800.png` | Generated from `https://annotated.cbandcoop.com/` |
+| 2 | `screenshot-02-public-annotation-1280x800.png` | Generated from a public annotation page |
+| 3 | `screenshot-03-whats-new-1280x800.png` | Generated from `/whats-new` once that deploy is live. Until then, capture it from the local page at 1280×800. |
+| 4 | `screenshot-04-create-text-1280x800.png` | Matt, side panel Create → Text, selected passage |
+| 5 | `screenshot-05-create-media-1280x800.png` | Matt, side panel Create → Video or Audio, 1–90s range |
 
-1. Side panel Create — Text, selected passage
-2. Side panel Create — Video or Audio, 1–90s range
-3. Side panel Feed with nested source cards
-4. Public web annotation page (attribution + original link)
-5. Open source amber highlight on the connected tab
+Optional extras if a slot opens up: side panel Feed, and Open source
+amber highlight on the connected tab. Privacy and Terms are linked
+from the listing fields; they do not need to be screenshots.
 
 ### Promo tiles
 
@@ -365,7 +389,7 @@ apps/web/public/extension.zip
 
 That file is gitignored. WXT also writes under
 `apps/extension/.output/` (zip name follows package `name` +
-`version`, currently `annotated` / `0.1.0`). Prefer the
+`version`, currently `annotated` / `0.2.0`). Prefer the
 `package-prod-extension-zip` output because it re-asserts Production
 pins.
 
@@ -382,7 +406,7 @@ Inspect before upload:
 Select-String -Path apps/extension/.output/chrome-mv3/manifest.json -Pattern '"version"|"name"|"description"'
 ```
 
-Confirm `version` is `0.1.0`. Search the built JS for the Production
+Confirm `version` is `0.2.0`. Search the built JS for the Production
 web origin and Production Supabase host. If you see
 `annotated-staging.cbandcoop.com` used as the **runtime** web origin,
 or `nkkunkwirvfwhmpwonqz.supabase.co` as the **runtime** Supabase
@@ -411,29 +435,67 @@ three different ID families until proven otherwise. After approval,
 allowlist the **store** `chromiumapp.org` callback even if the zip
 callback is already listed.
 
-## Console walkthrough (Matt)
+## Click-by-click submit list (Matt)
 
-1. Finish the pre-submit checklist and build the Prod ZIP.
-2. Open [https://chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole).
-3. Click **Add new item**.
-4. **Choose file** → the Production zip → **Upload**.
-5. If Chrome rejects `0.0.0` or a non-increasing version, stop — this
-   package must be `0.1.0`.
-6. **Store listing:** paste name, short description, detailed
-   description; set category, language, homepage, support; upload
-   icon, screenshots, small promo.
-7. **Privacy:** paste single purpose and each permission
-   justification; remote code = No; data-use checkboxes; privacy URL.
-8. **Distribution:** public, worldwide, unless you choose testers
-   first. Age / content rating: 18+.
-9. Record the **item ID** the console shows after upload. That is
-   the candidate store ID. It is not automatically the zip ID.
-10. Click **Submit for review**. Prefer **deferred publish**
-    (uncheck “publish automatically”) so you can add the new
-    `chromiumapp.org` callback before shoppers install from the
-    store.
-11. Stop. Do not invent a public store URL. Do not change the
-    marketing Install CTA yet.
+You pay the fee and you click Submit. Stop at the first thing that
+does not match this list.
+
+1. Open Chrome. Go to [https://chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole).
+2. Sign in with the Google account that should own the listing. The
+   developer email shown to users should be `matt@cbandcoop.com`.
+3. If the console asks you to register: accept the Chrome Web Store
+   developer agreement. Pay the one-time **$5** registration fee with
+   your own card. Wait until **Add new item** is visible. If the fee
+   page is still showing, stop.
+4. On your computer, build the Production zip with the command in
+   **Build the Production upload ZIP** above. Do not use a Staging
+   `.env.local`.
+5. Open the zip’s `manifest.json` (or the printed inspect command)
+   and confirm `version` is `0.2.0`, `name` is `Annotated`, and there
+   is no `content_scripts` key.
+6. Back in the developer console, click **Add new item**.
+7. Click **Choose file**. Select `apps/web/public/extension.zip`.
+   Click **Upload**. Wait until the item page opens.
+8. If Chrome rejects the version, stop. This package must be
+   `0.2.0`, and it must be greater than any version already uploaded.
+9. Open the **Store listing** tab. Paste the name, the short
+   description, and the detailed description from this doc.
+10. Set category to **Productivity**, language to **English (United
+    States)**, homepage to `https://annotated.cbandcoop.com`, and
+    support to `matt@cbandcoop.com`.
+11. Upload `apps/extension/public/icon/128.png` as the store icon
+    after you have looked at it.
+12. Upload the 1280×800 screenshots from
+    `docs/product/chrome-web-store-assets/`. Use the generated web
+    shots that are already files. Capture the two side-panel shots
+    yourself before this step if they are not in the folder yet.
+13. Upload the small promo tile `promo-small-440x280.png` (440×280)
+    if you have it. The marquee is optional.
+14. Open the **Privacy** tab. Paste the single-purpose statement.
+15. Paste one justification for each permission in the current
+    manifest: `sidePanel`, `activeTab`, `storage`, `scripting`,
+    `identity`, `tabCapture`, `offscreen`, `tabs`, and host access
+    for `http://*/*` and `https://*/*`. Use the **Exact permission
+    justifications** section above.
+16. Remote code: select **No, I am not using remote code.**
+17. Set the data-use checkboxes to match the Privacy Policy. Do not
+    claim location, browsing history, full-page archives, or sale of
+    data.
+18. Privacy policy URL:
+    `https://annotated.cbandcoop.com/privacy`. Open it in a private
+    window and confirm the heading is **Privacy Policy** before you
+    leave the field.
+19. Open **Distribution**. Choose public, worldwide, unless you want
+    testers first. Complete the content rating as **18+**.
+20. Copy the **item ID** the console shows. That is the candidate
+    store ID. It is not automatically
+    `dgflcndninfbfgeachchbpjcdhnegcpp`.
+21. Prefer deferred publish: uncheck “publish automatically” if that
+    box is offered, so the new `chromiumapp.org` callback can be
+    added before shoppers install from the store.
+22. Click **Submit for review**.
+23. Stop. Do not invent a public store URL. Do not change the
+    marketing Install CTA. Do not paste a PEM into git.
 
 ## After approval
 
@@ -472,8 +534,8 @@ Do these in order. Stop if the Supabase project ref is
 6. Tag the git commit that produced the uploaded ZIP:
 
    ```powershell
-   git tag extension-v0.1.0
-   git push origin extension-v0.1.0
+   git tag extension-v0.2.0
+   git push origin extension-v0.2.0
    ```
 
 7. Keep

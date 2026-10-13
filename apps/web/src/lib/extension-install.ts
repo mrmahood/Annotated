@@ -1,4 +1,5 @@
 export const EXTENSION_DOWNLOAD_PATH = "/extension.zip";
+export const EXTENSION_WHATS_NEW_PATH = "/whats-new";
 export const EXTENSION_CALLOUT_DISMISSED_STORAGE_KEY =
   "annotated.install-extension-callout.dismissed.v1";
 export const EXTENSION_CALLOUT_DISMISSED_VALUE = "1";

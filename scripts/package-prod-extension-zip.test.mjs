@@ -14,9 +14,13 @@ import {
   assertProdExtensionZip,
   pinProdExtensionOutput,
   prodExtensionChildEnv,
+  extensionVersionDocument,
+  packageProdExtensionZip,
   productionWebBuildRequiresZip,
+  readExtensionPackageVersion,
   readZipEntry,
   resolveProdExtensionPublishableKey,
+  writeExtensionVersionDocument,
   zipChromeMv3Directory,
 } from "./package-prod-extension-zip.mjs";
 import {
@@ -181,4 +185,36 @@ test("two Prod zips of the pinned chrome-mv3 output keep the same extension ID",
     chromeExtensionIdFromPublicKey(firstKey),
     chromeExtensionIdFromPublicKey(COMMITTED_PROD_EXTENSION_PUBLIC_KEY),
   );
+});
+
+test("extension version JSON is written from the package version even when the Prod zip is skipped", async () => {
+  const repoRoot = await mkdtemp(join(tmpdir(), "annotated-extension-version-"));
+  await mkdir(join(repoRoot, "apps/extension"), { recursive: true });
+  await writeFile(
+    join(repoRoot, "apps/extension/package.json"),
+    `${JSON.stringify({ name: "annotated", version: "0.2.0" })}\n`,
+  );
+
+  assert.equal(await readExtensionPackageVersion(repoRoot), "0.2.0");
+  const written = await writeExtensionVersionDocument(repoRoot);
+  const document = JSON.parse(await readFile(written.destination, "utf8"));
+  assert.deepEqual(document, extensionVersionDocument("0.2.0"));
+  assert.equal(document.version, "0.2.0");
+
+  const skipped = await packageProdExtensionZip({
+    env: {},
+    repoRoot,
+  });
+  assert.equal(skipped.skipped, true);
+  assert.equal(skipped.version, "0.2.0");
+  const again = JSON.parse(
+    await readFile(join(repoRoot, "apps/web/public/extension-version.json"), "utf8"),
+  );
+  assert.deepEqual(again, { name: "Annotated", version: "0.2.0" });
+
+  await writeFile(
+    join(repoRoot, "apps/extension/package.json"),
+    `${JSON.stringify({ version: "0.2" })}\n`,
+  );
+  await assert.rejects(() => readExtensionPackageVersion(repoRoot), /semver X\.Y\.Z/);
 });

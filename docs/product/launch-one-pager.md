@@ -70,7 +70,7 @@ is live on Loom and is the Walkthrough on
 ## What’s next
 
 - Chrome Web Store submit (auto-update after review). First store
-  version is `0.1.0`. Owner walkthrough:
+  version is `0.2.0`. Owner walkthrough:
   `docs/product/chrome-web-store-submit.md`. Until approval, install
   stays the Production zip. Do not invent a store URL.
 - Chrome notification when a clip is ready (queued)

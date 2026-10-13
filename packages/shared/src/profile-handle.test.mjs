@@ -50,6 +50,7 @@ test('rejects every reserved application root before the RPC', () => {
     'privacy',
     'terms',
     'legal',
+    'whats-new',
   ]);
   for (const handle of RESERVED_PROFILE_HANDLES) {
     assert.equal(isReservedProfileHandle(handle), true, handle);

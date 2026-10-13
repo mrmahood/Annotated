@@ -1,4 +1,5 @@
 import { WHO_TO_FOLLOW_PATH } from "./data/who-to-follow.ts";
+import { WHATS_NEW_HEADING, WHATS_NEW_LEDE, WHATS_NEW_PATH } from "./extension-release.ts";
 import { LEGAL_OPERATOR, LEGAL_PATHS } from "./legal.ts";
 import { getConfiguredSiteOrigin } from "./public-routes.ts";
 
@@ -31,6 +32,7 @@ export const INDEXABLE_PUBLIC_PATHS = [
   FEED_PATH,
   TRENDING_PATH,
   WHO_TO_FOLLOW_PATH,
+  WHATS_NEW_PATH,
   LEGAL_PATHS.center,
   LEGAL_PATHS.privacy,
   LEGAL_PATHS.terms,
@@ -62,6 +64,11 @@ const PUBLIC_PAGE_COPY: Record<IndexablePublicPath, PublicPageCopy> = {
   [WHO_TO_FOLLOW_PATH]: {
     name: WHO_TO_FOLLOW_HEADING,
     description: WHO_TO_FOLLOW_LEDE,
+    includeOperator: false,
+  },
+  [WHATS_NEW_PATH]: {
+    name: WHATS_NEW_HEADING,
+    description: WHATS_NEW_LEDE,
     includeOperator: false,
   },
   [LEGAL_PATHS.center]: {
@@ -203,6 +210,7 @@ Annotated is currently offered worldwide as a free beta. You must be at least 18
 - [Feed](${url(FEED_PATH)}): ${FEED_LEDE}
 - [Trending](${url(TRENDING_PATH)}): ${TRENDING_HEADING} ${TRENDING_LEDE}
 - [Who to Follow](${url(WHO_TO_FOLLOW_PATH)}): ${WHO_TO_FOLLOW_HEADING} A curated set of public Annotated profiles.
+- [What's new](${url(WHATS_NEW_PATH)}): ${WHATS_NEW_HEADING}. ${WHATS_NEW_LEDE}
 - [Legal](${url(LEGAL_PATHS.center)}): ${LEGAL_HEADING}. ${LEGAL_LEDE}
 - [Privacy Policy](${url(LEGAL_PATHS.privacy)}): ${PRIVACY_LEDE}
 - [Terms of Service](${url(LEGAL_PATHS.terms)}): ${TERMS_LEDE}

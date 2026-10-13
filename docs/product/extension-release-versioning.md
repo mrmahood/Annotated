@@ -5,7 +5,7 @@ authorize a Production store submit; bumping the version and uploading
 to the Chrome Web Store remain explicit owner steps. Public zip +
 pinned ID are live on Production as of 2026-09-14; announcement
 context: `docs/product/launch-one-pager.md`. First store version is
-`0.1.0`. Owner submit walkthrough (listing copy, permission
+`0.2.0` (no listing has been submitted). Owner submit walkthrough (listing copy, permission
 justifications, Prod ZIP, after-approval allowlist):
 `docs/product/chrome-web-store-submit.md`.
 
@@ -22,9 +22,21 @@ by the web app:
 https://annotated.cbandcoop.com/extension.zip
 ```
 
-The Feed/shell install callout and modal download that path. Hosting a
-ZIP does not give auto-updates. Load-unpacked installs stay on the files
-the operator loaded.
+The Feed/shell install callout and modal download that path. The footer
+and the install modal also link to `/whats-new`. Hosting a ZIP does not
+give auto-updates. Load-unpacked installs stay on the files the operator
+loaded until someone downloads the new zip and clicks Reload.
+
+The same web build writes `apps/web/public/extension-version.json` from
+`apps/extension/package.json` `version` before it decides whether the
+Prod zip can be built. The public path is
+`https://annotated.cbandcoop.com/extension-version.json`. The side panel
+compares that `version` with `chrome.runtime.getManifest().version` at
+most every six hours and shows a dismissible **Update available** banner
+linking to `/whats-new` when the published version is newer. A failed
+fetch stays inside that banner. The page’s update guide is: download,
+unzip over the old folder, open `chrome://extensions`, click Reload on
+Annotated. Sign-in stays.
 
 The submit landing at `https://www.cbandcoop.com/Annotated` should link
 the store listing once it is live. Until then it can point at the same
@@ -48,7 +60,7 @@ mix path-based IDs with the pinned public-zip ID when checking OAuth
 WXT copies `apps/extension/package.json` `version` into the generated
 `manifest.json`. Use semver there (`X.Y.Z`).
 
-**First store version:** `0.1.0`. Chrome rejects a later upload that is
+**First store version:** `0.2.0`. Chrome rejects a later upload that is
 not strictly greater than a version already on the store. The store
 upload ZIP must use the same Production pins as `/extension.zip`
 (`annotated.cbandcoop.com` / Prod Supabase `vnxjktpdzmykmqrqwvks`).
@@ -87,7 +99,7 @@ those files until a reviewed store release.
 
 ## Release checklist
 
-Use this for a later store ship after `0.1.0`. For the first listing,
+Use this for a later store ship after `0.2.0`. For the first listing,
 follow `docs/product/chrome-web-store-submit.md` instead — it has
 console click paths, listing copy, and permission paste-ins. Stop at
 the first failure.

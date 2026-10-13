@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(25);
 
 select ok( -- 1
   pg_catalog.strpos(
@@ -35,6 +35,10 @@ select ok( -- 1
   and pg_catalog.strpos(
     pg_catalog.pg_get_functiondef('public.set_profile_handle(text)'::regprocedure),
     '''legal'''
+  ) > 0
+  and pg_catalog.strpos(
+    pg_catalog.pg_get_functiondef('public.set_profile_handle(text)'::regprocedure),
+    '''whats-new'''
   ) > 0,
   'the controlled handle RPC rejects every application reserved root'
 );
@@ -50,6 +54,10 @@ select ok( -- 2
   and pg_catalog.strpos(
     pg_catalog.pg_get_functiondef('private.ensure_profile_handle(uuid)'::regprocedure),
     '''ops'''
+  ) > 0
+  and pg_catalog.strpos(
+    pg_catalog.pg_get_functiondef('private.ensure_profile_handle(uuid)'::regprocedure),
+    '''whats-new'''
   ) > 0,
   'automatic handle generation still skips reserved roots and adds app routes'
 );
@@ -65,6 +73,12 @@ select ok( -- 3
       'private.guard_profile_handle_alias_insert()'::regprocedure
     ),
     '''legal'''
+  ) > 0
+  and pg_catalog.strpos(
+    pg_catalog.pg_get_functiondef(
+      'private.guard_profile_handle_alias_insert()'::regprocedure
+    ),
+    '''whats-new'''
   ) > 0,
   'the alias trigger rejects the expanded reserved roots'
 );
@@ -139,6 +153,12 @@ select throws_ok( -- 11
   '22023',
   'That creator handle is reserved for application routing.',
   'an owner cannot assign the legal root handle'
+);
+select throws_ok( -- 11b
+  $$select public.set_profile_handle('whats-new')$$,
+  '22023',
+  'That creator handle is reserved for application routing.',
+  'an owner cannot assign the whats-new root handle'
 );
 select throws_ok( -- 12
   $$select public.set_profile_handle('api')$$,
@@ -216,7 +236,7 @@ select ok( -- 19
     select username = 'ops-a0e20000'
       and username not in (
         'api', 'auth', '_next', 'ops', 'me', 'trending', 'who-to-follow',
-        'privacy', 'terms', 'legal'
+        'privacy', 'terms', 'legal', 'whats-new'
       )
     from public.profiles
     where id = 'a0e20000-0000-4000-8000-000000000001'
@@ -261,7 +281,7 @@ select is( -- 23
     from public.profiles
     where pg_catalog.lower(username) in (
       'api', 'auth', '_next', 'ops', 'me', 'trending', 'who-to-follow',
-      'privacy', 'terms', 'legal'
+      'privacy', 'terms', 'legal', 'whats-new'
     )
   ),
   0::bigint,
@@ -273,7 +293,7 @@ select is( -- 24
     from public.profile_handle_aliases
     where handle in (
       'api', 'auth', '_next', 'ops', 'me', 'trending', 'who-to-follow',
-      'privacy', 'terms', 'legal'
+      'privacy', 'terms', 'legal', 'whats-new'
     )
   ),
   0::bigint,
