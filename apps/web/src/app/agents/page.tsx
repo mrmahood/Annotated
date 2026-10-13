@@ -133,7 +133,9 @@ export default function AgentsPage() {
             <p>
               A fact-check that has a verdict and a quoted passage includes one
               schema.org ClaimReview document in a <code>application/ld+json</code> script.
-              claimReviewed is the quoted passage, trimmed to a single line.
+              claimReviewed is the quoted passage, shortened to about 75
+              characters on a word boundary with an ellipsis. The full quote
+              stays in the passage on the page.
               url is the canonical annotation URL. datePublished is when the
               annotation was published. The author is a Person, or an
               Organization when the profile name names a desk, newsroom,

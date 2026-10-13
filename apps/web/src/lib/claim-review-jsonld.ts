@@ -83,6 +83,18 @@ function collapseWhitespace(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/** claimReviewed is a short label. The page blockquote keeps the full quote. */
+export const CLAIM_REVIEWED_MAX_LENGTH = 75;
+const CLAIM_REVIEWED_ELLIPSIS = "…";
+
+export function shortenClaimReviewed(value: string): string {
+  if (value.length <= CLAIM_REVIEWED_MAX_LENGTH) return value;
+  const room = CLAIM_REVIEWED_MAX_LENGTH - CLAIM_REVIEWED_ELLIPSIS.length;
+  const boundary = value.lastIndexOf(" ", room);
+  const end = boundary > 0 ? boundary : room;
+  return `${value.slice(0, end).trimEnd()}${CLAIM_REVIEWED_ELLIPSIS}`;
+}
+
 function quotedPassage(annotation: PublicAnnotation): string | null {
   if (annotation.kind === "article") return collapseWhitespace(annotation.selectedText);
   if ("transcript" in annotation && annotation.transcript) {
@@ -136,7 +148,7 @@ function claimReview(
     "@context": "https://schema.org",
     "@type": "ClaimReview",
     url,
-    claimReviewed: passage,
+    claimReviewed: shortenClaimReviewed(passage),
     datePublished: annotation.publishedAt,
     author: authorNode(annotation, origin),
     itemReviewed: {
@@ -174,8 +186,11 @@ function commentNode(
 /**
  * Fact-check annotations with a verdict and a quoted passage emit one ClaimReview.
  * The quoted passage is the article selection, or the excerpt transcript when
- * the annotation is hosted media. Other annotations emit a Comment. A page
- * with no configured origin, or with no passage and no commentary, emits nothing.
+ * the annotation is hosted media. claimReviewed keeps about 75 characters of
+ * that quote, cut on a word boundary, with an ellipsis when it is longer.
+ * The page blockquote still shows the full quote. Other annotations emit a
+ * Comment. A page with no configured origin, or with no passage and no
+ * commentary, emits nothing.
  * Both `/{handle}/{slug}` and `/factdesk/...` use this through the shared page.
  */
 export function getAnnotationStructuredData(annotation: PublicAnnotation): JsonLd | null {
