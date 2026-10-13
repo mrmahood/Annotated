@@ -20,7 +20,8 @@ Me on the web is a private bookmark list and the place a signed-in person sets a
 Preconditions:
 
 - `verify-annotated doctor` prints `ready: yes`.
-- `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are in the environment. The helper never prints them.
+- For a Staging preview origin, `SUPABASE_STAGING_SERVICE_ROLE_KEY` is in the environment. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) override the public Staging defaults `https://nkkunkwirvfwhmpwonqz.supabase.co` and `sb_publishable_ZWqFkABY5Uvy34z55dVaLw_NLrzlUTr`. `SUPABASE_SERVICE_ROLE_KEY` is not read. The helper refuses project `vnxjktpdzmykmqrqwvks`.
+- For any other target, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are in the environment. The helper never prints them.
 - The only address the helper accepts is `cbandcooptest@gmail.com`. Do not pass another email.
 - Create still needs the extension loaded. See [Chrome extension](./chrome-extension.md).
 
