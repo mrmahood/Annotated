@@ -28,7 +28,7 @@ export async function generateMetadata({ searchParams }: HomePageProps): Promise
   const page = parsePageQuery(pageQuery);
 
   return {
-    title: "Public annotation feed | Annotated",
+    title: "Annotated: the fact-check layer for the web",
     description: FEED_LEDE,
     alternates: { canonical: getPageHref(FEED_PATH, page) },
   };
