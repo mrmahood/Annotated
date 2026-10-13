@@ -16,6 +16,7 @@ import {
   composeDemoPostText,
   demoHighlightColor,
   demoHighlightElementId,
+  demoOpenGraphImage,
   demoTourIsPlaying,
 } from "../app/demo/demo-data.ts";
 
@@ -62,6 +63,12 @@ test("demo notes reuse the published Batam fact-check and add other verdicts", (
   assert.equal(demoTourIsPlaying("pause", false), false);
   assert.equal(demoHighlightElementId("needs-context"), "demo-highlight-needs-context");
   assert.equal(demoHighlightElementId("misleading"), "demo-highlight-misleading");
+  assert.deepEqual(demoOpenGraphImage("https://annotated.cbandcoop.com"), {
+    url: "https://annotated.cbandcoop.com/demo/opengraph-image",
+    width: 1200,
+    height: 630,
+    alt: DEMO_PAGE_TITLE,
+  });
 });
 
 test("the public demo page is read-only, linked from the hero, and has an OG image", async () => {
@@ -77,6 +84,10 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(page, /title: DEMO_PAGE_TITLE/);
   assert.match(page, /description: DEMO_PAGE_DESCRIPTION/);
   assert.match(page, /canonical: DEMO_PAGE_PATH/);
+  assert.match(page, /getMetadataBaseOrigin\(\)/);
+  assert.match(page, /demoOpenGraphImage\(metadataOrigin\)/);
+  assert.match(page, /images: \[demoImage\]/);
+  assert.match(page, /twitter: \{ images: \[demoImage\] \}/);
   assert.equal(DEMO_PAGE_TITLE, "Annotated demo: the fact-check layer for the web");
   assert.match(experience, /\{DEMO_VALUE_PROP\}/);
   assert.match(experience, /Watch the 80-second demo/);
@@ -127,6 +138,8 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
     experience.indexOf("window.addEventListener"),
   );
   assert.match(escapeHandler, /focusReturnId\.current = panelNoteId/);
+  assert.match(experience, /const closeCard = \(\) => \{[\s\S]*focusReturnId\.current = panelNoteId/);
+  assert.match(experience, /onClick=\{closeCard\}/);
   assert.match(experience, /demo-panel-resting/);
   assert.match(experience, /desktop && resting/);
   assert.match(page, /installCallout=\{false\}/);

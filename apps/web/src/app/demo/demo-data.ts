@@ -173,6 +173,15 @@ export function demoHighlightElementId(noteId: string): string {
   return `demo-highlight-${noteId}`;
 }
 
+export function demoOpenGraphImage(origin: string) {
+  return {
+    url: new URL("/demo/opengraph-image", origin).href,
+    width: 1200,
+    height: 630,
+    alt: DEMO_PAGE_TITLE,
+  };
+}
+
 export function getDemoNote(id: string): DemoNote | undefined {
   return DEMO_NOTES.find((note) => note.id === id);
 }

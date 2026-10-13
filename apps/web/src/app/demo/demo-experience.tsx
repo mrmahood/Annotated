@@ -232,6 +232,11 @@ export function DemoExperience() {
     setGuided(false);
   };
 
+  const closeCard = () => {
+    if (panelNoteId) focusReturnId.current = panelNoteId;
+    takeOver(null);
+  };
+
   const replay = () => {
     userOpened.current = false;
     setOverrideId(undefined);
@@ -412,7 +417,7 @@ export function DemoExperience() {
               <div className="demo-panel-handle" aria-hidden="true" />
               <div className="demo-panel-toolbar">
                 <p className="section-label">Fact-check</p>
-                <button className="demo-close" type="button" data-demo-close="" onClick={() => takeOver(null)}>
+                <button className="demo-close" type="button" data-demo-close="" onClick={closeCard}>
                   Close
                 </button>
               </div>
