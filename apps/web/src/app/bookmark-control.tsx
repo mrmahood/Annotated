@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createAnnotationBookmark,
   removeAnnotationBookmark,
 } from "@/lib/data/social-mutations";
 import { createClient } from "@/lib/supabase/client";
+import { useAnnotationActionAuth } from "./annotation-action-auth";
 import { ProviderSignInActions } from "./provider-sign-in-actions";
 
 export function BookmarkControl({
@@ -23,7 +24,9 @@ export function BookmarkControl({
   variant?: "card" | "detail";
 }) {
   const router = useRouter();
+  const actionAuth = useAnnotationActionAuth();
   const inFlight = useRef(false);
+  const resumeBookmark = variant === "detail" && actionAuth?.resumeIntent === "bookmark" && Boolean(currentUserId);
   const [bookmarked, setBookmarked] = useState(initialBookmarked);
   const [mode, setMode] = useState<"idle" | "sign-in" | "remove">("idle");
   const [pending, setPending] = useState<"bookmark" | "remove" | null>(null);
@@ -78,31 +81,39 @@ export function BookmarkControl({
   const heading = variant === "detail" ? "Bookmark" : undefined;
   const buttonClass = variant === "detail" ? "public-button public-button-secondary" : "card-share-button";
   const cardPrompt = variant === "card" && signedOut && mode === "sign-in";
+  const detailClass = resumeBookmark
+    ? "share-control share-control-detail annotation-action-resume"
+    : "share-control share-control-detail";
+
+  useEffect(() => {
+    if (!resumeBookmark) return;
+    const node = document.getElementById("annotation-bookmark-action");
+    node?.scrollIntoView({ block: "center" });
+    node?.focus();
+  }, [resumeBookmark]);
 
   return (
-    <div className={variant === "detail" ? "share-control share-control-detail" : cardPrompt ? "share-control share-control-prompt" : "share-control"}>
+    <div className={variant === "detail" ? detailClass : cardPrompt ? "share-control share-control-prompt" : "share-control"}>
       {heading ? (
         <div className="share-heading-row">
           <div>
             <p className="section-label">On Annotated</p>
             <h2 id="bookmark-heading">{heading}</h2>
           </div>
-          {signedOut && (
-            <ProviderSignInActions
-              returnTo={`${returnTo}#bookmark`}
-              googleLabel="Continue with Google"
-              xLabel="Continue with X"
-              className="site-auth-button"
-            />
-          )}
         </div>
       ) : null}
 
       {signedOut ? (
         variant === "detail" ? (
-          <p className="share-help">
-            Sign in with Google or X to save this annotation privately on Me.
-          </p>
+          <button
+            id="annotation-bookmark-action"
+            className={buttonClass}
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => actionAuth?.requestSignIn("bookmark")}
+          >
+            Bookmark
+          </button>
         ) : mode === "sign-in" ? (
           <div className="share-signed-out">
             <p>Sign in to bookmark.</p>
@@ -143,6 +154,7 @@ export function BookmarkControl({
         </div>
       ) : bookmarked ? (
         <button
+          id={variant === "detail" ? "annotation-bookmark-action" : undefined}
           className={buttonClass}
           type="button"
           aria-pressed="true"
@@ -157,6 +169,7 @@ export function BookmarkControl({
         </button>
       ) : (
         <button
+          id={variant === "detail" ? "annotation-bookmark-action" : undefined}
           className={buttonClass}
           type="button"
           aria-pressed="false"

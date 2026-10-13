@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
+import { readAnnotationActionIntent } from "@/lib/annotation-action-intent";
 import { PublicAnnotationPage } from "../../public-annotation-page";
 import { loadPublicAnnotation, resolvePublicAnnotationRoute } from "@/lib/data/public-annotation";
 import {
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 type CanonicalAnnotationPageProps = {
   params: Promise<{ creatorHandle: string; annotationSlug: string }>;
+  searchParams: Promise<{ intent?: string | string[] }>;
 };
 
 async function resolveCanonicalAnnotation(creatorHandle: string, annotationSlug: string) {
@@ -35,8 +37,8 @@ export async function generateMetadata({ params }: CanonicalAnnotationPageProps)
   return result ? getPublicAnnotationMetadata(result.annotation) : getNotFoundMetadata();
 }
 
-export default async function CanonicalAnnotationPage({ params }: CanonicalAnnotationPageProps) {
-  const { creatorHandle, annotationSlug } = await params;
+export default async function CanonicalAnnotationPage({ params, searchParams }: CanonicalAnnotationPageProps) {
+  const [{ creatorHandle, annotationSlug }, query] = await Promise.all([params, searchParams]);
   const result = await resolveCanonicalAnnotation(creatorHandle, annotationSlug);
   if (!result) notFound();
   if (
@@ -44,5 +46,10 @@ export default async function CanonicalAnnotationPage({ params }: CanonicalAnnot
     creatorHandle !== result.resolvedRoute.creatorHandle ||
     annotationSlug !== result.resolvedRoute.annotationSlug
   ) permanentRedirect(getCanonicalAnnotationPath(result.resolvedRoute));
-  return <PublicAnnotationPage annotation={result.annotation} />;
+  return (
+    <PublicAnnotationPage
+      annotation={result.annotation}
+      actionIntent={readAnnotationActionIntent(query.intent)}
+    />
+  );
 }

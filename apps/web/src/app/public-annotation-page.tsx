@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatMediaTime } from "@annotated/shared/media-time";
 import { getYouTubeTimestampUrl } from "@annotated/shared/youtube";
+import type { AnnotationActionIntent } from "@/lib/annotation-action-intent";
 import { getAnnotationStructuredData } from "@/lib/claim-review-jsonld";
 import type { PublicAnnotation } from "@/lib/data/public-annotation-model";
 import { getInitial } from "@/lib/public-content";
@@ -25,6 +26,7 @@ import { HostedMediaPlayer } from "./hosted-media-player";
 import { JsonLd } from "./json-ld";
 import { TextWithLogoMark } from "./logo-mark";
 import { SiteHeader } from "./site-header";
+import { AnnotationActionGate } from "./annotation-action-auth";
 import { BookmarkControl } from "./bookmark-control";
 import { ShareControl } from "./share-control";
 import { VoteControls } from "./vote-controls";
@@ -33,7 +35,13 @@ function getDurationDateTime(durationMs: number): string {
   return `PT${durationMs / 1_000}S`;
 }
 
-export async function PublicAnnotationPage({ annotation }: { annotation: PublicAnnotation }) {
+export async function PublicAnnotationPage({
+  annotation,
+  actionIntent = null,
+}: {
+  annotation: PublicAnnotation;
+  actionIntent?: AnnotationActionIntent | null;
+}) {
   const currentUserId = await getCurrentUserId();
   const [socialCounts, isFollowing, comments, voteSnapshot, hasReshared, hasBookmarked, consensus] = await Promise.all([
     getProfileSocialCounts(annotation.annotator.id),
@@ -278,41 +286,45 @@ export async function PublicAnnotationPage({ annotation }: { annotation: PublicA
             <PostToXButton pageUrl={pageUrl} text={intentText} />
           </div>
 
-          <section className="share-section" id="share" aria-labelledby="share-heading">
-            <ShareControl
-              annotationId={annotation.id}
-              currentUserId={currentUserId}
-              initialShared={hasReshared}
-              returnTo={publicPath}
-              variant="detail"
-            />
-          </section>
-
-          <section className="share-section" id="bookmark" aria-labelledby="bookmark-heading">
-            <BookmarkControl
-              annotationId={annotation.id}
-              currentUserId={currentUserId}
-              initialBookmarked={hasBookmarked}
-              returnTo={publicPath}
-              variant="detail"
-            />
-          </section>
-
-          <VoteControls
-            annotationId={annotation.id}
-            creatorId={annotation.annotator.id}
+          <AnnotationActionGate
             currentUserId={currentUserId}
-            initialSnapshot={voteSnapshot}
             returnTo={publicPath}
-          />
+            actionIntent={actionIntent}
+          >
+            <section className="share-section" id="share" aria-labelledby="share-heading">
+              <ShareControl
+                annotationId={annotation.id}
+                currentUserId={currentUserId}
+                initialShared={hasReshared}
+                returnTo={publicPath}
+                variant="detail"
+              />
+            </section>
 
-          <CommentsSection
-            key={comments.status === "available" ? `${comments.page.total}:${comments.page.comments.map((comment) => comment.id).join(",")}` : "unavailable"}
-            annotationId={annotation.id}
-            currentUserId={currentUserId}
-            initialPage={comments.status === "available" ? comments.page : null}
-            returnTo={`${publicPath}#comments`}
-          />
+            <section className="share-section" id="bookmark" aria-labelledby="bookmark-heading">
+              <BookmarkControl
+                annotationId={annotation.id}
+                currentUserId={currentUserId}
+                initialBookmarked={hasBookmarked}
+                returnTo={publicPath}
+                variant="detail"
+              />
+            </section>
+
+            <VoteControls
+              annotationId={annotation.id}
+              creatorId={annotation.annotator.id}
+              currentUserId={currentUserId}
+              initialSnapshot={voteSnapshot}
+            />
+
+            <CommentsSection
+              key={comments.status === "available" ? `${comments.page.total}:${comments.page.comments.map((comment) => comment.id).join(",")}` : "unavailable"}
+              annotationId={annotation.id}
+              currentUserId={currentUserId}
+              initialPage={comments.status === "available" ? comments.page : null}
+            />
+          </AnnotationActionGate>
         </article>
       </main>
     </>

@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getOptimisticVoteSnapshot,
   parseVoteSnapshotResponse,
   type VoteSnapshot,
   type VoteValue,
 } from "@/lib/voting";
-import { ProviderSignInActions } from "./provider-sign-in-actions";
+import { useAnnotationActionAuth } from "./annotation-action-auth";
 
 type VoteErrorBody = Partial<VoteSnapshot> & {
   error?: unknown;
@@ -23,19 +23,32 @@ export function VoteControls({
   creatorId,
   currentUserId,
   initialSnapshot,
-  returnTo,
 }: {
   annotationId: string;
   creatorId: string;
   currentUserId: string | null;
   initialSnapshot: VoteSnapshot | null;
-  returnTo: string;
 }) {
+  const actionAuth = useAnnotationActionAuth();
   const inFlight = useRef(false);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [pendingVote, setPendingVote] = useState<VoteValue | undefined>();
   const [message, setMessage] = useState<string | null>(null);
   const isCreator = currentUserId === creatorId;
+  const signedOut = !currentUserId;
+  const resumeVote = actionAuth?.resumeIntent === "upvote" || actionAuth?.resumeIntent === "downvote"
+    ? actionAuth.resumeIntent
+    : null;
+
+  useEffect(() => {
+    if (!resumeVote) return;
+    const node = document.getElementById(
+      resumeVote === "upvote" ? "annotation-upvote-action" : "annotation-downvote-action",
+    );
+    node?.scrollIntoView({ block: "center" });
+    if (node instanceof HTMLButtonElement && !node.disabled) node.focus();
+    else document.getElementById("vote-heading")?.focus();
+  }, [resumeVote]);
 
   const refreshAuthoritativeSnapshot = async (fallback: VoteSnapshot) => {
     try {
@@ -105,21 +118,21 @@ export function VoteControls({
     }
   };
 
+  const activateVote = (direction: -1 | 1) => {
+    if (signedOut) {
+      actionAuth?.requestSignIn(direction === 1 ? "upvote" : "downvote");
+      return;
+    }
+    void changeVote(direction);
+  };
+
   return (
     <section className="vote-section" aria-labelledby="vote-heading">
       <div className="vote-heading-row">
         <div>
           <p className="section-label">Community response</p>
-          <h2 id="vote-heading">Votes</h2>
+          <h2 id="vote-heading" tabIndex={-1}>Votes</h2>
         </div>
-        {!currentUserId && initialSnapshot && (
-          <ProviderSignInActions
-            returnTo={`${returnTo}#votes`}
-            googleLabel="Sign in to vote"
-            xLabel="Continue with X"
-            className="public-button public-button-secondary"
-          />
-        )}
       </div>
 
       {!snapshot ? (
@@ -127,24 +140,28 @@ export function VoteControls({
       ) : (
         <div className="vote-controls" id="votes" role="group" aria-label="Vote on this annotation">
           <button
-            className="vote-button"
+            id="annotation-upvote-action"
+            className={resumeVote === "upvote" ? "vote-button annotation-action-resume" : "vote-button"}
             type="button"
             aria-pressed={snapshot.currentVote === 1}
+            aria-haspopup={signedOut ? "dialog" : undefined}
             aria-label={`Upvote; ${countLabel(snapshot.upvoteCount, "upvote")}`}
-            disabled={!currentUserId || isCreator || pendingVote !== undefined}
-            onClick={() => changeVote(1)}
+            disabled={!signedOut && (isCreator || pendingVote !== undefined)}
+            onClick={() => activateVote(1)}
           >
             <span aria-hidden="true">↑</span>
             <span>Upvote</span>
             <strong>{snapshot.upvoteCount.toLocaleString()}</strong>
           </button>
           <button
-            className="vote-button"
+            id="annotation-downvote-action"
+            className={resumeVote === "downvote" ? "vote-button annotation-action-resume" : "vote-button"}
             type="button"
             aria-pressed={snapshot.currentVote === -1}
+            aria-haspopup={signedOut ? "dialog" : undefined}
             aria-label={`Downvote; ${countLabel(snapshot.downvoteCount, "downvote")}`}
-            disabled={!currentUserId || isCreator || pendingVote !== undefined}
-            onClick={() => changeVote(-1)}
+            disabled={!signedOut && (isCreator || pendingVote !== undefined)}
+            onClick={() => activateVote(-1)}
           >
             <span aria-hidden="true">↓</span>
             <span>Downvote</span>

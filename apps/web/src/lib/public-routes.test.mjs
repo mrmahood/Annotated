@@ -271,7 +271,9 @@ test("route implementations share one renderer and preserve public-only redirect
   assert.match(loader, /resolve_public_annotation_uuid/);
   assert.doesNotMatch(loader + renderer, /SUPABASE_SERVICE_ROLE_KEY|processed_storage_path|raw_storage_path|createSignedUrl/);
   assert.doesNotMatch(renderer, /dangerouslySetInnerHTML/);
-  assert.match(renderer, /returnTo=\{`\$\{publicPath\}#comments`\}/);
+  assert.match(renderer, /<AnnotationActionGate/);
+  assert.match(renderer, /returnTo=\{publicPath\}/);
+  assert.doesNotMatch(renderer, /returnTo=\{`\$\{publicPath\}#comments`\}/);
   assert.match(renderer, /ShareControl/);
   assert.match(renderer, /variant="detail"/);
   assert.match(renderer, /aria-label="Timestamped excerpt transcript"/);
