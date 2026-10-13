@@ -264,7 +264,17 @@ test('a repeated quote inside an open shadow root is not highlighted when contex
   try {
     const result = applyPassageHighlightsOnPage({ pageUrl: PAGE, passages: [passage()] });
     assert.equal(result.highlighted, 1);
-    assert.equal(dom.marks().map((mark) => mark.textContent).join(''), QUOTE);
+    const marks = dom.marks();
+    assert.equal(marks.length, 1);
+    assert.equal(marks[0].textContent, QUOTE);
+    const shadowHost = globalThis.document.body.childNodes.find((node) => node.shadowRoot);
+    const shadowMarks = [];
+    const visitShadow = (node) => {
+      if (node?.tagName === 'ANNOTATED-PASSAGE') shadowMarks.push(node);
+      for (const child of node?.childNodes ?? []) visitShadow(child);
+    };
+    visitShadow(shadowHost.shadowRoot);
+    assert.equal(shadowMarks.length, 0);
   } finally {
     dom.restore();
   }
@@ -309,18 +319,19 @@ test('verdict colors stay inside the shadow stylesheet', () => {
   }
 });
 
-test('a unique quote still highlights when the stored prefix no longer matches', () => {
+test('a stored prefix that no longer matches does not highlight the remaining quote', () => {
   const dom = installDom([{ text: `Edited introduction. ${QUOTE} Edited ending.` }]);
   try {
     const result = applyPassageHighlightsOnPage({ pageUrl: PAGE, passages: [passage()] });
-    assert.equal(result.highlighted, 1);
-    assert.equal(dom.marks()[0].textContent, QUOTE);
+    assert.equal(result.highlighted, 0);
+    assert.equal(result.unmatched, 1);
+    assert.equal(dom.marks().length, 0);
   } finally {
     dom.restore();
   }
 });
 
-test('fuzzy fallback highlights an edited passage', () => {
+test('an edited passage is not highlighted approximately', () => {
   const live = 'The harbor commission noted that the amber lighthouse kept its beam on the north channel through the night watch.';
   const dom = installDom([{ text: `Intro. ${live} Outro stays in place for the rest of the page.` }]);
   try {
@@ -329,22 +340,126 @@ test('fuzzy fallback highlights an edited passage', () => {
       passages: [passage({ prefix: '', suffix: '' })],
     });
     assert.equal(result.ok, true);
-    assert.equal(result.highlighted, 1);
-    assert.equal(dom.marks()[0].textContent, live);
+    assert.equal(result.highlighted, 0);
+    assert.equal(result.unmatched, 1);
+    assert.equal(dom.marks().length, 0);
   } finally {
     dom.restore();
   }
 });
 
-test('prefix and suffix bracket a passage whose quote no longer matches exactly', () => {
+test('a quote that no longer matches exactly is not bracketed by its prefix and suffix', () => {
   const live = 'The harbor commission noted that the amber lighthouse kept its beam on the north channel through the night watch.';
   const dom = installDom([{
     text: `A later note said the amber lighthouse kept its beam on the south shoal until dawn. ${live} The record is the passage this demo annotation marks.`,
   }]);
   try {
     const result = applyPassageHighlightsOnPage({ pageUrl: PAGE, passages: [passage()] });
+    assert.equal(result.highlighted, 0);
+    assert.equal(result.unmatched, 1);
+    assert.equal(dom.marks().length, 0);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('two annotations sharing one quote do not paint the misquote', () => {
+  const dom = installDom([
+    { text: 'A later note said the amber lighthouse kept its beam on the south shoal until dawn.' },
+    { text: QUOTE },
+    { text: 'The record is the passage this demo annotation marks.' },
+    { tag: 'blockquote', text: `Someone misquoted the log as: ${QUOTE} That retelling left out the tide.` },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [
+        passage({ color: 'green' }),
+        passage({ annotationId: OTHER_ID, color: 'red' }),
+      ],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 2);
+    assert.equal(result.unmatched, 0);
+    const marks = dom.marks();
+    assert.equal(marks.length, 2);
+    assert.deepEqual(
+      marks.map((mark) => mark.getAttribute('data-annotated-passage')).sort(),
+      [ANNOTATION_ID, OTHER_ID].sort(),
+    );
+    for (const mark of marks) {
+      assert.equal(mark.textContent, QUOTE);
+      let parent = mark.parentNode;
+      const tags = [];
+      while (parent) {
+        if (parent.tagName) tags.push(parent.tagName);
+        parent = parent.parentNode;
+      }
+      assert.equal(tags.includes('BLOCKQUOTE'), false);
+      assert.equal(tags.includes('P'), true);
+    }
+    const blockquote = globalThis.document.body.childNodes.find((node) => node.tagName === 'BLOCKQUOTE');
+    assert.equal(blockquote.textContent.includes(QUOTE), true);
+    assert.equal(blockquote.childNodes.some((node) => node.tagName === 'ANNOTATED-PASSAGE'), false);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('repeated exact quotes with no context are left unmarked', () => {
+  const dom = installDom([
+    { text: QUOTE },
+    { tag: 'blockquote', text: `Someone misquoted the log as: ${QUOTE} That retelling left out the tide.` },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({ prefix: '', suffix: '' })],
+    });
+    assert.equal(result.highlighted, 0);
+    assert.equal(result.unmatched, 1);
+    assert.equal(dom.marks().length, 0);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('an ambiguous quote with null context does not paint the shadow-root copy', () => {
+  const dom = installDom([
+    { text: QUOTE },
+    { tag: 'blockquote', text: `Someone misquoted the log as: ${QUOTE} That retelling left out the tide.` },
+    { shadow: true, text: `Inside an open shadow root, a different telling says ${QUOTE} The shadow copy is not the seeded passage.` },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({ prefix: null, suffix: null })],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.highlighted, 0);
+    assert.equal(result.unmatched, 1);
+    assert.equal(dom.marks().length, 0);
+  } finally {
+    dom.restore();
+  }
+});
+
+test('a quote that appears once, only inside a shadow root, still highlights with null context', () => {
+  const dom = installDom([
+    { text: 'The light DOM does not contain the log.' },
+    { shadow: true, text: `Inside an open shadow root, the log says ${QUOTE} and then ends.` },
+  ]);
+  try {
+    const result = applyPassageHighlightsOnPage({
+      pageUrl: PAGE,
+      passages: [passage({ prefix: null, suffix: null })],
+    });
+    assert.equal(result.ok, true);
     assert.equal(result.highlighted, 1);
-    assert.equal(dom.marks()[0].textContent, live);
+    assert.equal(result.unmatched, 0);
+    const marks = dom.marks();
+    assert.equal(marks.length, 1);
+    assert.equal(marks[0].textContent, QUOTE);
   } finally {
     dom.restore();
   }

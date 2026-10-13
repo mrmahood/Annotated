@@ -93,7 +93,7 @@ export function applyPassageHighlightsOnPage(
       if (
         tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' ||
         tag === 'TEMPLATE' || tag === 'SVG' || tag === 'CANVAS' ||
-        tag === 'TEXTAREA' || tag === 'ANNOTATED-PASSAGE'
+        tag === 'TEXTAREA'
       ) {
         return true;
       }
@@ -157,54 +157,49 @@ export function applyPassageHighlightsOnPage(
     return { normalized, map };
   };
 
-  const locatePassage = (
+  const normalizeAnchor = (value: string) => value.replace(/\s+/g, ' ').trim();
+  const stripEdgeQuotes = (value: string) =>
+    value.replace(/^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g, '').trim();
+
+  const lowerIfSameLength = (value: string) => {
+    const lower = value.toLowerCase();
+    return lower.length === value.length ? lower : null;
+  };
+
+  const ratio = (expected: string, actual: string, fromEnd: boolean) => {
+    if (!expected || !actual) return 0;
+    const left = expected.toLowerCase();
+    const right = actual.toLowerCase();
+    const length = Math.min(left.length, right.length);
+    let same = 0;
+    for (let size = 1; size <= length; size += 1) {
+      const expectedSlice = fromEnd ? left.slice(-size) : left.slice(0, size);
+      const actualSlice = fromEnd ? right.slice(-size) : right.slice(0, size);
+      if (expectedSlice === actualSlice) same = size;
+      else break;
+    }
+    return same / expected.length;
+  };
+
+  type PassageHit = {
+    start: number;
+    end: number;
+    score: number;
+    map: { node: Text; offset: number }[];
+  };
+
+  const exactHitsIn = (
     haystack: string,
-    quoteValue: string,
-    prefixValue: string,
-    suffixValue: string,
-  ): { start: number; end: number } | null => {
-    const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
-    const quote = normalize(quoteValue).replace(/^[\u201C\u201D\u2018\u2019"']+|[\u201C\u201D\u2018\u2019"']+$/g, '').trim();
-    const prefix = normalize(prefixValue);
-    const suffix = normalize(suffixValue);
-    if (!haystack || !quote) return null;
-
-    const lowerIfSameLength = (value: string) => {
-      const lower = value.toLowerCase();
-      return lower.length === value.length ? lower : null;
-    };
-
-    const allIndexes = (needle: string, caseFold: boolean): number[] => {
-      if (!needle || needle.length > haystack.length) return [];
-      const source = caseFold ? lowerIfSameLength(haystack) : haystack;
-      const target = caseFold ? lowerIfSameLength(needle) : needle;
-      if (!source || !target) return [];
-      const indexes: number[] = [];
-      let from = 0;
-      while (from <= source.length - target.length && indexes.length < 12) {
-        const index = source.indexOf(target, from);
-        if (index < 0) break;
-        indexes.push(index);
-        from = index + 1;
-      }
-      return indexes;
-    };
-
-    const ratio = (expected: string, actual: string, fromEnd: boolean) => {
-      if (!expected || !actual) return 0;
-      const left = expected.toLowerCase();
-      const right = actual.toLowerCase();
-      const length = Math.min(left.length, right.length);
-      let same = 0;
-      for (let size = 1; size <= length; size += 1) {
-        const expectedSlice = fromEnd ? left.slice(-size) : left.slice(0, size);
-        const actualSlice = fromEnd ? right.slice(-size) : right.slice(0, size);
-        if (expectedSlice === actualSlice) same = size;
-        else break;
-      }
-      return same / expected.length;
-    };
-
+    map: { node: Text; offset: number }[],
+    quote: string,
+    prefix: string,
+    suffix: string,
+    caseFold: boolean,
+  ): PassageHit[] => {
+    if (!haystack || !quote || quote.length > haystack.length) return [];
+    const source = caseFold ? lowerIfSameLength(haystack) : haystack;
+    const target = caseFold ? lowerIfSameLength(quote) : quote;
+    if (!source || !target) return [];
     const contextScore = (start: number, end: number) => {
       const parts: number[] = [];
       if (prefix) {
@@ -222,116 +217,30 @@ export function applyPassageHighlightsOnPage(
       if (parts.length === 0) return 1;
       return parts.reduce((sum, part) => sum + part, 0) / parts.length;
     };
-
-    const pickExact = (indexes: number[]) => {
-      if (indexes.length === 0) return null;
-      const hits = indexes.map((start) => ({ start, end: start + quote.length, score: contextScore(start, start + quote.length) }));
-      if (hits.length === 1) return hits[0];
-      if (!prefix && !suffix) return null;
-      const ranked = [...hits].sort((left, right) => right.score - left.score);
-      const best = ranked[0];
-      const second = ranked[1];
-      if (!best || best.score < 0.72) return null;
-      if (second && best.score - second.score < 0.2) return null;
-      return best;
-    };
-
-    const exact = pickExact(allIndexes(quote, false)) ?? pickExact(allIndexes(quote, true));
-    if (exact) return { start: exact.start, end: exact.end };
-    if (allIndexes(quote, false).length > 0 || allIndexes(quote, true).length > 0) return null;
-
-    const fold = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const dice = (left: string, right: string) => {
-      if (!left || !right) return 0;
-      if (left === right) return 1;
-      if (left.length < 2 || right.length < 2) return 0;
-      const counts = new Map<string, number>();
-      for (let index = 0; index < left.length - 1; index += 1) {
-        const gram = left.slice(index, index + 2);
-        counts.set(gram, (counts.get(gram) ?? 0) + 1);
-      }
-      let hits = 0;
-      for (let index = 0; index < right.length - 1; index += 1) {
-        const gram = right.slice(index, index + 2);
-        const count = counts.get(gram) ?? 0;
-        if (count > 0) {
-          hits += 1;
-          counts.set(gram, count - 1);
-        }
-      }
-      return (2 * hits) / (left.length + right.length - 2);
-    };
-
-    const separated = (
-      left: { start: number; end: number },
-      right: { start: number; end: number },
-    ) => left.end <= right.start || right.end <= left.start;
-
-    const chooseFuzzy = (
-      candidates: { start: number; end: number; score: number }[],
-      minimum: number,
-    ) => {
-      const ranked = candidates.filter((candidate) => candidate.score >= minimum)
-        .sort((left, right) => right.score - left.score);
-      const best = ranked[0];
-      if (!best) return null;
-      const rival = ranked.find((candidate) => separated(candidate, best));
-      if (rival && best.score - rival.score < 0.05) return null;
-      return best;
-    };
-
-    if (prefix.length >= 8 && suffix.length >= 8) {
-      const prefixIndexes = allIndexes(prefix, true);
-      const foldedQuote = fold(quote);
-      const candidates: { start: number; end: number; score: number }[] = [];
-      for (const prefixStart of prefixIndexes) {
-        const from = prefixStart + prefix.length;
-        const window = haystack.slice(from, from + Math.min(4000, Math.max(quote.length * 2, 80) + suffix.length));
-        const suffixFold = lowerIfSameLength(suffix);
-        const windowFold = lowerIfSameLength(window);
-        const suffixAt = suffixFold && windowFold ? windowFold.indexOf(suffixFold) : -1;
-        if (suffixAt < 0) continue;
-        const leading = window.slice(0, suffixAt).match(/^\s*/)?.[0].length ?? 0;
-        const start = from + leading;
-        const end = from + suffixAt;
-        const candidate = haystack.slice(start, end).trim();
-        if (candidate.length < quote.length * 0.5 || candidate.length > quote.length * 1.8) continue;
-        candidates.push({ start, end, score: dice(fold(candidate), foldedQuote) });
-      }
-      const bracket = chooseFuzzy(candidates, 0.62);
-      if (bracket) {
-        let start = bracket.start;
-        let end = bracket.end;
-        while (start < end && /\s/.test(haystack[start] ?? '')) start += 1;
-        while (end > start && /\s/.test(haystack[end - 1] ?? '')) end -= 1;
-        return { start, end };
-      }
+    const hits: PassageHit[] = [];
+    let from = 0;
+    while (from <= source.length - target.length && hits.length < 12) {
+      const index = source.indexOf(target, from);
+      if (index < 0) break;
+      const end = index + target.length;
+      hits.push({ start: index, end, score: contextScore(index, end), map });
+      from = index + 1;
     }
+    return hits;
+  };
 
-    const words = quote.split(' ').filter(Boolean);
-    if (words.length < 4 && quote.length < 40) return null;
-    const spans: { start: number; end: number }[] = [];
-    const wordPattern = /\S+/g;
-    let wordMatch: RegExpExecArray | null;
-    while ((wordMatch = wordPattern.exec(haystack))) {
-      spans.push({ start: wordMatch.index, end: wordMatch.index + wordMatch[0].length });
-    }
-    const foldedQuote = fold(quote);
-    const widths = words.length >= 4 ? [words.length - 1, words.length, words.length + 1] : [words.length];
-    const fuzzyCandidates: { start: number; end: number; score: number }[] = [];
-    for (const width of widths) {
-      if (width < 3) continue;
-      for (let index = 0; index <= spans.length - width; index += 1) {
-        const start = spans[index]?.start ?? 0;
-        const end = spans[index + width - 1]?.end ?? start;
-        const score = dice(fold(haystack.slice(start, end)), foldedQuote);
-        if (score >= 0.78) fuzzyCandidates.push({ start, end, score });
-      }
-    }
-    const fuzzy = chooseFuzzy(fuzzyCandidates, 0.78);
-    if (!fuzzy) return null;
-    if ((prefix || suffix) && contextScore(fuzzy.start, fuzzy.end) < 0.34) return null;
-    return { start: fuzzy.start, end: fuzzy.end };
+  // Choice is page-wide. A root that contains the quote once is still ambiguous
+  // when another root contains it too. Case-fold runs only when the page has
+  // no case-sensitive hit, so a rejected exact match cannot fall through.
+  const choosePassageHit = (hits: PassageHit[], prefix: string, suffix: string): PassageHit | null => {
+    if (hits.length === 0) return null;
+    if (!prefix && !suffix) return hits.length === 1 ? hits[0] ?? null : null;
+    const ranked = [...hits].sort((left, right) => right.score - left.score);
+    const best = ranked[0];
+    const second = ranked[1];
+    if (!best || best.score < 0.72) return null;
+    if (second && best.score - second.score < 0.2) return null;
+    return best;
   };
 
   const unwrap = (host: Element) => {
@@ -470,47 +379,50 @@ export function applyPassageHighlightsOnPage(
     };
     collectRoots(document.body);
 
+    const paintHit = (located: PassageHit, passage: { annotationId: string; color: string }): boolean => {
+      const slices: { node: Text; startOffset: number; endOffset: number }[] = [];
+      let index = located.start;
+      while (index < located.end) {
+        const point = located.map[index];
+        if (!point) return false;
+        let next = index + 1;
+        while (next < located.end && located.map[next]?.node === point.node) next += 1;
+        const endPoint = located.map[next - 1];
+        if (!endPoint) return false;
+        slices.push({
+          node: point.node,
+          startOffset: point.offset,
+          endOffset: endPoint.offset + 1,
+        });
+        index = next;
+      }
+      if (slices.length === 0) return false;
+      for (let sliceIndex = slices.length - 1; sliceIndex >= 0; sliceIndex -= 1) {
+        const slice = slices[sliceIndex];
+        if (!slice || slice.startOffset >= slice.endOffset) continue;
+        paintSlice(slice.node, slice.startOffset, slice.endOffset, passage);
+      }
+      return true;
+    };
+
     let highlighted = 0;
     let unmatched = 0;
     for (const passage of passages) {
-      let painted = false;
-      for (const root of roots) {
-        const { normalized, map } = buildNormalized(collectText(root));
-        const located = locatePassage(normalized, passage.quote, passage.prefix, passage.suffix);
-        if (!located) continue;
-        const slices: { node: Text; startOffset: number; endOffset: number }[] = [];
-        let index = located.start;
-        let slicesValid = true;
-        while (index < located.end) {
-          const point = map[index];
-          if (!point) {
-            slicesValid = false;
-            break;
-          }
-          let next = index + 1;
-          while (next < located.end && map[next]?.node === point.node) next += 1;
-          const endPoint = map[next - 1];
-          if (!endPoint) {
-            slicesValid = false;
-            break;
-          }
-          slices.push({
-            node: point.node,
-            startOffset: point.offset,
-            endOffset: endPoint.offset + 1,
-          });
-          index = next;
-        }
-        if (!slicesValid || slices.length === 0) continue;
-        for (let sliceIndex = slices.length - 1; sliceIndex >= 0; sliceIndex -= 1) {
-          const slice = slices[sliceIndex];
-          if (!slice || slice.startOffset >= slice.endOffset) continue;
-          paintSlice(slice.node, slice.startOffset, slice.endOffset, passage);
-        }
-        painted = true;
-        break;
+      const quote = stripEdgeQuotes(normalizeAnchor(passage.quote));
+      const prefix = normalizeAnchor(passage.prefix);
+      const suffix = normalizeAnchor(passage.suffix);
+      const built = roots.map((root) => buildNormalized(collectText(root)));
+      let hits: PassageHit[] = [];
+      for (const { normalized, map } of built) {
+        hits.push(...exactHitsIn(normalized, map, quote, prefix, suffix, false));
       }
-      if (painted) highlighted += 1;
+      if (hits.length === 0) {
+        for (const { normalized, map } of built) {
+          hits.push(...exactHitsIn(normalized, map, quote, prefix, suffix, true));
+        }
+      }
+      const chosen = choosePassageHit(hits, prefix, suffix);
+      if (chosen && paintHit(chosen, passage)) highlighted += 1;
       else unmatched += 1;
     }
     return { ok: true, highlighted, unmatched };
