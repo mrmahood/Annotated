@@ -8,12 +8,12 @@ import {
   parseAppearancePreference,
   resolveAppearanceTheme,
 } from "@annotated/shared/appearance";
-import { getConfiguredSiteOrigin } from "@/lib/public-routes";
+import { getMetadataBaseOrigin } from "@/lib/public-routes";
 import { AppearanceRuntime } from "./appearance-control";
 import { SiteFooter } from "./site-footer";
 import "./globals.css";
 
-const siteOrigin = getConfiguredSiteOrigin();
+const siteOrigin = getMetadataBaseOrigin();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

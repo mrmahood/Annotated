@@ -169,6 +169,19 @@ export const DEMO_TWEET = {
   text: "A typical data centre uses 300,000 gallons a day, so Batam’s centres are taking the island’s water.",
 } as const;
 
+export function demoHighlightElementId(noteId: string): string {
+  return `demo-highlight-${noteId}`;
+}
+
+export function demoOpenGraphImage(origin: string) {
+  return {
+    url: new URL("/demo/opengraph-image", origin).href,
+    width: 1200,
+    height: 630,
+    alt: DEMO_PAGE_TITLE,
+  };
+}
+
 export function getDemoNote(id: string): DemoNote | undefined {
   return DEMO_NOTES.find((note) => note.id === id);
 }

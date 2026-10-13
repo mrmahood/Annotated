@@ -14,6 +14,8 @@ import {
   EESI_SNIPPET,
   composeDemoPostText,
   demoHighlightColor,
+  demoHighlightElementId,
+  demoOpenGraphImage,
   demoTourIsPlaying,
 } from "../app/demo/demo-data.ts";
 
@@ -58,6 +60,14 @@ test("demo notes reuse the published Batam fact-check and add other verdicts", (
   assert.equal(demoTourIsPlaying("auto", true), false);
   assert.equal(demoTourIsPlaying("play", true), true);
   assert.equal(demoTourIsPlaying("pause", false), false);
+  assert.equal(demoHighlightElementId("needs-context"), "demo-highlight-needs-context");
+  assert.equal(demoHighlightElementId("misleading"), "demo-highlight-misleading");
+  assert.deepEqual(demoOpenGraphImage("https://annotated.cbandcoop.com"), {
+    url: "https://annotated.cbandcoop.com/demo/opengraph-image",
+    width: 1200,
+    height: 630,
+    alt: DEMO_PAGE_TITLE,
+  });
 });
 
 test("the public demo page is read-only, linked from the hero, and has an OG image", async () => {
@@ -73,8 +83,13 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(page, /title: DEMO_PAGE_TITLE/);
   assert.match(page, /description: DEMO_PAGE_DESCRIPTION/);
   assert.match(page, /canonical: DEMO_PAGE_PATH/);
+  assert.match(page, /getMetadataBaseOrigin\(\)/);
+  assert.match(page, /demoOpenGraphImage\(metadataOrigin\)/);
+  assert.match(page, /images: \[demoImage\]/);
+  assert.match(page, /twitter: \{ images: \[demoImage\] \}/);
   assert.equal(DEMO_PAGE_TITLE, "Annotated demo: the fact-check layer for the web");
   assert.match(experience, /\{DEMO_VALUE_PROP\}/);
+  assert.doesNotMatch(surface, /demo\.mp4|<video/);
   assert.equal(
     DEMO_VALUE_PROP,
     "Annotated is the fact-check layer for the web: highlight any claim, attach sources, and they stay attached.",
@@ -109,6 +124,18 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(experience, /aria-pressed=\{pressed\}/);
   assert.match(experience, /aria-expanded=\{pressed\}/);
   assert.match(experience, /role="dialog"/);
+  const escapeHandler = experience.slice(
+    experience.indexOf('if (event.key !== "Escape") return;'),
+    experience.indexOf("window.addEventListener"),
+  );
+  assert.match(escapeHandler, /focusReturnId\.current = panelNoteId/);
+  assert.match(experience, /const closeCard = \(\) => \{[\s\S]*focusReturnId\.current = panelNoteId/);
+  assert.match(experience, /onClick=\{closeCard\}/);
+  assert.match(experience, /demo-panel-resting/);
+  assert.match(experience, /desktop && resting/);
+  assert.match(page, /installCallout=\{false\}/);
+  assert.match(styles, /\.demo-panel\.demo-panel-resting \{ display: none; \}/);
+  assert.match(experience, /document\.getElementById\(demoHighlightElementId\(noteId\)\)\?\.focus\(\)/);
   assert.match(experience, /Needs context/);
   assert.match(experience, /They stay read-only here/);
   assert.doesNotMatch(experience, /How to use this demo/);
@@ -124,6 +151,7 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   const desktop = styles.slice(styles.lastIndexOf("@media (min-width: 960px)"));
   assert.match(desktop, /\.demo-panel \{[\s\S]*position: sticky/);
   assert.match(desktop, /\.demo-backdrop \{ display: none; \}/);
+  assert.match(desktop, /\.demo-panel\.demo-panel-resting \{ display: grid; \}/);
   assert.match(home, /href="\/demo"/);
   const hero = home.slice(home.indexOf("landing-hero"), home.indexOf("</header>"));
   assert.match(hero, /href="\/demo"/);

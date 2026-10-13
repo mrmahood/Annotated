@@ -9,9 +9,11 @@ import { SiteHeaderAuth, type HeaderUser } from "./site-header-auth";
 export async function SiteHeader({
   active,
   returnTo,
+  installCallout = true,
 }: {
   active?: "feed" | "me" | "trending" | "who-to-follow";
   returnTo: string;
+  installCallout?: boolean;
 }) {
   let user: HeaderUser | null = null;
 
@@ -68,7 +70,7 @@ export async function SiteHeader({
           <SiteHeaderAuth user={user} returnTo={returnTo} />
         </div>
       </header>
-      <InstallExtensionNudge />
+      {installCallout ? <InstallExtensionNudge /> : null}
     </>
   );
 }

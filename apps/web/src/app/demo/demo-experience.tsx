@@ -17,6 +17,7 @@ import {
   DEMO_TWEET,
   DEMO_VALUE_PROP,
   composeDemoPostText,
+  demoHighlightElementId,
   demoChipLabel,
   demoHighlightColor,
   demoSourceLabel,
@@ -41,6 +42,20 @@ function reducedMotionSnapshot() {
 }
 
 function reducedMotionServerSnapshot() {
+  return false;
+}
+
+function subscribeDesktop(onChange: () => void) {
+  const media = window.matchMedia("(min-width: 960px)");
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function desktopSnapshot() {
+  return window.matchMedia("(min-width: 960px)").matches;
+}
+
+function desktopServerSnapshot() {
   return false;
 }
 
@@ -79,7 +94,7 @@ function Highlight({
   const receipts = note.noteType === "receipts";
   return (
     <button
-      id={`demo-highlight-${note.id}`}
+      id={demoHighlightElementId(note.id)}
       data-demo-highlight={note.id}
       className={`demo-highlight demo-highlight-${color}${receipts ? " demo-highlight-receipts" : ""}${spotlight ? " demo-spotlight" : ""}`}
       type="button"
@@ -144,18 +159,27 @@ export function DemoExperience() {
     reducedMotionSnapshot,
     reducedMotionServerSnapshot,
   );
+  const desktop = useSyncExternalStore(
+    subscribeDesktop,
+    desktopSnapshot,
+    desktopServerSnapshot,
+  );
   const [playback, setPlayback] = useState<DemoPlayback>("auto");
   const [stepIndex, setStepIndex] = useState(0);
   const [guided, setGuided] = useState(true);
   const [overrideId, setOverrideId] = useState<string | null | undefined>(undefined);
   const userOpened = useRef(false);
+  const focusReturnId = useRef<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const step = DEMO_TOUR_STEPS[stepIndex] ?? DEMO_TOUR_STEPS[0];
   const playing = guided && demoTourIsPlaying(playback, reducedMotion);
-  const tourNoteId = guided && step.id !== "highlight" ? "needs-context" : null;
-  const activeId = overrideId !== undefined ? overrideId : tourNoteId;
-  const note = activeId ? getDemoNote(activeId) : undefined;
   const [needsContext, misleading, receipts] = DEMO_NOTES;
+  const tourNoteId = guided && step.id !== "highlight" ? needsContext?.id ?? null : null;
+  const activeId = overrideId !== undefined ? overrideId : tourNoteId;
+  const resting = overrideId === undefined && !activeId;
+  const panelNoteId = activeId ?? (resting ? needsContext?.id ?? null : null);
+  const note = panelNoteId ? getDemoNote(panelNoteId) : undefined;
+  const cardOpen = Boolean(activeId) || (desktop && resting);
   const spotlightId = guided ? step.targetId : null;
 
   const finished = stepIndex >= DEMO_TOUR_STEPS.length - 1;
@@ -175,16 +199,25 @@ export function DemoExperience() {
   }, [guided, playback, reducedMotion, step.targetId, note]);
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!cardOpen || !panelNoteId) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      event.preventDefault();
+      focusReturnId.current = panelNoteId;
       setOverrideId(null);
       setPlayback("pause");
       setGuided(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [activeId]);
+  }, [cardOpen, panelNoteId]);
+
+  useEffect(() => {
+    if (panelNoteId || !focusReturnId.current) return;
+    const noteId = focusReturnId.current;
+    focusReturnId.current = null;
+    document.getElementById(demoHighlightElementId(noteId))?.focus();
+  }, [panelNoteId]);
 
   useEffect(() => {
     if (!userOpened.current || !activeId) return;
@@ -197,6 +230,11 @@ export function DemoExperience() {
     setOverrideId(id);
     setPlayback("pause");
     setGuided(false);
+  };
+
+  const closeCard = () => {
+    if (panelNoteId) focusReturnId.current = panelNoteId;
+    takeOver(null);
   };
 
   const replay = () => {
@@ -306,7 +344,7 @@ export function DemoExperience() {
               {needsContext ? (
                 <Highlight
                   note={needsContext}
-                  pressed={activeId === needsContext.id}
+                  pressed={activeId === needsContext.id || (desktop && resting)}
                   spotlight={spotlightId === `demo-highlight-${needsContext.id}`}
                   onOpen={takeOver}
                 />
@@ -353,15 +391,17 @@ export function DemoExperience() {
 
         {note ? (
           <>
-            <button
-              className="demo-backdrop"
-              type="button"
-              aria-label="Close fact-check"
-              onClick={() => takeOver(null)}
-            />
+            {activeId ? (
+              <button
+                className="demo-backdrop"
+                type="button"
+                aria-label="Close fact-check"
+                onClick={() => takeOver(null)}
+              />
+            ) : null}
             <aside
               ref={panelRef}
-              className={`demo-panel${spotlightId === PANEL_ID ? " demo-spotlight" : ""}`}
+              className={`demo-panel${resting ? " demo-panel-resting" : ""}${spotlightId === PANEL_ID ? " demo-spotlight" : ""}`}
               id={PANEL_ID}
               data-demo-card=""
               role="dialog"
@@ -371,7 +411,7 @@ export function DemoExperience() {
               <div className="demo-panel-handle" aria-hidden="true" />
               <div className="demo-panel-toolbar">
                 <p className="section-label">Fact-check</p>
-                <button className="demo-close" type="button" data-demo-close="" onClick={() => takeOver(null)}>
+                <button className="demo-close" type="button" data-demo-close="" onClick={closeCard}>
                   Close
                 </button>
               </div>

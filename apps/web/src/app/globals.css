@@ -2249,7 +2249,8 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   background: var(--background-elevated);
   box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.32);
 }
-.demo-panel-idle { display: none; }
+.demo-panel-idle,
+.demo-panel.demo-panel-resting { display: none; }
 .demo-panel-handle {
   width: 42px;
   height: 4px;
@@ -2321,7 +2322,8 @@ h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.7rem); font-weight: 600; line-h
   }
   .demo-backdrop { display: none; }
   .demo-panel-handle { display: none; }
-  .demo-panel-idle { display: grid; }
+  .demo-panel-idle,
+  .demo-panel.demo-panel-resting { display: grid; }
   .demo-panel {
     position: sticky;
     top: 76px;
