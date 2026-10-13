@@ -1,6 +1,6 @@
 // Tab capture is recorded even when the microphone is blocked. Voice is mixed
-// only after getUserMedia succeeds. A mix or MediaRecorder start failure falls
-// back to the raw tab stream, which is tab audio with no voice.
+// only after getUserMedia succeeds. A mix failure falls back to the raw tab
+// stream, which is tab audio with no voice. The recorder itself is started once.
 
 export type CaptureMixSource = {
   connect: (destination: unknown) => void;

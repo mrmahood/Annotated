@@ -2492,7 +2492,7 @@ test('production manifest and capture source keep the required security shape', 
   assert.match(offscreen, /expectVideo = !isAudioOnlyCaptureSourceKind\(message\.prepared\.sourceKind\)/);
   assert.match(offscreen, /!isAudioOnlyCaptureSourceKind\(upload\.prepared\.sourceKind\) &&/);
   assert.match(offscreen, /assembleCaptureRecording/);
-  assert.match(offscreen, /recorderStreamAfterStartFailure/);
+  assert.match(offscreen, /startCaptureRecorder/);
   assert.match(offscreen, /getUserMedia\(\{ audio: true \}\)/);
   assert.match(offscreen, /new AudioContext\(\)/);
   assert.match(offscreen, /audioContext\.close\(\)/);

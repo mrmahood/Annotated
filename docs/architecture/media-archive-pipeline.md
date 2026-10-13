@@ -592,8 +592,10 @@ Stream-ID acquisition, page prepare, and offscreen start are bounded. Then
 it revalidates the connected top-level tab and range, samples start geometry,
 seeks/pauses the player, creates the offscreen document, and starts the
 recorder. A blocked microphone does not fail that recorder: tab audio is
-kept, and voice is mixed only when the microphone opens. Voice notes use a
-helper extension tab because the side panel cannot show the microphone prompt.
+kept, and voice is mixed only when the microphone opens. The recorder is
+started once. Voice notes open a small extension popup because the side panel
+cannot show the microphone prompt. Active-tab follow ignores that popup and
+chrome:// pages, so the source page stays connected.
 4. Background starts page playback and acknowledges it to offscreen. Offscreen
    measures the recorder lead-in on its own clock, runs the requested-duration
    timer from that acknowledgement, records with audible loopback, and owns the

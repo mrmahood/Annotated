@@ -1,6 +1,12 @@
 export const ACTIVE_TAB_CONTEXT_KEY = 'annotatedActiveTabContext';
 export const ACTIVE_TAB_CONTEXT_MESSAGE = 'annotatedActiveTabContextUpdated';
 
+const UNFOLLOWABLE_ACTIVE_TAB_URL = /^(?:chrome-extension|chrome):/i;
+
+export function activeTabUrlIsFollowable(url: string): boolean {
+  return !UNFOLLOWABLE_ACTIVE_TAB_URL.test(url);
+}
+
 export type ActiveTabContext = {
   tabId: number;
   windowId: number;
@@ -31,7 +37,7 @@ export function activeTabContextFromTab(
   if (!Number.isInteger(tab.windowId) || tab.windowId < 0) {
     return null;
   }
-  if (typeof tab.url !== 'string') {
+  if (typeof tab.url !== 'string' || !activeTabUrlIsFollowable(tab.url)) {
     return null;
   }
 

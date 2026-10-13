@@ -16,7 +16,6 @@ import {
   getMicrophoneErrorMessage,
   getMicrophoneStartErrorKind,
   interpretSidePanelMicrophoneQuery,
-  isMicrophonePermissionMessage,
   parseMicrophonePermissionState,
   reduceRecordingState,
   selectRecordingMimeType,
@@ -26,6 +25,10 @@ import {
   type MicrophonePermissionState,
   type RecordingState,
 } from '../../utils/audio-commentary';
+import {
+  openMicrophonePermissionHelper as openMicrophonePermissionPopup,
+  type MicrophonePermissionHelperChrome,
+} from '../../utils/microphone-permission-helper';
 
 const UNSUPPORTED_MESSAGE =
   'This browser cannot record WebM audio. You can still publish your text annotation.';
@@ -49,43 +52,7 @@ export type AudioRecorderController = {
 };
 
 function openMicrophonePermissionHelper(): Promise<MicrophonePermissionResult> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let helperTabId: number | null = null;
-    const removed = new Set<number>();
-    const finish = (result: MicrophonePermissionResult) => {
-      if (settled) return;
-      settled = true;
-      chrome.runtime.onMessage.removeListener(onMessage);
-      chrome.tabs.onRemoved.removeListener(onRemoved);
-      resolve(result);
-    };
-    const onMessage = (message: unknown) => {
-      if (!isMicrophonePermissionMessage(message)) return;
-      finish(message.result);
-    };
-    const onRemoved = (tabId: number) => {
-      if (helperTabId === null) {
-        removed.add(tabId);
-        return;
-      }
-      if (tabId === helperTabId) finish('dismissed');
-    };
-    chrome.runtime.onMessage.addListener(onMessage);
-    chrome.tabs.onRemoved.addListener(onRemoved);
-    void chrome.tabs.create({
-      url: chrome.runtime.getURL(MICROPHONE_PERMISSION_PAGE),
-      active: true,
-    }).then((tab) => {
-      const id = tab.id;
-      if (id == null) {
-        finish('dismissed');
-        return;
-      }
-      helperTabId = id;
-      if (removed.has(id)) finish('dismissed');
-    }).catch(() => finish('dismissed'));
-  });
+  return openMicrophonePermissionPopup(chrome as unknown as MicrophonePermissionHelperChrome, MICROPHONE_PERMISSION_PAGE);
 }
 
 export function useAudioRecorder(): AudioRecorderController {

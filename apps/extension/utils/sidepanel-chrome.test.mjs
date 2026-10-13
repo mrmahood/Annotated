@@ -85,6 +85,8 @@ test('Create voice notes show Enable microphone before Record when permission is
   assert.match(recorder, /interpretSidePanelMicrophoneQuery/);
   assert.match(recorder, /openMicrophonePermissionHelper/);
   assert.match(recorder, /MICROPHONE_PERMISSION_PAGE/);
+  assert.match(recorder, /microphone-permission-helper/);
+  assert.doesNotMatch(recorder, /tabs\.create/);
   assert.match(commentary, /microphone-permission\.html/);
   assert.match(recorder, /visibilitychange/);
   assert.match(commentary, /interpretSidePanelMicrophoneQuery/);
