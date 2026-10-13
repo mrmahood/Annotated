@@ -93,7 +93,7 @@ export function applyPassageHighlightsOnPage(
       if (
         tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' ||
         tag === 'TEMPLATE' || tag === 'SVG' || tag === 'CANVAS' ||
-        tag === 'TEXTAREA' || tag === 'ANNOTATED-PASSAGE'
+        tag === 'TEXTAREA'
       ) {
         return true;
       }
@@ -225,9 +225,12 @@ export function applyPassageHighlightsOnPage(
 
     const pickExact = (indexes: number[]) => {
       if (indexes.length === 0) return null;
-      const hits = indexes.map((start) => ({ start, end: start + quote.length, score: contextScore(start, start + quote.length) }));
-      if (hits.length === 1) return hits[0];
-      if (!prefix && !suffix) return null;
+      const hits = indexes.map((start) => ({
+        start,
+        end: start + quote.length,
+        score: contextScore(start, start + quote.length),
+      }));
+      if (!prefix && !suffix) return hits.length === 1 ? hits[0] : null;
       const ranked = [...hits].sort((left, right) => right.score - left.score);
       const best = ranked[0];
       const second = ranked[1];
@@ -237,101 +240,8 @@ export function applyPassageHighlightsOnPage(
     };
 
     const exact = pickExact(allIndexes(quote, false)) ?? pickExact(allIndexes(quote, true));
-    if (exact) return { start: exact.start, end: exact.end };
-    if (allIndexes(quote, false).length > 0 || allIndexes(quote, true).length > 0) return null;
-
-    const fold = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const dice = (left: string, right: string) => {
-      if (!left || !right) return 0;
-      if (left === right) return 1;
-      if (left.length < 2 || right.length < 2) return 0;
-      const counts = new Map<string, number>();
-      for (let index = 0; index < left.length - 1; index += 1) {
-        const gram = left.slice(index, index + 2);
-        counts.set(gram, (counts.get(gram) ?? 0) + 1);
-      }
-      let hits = 0;
-      for (let index = 0; index < right.length - 1; index += 1) {
-        const gram = right.slice(index, index + 2);
-        const count = counts.get(gram) ?? 0;
-        if (count > 0) {
-          hits += 1;
-          counts.set(gram, count - 1);
-        }
-      }
-      return (2 * hits) / (left.length + right.length - 2);
-    };
-
-    const separated = (
-      left: { start: number; end: number },
-      right: { start: number; end: number },
-    ) => left.end <= right.start || right.end <= left.start;
-
-    const chooseFuzzy = (
-      candidates: { start: number; end: number; score: number }[],
-      minimum: number,
-    ) => {
-      const ranked = candidates.filter((candidate) => candidate.score >= minimum)
-        .sort((left, right) => right.score - left.score);
-      const best = ranked[0];
-      if (!best) return null;
-      const rival = ranked.find((candidate) => separated(candidate, best));
-      if (rival && best.score - rival.score < 0.05) return null;
-      return best;
-    };
-
-    if (prefix.length >= 8 && suffix.length >= 8) {
-      const prefixIndexes = allIndexes(prefix, true);
-      const foldedQuote = fold(quote);
-      const candidates: { start: number; end: number; score: number }[] = [];
-      for (const prefixStart of prefixIndexes) {
-        const from = prefixStart + prefix.length;
-        const window = haystack.slice(from, from + Math.min(4000, Math.max(quote.length * 2, 80) + suffix.length));
-        const suffixFold = lowerIfSameLength(suffix);
-        const windowFold = lowerIfSameLength(window);
-        const suffixAt = suffixFold && windowFold ? windowFold.indexOf(suffixFold) : -1;
-        if (suffixAt < 0) continue;
-        const leading = window.slice(0, suffixAt).match(/^\s*/)?.[0].length ?? 0;
-        const start = from + leading;
-        const end = from + suffixAt;
-        const candidate = haystack.slice(start, end).trim();
-        if (candidate.length < quote.length * 0.5 || candidate.length > quote.length * 1.8) continue;
-        candidates.push({ start, end, score: dice(fold(candidate), foldedQuote) });
-      }
-      const bracket = chooseFuzzy(candidates, 0.62);
-      if (bracket) {
-        let start = bracket.start;
-        let end = bracket.end;
-        while (start < end && /\s/.test(haystack[start] ?? '')) start += 1;
-        while (end > start && /\s/.test(haystack[end - 1] ?? '')) end -= 1;
-        return { start, end };
-      }
-    }
-
-    const words = quote.split(' ').filter(Boolean);
-    if (words.length < 4 && quote.length < 40) return null;
-    const spans: { start: number; end: number }[] = [];
-    const wordPattern = /\S+/g;
-    let wordMatch: RegExpExecArray | null;
-    while ((wordMatch = wordPattern.exec(haystack))) {
-      spans.push({ start: wordMatch.index, end: wordMatch.index + wordMatch[0].length });
-    }
-    const foldedQuote = fold(quote);
-    const widths = words.length >= 4 ? [words.length - 1, words.length, words.length + 1] : [words.length];
-    const fuzzyCandidates: { start: number; end: number; score: number }[] = [];
-    for (const width of widths) {
-      if (width < 3) continue;
-      for (let index = 0; index <= spans.length - width; index += 1) {
-        const start = spans[index]?.start ?? 0;
-        const end = spans[index + width - 1]?.end ?? start;
-        const score = dice(fold(haystack.slice(start, end)), foldedQuote);
-        if (score >= 0.78) fuzzyCandidates.push({ start, end, score });
-      }
-    }
-    const fuzzy = chooseFuzzy(fuzzyCandidates, 0.78);
-    if (!fuzzy) return null;
-    if ((prefix || suffix) && contextScore(fuzzy.start, fuzzy.end) < 0.34) return null;
-    return { start: fuzzy.start, end: fuzzy.end };
+    if (!exact) return null;
+    return { start: exact.start, end: exact.end };
   };
 
   const unwrap = (host: Element) => {
