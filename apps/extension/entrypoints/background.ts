@@ -12,6 +12,7 @@ import {
 } from '../utils/media-capture-background';
 import { installPassageHighlightOpen } from '../utils/passage-highlight';
 import {
+  followActiveBrowsingTab,
   followBrowsingTab,
   installSurfFollow,
 } from '../utils/surf-follow';
@@ -25,6 +26,9 @@ export default defineBackground(() => {
 
   installMediaCapture(chrome);
   installPassageHighlightOpen(chrome);
+  void followActiveBrowsingTab(chrome, Date.now()).catch((error: unknown) => {
+    console.error('Unable to follow the active Annotated tab on startup:', error);
+  });
   installSurfFollow(chrome, {
     applyPending: async (tab) => {
       await applyPendingArticleHoverOnTab(tab);

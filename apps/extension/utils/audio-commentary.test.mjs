@@ -7,12 +7,17 @@ import {
   MICROPHONE_DENIED_STEPS,
   MICROPHONE_ENABLE_HEADING,
   MICROPHONE_EXTENSION_PERMISSION_COPY,
+  MICROPHONE_HELPER_COPY,
+  MICROPHONE_PERMISSION_MESSAGE,
   createAudioStoragePath,
   formatAudioDuration,
   getAudioValidationError,
   getCommentaryContractError,
   getMicrophoneErrorMessage,
   getMicrophoneStartErrorKind,
+  interpretSidePanelMicrophoneQuery,
+  isMicrophonePermissionMessage,
+  microphoneHelperResultFromStartError,
   getPublishRpcName,
   hasPublishableCommentary,
   parseAnnotationAudio,
@@ -142,13 +147,15 @@ test('microphone copy names the extension permission and numbered Chrome reconne
 });
 
 test('microphone start errors classify denied, missing, and busy devices', () => {
-  assert.equal(getMicrophoneStartErrorKind(new DOMException('denied', 'NotAllowedError')), 'denied');
+  assert.equal(getMicrophoneStartErrorKind(new DOMException('Permission denied', 'NotAllowedError')), 'denied');
+  assert.equal(getMicrophoneStartErrorKind(new DOMException('Permission dismissed', 'NotAllowedError')), 'dismissed');
   assert.equal(getMicrophoneStartErrorKind(new DOMException('blocked', 'SecurityError')), 'denied');
   assert.equal(getMicrophoneStartErrorKind(new DOMException('missing', 'NotFoundError')), 'not-found');
   assert.equal(getMicrophoneStartErrorKind(new DOMException('busy', 'NotReadableError')), 'unavailable');
   assert.equal(getMicrophoneStartErrorKind(new DOMException('abort', 'AbortError')), 'unavailable');
   assert.equal(getMicrophoneStartErrorKind(new Error('nope')), 'generic');
-  assert.equal(getMicrophoneErrorMessage(new DOMException('denied', 'NotAllowedError')), MICROPHONE_DENIED_COPY);
+  assert.equal(getMicrophoneErrorMessage(new DOMException('Permission denied', 'NotAllowedError')), MICROPHONE_DENIED_COPY);
+  assert.equal(getMicrophoneErrorMessage(new DOMException('Permission dismissed', 'NotAllowedError')), MICROPHONE_HELPER_COPY);
   assert.match(getMicrophoneErrorMessage(new DOMException('missing', 'NotFoundError')), /publish without audio/);
   assert.match(getMicrophoneErrorMessage(new DOMException('busy', 'NotReadableError')), /already in use/);
   assert.match(getMicrophoneErrorMessage(new Error('nope')), /retry or publish without audio/);
@@ -164,4 +171,24 @@ test('microphone permission query falls back to unknown when unsupported', async
   assert.equal(await queryMicrophonePermission(async () => {
     throw new TypeError('microphone is not a valid enum value of type PermissionName');
   }), 'unknown');
+  assert.equal(interpretSidePanelMicrophoneQuery('denied'), 'prompt');
+  assert.equal(interpretSidePanelMicrophoneQuery('granted'), 'granted');
+  assert.equal(interpretSidePanelMicrophoneQuery('prompt'), 'prompt');
+  assert.equal(interpretSidePanelMicrophoneQuery('unknown'), 'unknown');
+  assert.equal(
+    microphoneHelperResultFromStartError(new DOMException('Permission denied', 'NotAllowedError')),
+    'denied',
+  );
+  assert.equal(
+    microphoneHelperResultFromStartError(new DOMException('Permission dismissed', 'NotAllowedError')),
+    'dismissed',
+  );
+  assert.equal(isMicrophonePermissionMessage({
+    type: MICROPHONE_PERMISSION_MESSAGE,
+    result: 'granted',
+  }), true);
+  assert.equal(isMicrophonePermissionMessage({
+    type: MICROPHONE_PERMISSION_MESSAGE,
+    result: 'blocked',
+  }), false);
 });

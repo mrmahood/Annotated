@@ -106,7 +106,7 @@ export function createPublishStateAfterHostedFailure(
 ): { status: 'idle' } | { status: 'error'; message: string } {
   if (hostedSession) return { status: 'idle' };
   if (message === TAB_CAPTURE_INVOKE_MESSAGE || isTabCaptureInvocationError(message)) {
-    return { status: 'error', message: 'Capture could not start. Click Publish again.' };
+    return { status: 'error', message: TAB_CAPTURE_INVOKE_MESSAGE };
   }
   return { status: 'error', message };
 }

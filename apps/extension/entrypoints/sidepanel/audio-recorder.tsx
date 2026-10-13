@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+
+const chrome = (globalThis as typeof globalThis & { chrome: typeof browser }).chrome;
 import {
   ANNOTATION_AUDIO_MIME_TYPE,
   AUDIO_MAX_DURATION_MS,
@@ -7,15 +9,20 @@ import {
   MICROPHONE_DENIED_STEPS,
   MICROPHONE_ENABLE_HEADING,
   MICROPHONE_EXTENSION_PERMISSION_COPY,
+  MICROPHONE_HELPER_COPY,
+  MICROPHONE_PERMISSION_PAGE,
   formatAudioDuration,
   getAudioValidationError,
   getMicrophoneErrorMessage,
   getMicrophoneStartErrorKind,
+  interpretSidePanelMicrophoneQuery,
+  isMicrophonePermissionMessage,
   parseMicrophonePermissionState,
   reduceRecordingState,
   selectRecordingMimeType,
   shouldShowMicrophoneEnableGuidance,
   shouldShowMicrophoneReconnectSteps,
+  type MicrophonePermissionResult,
   type MicrophonePermissionState,
   type RecordingState,
 } from '../../utils/audio-commentary';
@@ -40,6 +47,46 @@ export type AudioRecorderController = {
   rerecord: () => Promise<void>;
   reportPlaybackError: () => void;
 };
+
+function openMicrophonePermissionHelper(): Promise<MicrophonePermissionResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let helperTabId: number | null = null;
+    const removed = new Set<number>();
+    const finish = (result: MicrophonePermissionResult) => {
+      if (settled) return;
+      settled = true;
+      chrome.runtime.onMessage.removeListener(onMessage);
+      chrome.tabs.onRemoved.removeListener(onRemoved);
+      resolve(result);
+    };
+    const onMessage = (message: unknown) => {
+      if (!isMicrophonePermissionMessage(message)) return;
+      finish(message.result);
+    };
+    const onRemoved = (tabId: number) => {
+      if (helperTabId === null) {
+        removed.add(tabId);
+        return;
+      }
+      if (tabId === helperTabId) finish('dismissed');
+    };
+    chrome.runtime.onMessage.addListener(onMessage);
+    chrome.tabs.onRemoved.addListener(onRemoved);
+    void chrome.tabs.create({
+      url: chrome.runtime.getURL(MICROPHONE_PERMISSION_PAGE),
+      active: true,
+    }).then((tab) => {
+      const id = tab.id;
+      if (id == null) {
+        finish('dismissed');
+        return;
+      }
+      helperTabId = id;
+      if (removed.has(id)) finish('dismissed');
+    }).catch(() => finish('dismissed'));
+  });
+}
 
 export function useAudioRecorder(): AudioRecorderController {
   const [state, dispatch] = useReducer(reduceRecordingState, { status: 'idle' });
@@ -139,10 +186,34 @@ export function useAudioRecorder(): AudioRecorderController {
     }
 
     dispatch({ type: 'request' });
+    const openPanelMicrophone = () => navigator.mediaDevices.getUserMedia({ audio: true });
     try {
       // Origin-scoped site permission for chrome-extension://… — not a manifest
       // `microphone` key, and not the connected website's microphone setting.
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The side panel often cannot show the prompt, so a dismissal or a
+      // reported denial opens the helper tab before this is treated as blocked.
+      let stream: MediaStream;
+      try {
+        stream = await openPanelMicrophone();
+      } catch (error) {
+        const kind = getMicrophoneStartErrorKind(error);
+        if (kind !== 'denied' && kind !== 'dismissed') throw error;
+        const helper = await openMicrophonePermissionHelper();
+        if (!mountedRef.current || revision !== requestRevisionRef.current) return;
+        if (helper === 'granted') {
+          stream = await openPanelMicrophone();
+        } else if (helper === 'denied') {
+          setMicrophoneStartDenied(true);
+          setMicrophonePermission('denied');
+          failRecording(MICROPHONE_DENIED_COPY);
+          return;
+        } else {
+          setMicrophoneStartDenied(false);
+          setMicrophonePermission((current) => (current === 'granted' ? current : 'prompt'));
+          failRecording(MICROPHONE_HELPER_COPY);
+          return;
+        }
+      }
       if (!mountedRef.current || revision !== requestRevisionRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -201,9 +272,13 @@ export function useAudioRecorder(): AudioRecorderController {
       maximumTimerRef.current = window.setTimeout(() => stop(), AUDIO_MAX_DURATION_MS);
     } catch (error) {
       if (revision !== requestRevisionRef.current) return;
-      if (getMicrophoneStartErrorKind(error) === 'denied') {
+      const kind = getMicrophoneStartErrorKind(error);
+      if (kind === 'denied') {
         setMicrophoneStartDenied(true);
         setMicrophonePermission('denied');
+      } else if (kind === 'dismissed') {
+        setMicrophoneStartDenied(false);
+        setMicrophonePermission((current) => (current === 'granted' ? current : 'prompt'));
       }
       failRecording(getMicrophoneErrorMessage(error));
     }
@@ -231,33 +306,51 @@ export function useAudioRecorder(): AudioRecorderController {
     let cancelled = false;
     let permissionStatus: PermissionStatus | null = null;
 
-    const handleChange = () => {
-      if (!permissionStatus || cancelled) return;
-      const next = parseMicrophonePermissionState(permissionStatus.state);
-      setMicrophonePermission(next);
+    const applyQueried = (state: PermissionState | string) => {
+      const next = interpretSidePanelMicrophoneQuery(parseMicrophonePermissionState(state));
+      setMicrophonePermission((current) => {
+        if (current === 'denied' && next !== 'granted') return current;
+        return next;
+      });
       if (next === 'granted') setMicrophoneStartDenied(false);
     };
 
-    void (async () => {
+    const handleChange = () => {
+      if (!permissionStatus || cancelled) return;
+      applyQueried(permissionStatus.state);
+    };
+
+    let listening = false;
+    const refresh = async () => {
       if (typeof navigator.permissions?.query !== 'function') {
-        if (!cancelled) setMicrophonePermission('unknown');
+        if (!cancelled) setMicrophonePermission((current) => (current === 'unknown' ? 'unknown' : current));
         return;
       }
       try {
         const status = await navigator.permissions.query({ name: 'microphone' });
         permissionStatus = status;
         if (cancelled) return;
-        const next = parseMicrophonePermissionState(status.state);
-        setMicrophonePermission(next);
-        if (next === 'granted') setMicrophoneStartDenied(false);
-        status.addEventListener('change', handleChange);
+        applyQueried(status.state);
+        if (!listening) {
+          status.addEventListener('change', handleChange);
+          listening = true;
+        }
       } catch {
-        if (!cancelled) setMicrophonePermission('unknown');
+        if (!cancelled) {
+          setMicrophonePermission((current) => (current === 'denied' || current === 'granted' ? current : 'unknown'));
+        }
       }
-    })();
+    };
+
+    void refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
       permissionStatus?.removeEventListener('change', handleChange);
     };
   }, []);
