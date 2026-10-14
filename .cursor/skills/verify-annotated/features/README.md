@@ -49,7 +49,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Who to Follow](./who-to-follow.md) covers the signed-out suggestion list. An empty suggestion list is `pass-empty` (exit 2). Following stays behind sign-in and is not completed.
 - [Me signed out](./me-signed-out.md) covers the signed-out wall at `/me`: title `Bookmarks | Annotated`, headings `Bookmarks` and `Sign in to see your bookmarks.`, and `Sign in with Google`.
 - [Chrome extension](./chrome-extension.md) loads the unpacked side panel and drives YouTube Create. It exits 0 or 1 and does not click Publish clip. It does not need `launch` or `doctor`.
-- [Authenticated Me and Create](./authenticated-me.md) reads bookmarks and the public-handle region on `/me` for `cbandcooptest@gmail.com`. Without `SUPABASE_SERVICE_ROLE_KEY` it exits 3. Create stays on [Chrome extension](./chrome-extension.md). The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
+- [Authenticated Me and Create](./authenticated-me.md) reads bookmarks and the public-handle region on `/me` for `cbandcooptest@gmail.com`. Without that target's service-role key and public Supabase config it exits 3. A Staging preview uses `SUPABASE_STAGING_SERVICE_ROLE_KEY`. Create stays on [Chrome extension](./chrome-extension.md). The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
 
 ## Not a feature file yet
 

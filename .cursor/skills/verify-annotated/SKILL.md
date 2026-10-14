@@ -87,7 +87,7 @@ Stable handles used by the public drives:
 - Home: title `Annotated: the fact-check layer for the web`, list `[aria-label="Published annotations"]`, link `View annotation`, nav `Primary navigation`, link `Annotated home`.
 - Annotation detail: title prefix `Annotation on `, heading `Comments`, source link name matching `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source`. Do not follow that source link.
 - Legal: `/legal` heading `Policies for Annotated`, `/privacy` heading `Privacy Policy`, `/terms` heading `Terms of Service`, footer nav `Legal`.
-- Trending: `/trending`, title `What’s Trending`, heading `This week’s most active annotations.`
+- Trending: `/trending`, title `What’s Trending | Annotated`, heading `This week’s most active annotations.`
 - Who to Follow: `/who-to-follow`, heading `Accounts worth following.`
 - Signed-out Me: `/me`, heading `Sign in to see your bookmarks.`
 - Signed-in Me: `/me`, region `Public handle`, link `Send feedback`, button `Sign out`. Do not click those controls.

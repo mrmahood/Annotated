@@ -589,6 +589,7 @@ async function drivePublicAnnotation({ page, state, dir }) {
 async function driveLegal({ page, state, dir }) {
   const response = await page.goto(`${state.baseUrl}/legal`, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.getByRole("heading", { level: 1, name: "Policies for Annotated" }).waitFor({ timeout: 15000 });
+  const legalTitle = await page.title();
   const footer = page.getByRole("navigation", { name: "Legal" });
   const footerOk = await footer.getByRole("link", { name: "Privacy" }).count() > 0
     && await footer.getByRole("link", { name: "Terms" }).count() > 0
@@ -606,15 +607,15 @@ async function driveLegal({ page, state, dir }) {
   const termsTitle = await page.title();
   const agreement = await page.getByRole("link", { name: "Agreement to the terms" }).count();
   writeFileSync(join(dir, "terms.aria.txt"), await page.locator("main").ariaSnapshot());
-  const legalTitle = "Legal | Annotated";
-  const pass = response?.ok() && footerOk && privacyTitle === "Privacy Policy | Annotated" && who > 0
+  const pass = response?.ok() && legalTitle === "Legal | Annotated" && footerOk
+    && privacyTitle === "Privacy Policy | Annotated" && who > 0
     && termsTitle === "Terms of Service | Annotated" && agreement > 0;
   writeNotes(dir, [
     "# Proof: legal",
     "",
     `- Feature ID: legal`,
     `- Entry: GET /legal`,
-    `- Legal title expected: ${legalTitle}`,
+    `- Legal title: ${legalTitle}`,
     `- Footer Legal nav has Privacy, Terms, and Legal: ${footerOk ? "yes" : "no"}`,
     `- Privacy title: ${privacyTitle}`,
     `- Who operates Annotated link: ${who > 0 ? "yes" : "no"}`,

@@ -12,7 +12,7 @@ A public annotation page shows one published annotation: the author, the comment
 
 ## How to get to it (user POV)
 
-- On the feed, a trending card, or a profile, choose `View annotation`.
+- On a feed card, a `/trending` card, or a profile card, choose `View annotation`. The home `Active this week` strip links the whole card and is not named `View annotation`.
 - Open a shared canonical URL `/{creatorHandle}/{annotationSlug}`.
 - Open a legacy URL `/a/{annotationId}`.
 
