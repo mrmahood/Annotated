@@ -34,6 +34,7 @@ Exit 0 is a pass. Exit 1 is a failure, including a missing build. The command do
 
 - Keep the source tab active. Focusing `sidepanel.html` makes surf-follow retarget the extension URL, and Create loses the player.
 - A YouTube player that never becomes visible fails the drive. Do not substitute a different page for the YouTube check.
+- When that watch page shows a player but attaches no media source, the drive inserts a sample video on the same tab so the trim checks have a duration longer than 90 seconds. Notes then say `YouTube player: sample`. That is still a pass.
 - The 90-second ceiling is enforced by the clip handles. A drag that lands longer than 90 seconds is a product failure.
 - Publishing is a real write. This drive must stop before `Publish clip`.
 - Browser restart cannot recover an in-memory recording. This skill does not try.

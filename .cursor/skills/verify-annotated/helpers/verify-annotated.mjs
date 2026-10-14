@@ -822,7 +822,8 @@ Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 
 Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
 chrome-extension exits 0 or 1. It loads apps/extension/.output/chrome-mv3 and does not need launch or doctor.
-authenticated-me exits 3 until the service-role key for that target is set.
+authenticated-me exits 3 until that target's service-role key, Supabase URL, and publishable key are set.
+A non-staging target does not borrow the Staging defaults.
 A Staging preview origin uses SUPABASE_STAGING_SERVICE_ROLE_KEY and the public Staging URL and publishable key when those are unset.
 Mint that session directly with:
   node .cursor/skills/verify-annotated/helpers/mint-test-session.mjs --target https://annotated-staging-git-bounty-integration-matt-mahoods-projects.vercel.app

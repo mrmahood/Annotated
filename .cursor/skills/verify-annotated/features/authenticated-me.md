@@ -28,7 +28,7 @@ Preconditions:
 - **Signed-out wall.** Follow [Me signed out](./me-signed-out.md). Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive me-signed-out`. Pass and fail observations live in that file.
 - **Missing key.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive authenticated-me` with no service-role key. The command prints `verified-unreachable` and `set SUPABASE_SERVICE_ROLE_KEY`, then exits 3. It does not open a browser and does not start Google or X.
 - **Authenticated bookmarks and handle.** With the env set, run the same command. It ensures that one auth user exists, exchanges a magic-link token for session cookies, and opens `/me`. Pass requires HTTP 2xx, title `Bookmarks | Annotated`, region `Public handle`, link `Send feedback`, button `Sign out`, and no heading `Sign in to see your bookmarks.` Bookmarks pass when the heading is `No bookmarks yet.` or the list `Your bookmarks` contains `View annotation`. The alert `Bookmarks are temporarily unavailable.` exits 1. Do not click `Claim handle`, `Save handle`, `Change handle`, `Bookmarked`, `Share`, `Sign out`, or `Send feedback`.
-- **Create.** Use `drive chrome-extension`. It exits 3 because the side panel is not loaded. Do not look for a `/create` page.
+- **Create.** Use `drive chrome-extension`. That command exits 0 or 1. It does not exit 3, and it does not open from `/me`. Do not look for a `/create` page.
 
 ## Gotchas
 

@@ -1,6 +1,6 @@
 # Public annotation
 
-A public annotation page shows one published annotation: the author, the commentary, the source it points at, and comments. Signed-out visitors can read it. Canonical URLs look like `/[creatorHandle]/[annotationSlug]`. `/a/[annotationId]` remains a compatibility URL.
+A public annotation page shows one published annotation: the author, the commentary, the source it points at, and comments. A note may also show a type label, a verdict, a Sources region, and a Consensus region. `File a claim` and `Post to X` are on the page and must stay unclicked. Signed-out visitors can read it. Canonical URLs look like `/[creatorHandle]/[annotationSlug]`. `/a/[annotationId]` remains a compatibility URL.
 
 ## Sub-features
 
@@ -37,3 +37,4 @@ Exit 1 if the feed has no `View annotation` link or the detail title does not st
 - Some annotations lead with a visible title and some with a visually hidden `Annotation` heading. The document title prefix is the stable check.
 - Comments may be empty (`No comments yet. Start the conversation.`) or an alert (`Comments are temporarily unavailable.`). The `Comments` heading is still required.
 - Share, bookmark, vote, follow, and comment composer actions ask a signed-out visitor to continue with Google or X. Do not click them.
+- Do not click `File a claim`, `Post to X`, or a control that marks a source helpful. Those write. The drive checks the source link and the `Comments` heading, not a particular verdict.
