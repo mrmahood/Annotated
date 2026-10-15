@@ -92,7 +92,9 @@ export function shortenClaimReviewed(value: string): string {
   const room = CLAIM_REVIEWED_MAX_LENGTH - CLAIM_REVIEWED_ELLIPSIS.length;
   const boundary = value.lastIndexOf(" ", room);
   const end = boundary > 0 ? boundary : room;
-  return `${value.slice(0, end).trimEnd()}${CLAIM_REVIEWED_ELLIPSIS}`;
+  const cut = value.slice(0, end).trimEnd();
+  if (cut.endsWith("...") || cut.endsWith(CLAIM_REVIEWED_ELLIPSIS)) return cut;
+  return `${cut}${CLAIM_REVIEWED_ELLIPSIS}`;
 }
 
 function quotedPassage(annotation: PublicAnnotation): string | null {
@@ -188,6 +190,7 @@ function commentNode(
  * The quoted passage is the article selection, or the excerpt transcript when
  * the annotation is hosted media. claimReviewed keeps about 75 characters of
  * that quote, cut on a word boundary, with an ellipsis when it is longer.
+ * A cut that already ends in "..." or "…" does not gain a second ellipsis.
  * The page blockquote still shows the full quote. Other annotations emit a
  * Comment. A page with no configured origin, or with no passage and no
  * commentary, emits nothing.

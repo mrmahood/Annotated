@@ -156,6 +156,24 @@ test("claimReviewed stays within about 75 characters and cuts on a word boundary
   assert.equal(shortenClaimReviewed("a".repeat(80)).endsWith("…"), true);
 });
 
+test("claimReviewed does not add a second ellipsis when the cut already ends in one", () => {
+  const trailingDots = `Quoted claim ends here... ${"x".repeat(80)}`;
+  const dots = shortenClaimReviewed(trailingDots);
+  assert.equal(dots, "Quoted claim ends here...");
+  assert.equal(dots.endsWith("..."), true);
+  assert.equal(dots.includes("...…"), false);
+  assert.ok(dots.length <= CLAIM_REVIEWED_MAX_LENGTH);
+
+  const trailingEllipsis = `Quoted claim ends here… ${"x".repeat(80)}`;
+  const ellipsis = shortenClaimReviewed(trailingEllipsis);
+  assert.equal(ellipsis, "Quoted claim ends here…");
+  assert.equal(ellipsis.endsWith("……"), false);
+  assert.ok(ellipsis.length <= CLAIM_REVIEWED_MAX_LENGTH);
+
+  const stillCut = shortenClaimReviewed(`Quoted claim ends here. ${"x".repeat(80)}`);
+  assert.equal(stillCut, "Quoted claim ends here.…");
+});
+
 test("production fact-checks emit ClaimReview for both public URL shapes", () => {
   const documents = withOrigin(() => ({
     factdesk: getAnnotationStructuredData(productionClaimReviewAnnotations.factdesk),
@@ -206,7 +224,7 @@ test("production fact-checks emit ClaimReview for both public URL shapes", () =>
   );
   assert.equal(
     documents.matt.claimReviewed,
-    "\"Not a single drop has come through our taps for the last three months...…",
+    "\"Not a single drop has come through our taps for the last three months...",
   );
   assert.notEqual(documents.matt.claimReviewed, MATT_PASSAGE);
   assert.equal(documents.matt.author["@type"], "Person");
