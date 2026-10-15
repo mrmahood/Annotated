@@ -434,7 +434,8 @@ try {
   const signedOutPage = await webRequest(canonicalPath, { cache: "no-store" });
   assert.equal(signedOutPage.status, 200);
   const signedOutHtml = await signedOutPage.text();
-  assert.match(signedOutHtml, /Sign in to vote/);
+  assert.match(signedOutHtml, /Sign in to share, save, vote, or comment/);
+  assert.doesNotMatch(signedOutHtml, /Sign in to vote/);
   assert.match(signedOutHtml, /aria-label="Upvote; 1 upvote"/);
   assert.match(signedOutHtml, /aria-label="Downvote; 0 downvotes"/);
 
@@ -446,6 +447,7 @@ try {
   const voterHtml = await voterPage.text();
   assert.match(voterHtml, /aria-pressed="true"/);
   assert.doesNotMatch(voterHtml, /Sign in to vote/);
+  assert.doesNotMatch(voterHtml, /Sign in to share, save, vote, or comment/);
 
   const ownerPage = await webRequest(canonicalPath, {
     headers: { cookie: ownerCookie },

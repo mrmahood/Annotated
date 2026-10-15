@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   createAnnotationReshare,
   removeAnnotationReshare,
 } from "@/lib/data/social-mutations";
 import { RESHARE_COMMENT_LIMIT } from "@/lib/data/reshare";
 import { createClient } from "@/lib/supabase/client";
+import { useAnnotationActionAuth } from "./annotation-action-auth";
 import { ProviderSignInActions } from "./provider-sign-in-actions";
 
 export function ShareControl({
@@ -24,9 +25,13 @@ export function ShareControl({
   variant?: "card" | "detail";
 }) {
   const router = useRouter();
+  const actionAuth = useAnnotationActionAuth();
   const inFlight = useRef(false);
+  const resumeShare = variant === "detail" && actionAuth?.resumeIntent === "share" && Boolean(currentUserId);
   const [shared, setShared] = useState(initialShared);
-  const [mode, setMode] = useState<"idle" | "compose" | "unshare">("idle");
+  const [mode, setMode] = useState<"idle" | "compose" | "unshare">(
+    resumeShare && !initialShared ? "compose" : "idle",
+  );
   const [comment, setComment] = useState("");
   const [pending, setPending] = useState<"share" | "unshare" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,31 +91,39 @@ export function ShareControl({
   const signedOut = !currentUserId;
   const heading = variant === "detail" ? "Share" : undefined;
   const cardPrompt = variant === "card" && signedOut && mode === "compose";
+  const detailClass = resumeShare
+    ? "share-control share-control-detail annotation-action-resume"
+    : "share-control share-control-detail";
+
+  useEffect(() => {
+    if (!resumeShare) return;
+    const node = document.getElementById(initialShared ? "annotation-share-action" : composeId);
+    node?.scrollIntoView({ block: "center" });
+    node?.focus();
+  }, [resumeShare, initialShared, composeId]);
 
   return (
-    <div className={variant === "detail" ? "share-control share-control-detail" : cardPrompt ? "share-control share-control-prompt" : "share-control"}>
+    <div className={variant === "detail" ? detailClass : cardPrompt ? "share-control share-control-prompt" : "share-control"}>
       {heading ? (
         <div className="share-heading-row">
           <div>
             <p className="section-label">On Annotated</p>
             <h2 id="share-heading">{heading}</h2>
           </div>
-          {signedOut && (
-            <ProviderSignInActions
-              returnTo={`${returnTo}#share`}
-              googleLabel="Continue with Google"
-              xLabel="Continue with X"
-              className="site-auth-button"
-            />
-          )}
         </div>
       ) : null}
 
       {signedOut ? (
         variant === "detail" ? (
-          <p className="share-help">
-            Sign in with Google or X to reshare this annotation onto your Annotated feed.
-          </p>
+          <button
+            id="annotation-share-action"
+            className="public-button public-button-secondary"
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => actionAuth?.requestSignIn("share")}
+          >
+            Share
+          </button>
         ) : mode === "compose" ? (
           <div className="share-signed-out">
             <p>Sign in to share to your feed.</p>
@@ -151,6 +164,7 @@ export function ShareControl({
         </div>
       ) : shared ? (
         <button
+          id={variant === "detail" ? "annotation-share-action" : undefined}
           className={variant === "detail" ? "public-button public-button-secondary" : "card-share-button"}
           type="button"
           aria-pressed="true"
@@ -205,6 +219,7 @@ export function ShareControl({
         </form>
       ) : (
         <button
+          id={variant === "detail" ? "annotation-share-action" : undefined}
           className={variant === "detail" ? "public-button public-button-secondary" : "card-share-button"}
           type="button"
           aria-pressed="false"

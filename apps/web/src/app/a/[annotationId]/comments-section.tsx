@@ -16,21 +16,21 @@ import {
 } from "@/lib/data/social-query";
 import { getInitial } from "@/lib/public-content";
 import { createClient } from "@/lib/supabase/client";
-import { ProviderSignInActions } from "../../provider-sign-in-actions";
+import { useAnnotationActionAuth } from "../../annotation-action-auth";
 import { TextWithLogoMark } from "../../logo-mark";
 
 export function CommentsSection({
   annotationId,
   currentUserId,
   initialPage,
-  returnTo,
 }: {
   annotationId: string;
   currentUserId: string | null;
   initialPage: PublicCommentPage | null;
-  returnTo: string;
 }) {
   const router = useRouter();
+  const actionAuth = useAnnotationActionAuth();
+  const resumeComment = Boolean(currentUserId) && actionAuth?.resumeIntent === "comment";
   const postInFlight = useRef(false);
   const deleteInFlight = useRef(false);
   const successRef = useRef<HTMLParagraphElement>(null);
@@ -48,6 +48,13 @@ export function CommentsSection({
   useEffect(() => {
     if (success) successRef.current?.focus();
   }, [success]);
+
+  useEffect(() => {
+    if (!resumeComment) return;
+    const node = document.getElementById("comment-body");
+    node?.scrollIntoView({ block: "center" });
+    node?.focus();
+  }, [resumeComment]);
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
@@ -200,7 +207,7 @@ export function CommentsSection({
         </p>
       )}
 
-      <div className="comment-composer">
+      <div className={resumeComment ? "comment-composer annotation-action-resume" : "comment-composer"}>
         <h3>Add a comment</h3>
         {currentUserId ? (
           <form onSubmit={submit} noValidate>
@@ -232,14 +239,44 @@ export function CommentsSection({
             </div>
           </form>
         ) : (
-          <div className="comment-sign-in">
-            <p>Sign in to join the discussion.</p>
-            <ProviderSignInActions
-              returnTo={returnTo}
-              googleLabel="Continue with Google"
-              xLabel="Continue with X"
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              actionAuth?.requestSignIn("comment");
+            }}
+          >
+            <label htmlFor="comment-body">Comment</label>
+            <textarea
+              id="comment-body"
+              name="commentBody"
+              rows={5}
+              readOnly
+              value=""
+              aria-haspopup="dialog"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                actionAuth?.requestSignIn("comment");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  actionAuth?.requestSignIn("comment");
+                }
+              }}
             />
-          </div>
+            <div className="comment-form-footer">
+              <span className="field-count" aria-live="polite">
+                0 / {COMMENT_BODY_LIMIT.toLocaleString()}
+              </span>
+              <button
+                className="public-button public-button-primary"
+                type="submit"
+                aria-haspopup="dialog"
+              >
+                Post comment
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </section>

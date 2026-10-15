@@ -248,7 +248,7 @@ Annotated is currently offered worldwide as a free beta. You must be at least 18
 - ${ratingScaleSentence()}
 - ${SOURCES_GUIDE}
 - ${CONSENSUS_GUIDE}
-- A fact-check with a verdict and a quoted passage includes schema.org ClaimReview JSON-LD. claimReviewed is the quoted passage, trimmed. reviewRating.alternateName is the verdict label shown on the page. The author is a Person or an Organization, with the public profile URL. itemReviewed is a Claim whose appearance points at the source URL. citation is the source links. Other annotations use a Comment, or no structured data when a canonical URL is unavailable.
+- A fact-check with a verdict and a quoted passage includes schema.org ClaimReview JSON-LD. claimReviewed is the quoted passage, shortened to about 75 characters on a word boundary with an ellipsis. The full quote stays in the passage on the page. reviewRating.alternateName is the verdict label shown on the page. The author is a Person or an Organization, with the public profile URL. itemReviewed is a Claim whose appearance points at the source URL. citation is the source links. Other annotations use a Comment, or no structured data when a canonical URL is unavailable.
 
 ## URL patterns
 

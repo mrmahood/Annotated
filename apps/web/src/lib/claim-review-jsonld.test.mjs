@@ -8,7 +8,9 @@ import {
   CLAIM_REVIEW_RATINGS,
   CLAIM_REVIEW_WORST_RATING,
   claimReviewRatingEntries,
+  CLAIM_REVIEWED_MAX_LENGTH,
   getAnnotationStructuredData,
+  shortenClaimReviewed,
 } from "./claim-review-jsonld.ts";
 import { serializeJsonLd } from "./json-ld.ts";
 
@@ -136,6 +138,42 @@ test("author is an Organization for a desk name and a Person otherwise", () => {
   assert.equal(annotationAuthorType("Reader One"), "Person");
 });
 
+test("claimReviewed stays within about 75 characters and cuts on a word boundary", () => {
+  assert.equal(CLAIM_REVIEWED_MAX_LENGTH, 75);
+  assert.equal(shortenClaimReviewed("The speaker said <the claim>."), "The speaker said <the claim>.");
+  assert.equal(shortenClaimReviewed("x".repeat(75)), "x".repeat(75));
+  assert.equal(
+    shortenClaimReviewed("Research in the US suggests a typical data centre consumes around 300,000 gallons"),
+    "Research in the US suggests a typical data centre consumes around 300,000…",
+  );
+  const shortened = shortenClaimReviewed(FACTDESK_PASSAGE);
+  assert.equal(shortened, "Research in the US suggests a typical data centre consumes around 300,000…");
+  assert.ok(shortened.length <= CLAIM_REVIEWED_MAX_LENGTH);
+  assert.equal(shortened.endsWith("…"), true);
+  assert.equal(shortened.slice(0, -1).includes(" "), true);
+  assert.equal(/[^\s]…$/.test(shortened), true);
+  assert.equal(shortenClaimReviewed("a".repeat(80)).length, CLAIM_REVIEWED_MAX_LENGTH);
+  assert.equal(shortenClaimReviewed("a".repeat(80)).endsWith("…"), true);
+});
+
+test("claimReviewed does not add a second ellipsis when the cut already ends in one", () => {
+  const trailingDots = `Quoted claim ends here... ${"x".repeat(80)}`;
+  const dots = shortenClaimReviewed(trailingDots);
+  assert.equal(dots, "Quoted claim ends here...");
+  assert.equal(dots.endsWith("..."), true);
+  assert.equal(dots.includes("...…"), false);
+  assert.ok(dots.length <= CLAIM_REVIEWED_MAX_LENGTH);
+
+  const trailingEllipsis = `Quoted claim ends here… ${"x".repeat(80)}`;
+  const ellipsis = shortenClaimReviewed(trailingEllipsis);
+  assert.equal(ellipsis, "Quoted claim ends here…");
+  assert.equal(ellipsis.endsWith("……"), false);
+  assert.ok(ellipsis.length <= CLAIM_REVIEWED_MAX_LENGTH);
+
+  const stillCut = shortenClaimReviewed(`Quoted claim ends here. ${"x".repeat(80)}`);
+  assert.equal(stillCut, "Quoted claim ends here.…");
+});
+
 test("production fact-checks emit ClaimReview for both public URL shapes", () => {
   const documents = withOrigin(() => ({
     factdesk: getAnnotationStructuredData(productionClaimReviewAnnotations.factdesk),
@@ -147,7 +185,11 @@ test("production fact-checks emit ClaimReview for both public URL shapes", () =>
     documents.factdesk.url,
     `${ORIGIN}/factdesk/the-island-where-locals-say-data-centres-are-taking-their-water-99ceece3`,
   );
-  assert.equal(documents.factdesk.claimReviewed, FACTDESK_PASSAGE);
+  assert.equal(
+    documents.factdesk.claimReviewed,
+    "Research in the US suggests a typical data centre consumes around 300,000…",
+  );
+  assert.notEqual(documents.factdesk.claimReviewed, FACTDESK_PASSAGE);
   assert.equal(documents.factdesk.datePublished, "2026-10-13T06:41:17.207Z");
   assert.deepEqual(documents.factdesk.author, {
     "@type": "Organization",
@@ -180,7 +222,11 @@ test("production fact-checks emit ClaimReview for both public URL shapes", () =>
     documents.matt.url,
     `${ORIGIN}/matt-mahood-85fdb29c/the-island-where-locals-say-data-centres-are-taking-their-water-f4ea2383`,
   );
-  assert.equal(documents.matt.claimReviewed, MATT_PASSAGE);
+  assert.equal(
+    documents.matt.claimReviewed,
+    "\"Not a single drop has come through our taps for the last three months...",
+  );
+  assert.notEqual(documents.matt.claimReviewed, MATT_PASSAGE);
   assert.equal(documents.matt.author["@type"], "Person");
   assert.equal(documents.matt.author.name, "Matt Mahood");
   assert.equal(documents.matt.author.url, `${ORIGIN}/p/85fdb29c-83e0-40b0-baf0-4795bcccaddb`);
@@ -283,5 +329,6 @@ test("script serialization escapes < so a passage cannot close the tag", async (
   assert.doesNotMatch(component, /JSON\.stringify/);
   assert.match(page, /getAnnotationStructuredData/);
   assert.match(page, /<JsonLd /);
+  assert.match(page, /highlighted-quote">\{annotation\.selectedText\}/);
   assert.doesNotMatch(page, /dangerouslySetInnerHTML/);
 });
