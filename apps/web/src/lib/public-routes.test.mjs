@@ -157,7 +157,7 @@ test("emits exact canonical metadata without commentary, passage, or media crede
     const metadata = getPublicAnnotationMetadata(ARTICLE);
     assert.equal(metadata.alternates.canonical, "http://localhost:3000/reader-one/source-title");
     assert.equal(metadata.openGraph.url, "http://localhost:3000/reader-one/source-title");
-    assert.equal(metadata.twitter.card, "summary");
+    assert.equal(metadata.twitter.card, "summary_large_image");
     const serialized = JSON.stringify(metadata);
     assert.doesNotMatch(serialized, /Private-to-metadata commentary marker|Selected passage marker/);
     assert.doesNotMatch(serialized, /signed|storage_path|transcript/i);
