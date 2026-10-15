@@ -90,14 +90,14 @@ test("the public demo page is read-only, linked from the hero, and has an OG ima
   assert.match(page, /twitter: \{ images: \[demoImage\] \}/);
   assert.equal(DEMO_PAGE_TITLE, "Annotated demo: the fact-check layer for the web");
   assert.match(experience, /\{DEMO_VALUE_PROP\}/);
-  assert.match(experience, /Watch the 90-second extension demo/);
+  assert.match(experience, /Watch the 73\.8-second extension demo/);
   assert.match(experience, /href="\/demo\.mp4"/);
   assert.doesNotMatch(experience, /<video/);
   const demoVideo = await readFile(new URL("../../public/demo.mp4", import.meta.url));
-  assert.equal(demoVideo.byteLength, 5_099_592);
+  assert.equal(demoVideo.byteLength, 3_824_312);
   assert.equal(
     createHash("sha256").update(demoVideo).digest("hex"),
-    "fe7fa4f370a7131feb8c175f2b77782406162efa257f8b697cb027bebf42afa4",
+    "3240d4a94e03ba66edd6e6dbeef85346d2181395f1c16d4616332451ae88eb9c",
   );
   assert.doesNotMatch(surface, /<video/);
   assert.equal(
