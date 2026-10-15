@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import { FEED_LEDE } from "@/lib/discoverability";
+import { SITE_SHARE_IMAGE } from "@/lib/share-image";
 import {
   APPEARANCE_COOKIE_NAME,
   getAppearanceBootstrapScript,
@@ -36,6 +37,13 @@ export const metadata: Metadata = {
   ...(siteOrigin ? { metadataBase: new URL(siteOrigin) } : {}),
   title: "Annotated",
   description: FEED_LEDE,
+  openGraph: {
+    images: [SITE_SHARE_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: [SITE_SHARE_IMAGE],
+  },
 };
 
 export default async function RootLayout({

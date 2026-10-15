@@ -6,6 +6,7 @@ import {
 } from "@annotated/shared/profile-handle";
 import type { PublicAnnotation } from "@/lib/data/public-annotation-model";
 import { PROD_WEB_APP_ORIGIN } from "./extension-install.ts";
+import { shareImagesForAnnotation } from "./share-image.ts";
 
 const ANNOTATION_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -121,6 +122,9 @@ export function getPublicAnnotationMetadata(annotation: PublicAnnotation): Metad
     ? getConfiguredPublicPageUrl(canonicalPath)
     : undefined;
 
+  // No article image is stored. An X avatar is never substituted here.
+  const images = shareImagesForAnnotation(null);
+
   return {
     title,
     description,
@@ -131,11 +135,13 @@ export function getPublicAnnotationMetadata(annotation: PublicAnnotation): Metad
       description,
       publishedTime: annotation.publishedAt,
       ...(publicPageUrl ? { url: publicPageUrl } : {}),
+      images,
     },
     twitter: {
-      card: "summary",
+      card: "summary_large_image",
       title,
       description,
+      images,
     },
   };
 }
