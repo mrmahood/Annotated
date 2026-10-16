@@ -1,6 +1,6 @@
 # Public annotation
 
-A public annotation page shows one published annotation: the author, the commentary, the source it points at, and comments. A note may also show a type label, a verdict, a Sources region, and a Consensus region. `File a claim` and `Post to X` are on the page and must stay unclicked. Signed-out visitors can read it. Canonical URLs look like `/[creatorHandle]/[annotationSlug]`. `/a/[annotationId]` remains a compatibility URL.
+A public annotation page shows one published annotation: the author, the commentary, the source it points at, and comments. A note may also show a type label, a verdict, a Sources region, and a Consensus region. `File a claim` and `Post to X` are on the page and must stay unclicked. Signed-out visitors can read it. Share, bookmark, vote, and comment use one panel headed `Sign in to share, save, vote, or comment`. Follow in the author row uses `Sign in to follow`. Canonical URLs look like `/[creatorHandle]/[annotationSlug]`. `/a/[annotationId]` remains a compatibility URL.
 
 ## Sub-features
 
@@ -25,10 +25,10 @@ Preconditions:
 
 - **Open the first card.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive public-annotation`. The command loads `/`, records the first `View annotation` href, and follows that link.
 - **Land on the detail page.** The final URL stays on the launched origin. The path is either `/{handle}/{slug}` or `/a/{annotationId}`. The document title starts with `Annotation on `.
-- **See the source and the discussion.** A link named `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source` is visible. The heading `Comments` is visible. The command does not activate the source link.
-- **Proof.** `loaded.png` is the feed before the click. `result.png` is the detail page. `result.aria.txt` and `notes.md` record the href that was opened and the final path.
+- **See the source and the discussion.** A link named `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source` is visible. The heading `Comments` is visible. The heading `Sign in to share, save, vote, or comment` is visible, and the button `Sign in to follow` is visible. The command does not activate the source link, the sign-in panel, or Follow.
+- **Proof.** `loaded.png` is the feed before the click. `result.png` is the detail page. `result.aria.txt` and `notes.md` record the href that was opened, the final path, and whether the sign-in panel and `Sign in to follow` were visible.
 
-Exit 1 if the feed has no `View annotation` link or the detail title does not start with `Annotation on `.
+Exit 1 if the feed has no `View annotation` link, the detail title does not start with `Annotation on `, the source link is missing, the sign-in panel heading is missing, or `Sign in to follow` is missing.
 
 ## Gotchas
 
@@ -36,5 +36,6 @@ Exit 1 if the feed has no `View annotation` link or the detail title does not st
 - `/a/{annotationId}` often redirects to the canonical path. Assert the document the browser settles on, not the URL before the redirect.
 - Some annotations lead with a visible title and some with a visually hidden `Annotation` heading. The document title prefix is the stable check.
 - Comments may be empty (`No comments yet. Start the conversation.`) or an alert (`Comments are temporarily unavailable.`). The `Comments` heading is still required.
-- Share, bookmark, vote, follow, and comment composer actions ask a signed-out visitor to continue with Google or X. Do not click them.
+- The signed-out panel `Sign in to share, save, vote, or comment` sits above Share, Bookmark, Votes, and Comments, with `Continue with Google` and `Continue with X`. Share, Bookmark, Upvote, Downvote, and Post comment open that same panel in a dialog and return with `?intent=`. Do not click the panel, those controls, or the provider buttons.
+- Follow in the author row is `Sign in to follow` and `Continue with X`. Do not click them.
 - Do not click `File a claim`, `Post to X`, or a control that marks a source helpful. Those write. The drive checks the source link and the `Comments` heading, not a particular verdict.

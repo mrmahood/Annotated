@@ -565,10 +565,13 @@ async function drivePublicAnnotation({ page, state, dir }) {
     name: /^(Open clip on YouTube|Open clip on TikTok|Open clip on Spotify|Open original source|View original source)/,
   });
   const sourceCount = await source.count();
+  const actionSignIn = await page.getByRole("heading", { name: "Sign in to share, save, vote, or comment" }).count();
+  const followSignIn = await page.getByRole("button", { name: "Sign in to follow" }).count();
   await shot(page, join(dir, "result.png"));
   writeFileSync(join(dir, "result.aria.txt"), await page.locator("main").ariaSnapshot());
   const path = new URL(page.url()).pathname;
-  const pass = title.startsWith("Annotation on ") && sourceCount > 0 && (path.startsWith("/a/") || /^\/[^/]+\/[^/]+$/.test(path));
+  const pass = title.startsWith("Annotation on ") && sourceCount > 0 && actionSignIn > 0 && followSignIn > 0
+    && (path.startsWith("/a/") || /^\/[^/]+\/[^/]+$/.test(path));
   writeNotes(dir, [
     "# Proof: public-annotation",
     "",
@@ -579,7 +582,9 @@ async function drivePublicAnnotation({ page, state, dir }) {
     `- Title: ${title}`,
     `- Source link visible: ${sourceCount > 0 ? "yes" : "no"}`,
     `- Comments heading visible: yes`,
-    `- Side effects: none. Source link was not opened.`,
+    `- Sign-in panel heading visible: ${actionSignIn > 0 ? "yes" : "no"}`,
+    `- Sign in to follow visible: ${followSignIn > 0 ? "yes" : "no"}`,
+    `- Side effects: none. Source link, sign-in panel, and Follow were not activated.`,
     `- Result: ${pass ? "pass" : "fail"}`,
   ]);
   if (!pass) throw new Error("public-annotation proof failed. Evidence was kept.");

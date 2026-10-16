@@ -85,7 +85,7 @@ node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive authenti
 Stable handles used by the public drives:
 
 - Home: title `Annotated: the fact-check layer for the web`, list `[aria-label="Published annotations"]`, link `View annotation`, nav `Primary navigation`, link `Annotated home`.
-- Annotation detail: title prefix `Annotation on `, heading `Comments`, source link name matching `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source`. Do not follow that source link.
+- Annotation detail: title prefix `Annotation on `, heading `Comments`, heading `Sign in to share, save, vote, or comment`, button `Sign in to follow`, source link name matching `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source`. Do not follow that source link or click sign-in.
 - Legal: `/legal` heading `Policies for Annotated`, `/privacy` heading `Privacy Policy`, `/terms` heading `Terms of Service`, footer nav `Legal`.
 - Trending: `/trending`, title `What’s Trending | Annotated`, heading `This week’s most active annotations.`
 - Who to Follow: `/who-to-follow`, heading `Accounts worth following.`
