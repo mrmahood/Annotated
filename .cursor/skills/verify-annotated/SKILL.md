@@ -85,9 +85,9 @@ node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive authenti
 Stable handles used by the public drives:
 
 - Home: title `Annotated: the fact-check layer for the web`, list `[aria-label="Published annotations"]`, link `View annotation`, nav `Primary navigation`, link `Annotated home`.
-- Annotation detail: title prefix `Annotation on `, heading `Comments`, source link name matching `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source`. Do not follow that source link.
+- Annotation detail: title prefix `Annotation on `, heading `Comments`, heading `Sign in to share, save, vote, or comment`, button `Sign in to follow`, source link name matching `Open clip on YouTube`, `Open clip on TikTok`, `Open clip on Spotify`, `Open original source`, or `View original source`. Do not follow that source link or click sign-in.
 - Legal: `/legal` heading `Policies for Annotated`, `/privacy` heading `Privacy Policy`, `/terms` heading `Terms of Service`, footer nav `Legal`.
-- Trending: `/trending`, title `What’s Trending`, heading `This week’s most active annotations.`
+- Trending: `/trending`, title `What’s Trending | Annotated`, heading `This week’s most active annotations.`
 - Who to Follow: `/who-to-follow`, heading `Accounts worth following.`
 - Signed-out Me: `/me`, heading `Sign in to see your bookmarks.`
 - Signed-in Me: `/me`, region `Public handle`, link `Send feedback`, button `Sign out`. Do not click those controls.
@@ -152,7 +152,7 @@ pnpm install --frozen-lockfile
 
 On first `drive` of a browser feature, the helper installs Playwright and Chromium under `/tmp/verify-annotated/tools` (not in the repo) and sets `PLAYWRIGHT_BROWSERS_PATH` to that tree. It does not add a repository dependency and does not print secrets.
 
-Exit codes: `0` ready or card proof, `1` launch, doctor, or drive failure, `2` `pass-empty` for a correctly rendered Trending or Who to Follow quiet page, `3` verified-unreachable. `chrome-extension` exits `0` or `1`. `authenticated-me` is `3` until the service-role key for that target is set. Staging preview origins use `SUPABASE_STAGING_SERVICE_ROLE_KEY` and the public Staging URL and publishable key.
+Exit codes: `0` ready or card proof, `1` launch, doctor, or drive failure, `2` `pass-empty` for a correctly rendered Trending or Who to Follow quiet page, `3` verified-unreachable. `chrome-extension` exits `0` or `1`. `authenticated-me` is `3` until that target's service-role key, Supabase URL, and publishable key are set. A non-staging target does not borrow the Staging defaults. Staging preview origins use `SUPABASE_STAGING_SERVICE_ROLE_KEY` and the public Staging URL and publishable key.
 
 `/me` treats a visitor as signed in when `getUser()` returns a user id from the Supabase SSR cookies. The Google provider check lives only in the OAuth callback at `apps/web/src/lib/auth/auth-boundary.ts`. This drive does not open that callback. It asks the admin API for a magic-link token for the existing user with that email, exchanges the token with the publishable key, and injects the cookies `@supabase/ssr` stored. A Google-created user is reused. The helper does not run when `generate_link` is for any other email. If verify fails, the drive exits 1 with `mint_verify_failed` and stops. Do not set a password and do not automate Google.
 

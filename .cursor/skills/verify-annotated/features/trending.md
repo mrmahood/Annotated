@@ -21,7 +21,7 @@ Preconditions:
 - `verify-annotated doctor` prints `ready: yes`.
 - The visitor is signed out.
 
-- **Open trending.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive trending`. The path is `/trending`. The document title is `What’s Trending | Annotated`. The heading `This week’s most active annotations.` is visible. `Trending` in `Primary navigation` is the current page.
+- **Open trending.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive trending`. The path is `/trending`. The document title is `What’s Trending | Annotated`. The heading `This week’s most active annotations.` is visible. The header marks `Trending` as the current page. This drive asserts the title, heading, and body.
 - **Read the body.** One of these is visible: a list named `Trending annotations` with a `View annotation` link, the heading `Not enough trending activity yet.`, or the alert heading `Trending is temporarily unavailable.`
 - **Proof.** A card proof requires the list `Trending annotations` and exits 0. The heading `Not enough trending activity yet.` with the right title and HTTP 2xx is `pass-empty` and exits 2. The alert `Trending is temporarily unavailable.`, a wrong title, or a non-2xx response exits 1. `result.png` and `result.aria.txt` still record what rendered.
 
