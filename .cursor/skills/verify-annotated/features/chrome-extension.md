@@ -1,6 +1,6 @@
 # Chrome extension
 
-The Chrome side panel is where a person creates an annotation on the tab they are reading. The panel's top buttons are `Create`, `Feed`, and `Me`. `Create` for a YouTube watch page trims with drag handles and `30s` / `60s` presets. There are no typed START/END fields. Publish clip stays disabled until the range is from 1 to 90 seconds and the other publish gates are open. This drive stops before publishing.
+The Chrome side panel is where a person creates an annotation on the tab they are reading. The panel's top buttons are `Create`, `Feed`, and `Me`. `Create` for a YouTube watch page trims with drag handles and `30s` / `60s` presets. There are no typed START/END fields. While signed out, Publish clip is absent. While signed in, it stays disabled until the range is from 1 to 90 seconds and the other publish gates are open. This drive stops before publishing.
 
 ## Sub-features
 
@@ -13,7 +13,7 @@ The Chrome side panel is where a person creates an annotation on the tab they ar
 
 - Build the unpacked extension, then open the side panel directly at `chrome-extension://<id>/sidepanel.html` while a YouTube watch tab is active.
 - The in-product install reminder on the public site is titled `Install for Chrome` and offers `Get sidebar`. The site states that Annotated is not on the Chrome Web Store.
-- Inside the panel, `Create` is the connected-page view. Choose `Video` or `Audio` when the source supports it.
+- Inside the panel, `Create` is the connected-page view. The mode control offers `Text`, `Video`, and `Audio`. Choose `Video` or `Audio` when the source supports it.
 
 ## Driving it with verify-annotated
 
@@ -26,14 +26,16 @@ Preconditions:
 - **Load and drive Create.** Run `node .cursor/skills/verify-annotated/helpers/verify-annotated.mjs drive chrome-extension`. Playwright Chromium launches with `--load-extension`. Headless mode is tried first; if the extension service worker does not start, the drive retries under Xvfb. The command resolves the 32-character extension id, opens the YouTube watch page `https://www.youtube.com/watch?v=aqz-KE-bpKQ`, then opens `chrome-extension://<id>/sidepanel.html`. The YouTube tab stays in front so surf-follow keeps that tab as the connected source. Panel actions run inside the page so the side-panel tab is not focused.
 - **Presets and drag.** `30s` must produce a 30-second span and `60s` a 60-second span. Dragging the end handle past 90 seconds must leave a span of at most 90 seconds and at least 1 second. The readout uses an en dash. Inputs named START or END, other than the `Clip start` and `Clip end` range handles, fail the proof.
 - **Publish gate.** With no valid range, or without commentary, Publish clip must not be enabled. After a valid range and commentary, Publish clip is enabled only when the panel is signed in and a player is selected. This drive stays signed out, so the button is absent and the proof records that. The drive does not click it and does not mint a session.
-- **Audio, when the fixture connects.** A local page with an `<audio>` element and podcast metadata is opened after YouTube. The same trim checks run. If Audio Create never becomes ready, the notes say `audio: unavailable` and the YouTube result still stands.
+- **Audio, when the fixture connects.** A local page with an `<audio>` element and podcast metadata is opened after YouTube. The same trim checks run. The audio surface includes a `Voice note` region with `Enable microphone`. Do not click it. If Audio Create never becomes ready, the notes say `Audio source: unavailable` and the YouTube result still stands.
 
 Exit 0 is a pass. Exit 1 is a failure, including a missing build. The command does not exit 3.
 
 ## Gotchas
 
 - Keep the source tab active. Focusing `sidepanel.html` makes surf-follow retarget the extension URL, and Create loses the player.
-- A YouTube player that never becomes visible fails the drive. Do not substitute a different page for the YouTube check.
+- A YouTube player that never becomes visible fails the drive. When the watch page shows a player but attaches no media source, the harness stays on that same tab and supplies a sample video longer than 90 seconds. Notes then include `YouTube player: sample`. Do not open a different site for the YouTube check.
+- The audio `Voice note` region can show `Enable microphone` while the trim checks pass. Do not click it, and do not open the microphone permission page.
+- The panel can show an `Update available` banner with `What's new` and `Dismiss update notice`. This drive does not click either control. A missing banner is not a failure. The public changelog is `/whats-new`, listed in the feature map as not its own feature file.
 - The 90-second ceiling is enforced by the clip handles. A drag that lands longer than 90 seconds is a product failure.
 - Publishing is a real write. This drive must stop before `Publish clip`.
 - Browser restart cannot recover an in-memory recording. This skill does not try.
