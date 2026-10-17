@@ -417,6 +417,9 @@ authorization/dispatch calls, but their isolate resource limits explicitly push
 CPU-intensive work to background infrastructure; see Supabase's
 [Edge Function CPU guidance](https://supabase.com/docs/guides/troubleshooting/edge-function-cpu-limits).
 Vercel/Next routes likewise authorize and dispatch but do not transcode.
+Upload completion starts the existing dispatcher Cloud Run job with an empty
+`jobs:run` body. The scheduled dispatcher and reconciler remain the safety net
+for a missed signal; see `docs/architecture/phase-c-c6-staging-runtime.md`.
 
 The worker receives no browser or user credentials. It uses a worker service
 identity and server-only Supabase credential, downloads exactly the allocated

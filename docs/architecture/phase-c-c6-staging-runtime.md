@@ -553,6 +553,37 @@ or extension/web client.
   recorded, both checksum-identical disposable local 90-second artifacts were
   removed.
 
+## Upload-triggered dispatch
+
+Status: approved 2026-10-17. This section records the application path. It does
+not change Cloud Scheduler, IAM, secrets, or Production data.
+
+Clip completion from the web app and the extension is one route,
+`POST /api/media/upload/complete`. The route verifies the private raw object
+and commits `processing` / `queued`. It does not transcode.
+
+That route is the primary dispatch signal. After the queued write commits, and
+again when a completion retry finds the row already queued, it calls Cloud Run
+`jobs:run` on the dispatcher job with an empty body. Staging Supabase
+`nkkunkwirvfwhmpwonqz` selects `annotated-media-dispatcher-staging`. Production
+Supabase `vnxjktpdzmykmqrqwvks` selects `annotated-media-dispatcher-production`.
+Project `annotated-504301` and region `us-east4` are fixed. The caller is
+service account `annotated-upload-dispatch`, with `roles/run.invoker` on those
+two dispatcher jobs only. The route does not hold the dispatch HMAC secret and
+does not send container overrides, so it cannot start the worker directly.
+
+The signal stays off unless `ANNOTATED_MEDIA_DISPATCH_TRIGGER=on` and the
+service-account private key is present in server environment. A missing
+setting, a bad key, or a Cloud Run error is logged as a bounded code. The
+upload response remains `processing` / `queued`. The dispatcher lists due
+candidates, and `private.claim_annotation_media_processing` remains the lease,
+so a repeated signal cannot take a second lease.
+
+Cloud Scheduler stays as the safety net for a missed signal. After the trigger
+is live, the production cadence is dispatcher `0 */6 * * *` and reconciler
+`30 */6 * * *`. Staging schedules stay paused. Applying those schedules is an
+owner step and is outside this change.
+
 ## Stop and rollback
 
 Create schedules paused. Stop on an unexpected project/account/region, missing
