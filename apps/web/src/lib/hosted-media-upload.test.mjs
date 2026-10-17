@@ -355,6 +355,12 @@ test('routes use short-lived no-upsert authorization and transition only to proc
   assert.match(complete, /processing_status: 'processing'/);
   assert.match(complete, /processing_stage: 'queued'/);
   assert.match(complete, /verifyUploadedRawObject/);
+  assert.match(complete, /await signalQueuedMediaDispatch\(\)/);
+  assert.doesNotMatch(complete, /run\.googleapis|containerOverrides|ANNOTATED_DISPATCH_SECRET|BEGIN PRIVATE KEY/);
+  const updateAt = complete.indexOf("processing_status: 'processing'");
+  const queuedSignals = [...complete.matchAll(/return respondQueued\(\)/g)].map((match) => match.index ?? -1);
+  assert.deepEqual(queuedSignals.map((index) => index < updateAt), [true, false]);
+  assert.ok(complete.indexOf('await signalQueuedMediaDispatch()') < complete.indexOf("return jsonResponse({ processingStatus: 'processing', processingStage: 'queued' })"));
   assert.match(authorize, /attempt_count: 0/);
   assert.match(authorize + complete, /RECAPTURE_REQUIRED/);
   assert.doesNotMatch(authorize + complete, /serviceRoleKey.*jsonResponse|SUPABASE_SERVICE_ROLE_KEY.*jsonResponse/);
