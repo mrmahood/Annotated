@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { classifyQuietList } from "./drive-outcome.mjs";
 import { driveChromeExtensionCommand } from "./drive-chrome-extension.mjs";
 import {
+  PROD_PUBLIC_ORIGIN,
   createSupabaseMintPort,
   isStagingPreviewOrigin,
   mintDedicatedTestSession,
@@ -32,7 +33,7 @@ const STATE_PATH = join(TMP_ROOT, "state.json");
 const LOG_DIR = join(TMP_ROOT, "logs");
 const TOOLS_DIR = join(TMP_ROOT, "tools");
 const BROWSERS_DIR = join(TMP_ROOT, "ms-playwright");
-const PROD_URL = "https://annotated.cbandcoop.com";
+const PROD_URL = PROD_PUBLIC_ORIGIN;
 const LOCAL_URL = "http://127.0.0.1:3000";
 const LOCAL_PORT = 3000;
 const FEED_TITLE = "Annotated: the fact-check layer for the web";
@@ -565,10 +566,13 @@ async function drivePublicAnnotation({ page, state, dir }) {
     name: /^(Open clip on YouTube|Open clip on TikTok|Open clip on Spotify|Open original source|View original source)/,
   });
   const sourceCount = await source.count();
+  const actionSignIn = await page.getByRole("heading", { name: "Sign in to share, save, vote, or comment" }).count();
+  const followSignIn = await page.getByRole("button", { name: "Sign in to follow" }).count();
   await shot(page, join(dir, "result.png"));
   writeFileSync(join(dir, "result.aria.txt"), await page.locator("main").ariaSnapshot());
   const path = new URL(page.url()).pathname;
-  const pass = title.startsWith("Annotation on ") && sourceCount > 0 && (path.startsWith("/a/") || /^\/[^/]+\/[^/]+$/.test(path));
+  const pass = title.startsWith("Annotation on ") && sourceCount > 0 && actionSignIn > 0 && followSignIn > 0
+    && (path.startsWith("/a/") || /^\/[^/]+\/[^/]+$/.test(path));
   writeNotes(dir, [
     "# Proof: public-annotation",
     "",
@@ -579,7 +583,9 @@ async function drivePublicAnnotation({ page, state, dir }) {
     `- Title: ${title}`,
     `- Source link visible: ${sourceCount > 0 ? "yes" : "no"}`,
     `- Comments heading visible: yes`,
-    `- Side effects: none. Source link was not opened.`,
+    `- Sign-in panel heading visible: ${actionSignIn > 0 ? "yes" : "no"}`,
+    `- Sign in to follow visible: ${followSignIn > 0 ? "yes" : "no"}`,
+    `- Side effects: none. Source link, sign-in panel, and Follow were not activated.`,
     `- Result: ${pass ? "pass" : "fail"}`,
   ]);
   if (!pass) throw new Error("public-annotation proof failed. Evidence was kept.");
@@ -589,6 +595,7 @@ async function drivePublicAnnotation({ page, state, dir }) {
 async function driveLegal({ page, state, dir }) {
   const response = await page.goto(`${state.baseUrl}/legal`, { waitUntil: "domcontentloaded", timeout: 30000 });
   await page.getByRole("heading", { level: 1, name: "Policies for Annotated" }).waitFor({ timeout: 15000 });
+  const legalTitle = await page.title();
   const footer = page.getByRole("navigation", { name: "Legal" });
   const footerOk = await footer.getByRole("link", { name: "Privacy" }).count() > 0
     && await footer.getByRole("link", { name: "Terms" }).count() > 0
@@ -606,15 +613,15 @@ async function driveLegal({ page, state, dir }) {
   const termsTitle = await page.title();
   const agreement = await page.getByRole("link", { name: "Agreement to the terms" }).count();
   writeFileSync(join(dir, "terms.aria.txt"), await page.locator("main").ariaSnapshot());
-  const legalTitle = "Legal | Annotated";
-  const pass = response?.ok() && footerOk && privacyTitle === "Privacy Policy | Annotated" && who > 0
+  const pass = response?.ok() && legalTitle === "Legal | Annotated" && footerOk
+    && privacyTitle === "Privacy Policy | Annotated" && who > 0
     && termsTitle === "Terms of Service | Annotated" && agreement > 0;
   writeNotes(dir, [
     "# Proof: legal",
     "",
     `- Feature ID: legal`,
     `- Entry: GET /legal`,
-    `- Legal title expected: ${legalTitle}`,
+    `- Legal title: ${legalTitle}`,
     `- Footer Legal nav has Privacy, Terms, and Legal: ${footerOk ? "yes" : "no"}`,
     `- Privacy title: ${privacyTitle}`,
     `- Who operates Annotated link: ${who > 0 ? "yes" : "no"}`,
@@ -822,7 +829,9 @@ Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 
 Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
 chrome-extension exits 0 or 1. It loads apps/extension/.output/chrome-mv3 and does not need launch or doctor.
-authenticated-me exits 3 until the service-role key for that target is set.
+authenticated-me exits 3 until that target's service-role key is set. That key is never defaulted and is never printed.
+On https://annotated.cbandcoop.com, an unset NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) uses the production public value. Environment values override. Notes record only production-defaults, environment, or mixed.
+A local target does not receive those defaults and does not borrow the Staging defaults.
 A Staging preview origin uses SUPABASE_STAGING_SERVICE_ROLE_KEY and the public Staging URL and publishable key when those are unset.
 Mint that session directly with:
   node .cursor/skills/verify-annotated/helpers/mint-test-session.mjs --target https://annotated-staging-git-bounty-integration-matt-mahoods-projects.vercel.app
