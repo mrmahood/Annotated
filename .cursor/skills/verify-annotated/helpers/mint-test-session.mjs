@@ -12,6 +12,14 @@ export const STAGING_SUPABASE_URL = "https://nkkunkwirvfwhmpwonqz.supabase.co";
 export const STAGING_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_ZWqFkABY5Uvy34z55dVaLw_NLrzlUTr";
 export const STAGING_PROJECT_REF = "nkkunkwirvfwhmpwonqz";
 export const PRODUCTION_PROJECT_REF = "vnxjktpdzmykmqrqwvks";
+
+// Public values already shipped in the production web bundle. Used only when
+// the launched target is the production origin and the matching environment
+// variable is unset. The service-role key is never defaulted.
+export const PROD_PUBLIC_ORIGIN = "https://annotated.cbandcoop.com";
+export const PROD_SUPABASE_URL = `https://${PRODUCTION_PROJECT_REF}.supabase.co`;
+export const PROD_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_pL8NB1pSVzZut54ED_eMmg_0Pq8X3-y";
+
 export const STAGING_SITE_HOST = "annotated-staging.cbandcoop.com";
 export const STAGING_VERCEL_TEAM_SUFFIX = "-matt-mahoods-projects.vercel.app";
 export const STAGING_SESSION_PATH = "/tmp/verify-annotated/staging-session.json";
@@ -68,11 +76,14 @@ export function readMintEnv(env, options = {}) {
   const stagingTarget = isStagingPreviewOrigin(options.baseUrl || "");
   if (stagingTarget) return readStagingMintEnv(env);
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY || "";
-  const url = env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const publishableKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
   if (!serviceRoleKey) {
     return { ok: false, exitCode: 3, message: "set SUPABASE_SERVICE_ROLE_KEY" };
   }
+  const envUrl = env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const envPublishableKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const prodTarget = options.baseUrl === PROD_PUBLIC_ORIGIN;
+  const url = envUrl || (prodTarget ? PROD_SUPABASE_URL : "");
+  const publishableKey = envPublishableKey || (prodTarget ? PROD_SUPABASE_PUBLISHABLE_KEY : "");
   if (!url || !publishableKey) {
     return {
       ok: false,
@@ -80,7 +91,20 @@ export function readMintEnv(env, options = {}) {
       message: "set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
     };
   }
-  return { ok: true, url, serviceRoleKey, publishableKey, email: DEDICATED_TEST_EMAIL, publicConfig: "environment", project: "other" };
+  const publicConfig = envUrl && envPublishableKey
+    ? "environment"
+    : !envUrl && !envPublishableKey
+      ? "production-defaults"
+      : "mixed";
+  return {
+    ok: true,
+    url,
+    serviceRoleKey,
+    publishableKey,
+    email: DEDICATED_TEST_EMAIL,
+    publicConfig,
+    project: prodTarget ? "production" : "other",
+  };
 }
 
 function readStagingMintEnv(env) {

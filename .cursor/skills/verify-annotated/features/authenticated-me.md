@@ -21,7 +21,8 @@ Preconditions:
 
 - `verify-annotated doctor` prints `ready: yes`.
 - For a Staging preview origin, `SUPABASE_STAGING_SERVICE_ROLE_KEY` is in the environment. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) override the public Staging defaults `https://nkkunkwirvfwhmpwonqz.supabase.co` and `sb_publishable_ZWqFkABY5Uvy34z55dVaLw_NLrzlUTr`. `SUPABASE_SERVICE_ROLE_KEY` is not read. The helper refuses project `vnxjktpdzmykmqrqwvks`.
-- For any other target, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are in the environment. The helper never prints them.
+- For `https://annotated.cbandcoop.com`, `SUPABASE_SERVICE_ROLE_KEY` is in the environment. The helper never defaults that key and never prints it, a session token, or a cookie value. `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) override the public defaults. When either value is unset, the helper uses `https://vnxjktpdzmykmqrqwvks.supabase.co` and `sb_publishable_pL8NB1pSVzZut54ED_eMmg_0Pq8X3-y`.
+- For a local target, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are in the environment. The helper never prints them. A local target does not receive the production public defaults.
 - The only address the helper accepts is `cbandcooptest@gmail.com`. Do not pass another email.
 - Create still needs the extension loaded. See [Chrome extension](./chrome-extension.md).
 
@@ -32,7 +33,7 @@ Preconditions:
 
 ## Gotchas
 
-- Without `SUPABASE_SERVICE_ROLE_KEY` the drive stays exit 3. Do not paste a session into the skill or the evidence notes.
+- Without the service-role key for that target the drive stays exit 3. Do not paste a session, the service-role key, or a token into the skill or the evidence notes. On the production origin, notes record only `Public Supabase config: production-defaults`, `environment`, or `mixed`, and do not record key values. A Staging preview records `staging-defaults`, `environment`, or `mixed`.
 - `/me` accepts the Supabase cookie session from `getUser()`. The Google identity check runs only on the OAuth callback, which this drive does not open. If magic-link verify fails, stop at `mint_verify_failed`. Do not set a password and do not automate Google.
 - The helper may create the auth user when that email is missing. It must not create a second user, and it must not write bookmarks, comments, follows, or annotations.
 - Do not click `Sign in with Google` or `Continue with X`. Wall pass criteria live in [Me signed out](./me-signed-out.md).

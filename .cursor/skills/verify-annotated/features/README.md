@@ -27,7 +27,7 @@ This directory is the maintained source for verifying Annotated's user-facing be
 - Capture the user action and the resulting state, not only the final screen.
 - UI proof includes an ARIA snapshot and a screenshot with the page title or primary heading visible.
 - Record the feature ID, entry path, and run id with every artifact.
-- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable. On a non-staging target, `authenticated-me` stays there until `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`) are set. `chrome-extension` exits 0 or 1 and does not mint a session.
+- Report an unreachable path with the command that was run and the unmet precondition. Exit code 3 means verified-unreachable. `authenticated-me` stays there until that target's service-role key is set. The service-role key is never defaulted. On `https://annotated.cbandcoop.com`, an unset public Supabase URL or publishable key uses the production public default, and environment values override. A local target still requires `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_SUPABASE_ANON_KEY`). A Staging preview uses `SUPABASE_STAGING_SERVICE_ROLE_KEY` and its public Staging defaults. `chrome-extension` exits 0 or 1 and does not mint a session.
 - Do not report a skipped entry point as verified through a different path.
 - Exit 0 is a card or signed-in proof. Exit 2 is `pass-empty` for the documented Trending and Who to Follow quiet headings. An unavailable alert, a wrong title, or a 5xx is exit 1. Do not report `pass-empty` as populated content. The public feed's empty copy is still a failed proof.
 
@@ -49,7 +49,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - [Who to Follow](./who-to-follow.md) covers the signed-out suggestion list. An empty suggestion list is `pass-empty` (exit 2). Following stays behind sign-in and is not completed.
 - [Me signed out](./me-signed-out.md) covers the signed-out wall at `/me`: title `Bookmarks | Annotated`, headings `Bookmarks` and `Sign in to see your bookmarks.`, and `Sign in with Google`.
 - [Chrome extension](./chrome-extension.md) loads the unpacked side panel and drives YouTube Create. It exits 0 or 1 and does not click Publish clip. It does not need `launch` or `doctor`.
-- [Authenticated Me and Create](./authenticated-me.md) reads bookmarks and the public-handle region on `/me` for `cbandcooptest@gmail.com`. Without that target's service-role key and public Supabase config it exits 3. A Staging preview uses `SUPABASE_STAGING_SERVICE_ROLE_KEY`. Create stays on [Chrome extension](./chrome-extension.md). The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
+- [Authenticated Me and Create](./authenticated-me.md) reads bookmarks and the public-handle region on `/me` for `cbandcooptest@gmail.com`. Without that target's service-role key it exits 3. On `https://annotated.cbandcoop.com`, unset `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` use the production public values, and environment values override. A Staging preview uses `SUPABASE_STAGING_SERVICE_ROLE_KEY`. Create stays on [Chrome extension](./chrome-extension.md). The signed-out `/me` wall is [Me signed out](./me-signed-out.md).
 
 ## Not a feature file yet
 

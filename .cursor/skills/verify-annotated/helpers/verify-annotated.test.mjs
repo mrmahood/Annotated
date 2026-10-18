@@ -10,6 +10,9 @@ import {
 } from "./drive-chrome-extension.mjs";
 import {
   DEDICATED_TEST_EMAIL,
+  PROD_PUBLIC_ORIGIN,
+  PROD_SUPABASE_PUBLISHABLE_KEY,
+  PROD_SUPABASE_URL,
   PRODUCTION_PROJECT_REF,
   STAGING_PROJECT_REF,
   STAGING_SUPABASE_PUBLISHABLE_KEY,
@@ -108,6 +111,91 @@ test("service role without the project URL stays unreachable and hides the key",
   assert.equal(result.exitCode, 3);
   assert.equal(result.message, "set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
   assert.equal(result.message.includes(key), false);
+  assert.equal(result.message.includes(PROD_SUPABASE_PUBLISHABLE_KEY), false);
+  assert.equal("serviceRoleKey" in result, false);
+  assert.equal("publishableKey" in result, false);
+});
+
+test("a local target does not receive production public defaults", () => {
+  const key = "service-role-canary-value";
+  const result = readMintEnv(
+    { SUPABASE_SERVICE_ROLE_KEY: key },
+    { baseUrl: "http://127.0.0.1:3000" },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.message, "set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+  assert.equal(result.message.includes(key), false);
+  assert.equal(result.message.includes("sb_publishable_"), false);
+  assert.equal("publishableKey" in result, false);
+});
+
+test("production origin defaults unset public values and never the service role", () => {
+  const key = "service-role-canary-value";
+  const missingRole = readMintEnv({}, { baseUrl: PROD_PUBLIC_ORIGIN });
+  assert.equal(missingRole.ok, false);
+  assert.equal(missingRole.exitCode, 3);
+  assert.equal(missingRole.message, "set SUPABASE_SERVICE_ROLE_KEY");
+  assert.equal(missingRole.message.includes(PROD_SUPABASE_PUBLISHABLE_KEY), false);
+  assert.equal(missingRole.message.includes(PROD_SUPABASE_URL), false);
+  assert.equal("serviceRoleKey" in missingRole, false);
+  assert.equal("publishableKey" in missingRole, false);
+
+  const result = readMintEnv({ SUPABASE_SERVICE_ROLE_KEY: key }, { baseUrl: PROD_PUBLIC_ORIGIN });
+  assert.equal(result.ok, true);
+  assert.equal(result.url, "https://vnxjktpdzmykmqrqwvks.supabase.co");
+  assert.equal(result.url, PROD_SUPABASE_URL);
+  assert.equal(result.publishableKey, "sb_publishable_pL8NB1pSVzZut54ED_eMmg_0Pq8X3-y");
+  assert.equal(result.publishableKey, PROD_SUPABASE_PUBLISHABLE_KEY);
+  assert.equal(result.publishableKey.startsWith("sb_publishable_"), true);
+  assert.equal(result.serviceRoleKey, key);
+  assert.equal(result.publicConfig, "production-defaults");
+  assert.equal(result.project, "production");
+  assert.equal(result.publicConfig.includes(key), false);
+  assert.equal(result.publicConfig.includes(result.publishableKey), false);
+  assert.equal("message" in result, false);
+
+  const otherHost = readMintEnv(
+    { SUPABASE_SERVICE_ROLE_KEY: key },
+    { baseUrl: "https://annotated.cbandcoop.com.evil.example" },
+  );
+  assert.equal(otherHost.ok, false);
+  assert.equal(otherHost.message, "set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+  assert.equal("publishableKey" in otherHost, false);
+});
+
+test("environment public values override production defaults", () => {
+  const result = readMintEnv({
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-canary-value",
+    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable-canary-value",
+  }, { baseUrl: PROD_PUBLIC_ORIGIN });
+  assert.equal(result.ok, true);
+  assert.equal(result.url, "https://example.supabase.co");
+  assert.equal(result.publishableKey, "publishable-canary-value");
+  assert.equal(result.publicConfig, "environment");
+  assert.equal(result.project, "production");
+});
+
+test("an explicit public value on production overrides only that value", () => {
+  const urlOnly = readMintEnv({
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-canary-value",
+    NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+  }, { baseUrl: PROD_PUBLIC_ORIGIN });
+  assert.equal(urlOnly.ok, true);
+  assert.equal(urlOnly.url, "https://example.supabase.co");
+  assert.equal(urlOnly.publishableKey, PROD_SUPABASE_PUBLISHABLE_KEY);
+  assert.equal(urlOnly.publicConfig, "mixed");
+
+  const keyOnly = readMintEnv({
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-canary-value",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-canary-value",
+  }, { baseUrl: PROD_PUBLIC_ORIGIN });
+  assert.equal(keyOnly.ok, true);
+  assert.equal(keyOnly.url, PROD_SUPABASE_URL);
+  assert.equal(keyOnly.publishableKey, "anon-canary-value");
+  assert.equal(keyOnly.publicConfig, "mixed");
+  assert.equal(keyOnly.publicConfig.includes("anon-canary-value"), false);
 });
 
 test("anon key alias satisfies the publishable key input", () => {
@@ -118,7 +206,10 @@ test("anon key alias satisfies the publishable key input", () => {
   });
   assert.equal(result.ok, true);
   assert.equal(result.email, DEDICATED_TEST_EMAIL);
+  assert.equal(result.url, "https://example.supabase.co");
   assert.equal(result.publishableKey, "anon-canary-value");
+  assert.equal(result.publicConfig, "environment");
+  assert.equal(result.project, "other");
 });
 
 function jwtWithRef(ref) {

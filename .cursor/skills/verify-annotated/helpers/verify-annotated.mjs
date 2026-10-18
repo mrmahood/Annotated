@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { classifyQuietList } from "./drive-outcome.mjs";
 import { driveChromeExtensionCommand } from "./drive-chrome-extension.mjs";
 import {
+  PROD_PUBLIC_ORIGIN,
   createSupabaseMintPort,
   isStagingPreviewOrigin,
   mintDedicatedTestSession,
@@ -32,7 +33,7 @@ const STATE_PATH = join(TMP_ROOT, "state.json");
 const LOG_DIR = join(TMP_ROOT, "logs");
 const TOOLS_DIR = join(TMP_ROOT, "tools");
 const BROWSERS_DIR = join(TMP_ROOT, "ms-playwright");
-const PROD_URL = "https://annotated.cbandcoop.com";
+const PROD_URL = PROD_PUBLIC_ORIGIN;
 const LOCAL_URL = "http://127.0.0.1:3000";
 const LOCAL_PORT = 3000;
 const FEED_TITLE = "Annotated: the fact-check layer for the web";
@@ -828,8 +829,9 @@ Features: ${Object.keys(DRIVES).join(", ")}, chrome-extension, authenticated-me
 
 Exit codes: 0 pass, 1 fail, 2 pass-empty, 3 verified-unreachable.
 chrome-extension exits 0 or 1. It loads apps/extension/.output/chrome-mv3 and does not need launch or doctor.
-authenticated-me exits 3 until that target's service-role key, Supabase URL, and publishable key are set.
-A non-staging target does not borrow the Staging defaults.
+authenticated-me exits 3 until that target's service-role key is set. That key is never defaulted and is never printed.
+On https://annotated.cbandcoop.com, an unset NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY) uses the production public value. Environment values override. Notes record only production-defaults, environment, or mixed.
+A local target does not receive those defaults and does not borrow the Staging defaults.
 A Staging preview origin uses SUPABASE_STAGING_SERVICE_ROLE_KEY and the public Staging URL and publishable key when those are unset.
 Mint that session directly with:
   node .cursor/skills/verify-annotated/helpers/mint-test-session.mjs --target https://annotated-staging-git-bounty-integration-matt-mahoods-projects.vercel.app
