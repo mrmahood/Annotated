@@ -15,20 +15,16 @@ import {
   type MediaRow,
   HostedMediaApiError,
 } from '@/lib/hosted-media-upload';
-import { signalQueuedMediaDispatch } from '@/lib/media-dispatch-trigger';
+import { completeQueuedUpload } from '@/lib/media-dispatch-trigger';
 
 export function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
 }
 
 async function respondQueued() {
-  // The scheduler remains the safety net. A trigger error must not fail the upload.
-  try {
-    await signalQueuedMediaDispatch();
-  } catch {
-    console.warn('[Hosted media complete]', { code: 'MEDIA_DISPATCH_TRIGGER_FAILED' });
-  }
-  return jsonResponse({ processingStatus: 'processing', processingStage: 'queued' });
+  // Await the capped trigger. Serverless can freeze the function after the
+  // response, so a detached request might never be sent.
+  return jsonResponse(await completeQueuedUpload());
 }
 
 export async function POST(request: Request) {

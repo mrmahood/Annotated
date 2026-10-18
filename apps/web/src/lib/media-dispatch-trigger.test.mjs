@@ -3,7 +3,9 @@ import { createVerify, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { runDispatchCycle } from '../../../media-worker/src/runtime/dispatcher.mjs';
+import { jsonResponse } from './hosted-media-upload.ts';
 import {
+  completeQueuedUpload,
   dispatchTriggerContract,
   readDispatchTriggerConfig,
   signalQueuedMediaDispatch,
@@ -29,7 +31,7 @@ function runUrl(job) {
   return `${dispatchTriggerContract.apiOrigin}/v2/projects/${dispatchTriggerContract.projectId}/locations/${dispatchTriggerContract.region}/jobs/${job}:run`;
 }
 
-function jsonResponse(body, status = 200) {
+function fakeJson(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
@@ -123,7 +125,7 @@ test('a queued upload starts the dispatcher once and a second trigger does not t
       assert.equal(claims.aud, dispatchTriggerContract.tokenUrl);
       assert.equal(claims.scope, dispatchTriggerContract.scope);
       assert.equal(claims.iat, Math.floor(now / 1_000));
-      return jsonResponse({ access_token: ACCESS_TOKEN });
+      return fakeJson({ access_token: ACCESS_TOKEN });
     }
     assert.equal(url, runUrl('annotated-media-dispatcher-production'));
     assert.equal(init?.method, 'POST');
@@ -141,7 +143,7 @@ test('a queued upload starts the dispatcher once and a second trigger does not t
       limit: 25,
       concurrency: 1,
     });
-    return jsonResponse({ name: 'executions/harness', summary });
+    return fakeJson({ name: 'executions/harness', summary });
   }
 
   assert.equal(completeUpload(MEDIA_ID), 'queued');
@@ -184,7 +186,7 @@ test('a dispatcher failure leaves the queued upload in place and does not throw'
     log: (code, reason) => logs.push({ code, reason }),
     fetchImpl: async (input) => {
       const url = String(input);
-      if (url === dispatchTriggerContract.tokenUrl) return jsonResponse({ access_token: ACCESS_TOKEN });
+      if (url === dispatchTriggerContract.tokenUrl) return fakeJson({ access_token: ACCESS_TOKEN });
       assert.equal(url, runUrl('annotated-media-dispatcher-staging'));
       runs += 1;
       throw new Error(privateKeyText);
@@ -211,13 +213,98 @@ test('a dispatcher failure leaves the queued upload in place and does not throw'
   assert.deepEqual(queuedResponse, { processingStatus: 'processing', processingStage: 'queued' });
 });
 
+test('a hung Cloud Run call stops at the 4 second cap and the upload stays queued', async () => {
+  const rejections = [];
+  const onRejection = (reason) => { rejections.push(reason); };
+  process.on('unhandledRejection', onRejection);
+  try {
+    let now = 0;
+    const timers = [];
+    let jobsRunStarted = false;
+    const logs = [];
+
+    function scheduleTimeout(callback, delayMs) {
+      assert.equal(delayMs, 4_000);
+      assert.equal(delayMs, dispatchTriggerContract.timeoutMs);
+      const entry = { due: now + delayMs, callback, cancelled: false };
+      timers.push(entry);
+      return { cancel() { entry.cancelled = true; } };
+    }
+
+    function advance(ms) {
+      now += ms;
+      for (const entry of timers) {
+        if (!entry.cancelled && entry.due <= now) {
+          entry.cancelled = true;
+          entry.callback();
+        }
+      }
+    }
+
+    function fetchImpl(input, init) {
+      const url = String(input);
+      if (url === dispatchTriggerContract.tokenUrl) {
+        return { ok: true, json: async () => ({ access_token: ACCESS_TOKEN }) };
+      }
+      assert.equal(url, runUrl('annotated-media-dispatcher-production'));
+      jobsRunStarted = true;
+      const signal = init?.signal;
+      assert.ok(signal);
+      return new Promise((_resolve, reject) => {
+        const fail = () => reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'));
+        if (signal.aborted) fail();
+        else signal.addEventListener('abort', fail, { once: true });
+      });
+    }
+
+    let signalResult;
+    let settled = false;
+    const responsePromise = completeQueuedUpload(() => signalQueuedMediaDispatch({
+      env: enabledEnv(),
+      fetchImpl,
+      clock: () => now,
+      scheduleTimeout,
+      log: (code, reason) => logs.push({ code, reason }),
+    }).then((result) => {
+      signalResult = result;
+      return result;
+    })).then((body) => {
+      settled = true;
+      return jsonResponse(body);
+    });
+
+    for (let attempt = 0; attempt < 8 && !jobsRunStarted; attempt += 1) await Promise.resolve();
+    assert.equal(jobsRunStarted, true);
+    assert.equal(settled, false);
+
+    advance(3_999);
+    await Promise.resolve();
+    assert.equal(settled, false);
+    assert.equal(now, 3_999);
+
+    advance(1);
+    const response = await responsePromise;
+    assert.equal(now, 4_000);
+    assert.equal(settled, true);
+    assert.deepEqual(signalResult, { outcome: 'failed', reason: 'timeout' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { processingStatus: 'processing', processingStage: 'queued' });
+    assert.deepEqual(logs, [{ code: 'MEDIA_DISPATCH_TRIGGER_FAILED', reason: 'timeout' }]);
+
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(rejections, []);
+  } finally {
+    process.off('unhandledRejection', onRejection);
+  }
+});
+
 test('an unset trigger makes no network call', async () => {
   let called = false;
   const signal = await signalQueuedMediaDispatch({
     env: { NEXT_PUBLIC_SUPABASE_URL: PRODUCTION_URL },
     fetchImpl: async () => {
       called = true;
-      return jsonResponse({});
+      return fakeJson({});
     },
   });
   assert.deepEqual(signal, { outcome: 'skipped' });

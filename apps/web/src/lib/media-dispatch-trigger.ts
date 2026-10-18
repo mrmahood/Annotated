@@ -43,18 +43,32 @@ export type DispatchTriggerDecision =
 export type DispatchSignal =
   | { outcome: 'skipped' }
   | { outcome: 'accepted' }
-  | { outcome: 'failed' }
+  | { outcome: 'failed'; reason?: 'timeout' }
   | { outcome: 'misconfigured'; reason: MisconfiguredReason | 'invalid' };
 
 type TriggerLog = (code: string, reason?: string) => void;
+
+export type TimeoutHandle = { cancel: () => void };
+
+export type ScheduleTimeout = (callback: () => void, delayMs: number) => TimeoutHandle;
 
 export type DispatchTriggerOptions = {
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
   clock?: () => number;
   timeoutMs?: number;
+  scheduleTimeout?: ScheduleTimeout;
   log?: TriggerLog;
 };
+
+function defaultScheduleTimeout(callback: () => void, delayMs: number): TimeoutHandle {
+  const timer = setTimeout(callback, delayMs);
+  return { cancel: () => clearTimeout(timer) };
+}
+
+function isTimeoutError(error: unknown) {
+  return !!error && typeof error === 'object' && (error as { name?: unknown }).name === 'TimeoutError';
+}
 
 function emitTriggerLog(code: string, reason?: string) {
   console.warn('[Hosted media complete]', reason ? { code, reason } : { code });
@@ -150,10 +164,13 @@ function accessToken(value: unknown) {
   return token;
 }
 
-async function postDispatcherRun(config: DispatchTriggerConfig, options: DispatchTriggerOptions) {
+async function sendDispatchRequests(
+  config: DispatchTriggerConfig,
+  options: DispatchTriggerOptions,
+  signal: AbortSignal,
+) {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const clock = options.clock ?? Date.now;
-  const signal = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const assertion = serviceAccountAssertion(config, clock());
   const tokenResponse = await fetchImpl(TOKEN_URL, {
     method: 'POST',
@@ -184,6 +201,48 @@ async function postDispatcherRun(config: DispatchTriggerConfig, options: Dispatc
   if (!runResponse.ok) throw new Error('Cloud Run dispatcher invocation failed.');
 }
 
+async function postDispatcherRun(config: DispatchTriggerConfig, options: DispatchTriggerOptions) {
+  const scheduleTimeout = options.scheduleTimeout ?? defaultScheduleTimeout;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timedOut = false;
+  let handle: TimeoutHandle = { cancel() {} };
+  const timeout = new Promise<{ status: 'timeout' }>((resolve) => {
+    handle = scheduleTimeout(() => {
+      timedOut = true;
+      controller.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+      resolve({ status: 'timeout' });
+    }, timeoutMs);
+  });
+  // A fulfilled error keeps the aborted Cloud Run fetch from becoming an unhandled rejection.
+  const requests = sendDispatchRequests(config, options, controller.signal).then(
+    () => ({ status: 'ok' as const }),
+    (error: unknown) => ({ status: 'error' as const, error }),
+  );
+  try {
+    const winner = await Promise.race([requests, timeout]);
+    if (winner.status === 'timeout' || timedOut) {
+      const error = new Error('Dispatch trigger timed out.');
+      error.name = 'TimeoutError';
+      throw error;
+    }
+    if (winner.status === 'error') throw winner.error;
+  } finally {
+    handle.cancel();
+  }
+}
+
+export async function completeQueuedUpload(
+  signal: () => Promise<unknown> = () => signalQueuedMediaDispatch(),
+): Promise<{ processingStatus: 'processing'; processingStage: 'queued' }> {
+  try {
+    await signal();
+  } catch {
+    console.warn('[Hosted media complete]', { code: 'MEDIA_DISPATCH_TRIGGER_FAILED' });
+  }
+  return { processingStatus: 'processing', processingStage: 'queued' };
+}
+
 export async function signalQueuedMediaDispatch(options: DispatchTriggerOptions = {}): Promise<DispatchSignal> {
   const log = options.log ?? emitTriggerLog;
   let decision: DispatchTriggerDecision;
@@ -201,7 +260,11 @@ export async function signalQueuedMediaDispatch(options: DispatchTriggerOptions 
   try {
     await postDispatcherRun(decision.config, options);
     return { outcome: 'accepted' };
-  } catch {
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      log('MEDIA_DISPATCH_TRIGGER_FAILED', 'timeout');
+      return { outcome: 'failed', reason: 'timeout' };
+    }
     log('MEDIA_DISPATCH_TRIGGER_FAILED');
     return { outcome: 'failed' };
   }
