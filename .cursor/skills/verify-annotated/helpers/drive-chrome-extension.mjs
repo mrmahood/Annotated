@@ -488,6 +488,17 @@ async function driveCreateSurface(panel, label) {
   return { probe, judgment: judgeCreateProbe(probe) };
 }
 
+async function capturePanelScreenshot(panel, path) {
+  // A background extension page never composites under Xvfb, so capture hangs
+  // until timeout. Focus only for the shot, after Create checks have finished.
+  await panel.bringToFront();
+  await panel.screenshot({
+    path,
+    animations: "disabled",
+    timeout: 15_000,
+  });
+}
+
 async function connectPanel(panel, context, urlPrefix, timeoutMs) {
   await activateSourceTab(context, urlPrefix);
   return waitFor(async () => {
@@ -547,7 +558,7 @@ export async function runChromeExtensionDrive({
       youtubeJudgment = driven.judgment;
       failures.push(...youtubeJudgment.failures.map((failure) => `youtube:${failure}`));
     }
-    await panel.screenshot({ path: join(evidenceDir, "youtube-create.png") }).catch(() => {});
+    await capturePanelScreenshot(panel, join(evidenceDir, "youtube-create.png"));
     await youtube.bringToFront();
 
     const audioPage = await context.newPage();
@@ -582,7 +593,7 @@ export async function runChromeExtensionDrive({
       notes.push(`- Audio readout after 60s: ${audioDriven.probe.readout60 || "(none)"}`);
       notes.push(`- Audio drag span ms: ${audioDriven.probe.dragSpanMs ?? "(none)"}`);
     }
-    await panel.screenshot({ path: join(evidenceDir, "result.png") }).catch(() => {});
+    await capturePanelScreenshot(panel, join(evidenceDir, "result.png"));
     const aria = await panel.locator("body").ariaSnapshot().catch(() => "(no snapshot)");
     writeFileSync(join(evidenceDir, "result.aria.txt"), aria);
 
