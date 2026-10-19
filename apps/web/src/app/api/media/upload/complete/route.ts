@@ -15,9 +15,16 @@ import {
   type MediaRow,
   HostedMediaApiError,
 } from '@/lib/hosted-media-upload';
+import { completeQueuedUpload } from '@/lib/media-dispatch-trigger';
 
 export function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
+async function respondQueued() {
+  // Await the capped trigger. Serverless can freeze the function after the
+  // response, so a detached request might never be sent.
+  return jsonResponse(await completeQueuedUpload());
 }
 
 export async function POST(request: Request) {
@@ -81,7 +88,7 @@ export async function POST(request: Request) {
 
     if (media.processing_status === 'processing') {
       if (media.processing_stage !== 'queued') throw new Error('The upload has already advanced beyond the Phase B completion state.');
-      return jsonResponse({ processingStatus: 'processing', processingStage: 'queued' });
+      return respondQueued();
     }
 
     const now = new Date().toISOString();
@@ -104,7 +111,7 @@ export async function POST(request: Request) {
       .maybeSingle();
     assertServiceOperation(updateError, 'The upload state could not be completed.');
     if (!updated) throw new Error('The upload state changed before completion.');
-    return jsonResponse({ processingStatus: 'processing', processingStage: 'queued' });
+    return respondQueued();
   } catch (error) {
     console.warn('[Hosted media complete]', {
       code: error instanceof HostedMediaApiError ? error.code : 'UPLOAD_COMPLETION_FAILED',
