@@ -60,6 +60,7 @@ Each feature file starts with an H1 title and one paragraph describing the user-
 - `/demo` (`apps/web/src/app/demo/page.tsx`) is the public read-only fact-check demo. Home links it as `Try the demo`. It includes `/demo.mp4`. This map does not drive it.
 - `/demo/passage-highlight` (`apps/web/src/app/demo/passage-highlight/page.tsx`) is a noindex highlight fixture, not a signed-out drive.
 - `/demo/opengraph-image` (`apps/web/src/app/demo/opengraph-image.tsx`) is the demo social image. It is not a browser drive.
+- `/annotated-share.png` (`apps/web/public/annotated-share.png`, wired from `apps/web/src/app/layout.tsx` and `apps/web/src/lib/share-image.ts`) is the static link-preview card for the site and for annotation pages. `/demo` keeps its own image. It is not a browser drive.
 - `/agents` (`apps/web/src/app/agents/page.tsx`) is the public agents guide. The footer nav `About Annotated` links it. ClaimReview markup (`apps/web/src/lib/claim-review-jsonld.ts`) is JSON-LD on annotation pages, not its own route.
 - `/whats-new` (`apps/web/src/app/whats-new/page.tsx`) is the public extension changelog. The same footer nav links it.
 - The extension update banner (`apps/extension/entrypoints/sidepanel/extension-update-banner.tsx`) and the microphone permission page (`apps/extension/entrypoints/microphone-permission/index.html`) are not part of `drive chrome-extension`.
