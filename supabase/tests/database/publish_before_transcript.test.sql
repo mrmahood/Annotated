@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(26);
+select plan(29);
 
 select has_function(
   'private', 'publish_annotation_media_playable', array['uuid', 'uuid'],
@@ -158,6 +158,32 @@ select ok(
     from public.annotation_media as media
     where media.id = (select media_id from pbt_timeout)),
   'transient failures keep a future retry time'
+);
+select is(
+  (select failure.failure_code
+    from public.annotation_media_attempt_failures as failure
+    where failure.media_id = (select media_id from pbt_timeout)),
+  'transcode_timeout',
+  'the released attempt keeps its failure code'
+);
+update public.annotation_media
+set next_attempt_at = pg_catalog.now() - interval '1 second'
+where id = (select media_id from pbt_timeout);
+select is(
+  (select claimed.attempt_count
+    from private.claim_annotation_media_processing((select media_id from pbt_timeout), 900) as claimed),
+  2::smallint,
+  'the same media can be claimed again'
+);
+select ok(
+  (select media.failure_code is null and media.attempt_count = 2
+    from public.annotation_media as media
+    where media.id = (select media_id from pbt_timeout))
+  and (select pg_catalog.count(*)
+    from public.annotation_media_attempt_failures as failure
+    where failure.media_id = (select media_id from pbt_timeout)
+      and failure.failure_code = 'transcode_timeout') = 1,
+  'a later claim clears the live code and keeps the attempt record'
 );
 
 create temporary table pbt_playable as

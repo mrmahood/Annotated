@@ -1,3 +1,4 @@
+import { confirmPrivateObjectRemoved } from '../infrastructure/confirm-private-object.mjs';
 import { mapBounded } from './bounded-concurrency.mjs';
 import { requireBoundedInteger, requireMediaId } from './validation.mjs';
 
@@ -11,8 +12,8 @@ const CLEANUP_ACTIONS = new Set(['abandoned_cleanup', 'terminal_raw_cleanup', 'r
 
 async function removeIfPresent(storage, bucket, objectPath) {
   if (!objectPath) return;
-  if (await storage.exists(bucket, objectPath)) await storage.remove(bucket, [objectPath]);
-  if (await storage.exists(bucket, objectPath)) throw new Error('Private object deletion was not confirmed.');
+  const removed = await confirmPrivateObjectRemoved(storage, bucket, objectPath);
+  if (!removed) throw new Error('Private object deletion was not confirmed.');
 }
 
 function requireExpectedProcessedPath(value, mediaId) {
@@ -58,7 +59,9 @@ async function reconcileOne({ candidate, store, storage, logger }) {
 
 export async function runReconciliationCycle({ store, storage, logger, limit = 25, concurrency = 2 }) {
   if (!store || typeof store.listReconciliationCandidates !== 'function') throw new TypeError('Reconciliation store is unavailable.');
-  if (!storage || typeof storage.exists !== 'function' || typeof storage.remove !== 'function') throw new TypeError('Reconciliation Storage is unavailable.');
+  if (!storage || typeof storage.objectVisible !== 'function' || typeof storage.remove !== 'function') {
+    throw new TypeError('Reconciliation Storage is unavailable.');
+  }
   requireBoundedInteger(limit, 'Reconciliation limit', 1, 100);
   requireBoundedInteger(concurrency, 'Reconciliation concurrency', 1, 8);
   const candidates = await store.listReconciliationCandidates(limit);

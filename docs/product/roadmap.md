@@ -1005,7 +1005,7 @@ polish — not a first Production launch. Launch announcement context:
   load-unpacked. Do not invent a store URL.
 - Chrome notification when a clip is ready (queued).
 - Parked Create quirks: multi-click Publish first-error; header-icon
-  capture quirk; `raw_delete_unconfirmed` race.
+  capture quirk.
 - Staging demo rehearsal checklist.
 - Navigate-away / zero-toolbar Recapture parked.
 - **Fox / Brightcove / proprietary cross-origin news-site embeds**

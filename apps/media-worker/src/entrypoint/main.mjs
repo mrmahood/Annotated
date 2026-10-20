@@ -6,7 +6,8 @@ import { PostgresWorkerStore } from '../infrastructure/postgres-worker-store.mjs
 import { SupabaseStorage } from '../infrastructure/supabase-storage.mjs';
 import { DeterministicFakeTranscriber } from '../transcription/fake-transcriber.mjs';
 import { OpenAIWhisperTranscriber } from '../transcription/openai-whisper-transcriber.mjs';
-import { createCloudRunDispatch } from '../runtime/cloud-run-dispatch.mjs';
+import { createCloudRunDispatch, createEmptyCloudRunJobRun } from '../runtime/cloud-run-dispatch.mjs';
+import { dispatcherJobForWorker, wakeDispatcherAt } from '../runtime/dispatcher-wake.mjs';
 import { loadRuntimeConfig } from '../runtime/config.mjs';
 import { createDispatchToken, verifyDispatchToken } from '../runtime/dispatch-auth.mjs';
 import { runDispatchCycle } from '../runtime/dispatcher.mjs';
@@ -73,8 +74,9 @@ async function main() {
       logger.emit('worker_failed', { media_id: config.mediaId, stage: 'worker', code: 'worker_timeout', outcome: 'failed' });
       process.exit(124);
     }, config.workerTimeoutMs);
+    let result;
     try {
-      await runOneMediaJob({
+      result = await runOneMediaJob({
         mediaId: config.mediaId,
         store,
         storage,
@@ -86,6 +88,23 @@ async function main() {
       });
     } finally {
       clearTimeout(timeout);
+    }
+    if (result?.outcome === 'retry_scheduled' && config.dispatchMode === 'cloud-run') {
+      try {
+        const runDispatcher = createEmptyCloudRunJobRun({
+          projectId: config.googleProjectId,
+          region: config.googleRegion,
+          job: dispatcherJobForWorker(config.workerJob),
+        });
+        const wake = await wakeDispatcherAt({ retryAt: result.retryAt, runDispatcher });
+        logger.emit('dispatcher_wake', { media_id: config.mediaId, outcome: wake.outcome });
+      } catch {
+        logger.emit('dispatcher_wake_failed', {
+          media_id: config.mediaId,
+          code: 'dispatcher_wake_failed',
+          outcome: 'failed',
+        });
+      }
     }
     return;
   }
