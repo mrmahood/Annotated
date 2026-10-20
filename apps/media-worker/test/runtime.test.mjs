@@ -529,6 +529,42 @@ test('one-ID worker maps a TypeError from a non-integer derivative duration to u
   assert.doesNotThrow(() => requireBoundedInteger(9_300, 'Derivative duration', 1_000, 90_000));
 });
 
+test('one-ID worker publishes when a cached object GET stays readable after raw deletion', async () => {
+  const order = [];
+  let removed = false;
+  const store = {
+    claim: async () => ({
+      ...claim('raw_cleanup'),
+      processed_storage_path: 'owner/annotation/media/excerpt.m4a',
+      transcript_present: true,
+    }),
+    confirmRawDeleted: async () => { order.push('confirm'); },
+    publishPlayable: async () => { order.push('publish'); },
+    finalize: async () => { order.push('finalize'); },
+    releaseAttempt: async () => {
+      order.push('release');
+      return { result_status: 'processing', retry_at: '2026-10-20T00:01:00Z' };
+    },
+  };
+  const storage = {
+    exists: async () => true,
+    objectVisible: async () => !removed,
+    remove: async () => { removed = true; },
+    download: async () => Buffer.alloc(0),
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage,
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger: captureLogger().logger,
+  });
+  assert.deepEqual(order, ['confirm', 'publish', 'finalize']);
+  assert.deepEqual(result, { outcome: 'ready' });
+});
+
 test('one-ID worker persists a retry schedule through the lease-fenced store', async () => {
   const { logger } = captureLogger();
   let released;
