@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(30);
+select plan(34);
 
 select has_function(
   'private', 'publish_annotation_media_playable', array['uuid', 'uuid'],
@@ -242,6 +242,34 @@ select lives_ok(
   $$,
   'the derivative can be staged before a transcript exists'
 );
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now()
+where id = (select media_id from pbt_playable);
+
+select throws_ok(
+  $$
+    select private.confirm_annotation_media_raw_deleted(media_id, lease_token) from pbt_playable
+  $$,
+  '55000',
+  'Processed media and an active lease are required before raw deletion can be confirmed.',
+  'raw deletion confirmation rejects a lease that expires at now'
+);
+
+select ok(
+  (select media.raw_storage_path is not null
+      and media.raw_deleted_at is null
+      and media.processing_status = 'processing'
+      and media.lease_token = (select lease_token from pbt_playable)
+    from public.annotation_media as media
+    where media.id = (select media_id from pbt_playable)),
+  'an expired lease leaves the raw object unconfirmed'
+);
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now() + interval '900 seconds'
+where id = (select media_id from pbt_playable);
+
 select lives_ok(
   $$
     select private.confirm_annotation_media_raw_deleted(media_id, lease_token) from pbt_playable
@@ -366,6 +394,33 @@ select lives_ok(
   $$,
   'the transcript can be attached after the excerpt is already public'
 );
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now()
+where id = (select media_id from pbt_transcript_retry);
+
+select throws_ok(
+  $$
+    select private.finalize_annotation_media_ready(media_id, lease_token) from pbt_transcript_retry
+  $$,
+  '55000',
+  'Hosted media is not ready for transcript finalization.',
+  'finalization rejects a lease that expires at now'
+);
+
+select ok(
+  (select media.lease_token = (select lease_token from pbt_transcript_retry)
+      and media.processing_stage = 'finalizing'
+      and media.processing_status = 'ready'
+    from public.annotation_media as media
+    where media.id = (select media_id from pbt_transcript_retry)),
+  'an expired lease leaves finalization uncommitted'
+);
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now() + interval '900 seconds'
+where id = (select media_id from pbt_transcript_retry);
+
 select lives_ok(
   $$
     select private.finalize_annotation_media_ready(media_id, lease_token) from pbt_transcript_retry

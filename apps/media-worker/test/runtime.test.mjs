@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { once } from 'node:events';
 import os from 'node:os';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { MediaCoreError } from '../src/domain/media-core-error.mjs';
 import { boundedPostgresFailureReason, preparePsqlConnection, PROCESSED_DURATION_INVALID_MESSAGE } from '../src/infrastructure/psql-database.mjs';
 import { PostgresWorkerStore } from '../src/infrastructure/postgres-worker-store.mjs';
 import { createCloudRunDispatch, createEmptyCloudRunJobRun, cloudRunDispatchContract } from '../src/runtime/cloud-run-dispatch.mjs';
 import { wakeDispatcherAt } from '../src/runtime/dispatcher-wake.mjs';
 import { SupabaseStorage } from '../src/infrastructure/supabase-storage.mjs';
-import { loadRuntimeConfig, productionRuntimeContract, stagingRuntimeContract } from '../src/runtime/config.mjs';
+import { LEASE_MARGIN_SECONDS, loadRuntimeConfig, productionRuntimeContract, stagingRuntimeContract } from '../src/runtime/config.mjs';
 import { createAuthenticatedLocalDispatch, createDispatchToken, verifyDispatchToken } from '../src/runtime/dispatch-auth.mjs';
 import { runDispatchCycle } from '../src/runtime/dispatcher.mjs';
 import { runReconciliationCycle } from '../src/runtime/reconciler.mjs';
@@ -143,10 +146,78 @@ test('runtime configuration is Local-only and bounded without exposing secrets',
   };
   const config = loadRuntimeConfig(environment);
   assert.equal(config.dispatchConcurrency, 8);
+  assert.equal(config.leaseSeconds, 900);
   assert.equal(config.workerTimeoutMs, 600_000);
+  assert.ok(config.leaseSeconds > Math.min(600, cloudRunDispatchContract.timeoutSeconds) + LEASE_MARGIN_SECONDS);
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_SUPABASE_URL: 'https://remote.supabase.co' }), /loopback/u);
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_DISPATCH_CONCURRENCY: '9' }), /between 1 and 8/u);
   assert.doesNotMatch(JSON.stringify({ ...config, serviceRoleKey: '[redacted]', dispatchSecret: '[redacted]' }), new RegExp(secret, 'u'));
+});
+
+function localRuntimeEnvironment(overrides = {}) {
+  return {
+    ANNOTATED_SUPABASE_URL: 'http://127.0.0.1:54321',
+    ANNOTATED_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+    ANNOTATED_SERVICE_ROLE_KEY: secret,
+    ANNOTATED_DISPATCH_SECRET: randomBytes(32).toString('base64url'),
+    ANNOTATED_FFMPEG_PATH: 'C:\\tools\\ffmpeg.exe',
+    ANNOTATED_FFPROBE_PATH: 'C:\\tools\\ffprobe.exe',
+    ANNOTATED_PSQL_PATH: 'C:\\tools\\psql.exe',
+    ...overrides,
+  };
+}
+
+test('startup refuses a lease that can expire before the worker task ends', async () => {
+  assert.equal(cloudRunDispatchContract.timeoutSeconds, 600);
+  assert.ok(LEASE_MARGIN_SECONDS >= 60);
+  const defaults = loadRuntimeConfig(localRuntimeEnvironment());
+  assert.equal(defaults.leaseSeconds, 900);
+  assert.equal(defaults.workerTimeoutMs, 600_000);
+
+  const leaseError = /Lease seconds must be greater than the 600 second worker lifetime plus a 60 second margin/u;
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' })), leaseError);
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '660' })), leaseError);
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' }), 'dispatch'), leaseError);
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' }), 'reconcile'), leaseError);
+  assert.equal(loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '661' })).leaseSeconds, 661);
+  assert.equal(
+    loadRuntimeConfig(localRuntimeEnvironment({
+      ANNOTATED_LEASE_SECONDS: '900',
+      ANNOTATED_WORKER_TIMEOUT_MS: '60000',
+    })).leaseSeconds,
+    900,
+  );
+  assert.throws(
+    () => loadRuntimeConfig(localRuntimeEnvironment({
+      ANNOTATED_LEASE_SECONDS: '120',
+      ANNOTATED_WORKER_TIMEOUT_MS: '60000',
+    })),
+    /Lease seconds must be greater than the 60 second worker lifetime plus a 60 second margin/u,
+  );
+  assert.equal(
+    loadRuntimeConfig(localRuntimeEnvironment({
+      ANNOTATED_LEASE_SECONDS: '121',
+      ANNOTATED_WORKER_TIMEOUT_MS: '60000',
+    })).leaseSeconds,
+    121,
+  );
+
+  const entrypoint = fileURLToPath(new URL('../src/entrypoint/main.mjs', import.meta.url));
+  const child = spawn(process.execPath, [entrypoint, 'worker'], {
+    env: localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' }),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const stdoutChunks = [];
+  const stderrChunks = [];
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => stdoutChunks.push(chunk));
+  child.stderr.on('data', (chunk) => stderrChunks.push(chunk));
+  const [code] = await once(child, 'close');
+  const output = `${stdoutChunks.join('')}\n${stderrChunks.join('')}`;
+  assert.equal(code, 1);
+  assert.match(stderrChunks.join(''), leaseError);
+  assert.doesNotMatch(output, new RegExp(secret, 'u'));
 });
 
 test('runtime configuration accepts only the exact approved Staging boundary', () => {

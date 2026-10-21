@@ -140,9 +140,11 @@ async function main() {
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
-  await main().catch(() => {
+  await main().catch((error) => {
     const logger = createSanitizedLogger();
     logger.emit('runtime_failed', { code: 'runtime_failed', outcome: 'failed' });
+    const message = error instanceof TypeError ? error.message : '';
+    if (message.startsWith('Lease seconds must be greater than ')) process.stderr.write(`${message}\n`);
     process.exitCode = 1;
   });
 }

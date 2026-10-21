@@ -93,10 +93,8 @@ ClaimWouldSucceed(w) ==
      \/ holder[j] = Nil
      \/ expired[j]
 
-\* Steps whose SQL does not compare lease_expires_at to now.
-\* confirm_annotation_media_raw_deleted and finalize_annotation_media_ready.
-IgnoresExpiry(p) == p \in {1, 4}
-
+\* Every worker write, including confirm and finalize, requires an
+\* unexpired lease. An expired row is not a step this worker can take.
 StepAllowed(w) ==
   LET j == assigned[w] IN
   /\ phase[w] = "running"
@@ -104,8 +102,7 @@ StepAllowed(w) ==
   /\ holder[j] = w
   /\ status[j] = "leased"
   /\ progress[j] < 5
-  /\ \/ IgnoresExpiry(progress[j])
-     \/ ~expired[j]
+  /\ ~expired[j]
 
 Init ==
   /\ status = [j \in Jobs |-> "queued"]
@@ -158,7 +155,7 @@ StageDerivative(w) ==
   /\ progress' = [progress EXCEPT ![j] = 1]
   /\ UNCHANGED <<status, attempt, expired, holder, wake, phase, assigned, pulse>>
 
-\* No lease_expires_at comparison. The token must still match.
+\* confirm_annotation_media_raw_deleted requires lease_expires_at > now().
 ConfirmRawDeleted(w) ==
   LET j == assigned[w] IN
   /\ phase[w] = "running"
@@ -166,6 +163,7 @@ ConfirmRawDeleted(w) ==
   /\ holder[j] = w
   /\ status[j] = "leased"
   /\ progress[j] = 1
+  /\ ~expired[j]
   /\ progress' = [progress EXCEPT ![j] = 2]
   /\ UNCHANGED <<status, attempt, expired, holder, wake, phase, assigned, pulse>>
 
@@ -191,6 +189,7 @@ StageTranscript(w) ==
   /\ progress' = [progress EXCEPT ![j] = 4]
   /\ UNCHANGED <<status, attempt, expired, holder, wake, phase, assigned, pulse>>
 
+\* finalize_annotation_media_ready requires lease_expires_at > now().
 Finalize(w) ==
   LET j == assigned[w] IN
   /\ phase[w] = "running"
@@ -198,6 +197,7 @@ Finalize(w) ==
   /\ holder[j] = w
   /\ status[j] = "leased"
   /\ progress[j] = 4
+  /\ ~expired[j]
   /\ progress' = [progress EXCEPT ![j] = 5]
   /\ status' = [status EXCEPT ![j] = "ready"]
   /\ holder' = [holder EXCEPT ![j] = Nil]
@@ -275,8 +275,11 @@ WorkerAct(w) ==
   \/ Crash(w)
   \/ Drop(w)
 
-\* ExpireWhileRunning FALSE means the worker timeout has already killed the
-\* process before lease_expires_at. The code does not enforce that ordering.
+\* ExpireWhileRunning FALSE is the code that is allowed to start.
+\* loadRuntimeConfig refuses a lease that does not outlive
+\* min(worker timeout, the 600 second Cloud Run task cap) by 60 seconds,
+\* so the process is already dead before lease_expires_at.
+\* TRUE is the overlap that startup rejects. The real configs leave it false.
 Expire(j) ==
   /\ status[j] = "leased"
   /\ holder[j] \in Workers

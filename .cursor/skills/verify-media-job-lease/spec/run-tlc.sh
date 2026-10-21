@@ -66,9 +66,8 @@ echo "tlc: ${VERSION} ${JAR_SHA256}"
 echo
 
 fail=0
-run_one real-mutex MediaJobLifecycle.cfg counterexample || fail=1
+run_one real-mutex MediaJobLifecycle.cfg pass || fail=1
 run_one real-termination MediaJobLifecycleTermination.cfg pass || fail=1
-run_one default-timing DefaultTiming.cfg pass || fail=1
 run_one mutant-skip-lease MutantSkipLease.cfg counterexample || fail=1
 run_one mutant-no-increment MutantNoIncrement.cfg counterexample || fail=1
 
@@ -77,6 +76,6 @@ if [[ "${fail}" -ne 0 ]]; then
   echo "tlc: failed"
   exit 1
 fi
-echo "recorded result: mutual exclusion has a counterexample; termination passes; both mutants are caught"
-echo "exit 0 means those recorded results still hold. It does not mean mutual exclusion passed."
+echo "recorded result: mutual exclusion passes; termination passes; both mutants are caught"
+echo "exit 0 means mutual exclusion passes, termination passes, and both mutants are caught."
 exit 0

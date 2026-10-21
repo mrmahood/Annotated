@@ -17,9 +17,10 @@ Read the diff. The check covers these files and functions:
   - `private.claim_annotation_media_processing`
   - `private.release_annotation_media_processing_attempt`
   - `private.list_annotation_media_dispatch_candidates`
-  - `private.confirm_annotation_media_raw_deleted`
   - `private.publish_annotation_media_playable`
   - `private.stage_annotation_media_transcript`
+- `supabase/migrations/20261021140000_reject_expired_media_lease.sql`
+  - `private.confirm_annotation_media_raw_deleted`
   - `private.finalize_annotation_media_ready`
 - `supabase/migrations/20260904220811_widen_derivative_duration_slack.sql`
   - `private.stage_annotation_media_derivative`
@@ -31,10 +32,10 @@ Read the diff. The check covers these files and functions:
 - `apps/media-worker/src/runtime/dispatcher-wake.mjs` `wakeDispatcherAt`
 - `apps/media-worker/src/runtime/reconciler.mjs` `runReconciliationCycle` for `lease_expired` and `attempts_exhausted`
 - `apps/media-worker/src/runtime/worker-job.mjs` `runOneMediaJob`
-- `apps/media-worker/src/entrypoint/main.mjs` worker timeout and dispatcher wake
+- `apps/media-worker/src/entrypoint/main.mjs` worker timeout, dispatcher wake, and the startup error for a short lease
 - `apps/media-worker/src/infrastructure/postgres-worker-store.mjs` `claim`, `releaseAttempt`, `reconcileProcessing`
-- `apps/media-worker/src/runtime/config.mjs` lease seconds and worker timeout
-- `apps/media-worker/src/runtime/cloud-run-dispatch.mjs` task timeout
+- `apps/media-worker/src/runtime/config.mjs` `loadRuntimeConfig` lease-versus-timeout guard
+- `apps/media-worker/src/runtime/cloud-run-dispatch.mjs` task timeout of 600 seconds
 - `apps/web/src/app/api/media/upload/complete/route.ts` sets `next_attempt_at` when the upload is queued
 - `apps/web/src/lib/media-dispatch-trigger.ts` `signalQueuedMediaDispatch`
 
@@ -47,6 +48,8 @@ Mutual exclusion: a media job is never processed by two workers at once. The har
 Termination: every job eventually reaches ready/published or failed, and `attempt_count` never exceeds 3. The harm is a job stuck in processing, or a fourth attempt.
 
 Publication is the success state. The transcript does not gate it. `attempt_count` is incremented in the claim, not in the release. The cap in the SQL is `attempt_count < 3` on claim and `attempt_count >= 3` on release and reconcile.
+
+Two guards keep the overlap out of the running system. `loadRuntimeConfig` refuses to start unless the lease is greater than the worker lifetime plus 60 seconds. The lifetime is the smaller of the configured worker timeout and the 600 second Cloud Run task timeout. The defaults, 900 seconds and 600 seconds, pass. A 60 second lease does not. `confirm_annotation_media_raw_deleted` and `finalize_annotation_media_ready` reject `lease_expires_at <= now()`, the same comparison the other worker write RPCs use.
 
 ## Lifecycle
 
@@ -65,7 +68,7 @@ stateDiagram-v2
   leased --> leased: crash keeps the token until expiry
 ```
 
-A worker crash is `process.exit` or a killed process with no successful release. The row keeps `lease_token` until the lease expires, the reconciler clears it, or a later claim replaces it.
+A worker crash is `process.exit` or a killed process with no successful release. The row keeps `lease_token` until the lease expires, the reconciler clears it, or a later claim replaces it. Startup will not boot a lease that can expire while that process is still allowed to run.
 
 ## Run
 
@@ -75,50 +78,34 @@ From the repository root:
 bash .cursor/skills/verify-media-job-lease/spec/run-tlc.sh
 ```
 
-The script needs Java 11 or newer and downloads TLC 1.7.4, sha256 `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`. It runs five configs of `spec/MediaJobLifecycle.tla` one after another. Logs go under `/tmp/annotated-tlc/logs/`.
+The script needs Java 11 or newer and downloads TLC 1.7.4, sha256 `936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88`. It runs four configs of `spec/MediaJobLifecycle.tla` one after another. Logs go under `/tmp/annotated-tlc/logs/`.
 
-Exit 0 means the recorded results still hold: the real model has a mutual-exclusion counterexample, termination passes, and both mutants are caught. Exit 0 does not mean mutual exclusion passed. Exit 1 means TLC failed, a mutant was not caught, termination failed, or the mutex result changed.
+Exit 0 means mutual exclusion passes, termination passes, and both mutants are caught. Exit 1 means one of those results changed, or TLC itself failed.
 
 | Config | What it is | Recorded result |
 | --- | --- | --- |
-| `MediaJobLifecycle.cfg` | The code. Lease expiry can happen while a worker is still inside `runOneMediaJob`. | Counterexample for mutual exclusion |
-| `MediaJobLifecycleTermination.cfg` | Same model. Termination and the attempt cap only. | Pass |
-| `DefaultTiming.cfg` | Extra assumption: the worker is already dead before its lease expires. | Pass |
+| `MediaJobLifecycle.cfg` | The code that is allowed to start. The worker is dead before its lease expires. Confirm and finalize require an unexpired lease. | Pass |
+| `MediaJobLifecycleTermination.cfg` | Same model. Termination and the attempt cap. | Pass |
 | `MutantSkipLease.cfg` | Separate config. Claim skips the lease recheck. | Counterexample for mutual exclusion |
 | `MutantNoIncrement.cfg` | Separate config. Claim does not increment `attempt_count`. | Counterexample for termination |
 
-Bounds on every config: 2 workers (`w1`, `w2`), 2 jobs (`j1`, `j2`), max attempts 3. The real model has 167,595 distinct states (800,605 generated, depth 35). That count is the termination run, which walks the whole graph. The mutex run stops at the first violation, so its smaller count is not the size of the model. `DefaultTiming.cfg` has 95,649 distinct states.
+Bounds on every config: 2 workers (`w1`, `w2`), 2 jobs (`j1`, `j2`), max attempts 3. The real model has 95,649 distinct states (363,517 generated). The mutex run and the termination run both walk that graph. The skip-lease mutant stops at 58 distinct states (88 generated). The no-increment mutant stops at 13,991 distinct states (53,817 generated). Those smaller counts are the search up to the counterexample, not a second model size.
 
 Do not edit product code from this skill. The mutants are constants in the configs (`CheckLease`, `IncrementAttempt`). They are not a patch to the SQL.
 
-## Recorded counterexample
+## Recorded result
 
-Mutual exclusion fails on the real model. TLC's shortest trace:
+Mutual exclusion passes. Termination passes. `attempt_count` stays at most 3.
 
-1. Job `j1` is queued, `attempt_count` is 0, and there is no lease. Job `j2` stays queued.
-2. A dispatcher starts worker `w1` for `j1`. `w1` has not claimed yet.
-3. Another dispatcher starts worker `w2` for `j1`. The row is still queued, so the list still returns it.
-4. `w1` calls `claim_annotation_media_processing`. The claim commits: `attempt_count` is 1, and `w1` holds an unexpired lease inside `runOneMediaJob`. `w2` has still not claimed.
-5. `j1`'s `lease_expires_at` passes while `w1` is still inside `runOneMediaJob`.
-6. `w2`'s claim commits. The SQL accepts a row whose lease has expired, sets a new `lease_token`, and makes `attempt_count` 2. `w1` has not returned. Both workers are processing `j1`.
+The real configs set `ExpireWhileRunning` false. That is the startup guard: `loadRuntimeConfig` throws, and the process exits 1, unless `leaseSeconds` is greater than `min(worker timeout seconds, 600) + 60`. A 60 second lease is not a configuration this model is allowed to start. The old overlap, a 60 second lease against a 600 second task, is the setting the guard rejects. It is not a state of `MediaJobLifecycle.cfg`.
 
-The same break exists when the second worker is started only after expiry. This trace is the one TLC printed.
+Confirm and finalize both require `~expired`. That is `lease_expires_at > now()` in `supabase/migrations/20261021140000_reject_expired_media_lease.sql`. With the startup guard, a running holder is already gone before expiry, so this check does not create the mutual-exclusion result. It stops a stale worker from confirming raw deletion or clearing the lease after `lease_expires_at`.
 
-Where the code allows it:
-
-- `claim_annotation_media_processing` claims when `lease_token is null or lease_expires_at <= now()` and then replaces the token (`supabase/migrations/20261004020000_publish_playable_excerpt.sql`, the candidate `where` and the `attempt_count = attempt_count + 1` update). It does not ask whether a process is still in the job.
-- `runOneMediaJob` claims once and continues through derivative, raw delete, publish, transcript, and finalize (`apps/media-worker/src/runtime/worker-job.mjs`). It does not stop when the lease expires.
-- The process is killed by the timer in `apps/media-worker/src/entrypoint/main.mjs`, which calls `process.exit(124)` after `workerTimeoutMs` and does not release the lease. That timer is not the lease clock.
-- `loadRuntimeConfig` allows a lease of 60–3,600 seconds (default 900) and a worker timeout of 60–600 seconds (default 600) with no check that the timeout fires first (`apps/media-worker/src/runtime/config.mjs`).
-- Cloud Run dispatch hardcodes the task timeout at `600s` (`apps/media-worker/src/runtime/cloud-run-dispatch.mjs`). A 60-second lease expires while that task can still be alive.
-
-`DefaultTiming.cfg` adds the assumption that a running holder is already dead before expiry. That is how the defaults behave (600 second timeout, 900 second lease). Under that assumption TLC reports no error. The code does not enforce the assumption. Do not switch the real config to that assumption to make the finding disappear.
-
-Termination holds on the real model, including this overlap. `attempt_count` stays ≤ 3. Fairness used for that result: a running worker eventually takes some step (progress, retryable failure, terminal failure, crash, or drop); a due listed job is eventually dispatched to an idle worker; a waiting `next_attempt_at` eventually becomes due; an expired or exhausted processing row is eventually reconciled; a requested wake eventually runs. Fairness does not require the worker to succeed. Crashes and retryable failures are allowed, and the attempt cap is what ends those behaviors.
+Fairness used for termination: a running worker eventually takes some step (progress, retryable failure, terminal failure, crash, or drop); a due listed job is eventually dispatched to an idle worker; a waiting `next_attempt_at` eventually becomes due; an expired or exhausted processing row is eventually reconciled; a requested wake eventually runs. Fairness does not require the worker to succeed. Crashes and retryable failures are allowed, and the attempt cap is what ends those behaviors.
 
 ## Mutants
 
-`MutantSkipLease.cfg` sets `CheckLease` false and keeps the worker-dead-before-expiry assumption, so the trace is not the finding above. TLC reports mutual exclusion violated:
+`MutantSkipLease.cfg` sets `CheckLease` false. TLC reports mutual exclusion violated:
 
 1. Both jobs are queued with no lease.
 2. One dispatcher starts `w1` for `j1`.
@@ -130,13 +117,13 @@ Termination holds on the real model, including this overlap. `attempt_count` sta
 
 ## A real bug versus a modeling error
 
-A counterexample is a bug when every step names a function in the coverage list and the predicate TLC used is the predicate in that function. The recorded mutex trace is that kind of finding. Report it. Do not weaken the property, do not set `ExpireWhileRunning` false on the real config, and do not change product code unless the user asks.
+A counterexample on `MediaJobLifecycle.cfg` or `MediaJobLifecycleTermination.cfg` is a bug when every step names a function in the coverage list and the predicate TLC used is the predicate in that function. Report it. Do not weaken the property. Do not set `ExpireWhileRunning` true on those configs: that overlap is the setting `loadRuntimeConfig` refuses to start. Do not change product code unless the user asks.
 
-A counterexample is a modeling error when a step cannot happen in the code: a second claim while the lease is unexpired and `CheckLease` is still true, an attempt increment on the release, or a reconciler failure of an already published row. Fix the spec in this directory, then rerun. A mutant that passes is a blind check. Fix the spec or the config, not the mutant's intent.
+A counterexample is a modeling error when a step cannot happen in the code: a second claim while the lease is unexpired and `CheckLease` is still true, an attempt increment on the release, confirm or finalize after expiry, or a reconciler failure of an already published row. Fix the spec in this directory, then rerun. A mutant that passes is a blind check. Fix the spec or the config, not the mutant's intent.
 
 ## Bounds and what is left out
 
-Checked: 2 workers, 2 jobs, attempt cap 3, one lease token per job, the claim recheck under the row lock, crash without release, lease expiry, reconciler `lease_released` and `attempts_exhausted`, retryable release, terminal geometry failure before publish, and the worker wake plus a later dispatcher pass.
+Checked: 2 workers, 2 jobs, attempt cap 3, one lease token per job, the claim recheck under the row lock, crash without release, lease expiry after the holder is gone, reconciler `lease_released` and `attempts_exhausted`, retryable release, terminal geometry failure before publish, the worker wake plus a later dispatcher pass, and an unexpired-lease check on confirm and finalize.
 
 Not checked, because the model does not contain them:
 
@@ -145,15 +132,13 @@ Not checked, because the model does not contain them:
 - Dispatcher list limit 25 and concurrency 8. The model has 2 and 2.
 - More than two jobs, or two media rows on one annotation.
 - Byte-level derivative, raw object, and transcript validation. `confirm_annotation_media_raw_deleted` is one step, not the storage list retry.
-- `confirm_annotation_media_raw_deleted` and `finalize_annotation_media_ready` do not compare `lease_expires_at` to now. The model allows those two steps after expiry when the token still matches. It does not prove any stronger expiry rule.
+- The numeric comparison inside `loadRuntimeConfig`. The model records its result as `ExpireWhileRunning = FALSE`. The unit test is what shows a 60 second lease cannot start.
 - Cleanup of removed, abandoned, and failed storage objects.
 - Article annotations, dispatch-token forgery, and Cloud Run HTTP failures other than "the wake call failed, so the later dispatcher pass has to do it".
 - A published row whose transcript never lands after `attempt_count` reaches 3. Termination treats publish as done, which matches the product rule that the transcript does not gate publication.
 
 ## Sync
 
-Code this model describes: `8b25179e6d6ebe78bdcd3e4fa5fa960e98748348`.
+Code this model describes: `SYNC_SHA`.
 
 Move that commit forward only after you have read the diff of every covered file from that commit to the new one, updated the spec so each action is still one indivisible step of the new code, and rerun `run-tlc.sh`. A pass on the old spec is not a pass on the new code. Use `/maintain-formal-verification-skill` when the covered code changed and this check was not rerun.
-
-A close second target, not checked here: `confirm_annotation_media_raw_deleted` and `finalize_annotation_media_ready` accept the current token after `lease_expires_at`. The other write RPCs reject an expired lease.
