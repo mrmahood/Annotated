@@ -139,6 +139,6 @@ Not checked, because the model does not contain them:
 
 ## Sync
 
-Code this model describes: `SYNC_SHA`.
+Code this model describes: `a5fefbfe0e8308ceddec114cd3a1e1f73b392f97`.
 
 Move that commit forward only after you have read the diff of every covered file from that commit to the new one, updated the spec so each action is still one indivisible step of the new code, and rerun `run-tlc.sh`. A pass on the old spec is not a pass on the new code. Use `/maintain-formal-verification-skill` when the covered code changed and this check was not rerun.
