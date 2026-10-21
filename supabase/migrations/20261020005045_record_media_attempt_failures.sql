@@ -20,7 +20,7 @@ create index annotation_media_attempt_failures_media_id_idx
 alter table public.annotation_media_attempt_failures enable row level security;
 
 revoke all on table public.annotation_media_attempt_failures
-  from public, anon, authenticated;
+  from public, anon, authenticated, service_role;
 grant select on table public.annotation_media_attempt_failures to service_role;
 
 create function private.record_annotation_media_attempt_failure()

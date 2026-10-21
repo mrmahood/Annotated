@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(30);
 
 select has_function(
   'private', 'publish_annotation_media_playable', array['uuid', 'uuid'],
@@ -184,6 +184,44 @@ select ok(
     where failure.media_id = (select media_id from pbt_timeout)
       and failure.failure_code = 'transcode_timeout') = 1,
   'a later claim clears the live code and keeps the attempt record'
+);
+select ok(
+  (
+    select p.prosecdef
+      and pg_catalog.has_table_privilege(
+        p.proowner, 'public.annotation_media_attempt_failures', 'insert'
+      )
+    from pg_catalog.pg_proc as p
+    where p.oid = 'private.record_annotation_media_attempt_failure()'::pg_catalog.regprocedure
+  )
+  and pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'select'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'insert'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'update'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'delete'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'truncate'
+  )
+  and not pg_catalog.has_table_privilege(
+    'anon', 'public.annotation_media_attempt_failures', 'select'
+  )
+  and not pg_catalog.has_table_privilege(
+    'anon', 'public.annotation_media_attempt_failures', 'insert'
+  )
+  and not pg_catalog.has_table_privilege(
+    'authenticated', 'public.annotation_media_attempt_failures', 'select'
+  )
+  and not pg_catalog.has_table_privilege(
+    'authenticated', 'public.annotation_media_attempt_failures', 'insert'
+  ),
+  'service_role can only read attempt failures and the definer trigger can still insert'
 );
 
 create temporary table pbt_playable as
