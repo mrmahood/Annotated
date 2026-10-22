@@ -76,7 +76,7 @@ is live on Loom and is the Walkthrough on
 - Chrome notification when a clip is ready (queued)
 - Staging demo rehearsal checklist
 - Parked Create polish: multi-click Publish first-error; header-icon
-  capture quirk; `raw_delete_unconfirmed` race
+  capture quirk
 
 ## Explicit non-goals / parked
 

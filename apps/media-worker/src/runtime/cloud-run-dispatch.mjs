@@ -75,6 +75,38 @@ export function createCloudRunDispatch({
   };
 }
 
+export function createEmptyCloudRunJobRun({
+  projectId,
+  region,
+  job,
+  fetchImpl = globalThis.fetch,
+}) {
+  const project = requireIdentifier(projectId, 'Google Cloud project');
+  const location = requireIdentifier(region, 'Google Cloud region');
+  const jobName = requireIdentifier(job, 'Cloud Run job');
+  if (typeof fetchImpl !== 'function') throw new TypeError('Cloud Run dispatch dependencies are invalid.');
+  const endpoint = `${CLOUD_RUN_API_ORIGIN}/v2/projects/${project}/locations/${location}/jobs/${jobName}:run`;
+
+  return async () => {
+    const accessToken = await metadataAccessToken(fetchImpl);
+    let response;
+    try {
+      response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+        },
+        body: '{}',
+      });
+    } catch {
+      throw new Error('Cloud Run dispatcher invocation failed.');
+    }
+    if (!response.ok) throw new Error('Cloud Run dispatcher invocation failed.');
+    return Object.freeze({ outcome: 'accepted' });
+  };
+}
+
 export const cloudRunDispatchContract = Object.freeze({
   metadataTokenUrl: METADATA_TOKEN_URL,
   apiOrigin: CLOUD_RUN_API_ORIGIN,

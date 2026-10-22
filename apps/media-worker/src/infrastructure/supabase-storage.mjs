@@ -15,13 +15,16 @@ function requireBucket(value) {
 export class SupabaseStorage {
   #baseUrl;
   #serviceRoleKey;
+  #fetch;
 
-  constructor({ apiUrl, serviceRoleKey, localOnly = true }) {
+  constructor({ apiUrl, serviceRoleKey, localOnly = true, fetchImpl = globalThis.fetch }) {
     const parsed = localOnly
       ? requireLocalUrl(apiUrl, 'Supabase API URL', ['http:', 'https:'])
       : new URL(apiUrl);
     this.#baseUrl = `${parsed.href.replace(/\/$/u, '')}/storage/v1`;
     this.#serviceRoleKey = requireSecret(serviceRoleKey, 'Supabase service key');
+    if (typeof fetchImpl !== 'function') throw new TypeError('Storage fetch is unavailable.');
+    this.#fetch = fetchImpl;
   }
 
   #headers(extra = {}) {
@@ -33,7 +36,7 @@ export class SupabaseStorage {
   }
 
   async download(bucket, objectPath, signal) {
-    const response = await fetch(`${this.#baseUrl}/object/authenticated/${encodeURIComponent(requireBucket(bucket))}/${encodeObjectPath(objectPath)}`, {
+    const response = await this.#fetch(`${this.#baseUrl}/object/authenticated/${encodeURIComponent(requireBucket(bucket))}/${encodeObjectPath(objectPath)}`, {
       headers: this.#headers(),
       signal,
     });
@@ -43,7 +46,7 @@ export class SupabaseStorage {
 
   async uploadNoUpsert(bucket, objectPath, bytes, contentType, signal) {
     if (!Buffer.isBuffer(bytes) || bytes.length < 1) throw new TypeError('Storage upload bytes are invalid.');
-    const response = await fetch(`${this.#baseUrl}/object/${encodeURIComponent(requireBucket(bucket))}/${encodeObjectPath(objectPath)}`, {
+    const response = await this.#fetch(`${this.#baseUrl}/object/${encodeURIComponent(requireBucket(bucket))}/${encodeObjectPath(objectPath)}`, {
       method: 'POST',
       headers: this.#headers({
         'cache-control': 'max-age=0',
@@ -57,7 +60,7 @@ export class SupabaseStorage {
   }
 
   async exists(bucket, objectPath, signal) {
-    const response = await fetch(`${this.#baseUrl}/object/authenticated/${encodeURIComponent(requireBucket(bucket))}/${encodeObjectPath(objectPath)}`, {
+    const response = await this.#fetch(`${this.#baseUrl}/object/authenticated/${encodeURIComponent(requireBucket(bucket))}/${encodeObjectPath(objectPath)}`, {
       headers: this.#headers(),
       signal,
     });
@@ -74,12 +77,29 @@ export class SupabaseStorage {
       encodeObjectPath(objectPath);
       return objectPath;
     });
-    const response = await fetch(`${this.#baseUrl}/object/${encodeURIComponent(bucket)}`, {
+    const response = await this.#fetch(`${this.#baseUrl}/object/${encodeURIComponent(bucket)}`, {
       method: 'DELETE',
       headers: this.#headers({ 'content-type': 'application/json' }),
       body: JSON.stringify({ prefixes }),
       signal,
     });
     if (!response.ok) throw new Error(`Private Storage deletion failed with HTTP ${response.status}.`);
+  }
+
+  async objectVisible(bucket, objectPath, signal) {
+    encodeObjectPath(objectPath);
+    const slash = objectPath.lastIndexOf('/');
+    const prefix = slash === -1 ? '' : objectPath.slice(0, slash);
+    const name = slash === -1 ? objectPath : objectPath.slice(slash + 1);
+    const response = await this.#fetch(`${this.#baseUrl}/object/list/${encodeURIComponent(requireBucket(bucket))}`, {
+      method: 'POST',
+      headers: this.#headers({ 'content-type': 'application/json' }),
+      body: JSON.stringify({ prefix, search: name, limit: 100 }),
+      signal,
+    });
+    if (!response.ok) throw new Error(`Private Storage list failed with HTTP ${response.status}.`);
+    const rows = await response.json();
+    if (!Array.isArray(rows)) throw new Error('Private Storage list response was invalid.');
+    return rows.some((row) => row?.name === name);
   }
 }

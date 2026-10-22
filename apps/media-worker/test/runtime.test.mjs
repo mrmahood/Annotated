@@ -1,17 +1,23 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { once } from 'node:events';
 import os from 'node:os';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { MediaCoreError } from '../src/domain/media-core-error.mjs';
 import { boundedPostgresFailureReason, preparePsqlConnection, PROCESSED_DURATION_INVALID_MESSAGE } from '../src/infrastructure/psql-database.mjs';
 import { PostgresWorkerStore } from '../src/infrastructure/postgres-worker-store.mjs';
-import { createCloudRunDispatch, cloudRunDispatchContract } from '../src/runtime/cloud-run-dispatch.mjs';
-import { loadRuntimeConfig, productionRuntimeContract, stagingRuntimeContract } from '../src/runtime/config.mjs';
+import { createCloudRunDispatch, createEmptyCloudRunJobRun, cloudRunDispatchContract } from '../src/runtime/cloud-run-dispatch.mjs';
+import { wakeDispatcherAt } from '../src/runtime/dispatcher-wake.mjs';
+import { SupabaseStorage } from '../src/infrastructure/supabase-storage.mjs';
+import { LEASE_MARGIN_SECONDS, loadRuntimeConfig, productionRuntimeContract, stagingRuntimeContract } from '../src/runtime/config.mjs';
 import { createAuthenticatedLocalDispatch, createDispatchToken, verifyDispatchToken } from '../src/runtime/dispatch-auth.mjs';
 import { runDispatchCycle } from '../src/runtime/dispatcher.mjs';
 import { runReconciliationCycle } from '../src/runtime/reconciler.mjs';
 import { createSanitizedLogger } from '../src/runtime/sanitized-logger.mjs';
 import { persistDerivativeDurationMs, requireBoundedInteger } from '../src/runtime/validation.mjs';
+import { confirmPrivateObjectRemoved } from '../src/infrastructure/confirm-private-object.mjs';
 import { persistedFailureCode, runOneMediaJob } from '../src/runtime/worker-job.mjs';
 
 const mediaId = '11111111-1111-4111-8111-111111111111';
@@ -140,10 +146,78 @@ test('runtime configuration is Local-only and bounded without exposing secrets',
   };
   const config = loadRuntimeConfig(environment);
   assert.equal(config.dispatchConcurrency, 8);
+  assert.equal(config.leaseSeconds, 900);
   assert.equal(config.workerTimeoutMs, 600_000);
+  assert.ok(config.leaseSeconds > Math.min(600, cloudRunDispatchContract.timeoutSeconds) + LEASE_MARGIN_SECONDS);
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_SUPABASE_URL: 'https://remote.supabase.co' }), /loopback/u);
   assert.throws(() => loadRuntimeConfig({ ...environment, ANNOTATED_DISPATCH_CONCURRENCY: '9' }), /between 1 and 8/u);
   assert.doesNotMatch(JSON.stringify({ ...config, serviceRoleKey: '[redacted]', dispatchSecret: '[redacted]' }), new RegExp(secret, 'u'));
+});
+
+function localRuntimeEnvironment(overrides = {}) {
+  return {
+    ANNOTATED_SUPABASE_URL: 'http://127.0.0.1:54321',
+    ANNOTATED_DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres',
+    ANNOTATED_SERVICE_ROLE_KEY: secret,
+    ANNOTATED_DISPATCH_SECRET: randomBytes(32).toString('base64url'),
+    ANNOTATED_FFMPEG_PATH: 'C:\\tools\\ffmpeg.exe',
+    ANNOTATED_FFPROBE_PATH: 'C:\\tools\\ffprobe.exe',
+    ANNOTATED_PSQL_PATH: 'C:\\tools\\psql.exe',
+    ...overrides,
+  };
+}
+
+test('startup refuses a lease that can expire before the worker task ends', async () => {
+  assert.equal(cloudRunDispatchContract.timeoutSeconds, 600);
+  assert.ok(LEASE_MARGIN_SECONDS >= 60);
+  const defaults = loadRuntimeConfig(localRuntimeEnvironment());
+  assert.equal(defaults.leaseSeconds, 900);
+  assert.equal(defaults.workerTimeoutMs, 600_000);
+
+  const leaseError = /Lease seconds must be greater than the 600 second worker lifetime plus a 60 second margin/u;
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' })), leaseError);
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '660' })), leaseError);
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' }), 'dispatch'), leaseError);
+  assert.throws(() => loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' }), 'reconcile'), leaseError);
+  assert.equal(loadRuntimeConfig(localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '661' })).leaseSeconds, 661);
+  assert.equal(
+    loadRuntimeConfig(localRuntimeEnvironment({
+      ANNOTATED_LEASE_SECONDS: '900',
+      ANNOTATED_WORKER_TIMEOUT_MS: '60000',
+    })).leaseSeconds,
+    900,
+  );
+  assert.throws(
+    () => loadRuntimeConfig(localRuntimeEnvironment({
+      ANNOTATED_LEASE_SECONDS: '120',
+      ANNOTATED_WORKER_TIMEOUT_MS: '60000',
+    })),
+    /Lease seconds must be greater than the 60 second worker lifetime plus a 60 second margin/u,
+  );
+  assert.equal(
+    loadRuntimeConfig(localRuntimeEnvironment({
+      ANNOTATED_LEASE_SECONDS: '121',
+      ANNOTATED_WORKER_TIMEOUT_MS: '60000',
+    })).leaseSeconds,
+    121,
+  );
+
+  const entrypoint = fileURLToPath(new URL('../src/entrypoint/main.mjs', import.meta.url));
+  const child = spawn(process.execPath, [entrypoint, 'worker'], {
+    env: localRuntimeEnvironment({ ANNOTATED_LEASE_SECONDS: '60' }),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const stdoutChunks = [];
+  const stderrChunks = [];
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => stdoutChunks.push(chunk));
+  child.stderr.on('data', (chunk) => stderrChunks.push(chunk));
+  const [code] = await once(child, 'close');
+  const output = `${stdoutChunks.join('')}\n${stderrChunks.join('')}`;
+  assert.equal(code, 1);
+  assert.match(stderrChunks.join(''), leaseError);
+  assert.doesNotMatch(output, new RegExp(secret, 'u'));
 });
 
 test('runtime configuration accepts only the exact approved Staging boundary', () => {
@@ -263,6 +337,69 @@ test('Cloud Run dispatch uses metadata identity and overrides exactly one media 
   assert.doesNotMatch(JSON.stringify(requests[1]), /raw_storage_path|transcript_text/u);
 });
 
+test('a retryable failure wakes the dispatcher with an empty job run at next_attempt_at', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, body: options.body });
+    if (url === cloudRunDispatchContract.metadataTokenUrl) {
+      return { ok: true, async json() { return { access_token: 'metadata-access-token-value' }; } };
+    }
+    return { ok: true, status: 200 };
+  };
+  const runDispatcher = createEmptyCloudRunJobRun({
+    projectId: stagingRuntimeContract.googleProjectId,
+    region: stagingRuntimeContract.googleRegion,
+    job: 'annotated-media-dispatcher-staging',
+    fetchImpl,
+  });
+  const slept = [];
+  const wake = await wakeDispatcherAt({
+    retryAt: '2026-10-20T00:01:30.000Z',
+    runDispatcher,
+    now: () => Date.parse('2026-10-20T00:01:00.000Z'),
+    sleep: async (ms) => { slept.push(ms); },
+  });
+  assert.deepEqual(wake, { outcome: 'accepted' });
+  assert.deepEqual(slept, [30_000]);
+  assert.equal(requests[1].url, 'https://run.googleapis.com/v2/projects/annotated-504301/locations/us-east4/jobs/annotated-media-dispatcher-staging:run');
+  assert.equal(requests[1].body, '{}');
+  const skipped = await wakeDispatcherAt({
+    retryAt: '2026-10-20T00:10:00.000Z',
+    runDispatcher,
+    now: () => Date.parse('2026-10-20T00:01:00.000Z'),
+    sleep: async () => { throw new Error('must not wait past the cap'); },
+    maxWaitMs: 180_000,
+  });
+  assert.deepEqual(skipped, { outcome: 'skipped' });
+});
+
+test('storage lists an object instead of trusting a cached GET when confirming deletion', async () => {
+  const calls = [];
+  const storage = new SupabaseStorage({
+    apiUrl: 'https://nkkunkwirvfwhmpwonqz.supabase.co',
+    serviceRoleKey: 'staging-storage-test-secret-value',
+    localOnly: false,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, method: options.method, body: options.body });
+      return {
+        ok: true,
+        status: 200,
+        async json() { return [{ name: 'raw.webm' }]; },
+        async arrayBuffer() { return new ArrayBuffer(0); },
+      };
+    },
+  });
+  assert.equal(await storage.objectVisible('annotation-media-raw', 'owner/annotation/media/raw.webm'), true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].url, 'https://nkkunkwirvfwhmpwonqz.supabase.co/storage/v1/object/list/annotation-media-raw');
+  assert.deepEqual(JSON.parse(calls[0].body), {
+    prefix: 'owner/annotation/media',
+    search: 'raw.webm',
+    limit: 100,
+  });
+});
+
 test('dispatcher deduplicates IDs, bounds concurrency, and never forwards candidate details', async () => {
   const { logger, lines } = captureLogger();
   let active = 0;
@@ -327,7 +464,7 @@ test('reconciler releases expired leases and removes an unstaged deterministic d
     },
   };
   const storage = {
-    exists: async (_bucket, objectPath) => existing.has(objectPath),
+    objectVisible: async (_bucket, objectPath) => existing.has(objectPath),
     remove: async (_bucket, objectPaths) => {
       removed.push(...objectPaths);
       objectPaths.forEach((objectPath) => existing.delete(objectPath));
@@ -365,7 +502,7 @@ test('reconciler completes durable cleanup for an already-removed row', async ()
     },
   };
   const storage = {
-    exists: async (_bucket, objectPath) => existing.has(objectPath),
+    objectVisible: async (_bucket, objectPath) => existing.has(objectPath),
     remove: async (_bucket, objectPaths) => objectPaths.forEach((objectPath) => existing.delete(objectPath)),
   };
   const summary = await runReconciliationCycle({ store, storage, logger, concurrency: 1 });
@@ -491,7 +628,9 @@ test('one-ID worker maps a tagged SQL duration failure to output_invalid instead
     temporaryRoot: os.tmpdir(),
   });
   assert.deepEqual(released, { stage: 'probing', code: 'output_invalid' });
-  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'probing', code: 'output_invalid' });
+  assert.deepEqual(result, {
+    outcome: 'retry_scheduled', stage: 'probing', code: 'output_invalid', retryAt: '2026-08-18T12:01:00Z',
+  });
   const failed = lines.map((line) => JSON.parse(line)).find((entry) => entry.event === 'worker_failed');
   assert.equal(failed.reason, 'duration_overshoot');
   assert.equal(failed.code, 'output_invalid');
@@ -524,9 +663,90 @@ test('one-ID worker maps a TypeError from a non-integer derivative duration to u
     temporaryRoot: os.tmpdir(),
   });
   assert.deepEqual(released, { stage: 'probing', code: 'unexpected_failure' });
-  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'probing', code: 'unexpected_failure' });
+  assert.deepEqual(result, {
+    outcome: 'retry_scheduled', stage: 'probing', code: 'unexpected_failure', retryAt: '2026-08-18T12:01:00Z',
+  });
   assert.equal(persistDerivativeDurationMs(Number('9.299675') * 1_000), 9_300);
   assert.doesNotThrow(() => requireBoundedInteger(9_300, 'Derivative duration', 1_000, 90_000));
+});
+
+test('one-ID worker publishes when a cached object GET stays readable after raw deletion', async () => {
+  const order = [];
+  let removed = false;
+  const store = {
+    claim: async () => ({
+      ...claim('raw_cleanup'),
+      processed_storage_path: 'owner/annotation/media/excerpt.m4a',
+      transcript_present: true,
+    }),
+    confirmRawDeleted: async () => { order.push('confirm'); },
+    publishPlayable: async () => { order.push('publish'); },
+    finalize: async () => { order.push('finalize'); },
+    releaseAttempt: async () => {
+      order.push('release');
+      return { result_status: 'processing', retry_at: '2026-10-20T00:01:00Z' };
+    },
+  };
+  const storage = {
+    exists: async () => true,
+    objectVisible: async () => !removed,
+    remove: async () => { removed = true; },
+    download: async () => Buffer.alloc(0),
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage,
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger: captureLogger().logger,
+  });
+  assert.deepEqual(order, ['confirm', 'publish', 'finalize']);
+  assert.deepEqual(result, { outcome: 'ready' });
+});
+
+test('raw deletion stays unconfirmed when the listed object remains', async () => {
+  let removes = 0;
+  const sleeps = [];
+  const removed = await confirmPrivateObjectRemoved({
+    objectVisible: async () => true,
+    remove: async () => { removes += 1; },
+  }, 'annotation-media-raw', 'owner/annotation/media/raw.webm', {
+    sleep: async (ms) => { sleeps.push(ms); },
+    delaysMs: [0, 250, 500],
+  });
+  assert.equal(removed, false);
+  assert.equal(removes, 1);
+  assert.deepEqual(sleeps, [250, 500]);
+});
+
+test('one-ID worker releases raw_delete_unconfirmed when the object stays listed', async () => {
+  let released;
+  const store = {
+    claim: async () => claim('raw_cleanup'),
+    releaseAttempt: async (_id, _lease, stage, code) => {
+      released = { stage, code };
+      return { result_status: 'processing', retry_at: '2026-10-20T00:01:00Z' };
+    },
+  };
+  const result = await runOneMediaJob({
+    mediaId,
+    store,
+    storage: { objectVisible: async () => true, remove: async () => {}, download: async () => Buffer.alloc(0) },
+    confirmRemoval: async () => false,
+    ffmpegPath: 'unused',
+    ffprobePath: 'unused',
+    transcriber: {},
+    logger: captureLogger().logger,
+  });
+  assert.deepEqual(released, { stage: 'raw_cleanup', code: 'raw_delete_unconfirmed' });
+  assert.deepEqual(result, {
+    outcome: 'retry_scheduled',
+    stage: 'raw_cleanup',
+    code: 'raw_delete_unconfirmed',
+    retryAt: '2026-10-20T00:01:00Z',
+  });
 });
 
 test('one-ID worker persists a retry schedule through the lease-fenced store', async () => {
@@ -541,7 +761,7 @@ test('one-ID worker persists a retry schedule through the lease-fenced store', a
   };
   const storage = {
     download: async () => Buffer.alloc(1),
-    exists: async () => { throw new MediaCoreError('raw_cleanup', 'raw_delete_failed', 'sensitive storage failure'); },
+    objectVisible: async () => { throw new MediaCoreError('raw_cleanup', 'raw_delete_failed', 'sensitive storage failure'); },
   };
   const result = await runOneMediaJob({
     mediaId,
@@ -554,7 +774,9 @@ test('one-ID worker persists a retry schedule through the lease-fenced store', a
     temporaryRoot: os.tmpdir(),
   });
   assert.deepEqual(released, { stage: 'raw_cleanup', code: 'raw_delete_failed' });
-  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'raw_cleanup', code: 'raw_delete_failed' });
+  assert.deepEqual(result, {
+    outcome: 'retry_scheduled', stage: 'raw_cleanup', code: 'raw_delete_failed', retryAt: '2026-08-18T12:01:00Z',
+  });
 });
 
 test('one-ID worker logs a bounded output_invalid reason without secrets', async () => {
@@ -583,7 +805,9 @@ test('one-ID worker logs a bounded output_invalid reason without secrets', async
     logger,
     temporaryRoot: os.tmpdir(),
   });
-  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'transcoding', code: 'output_invalid' });
+  assert.deepEqual(result, {
+    outcome: 'retry_scheduled', stage: 'transcoding', code: 'output_invalid', retryAt: '2026-08-18T12:01:00Z',
+  });
   const failed = lines.map((line) => JSON.parse(line)).find((entry) => entry.event === 'worker_failed');
   assert.equal(failed.reason, 'duration_overshoot');
   assert.equal(failed.code, 'output_invalid');
@@ -656,6 +880,7 @@ test('one-ID worker publishes the playable excerpt before transcription and stil
     store,
     storage: {
       exists: async () => false,
+      objectVisible: async () => false,
       download: async () => { throw new Error('must not download raw'); },
     },
     ffmpegPath: 'unused',
@@ -710,7 +935,7 @@ test('one-ID worker keeps a published clip when transcription fails after it is 
   const result = await runOneMediaJob({
     mediaId,
     store,
-    storage: { exists: async () => false, download: async () => Buffer.alloc(0) },
+    storage: { exists: async () => false, objectVisible: async () => false, download: async () => Buffer.alloc(0) },
     ffmpegPath: 'unused',
     ffprobePath: 'unused',
     transcriber: {},
@@ -731,7 +956,9 @@ test('one-ID worker keeps a published clip when transcription fails after it is 
   });
   assert.deepEqual(order, ['confirm', 'publish', 'transcribe', 'release']);
   assert.deepEqual(released, { stage: 'transcribing', code: 'provider_timeout' });
-  assert.deepEqual(result, { outcome: 'retry_scheduled', stage: 'transcribing', code: 'provider_timeout' });
+  assert.deepEqual(result, {
+    outcome: 'retry_scheduled', stage: 'transcribing', code: 'provider_timeout', retryAt: '2026-10-04T01:30:00Z',
+  });
 });
 
 test('one-ID worker persists a viewport change as capture_changed instead of a generic geometry retry', async () => {

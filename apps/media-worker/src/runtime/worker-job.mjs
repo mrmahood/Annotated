@@ -5,6 +5,7 @@ import { MediaCoreError } from '../domain/media-core-error.mjs';
 import { createLocalDerivative, inspectLocalDerivative, inspectLocalRaw } from '../media/local-media-core.mjs';
 import { createDerivativeAudioInput } from '../transcription/derivative-audio.mjs';
 import { transcribeAndValidate } from '../transcription/transcript.mjs';
+import { confirmPrivateObjectRemoved } from '../infrastructure/confirm-private-object.mjs';
 import { requireBoundedInteger, requireMediaId } from './validation.mjs';
 
 const RESUME_STAGES = new Set(['probing', 'transcribing', 'raw_cleanup', 'finalizing']);
@@ -136,6 +137,7 @@ export async function runOneMediaJob({
   loadStagedDerivative = obtainStagedDerivative,
   createDerivativeAudio = createDerivativeAudioInput,
   transcribeExcerpt = transcribeAndValidate,
+  confirmRemoval = confirmPrivateObjectRemoved,
 }) {
   const normalizedMediaId = requireMediaId(mediaId);
   if (!store || typeof store.claim !== 'function' || !storage || typeof storage.download !== 'function') {
@@ -182,10 +184,12 @@ export async function runOneMediaJob({
     }
 
     if (stage === 'raw_cleanup') {
-      if (claim.raw_storage_path && await storage.exists('annotation-media-raw', claim.raw_storage_path)) {
-        await storage.remove('annotation-media-raw', [claim.raw_storage_path]);
-      }
-      if (claim.raw_storage_path && await storage.exists('annotation-media-raw', claim.raw_storage_path)) {
+      const rawRemoved = await confirmRemoval(
+        storage,
+        'annotation-media-raw',
+        claim.raw_storage_path,
+      );
+      if (!rawRemoved) {
         throw new MediaCoreError('raw_cleanup', 'raw_delete_unconfirmed', 'Raw object deletion was not confirmed.');
       }
       await store.confirmRawDeleted(normalizedMediaId, claim.lease_token);
@@ -233,7 +237,12 @@ export async function runOneMediaJob({
         attempt_count: Number(claim.attempt_count),
         reason: failure.reason,
       });
-      return Object.freeze({ outcome, stage: failure.stage, code });
+      return Object.freeze({
+        outcome,
+        stage: failure.stage,
+        code,
+        ...(outcome === 'retry_scheduled' ? { retryAt: released?.retry_at ?? null } : {}),
+      });
     } catch {
       logger?.emit('worker_failed', { media_id: normalizedMediaId, stage: 'finalizing', code: 'lease_lost', outcome: 'failed' });
       return Object.freeze({ outcome: 'failed', stage: 'finalizing', code: 'lease_lost' });

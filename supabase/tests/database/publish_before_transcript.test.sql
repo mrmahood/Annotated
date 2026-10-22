@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(26);
+select plan(34);
 
 select has_function(
   'private', 'publish_annotation_media_playable', array['uuid', 'uuid'],
@@ -159,6 +159,70 @@ select ok(
     where media.id = (select media_id from pbt_timeout)),
   'transient failures keep a future retry time'
 );
+select is(
+  (select failure.failure_code
+    from public.annotation_media_attempt_failures as failure
+    where failure.media_id = (select media_id from pbt_timeout)),
+  'transcode_timeout',
+  'the released attempt keeps its failure code'
+);
+update public.annotation_media
+set next_attempt_at = pg_catalog.now() - interval '1 second'
+where id = (select media_id from pbt_timeout);
+select is(
+  (select claimed.attempt_count
+    from private.claim_annotation_media_processing((select media_id from pbt_timeout), 900) as claimed),
+  2::smallint,
+  'the same media can be claimed again'
+);
+select ok(
+  (select media.failure_code is null and media.attempt_count = 2
+    from public.annotation_media as media
+    where media.id = (select media_id from pbt_timeout))
+  and (select pg_catalog.count(*)
+    from public.annotation_media_attempt_failures as failure
+    where failure.media_id = (select media_id from pbt_timeout)
+      and failure.failure_code = 'transcode_timeout') = 1,
+  'a later claim clears the live code and keeps the attempt record'
+);
+select ok(
+  (
+    select p.prosecdef
+      and pg_catalog.has_table_privilege(
+        p.proowner, 'public.annotation_media_attempt_failures', 'insert'
+      )
+    from pg_catalog.pg_proc as p
+    where p.oid = 'private.record_annotation_media_attempt_failure()'::pg_catalog.regprocedure
+  )
+  and pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'select'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'insert'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'update'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'delete'
+  )
+  and not pg_catalog.has_table_privilege(
+    'service_role', 'public.annotation_media_attempt_failures', 'truncate'
+  )
+  and not pg_catalog.has_table_privilege(
+    'anon', 'public.annotation_media_attempt_failures', 'select'
+  )
+  and not pg_catalog.has_table_privilege(
+    'anon', 'public.annotation_media_attempt_failures', 'insert'
+  )
+  and not pg_catalog.has_table_privilege(
+    'authenticated', 'public.annotation_media_attempt_failures', 'select'
+  )
+  and not pg_catalog.has_table_privilege(
+    'authenticated', 'public.annotation_media_attempt_failures', 'insert'
+  ),
+  'service_role can only read attempt failures and the definer trigger can still insert'
+);
 
 create temporary table pbt_playable as
 select claimed.*
@@ -178,6 +242,34 @@ select lives_ok(
   $$,
   'the derivative can be staged before a transcript exists'
 );
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now()
+where id = (select media_id from pbt_playable);
+
+select throws_ok(
+  $$
+    select private.confirm_annotation_media_raw_deleted(media_id, lease_token) from pbt_playable
+  $$,
+  '55000',
+  'Processed media and an active lease are required before raw deletion can be confirmed.',
+  'raw deletion confirmation rejects a lease that expires at now'
+);
+
+select ok(
+  (select media.raw_storage_path is not null
+      and media.raw_deleted_at is null
+      and media.processing_status = 'processing'
+      and media.lease_token = (select lease_token from pbt_playable)
+    from public.annotation_media as media
+    where media.id = (select media_id from pbt_playable)),
+  'an expired lease leaves the raw object unconfirmed'
+);
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now() + interval '900 seconds'
+where id = (select media_id from pbt_playable);
+
 select lives_ok(
   $$
     select private.confirm_annotation_media_raw_deleted(media_id, lease_token) from pbt_playable
@@ -302,6 +394,33 @@ select lives_ok(
   $$,
   'the transcript can be attached after the excerpt is already public'
 );
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now()
+where id = (select media_id from pbt_transcript_retry);
+
+select throws_ok(
+  $$
+    select private.finalize_annotation_media_ready(media_id, lease_token) from pbt_transcript_retry
+  $$,
+  '55000',
+  'Hosted media is not ready for transcript finalization.',
+  'finalization rejects a lease that expires at now'
+);
+
+select ok(
+  (select media.lease_token = (select lease_token from pbt_transcript_retry)
+      and media.processing_stage = 'finalizing'
+      and media.processing_status = 'ready'
+    from public.annotation_media as media
+    where media.id = (select media_id from pbt_transcript_retry)),
+  'an expired lease leaves finalization uncommitted'
+);
+
+update public.annotation_media
+set lease_expires_at = pg_catalog.now() + interval '900 seconds'
+where id = (select media_id from pbt_transcript_retry);
+
 select lives_ok(
   $$
     select private.finalize_annotation_media_ready(media_id, lease_token) from pbt_transcript_retry

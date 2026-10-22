@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { cloudRunDispatchContract } from './cloud-run-dispatch.mjs';
 import { requireBoundedInteger, requireLocalUrl, requireMediaId, requireSecret } from './validation.mjs';
 
 const STAGING_PROJECT_REF = 'nkkunkwirvfwhmpwonqz';
@@ -94,6 +95,21 @@ function transcriberName(value, environment) {
   return normalized;
 }
 
+export const LEASE_MARGIN_SECONDS = 60;
+
+function effectiveWorkerLifetimeSeconds(workerTimeoutMs) {
+  const workerTimeoutSeconds = Math.floor(workerTimeoutMs / 1000);
+  return Math.min(workerTimeoutSeconds, cloudRunDispatchContract.timeoutSeconds);
+}
+
+function refuseShortLease(leaseSeconds, workerTimeoutMs) {
+  const lifetimeSeconds = effectiveWorkerLifetimeSeconds(workerTimeoutMs);
+  if (leaseSeconds > lifetimeSeconds + LEASE_MARGIN_SECONDS) return;
+  throw new TypeError(
+    `Lease seconds must be greater than the ${lifetimeSeconds} second worker lifetime plus a ${LEASE_MARGIN_SECONDS} second margin. The lifetime is the smaller of the worker timeout and the ${cloudRunDispatchContract.timeoutSeconds} second Cloud Run task timeout.`,
+  );
+}
+
 function dispatchMode(value, environment) {
   const normalized = value || (environment === 'local' ? 'local-process' : 'cloud-run');
   if (!['local-process', 'cloud-run'].includes(normalized)) throw new TypeError('Dispatch mode is invalid.');
@@ -121,6 +137,9 @@ export function loadRuntimeConfig(environment = process.env, mode = 'worker') {
   const ffmpegPath = mode === 'worker' ? path.resolve(requiredText(environment.ANNOTATED_FFMPEG_PATH, 'FFmpeg path')) : null;
   const ffprobePath = mode === 'worker' ? path.resolve(requiredText(environment.ANNOTATED_FFPROBE_PATH, 'FFprobe path')) : null;
   const psqlPath = path.resolve(requiredText(environment.ANNOTATED_PSQL_PATH, 'psql path'));
+  const leaseSeconds = integerEnvironment(environment.ANNOTATED_LEASE_SECONDS, 900, 'Lease seconds', 60, 3_600);
+  const workerTimeoutMs = integerEnvironment(environment.ANNOTATED_WORKER_TIMEOUT_MS, 600_000, 'Worker timeout', 60_000, 600_000);
+  refuseShortLease(leaseSeconds, workerTimeoutMs);
   return Object.freeze({
     environment: annotatedEnvironment,
     mode,
@@ -141,12 +160,12 @@ export function loadRuntimeConfig(environment = process.env, mode = 'worker') {
     ffmpegPath,
     ffprobePath,
     psqlPath,
-    leaseSeconds: integerEnvironment(environment.ANNOTATED_LEASE_SECONDS, 900, 'Lease seconds', 60, 3_600),
+    leaseSeconds,
     dispatchLimit: integerEnvironment(environment.ANNOTATED_DISPATCH_LIMIT, 25, 'Dispatch limit', 1, 100),
     dispatchConcurrency: integerEnvironment(environment.ANNOTATED_DISPATCH_CONCURRENCY, 4, 'Dispatch concurrency', 1, 8),
     reconciliationLimit: integerEnvironment(environment.ANNOTATED_RECONCILIATION_LIMIT, 25, 'Reconciliation limit', 1, 100),
     reconciliationConcurrency: integerEnvironment(environment.ANNOTATED_RECONCILIATION_CONCURRENCY, 2, 'Reconciliation concurrency', 1, 8),
-    workerTimeoutMs: integerEnvironment(environment.ANNOTATED_WORKER_TIMEOUT_MS, 600_000, 'Worker timeout', 60_000, 600_000),
+    workerTimeoutMs,
     mediaId: environment.ANNOTATED_MEDIA_ID ? requireMediaId(environment.ANNOTATED_MEDIA_ID) : null,
     dispatchToken: environment.ANNOTATED_DISPATCH_TOKEN ? requiredText(environment.ANNOTATED_DISPATCH_TOKEN, 'Dispatch token', 1_024) : null,
   });
