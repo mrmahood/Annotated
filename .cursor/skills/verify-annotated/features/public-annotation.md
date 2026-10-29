@@ -35,7 +35,7 @@ Exit 1 if the feed has no `View annotation` link, the detail title does not star
 - Do not follow the outbound source control. Leaving the origin drops the proof.
 - `/a/{annotationId}` often redirects to the canonical path. Assert the document the browser settles on, not the URL before the redirect.
 - Some annotations lead with a visible title and some with a visually hidden `Annotation` heading. The document title prefix is the stable check.
-- Comments may be empty (`No comments yet. Start the conversation.`) or an alert (`Comments are temporarily unavailable.`). The `Comments` heading is still required.
+- Comments may be empty (`No comments yet. Start the conversation.`) or an alert (`Comments are temporarily unavailable. Please try again later.`). The `Comments` heading is still required.
 - The signed-out panel `Sign in to share, save, vote, or comment` sits above Share, Bookmark, Votes, and Comments, with `Continue with Google` and `Continue with X`. Share, Bookmark, Upvote, Downvote, and Post comment open that same panel in a dialog and return with `?intent=`. Do not click the panel, those controls, or the provider buttons.
 - Follow in the author row is `Sign in to follow` and `Continue with X`. Do not click them.
 - Do not click `File a claim`, `Post to X`, or a control that marks a source helpful. Those write. The drive checks the source link and the `Comments` heading, not a particular verdict.
